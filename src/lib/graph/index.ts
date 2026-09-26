@@ -5,6 +5,8 @@
  * - ids.ts     — the canonical H3 node-ID table (stable public contract)
  * - turbo.ts   — turbo LoRA families (official, lightx2v, drbaph, PDD) +
  *                plan resolution and selection ranking
+ * - vdn.ts     — the VDN acceleration arm (adopted first-party 2026-09-26):
+ *                rungs, engine-truth stage resolution, the XOR rule
  * - upscale.ts — LBH 2D/3D hires-fix, RTX pixel 2×
  * - preview.ts — H3 live-preview override
  * - registry.ts— the entry list, registration, detection, provenance
@@ -15,12 +17,13 @@
  *                exit) + the Mamad8 never-in-video-graphs factory guard
  *
  * See docs/architecture.md → "Optimization registry" for how to add an entry. */
-export type { ComfyNode, ComfyPrompt, DetectionResult, EngineId, GraphContext, Link, OptimizationEntry, TransformOptions, TurboLoaderChoice, TurboPlan, WrapPoint } from './types'
+export type { ComfyNode, ComfyPrompt, DetectionResult, EngineId, GraphContext, Link, OptimizationEntry, TransformOptions, TurboLoaderChoice, TurboPlan, VdnPlan, VdnRung, WrapPoint } from './types'
 export { createGraphContext } from './types'
 export { H3 } from './ids'
 export { TURBO_ENTRIES, GENERIC_TURBO_ENTRY, larryvrhTurboPackPresent } from './turbo'
 export { UPSCALE_ENTRIES } from './upscale'
 export { PREVIEW_ENTRY } from './preview'
+export { VDN_APPLY_NODE, VDN_ENTRY, resolveVdnPlan, vdnAvailability, vdnPackPresent, vdnStages } from './vdn'
 // Registry-scoped wrappers classify/resolve against the LIVE registry list,
 // so runtime-registered entries participate with zero factory changes.
 export { optimizationEntries, findOptimization, registerOptimization, detectOptimizations, turboProvenance, classifyTurboFamily, turboFetchPlan, turboLoraPatterns, resolveTurboPlan, upscaleEntryFor } from './registry'

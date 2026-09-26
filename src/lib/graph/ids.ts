@@ -11,6 +11,10 @@
  *            rides the first-party form adapter when installed — slot 1 at 9)
  *   10-19    conditioning, sampler core, decode, publish
  *   20-28    i2v/FLF loaders, Motion-Context chain, trimmed publish
+ *   29       the VDN acceleration wrap (ApplyVDNH3, task 9up52mj — allocated
+ *            2026-09-26 when the 1-9 wrap range was already full; a
+ *            model-chain wrap by role, first in the chain, so it keeps its
+ *            own slot outside the loader blocks)
  *   30/40/50 reference image/video/audio loaders (index-suffixed)
  *   60x/65x  timeline-guide loaders (index-suffixed prefixes; the former
  *            LTX latent 2× block at 60-70 was removed 2026-09-20, Phase 0)
@@ -36,6 +40,7 @@ export const H3 = {
   motionTrim: '26',
   createVideoTrimmed: '27',
   saveChainLatent: '28',
+  vdnApply: '29',
   noise: '11',
   guider: '12',
   samplerSelect: '13',

@@ -76,6 +76,7 @@ const SUITES = {
   resync: { build: 'full', windows: false, python: false, ffmpeg: false },
   runtime: { build: 'server', windows: true, python: false, ffmpeg: false },
   storage: { build: 'server', windows: false, python: false, ffmpeg: false },
+  vdn: { build: null, windows: false, python: false, ffmpeg: false },
   workflows: { build: null, windows: false, python: false, ffmpeg: false },
 }
 
@@ -87,7 +88,7 @@ const BOOTING = ['datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'l
 const PORT_USERS = ['datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 
 /** The suites that load client TS through the VM harness (scripts/lib/ts-vm.cjs). */
-const VM_SUITES = ['camera', 'canvas', 'engine-families', 'enginewatch', 'h3img', 'poserig', 'registry', 'resync', 'workflows']
+const VM_SUITES = ['camera', 'canvas', 'engine-families', 'enginewatch', 'h3img', 'poserig', 'registry', 'resync', 'vdn', 'workflows']
 
 /** Every vitest suite — the FULL fallback set. */
 const ALL_SUITES = Object.keys(SUITES).sort()

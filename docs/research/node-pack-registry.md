@@ -376,3 +376,57 @@ non-Kreatine lane now has a reason to keep the pack. What landed:
 as-captured; this section is the dated record). Kreatine adoption on the
 Krea lane would re-apply the supersession the other way — the modularity
 contract keeps the pull-out trivial either way.
+
+## 13. ADDENDUM 2026-09-26 (latest) — ruling #3 flows back: VDN adopted as our own, the graph lane FINISHED (task `9up52mj`)
+
+> **Provenance.** The maintainer's inventory ruling #3
+> ([node-inventory-decision-2026-09-26.md](node-inventory-decision-2026-09-26.md)
+> §Rulings): *"Finish VDN. The upstream repo has been removed but we still
+> have local copies — we adopt it entirely as our own. We take on the debt of
+> managing this one, since there is no upstream to contend with."* This
+> addendum records the execution. **Method:** code-verified emission surface
+> (`src/lib/graph/vdn.ts`, the workflow factory seam, the submit ladder, the
+> canvas panel), the engine-contract fixture source-derived from OUR vendored
+> tree at the pin, the golden matrix arms, and the full unit suite — no GPU,
+> no engine, nothing run on 8188/8189 (the measured speed/quality arm is
+> GPU-queued separately).
+
+- **First-party custody**: the vendored tree (`vendor/nodes/ComfyUI-VDN-H3`
+  @ `3eb6349`, v1.5.2) is the code of record — Monoka is the sole manager
+  and only upstream of this copy (the Viggle posture; licenses registry §3
+  row moved vendored → adopted-our-own + §3 addendum; PROVENANCE.md note).
+  The STAGE WEIGHTS stay the OpenVDN fetch rows (§5a class, consent-gated);
+  the shared install's `-24GB` variant is environment, not product.
+- **The graph lane** (the zero-emission STUB the wiring check filed as §1.4
+  is dead): the video factory emits `ApplyVDNH3` — the pack's BASE node,
+  first in the model chain — as the `vdn.apply` acceleration entry
+  (`src/lib/graph/vdn.ts`). Two rungs mirroring the two fetch rows exactly:
+  `dmd-8` (stage-dmd\*, distilled turbo adapter ON, 8 steps, the pack's
+  measured `er_sde`/`beta` pairing) and `stage-b-50` (stage-b\*, adapter
+  OFF, the user's steps on the official `res_multistep`/`simple` pair).
+  **XOR with the turbo tier** (the slot rule this registry always stated):
+  both are acceleration patches on the same model slot — the resolver
+  throws on the combination, the submit ladder refuses it readably, the
+  panel chips clear each other; never a double-distilled graph, never a
+  silent drop.
+- **Presence truth reads the R5 machinery**: the pack through the row's own
+  `presenceRule` (`packPresence`), set to **`any`** — our builders emit a
+  deliberate subset (the base node only; `ApplyVDNH3Advanced` is the
+  ablation surface we never emit, its `fast_kernels` documented to drift on
+  8-step DMD stages). The STAGE is read from the engine's own
+  `vdn_checkpoint` combo in object_info — the app never mirrors the
+  models/vdn walk. Absences refuse with install/fetch guidance naming the
+  catalog rows.
+- **Engine-contract truth**: `ApplyVDNH3` + `ApplyVDNH3Advanced` schemas
+  source-derived from the vendored tree into the fixture (it is our code
+  now; the shared install serves only the `-24GB` variant) —
+  `vdn_checkpoint` honestly emptied as the environment-enumerated combo it
+  is, every required input emitted (the form-adapter `low_vram` lesson).
+- STATUS **ADOPTED-OUR-OWN · WIRED (graph-level, contract-proven)** — the
+  measured speed/quality arm (dmd-8 vs the turbo tier vs native, matched
+  seeds) is GPU-queued and owns the tier-default question; no default flips
+  here.
+
+§[³]'s registry-vs-code note (VDN "zero builder emissions") is superseded by
+this addendum — the row above stays as-captured; this section is the dated
+record.

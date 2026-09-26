@@ -1195,7 +1195,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
           {
             settings: facts.settings,
             connected: facts.connected,
-            modelReady: h3StackReady({ selection, mode: request.mode, turbo: context.settings.turbo }),
+            modelReady: h3StackReady({ selection, mode: request.mode, turbo: context.settings.turbo, vdn: context.settings.vdn, info: facts.info }),
             selection,
             models: facts.models,
             info: facts.info,
@@ -1684,7 +1684,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         {
           settings: facts.settings,
           connected: facts.connected,
-          modelReady: h3StackReady({ selection, mode: request.mode, turbo: settings.turbo }),
+          modelReady: h3StackReady({ selection, mode: request.mode, turbo: settings.turbo, vdn: settings.vdn, info: facts.info }),
           selection,
           models: facts.models,
           info: facts.info,
@@ -1759,10 +1759,11 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       const request = buildCanvasRenderRequest(settings, { firstFrame, lastFrame, referenceImages: referenceMedia, referenceVideos, referenceAudios }, bindings)
       return validateH3Render(request, {
         connected: facts.connected,
-        modelReady: facts.settings ? h3StackReady({ selection, mode: request.mode, turbo: settings.turbo }) : false,
+        modelReady: facts.settings ? h3StackReady({ selection, mode: request.mode, turbo: settings.turbo, vdn: settings.vdn, info: facts.info }) : false,
         selection,
         h3PreviewOverrideNode: findH3PreviewOverrideNode(facts.info) || undefined,
         modelOverrides: overrideOutcomeFor('minimax', settings.modelOverrides),
+        info: facts.info,
       })
     },
 
@@ -2668,10 +2669,11 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
       const selection = selectionFor(settings.turbo, settings.turboFamily, spec.modelOverrides)
       const validation = validateH3Render(request, {
         connected: facts.connected,
-        modelReady: facts.settings ? h3StackReady({ selection, mode: request.mode, turbo: settings.turbo }) : false,
+        modelReady: facts.settings ? h3StackReady({ selection, mode: request.mode, turbo: settings.turbo, vdn: settings.vdn, info: facts.info }) : false,
         selection,
         h3PreviewOverrideNode: findH3PreviewOverrideNode(facts.info) || undefined,
         modelOverrides: overrideOutcomeFor('minimax', spec.modelOverrides),
+        info: facts.info,
       })
       // The graph builds regardless of the engine — construction is pure.
       const fakeSelection: ModelSelection = {
@@ -2679,11 +2681,21 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         videoVae: 'TEST-video-vae.safetensors', audioVae: 'TEST-audio-vae.safetensors', previewVae: '',
         fl2vLora: settings.turbo === 'off' ? '' : 'TEST-fl2v-turbo.safetensors', ref2vLora: 'TEST-ref2v-turbo.safetensors',
       }
-      const graph = planCanvasGraph(request, fakeSelection, {
-        first: request.firstFrame?.name || (request.firstFrame ? 'plan-first' : undefined),
-        last: request.lastFrame?.name || (request.lastFrame ? 'plan-last' : undefined),
-        images: request.referenceImages.map((item, index) => item.name || `plan-ref-${index + 1}`),
-      })
+      // Construction is pure — except for the factory's invariant guards: a
+      // contradictory stored request (e.g. a stale doc holding BOTH a VDN
+      // rung and a turbo tier — the XOR rule) cannot construct, and the
+      // validation refusal above already says why. The plan then reports
+      // the empty build instead of crashing the probe surface.
+      let graph: ReturnType<typeof planCanvasGraph> = {}
+      try {
+        graph = planCanvasGraph(request, fakeSelection, {
+          first: request.firstFrame?.name || (request.firstFrame ? 'plan-first' : undefined),
+          last: request.lastFrame?.name || (request.lastFrame ? 'plan-last' : undefined),
+          images: request.referenceImages.map((item, index) => item.name || `plan-ref-${index + 1}`),
+        }, facts.info)
+      } catch {
+        graph = {}
+      }
       const nodes = Object.values(graph)
       const loadLatent = graph['24'] as { class_type: string; inputs: Record<string, unknown> } | undefined
       const saveLatent = graph['28'] as { class_type: string; inputs: Record<string, unknown> } | undefined

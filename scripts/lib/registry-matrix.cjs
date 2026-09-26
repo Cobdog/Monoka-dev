@@ -25,8 +25,8 @@ const base = {
   sampler: 'heun', scheduler: 'karras', refImageSize: 'match',
 }
 
-function config(name, options, models = MODELS, uploads = noUploads) {
-  return { name, options: { ...base, filenamePrefix: 'test', ...options }, models, uploads }
+function config(name, options, models = MODELS, uploads = noUploads, info) {
+  return { name, options: { ...base, filenamePrefix: 'test', ...options }, models, uploads, ...(info ? { info } : {}) }
 }
 
 const matrix = []
@@ -89,5 +89,14 @@ matrix.push(config('stacked', {
   timelineGuides: [{ frameIndex: 24 }], chain: { index: 1, folder: 'h3_context/c2/clip' },
   upscale: { type: 'lbh2d', model: 'upscaler_2d.safetensors' },
 }, MODELS, { images: [image('a.png')], videos: [], audios: [], guides: [image('g.png')] }))
+
+// 11. The VDN acceleration arm (task 9up52mj — adopted first-party): both
+// rungs, on an engine snapshot serving the pack + both fetch-row stages
+// (the plan reads the engine's own vdn_checkpoint enumeration — without it
+// the arm is inert, which every other config in this matrix already
+// proves).
+const VDN_INFO = { ApplyVDNH3: { input: { required: { vdn_checkpoint: [['stage-b-step-2000', 'stage-dmd-step-250']] } } } }
+matrix.push(config('vdn-dmd8', { mode: 'text', duration: 5, turbo: 'off', vdn: 'dmd-8', steps: 30 }, MODELS, noUploads, VDN_INFO))
+matrix.push(config('vdn-stageb50', { mode: 'text', duration: 5, turbo: 'off', vdn: 'stage-b-50', steps: 50 }, MODELS, noUploads, VDN_INFO))
 
 module.exports = { GOLDEN_MATRIX: matrix }

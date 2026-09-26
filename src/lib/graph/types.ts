@@ -30,7 +30,7 @@ export type DetectionResult = {
   missingNodes?: string[]
   /** Optional node-pack enhancements detected on the engine. Availability
    * never depends on these — they only change HOW an entry renders. */
-  packs?: { larryvrhTurbo?: boolean }
+  packs?: { larryvrhTurbo?: boolean; vdn?: boolean }
 }
 
 /** Which loader and sampler nodes a turbo render will use. `plain` is the
@@ -50,6 +50,37 @@ export type TurboPlan = {
   samplerNode?: string
 }
 
+/** The VDN acceleration rungs (task 9up52mj — the 2026-09-26 FINISH: the
+ * vendored ComfyUI-VDN-H3 tree adopted as our own). A rung names the STAGE
+ * family it runs on, mirroring the two OpenVDN fetch rows exactly:
+ *  - 'dmd-8'     — stage-dmd* (8-step DMD-distilled, turbo adapter ON,
+ *                  er_sde/beta per the pack's measured pairing)
+ *  - 'stage-b-50'— stage-b* (the 50-step stack, adapter OFF, the user's
+ *                  steps on the official sampler pair)
+ * 'off' is the default and the inert state. XOR with the turbo tier: both
+ * are acceleration patches on the same model slot — the VDN stage's own
+ * distilled adapter REPLACES the turbo LoRA, never stacks on it. */
+export type VdnRung = 'off' | 'dmd-8' | 'stage-b-50'
+
+/** How a VDN render will run, resolved from engine truth: which stage
+ * directory the engine itself enumerates, whether the distilled turbo
+ * adapter applies, and the pairing the rung owns (dmd-8 carries the pack's
+ * measured er_sde/beta/8; stage-b-50 owns none of them — the user's steps
+ * on the official pair). */
+export type VdnPlan = {
+  rung: Exclude<VdnRung, 'off'>
+  /** The engine-served stage directory name (object_info combo truth —
+   * the app never mirrors the models/vdn walk). */
+  stage: string
+  applyTurboAdapter: boolean
+  /** The rung's scheduler steps when it owns them (dmd-8: 8); undefined =
+   * the caller's step count (stage-b-50). */
+  steps?: number
+  /** The rung's sampler pairing when it owns one (dmd-8 only). */
+  sampler?: string
+  scheduler?: string
+}
+
 /** Facts a transform may read. Built by the factory; entries never reach back
  * into the builder's options object. */
 export type TransformOptions = {
@@ -63,6 +94,7 @@ export type TransformOptions = {
   frameCount: number
   loraStrength?: number
   turboPlan?: TurboPlan
+  vdnPlan?: VdnPlan
   upscale?: GenerationOptions['upscale']
   previewOverride?: GenerationOptions['previewOverride']
   experimentalSampling?: boolean
