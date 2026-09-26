@@ -372,3 +372,25 @@ window-interior re-projection.**
 14. MiniMax H3 team AMA summary — R2V softer than I2V; reference-continuation drift admission — https://www.reddit.com/r/StableDiffusion/comments/1vkplzt/
 15. HF discussion #65 — adherence collapse above ~576p; low-res draft → reference re-render — https://huggingface.co/MiniMaxAI/MiniMax-H3/discussions/65
 16. Viggle-Animate (H3-ref2va full finetune for driving-video + identity) — https://huggingface.co/Viggle/Viggle-Animate
+
+## Addendum — the R2-VG arm (maintainer insight, 2026-09-26)
+
+The maintainer connected Viggle-Animate to this hypothesis directly: "Viggle looks
+like it might be very useful to experiment with… doing a v2v pass over a degraded
+video chain — to use it to essentially keep the character consistency we were after."
+
+This is the strongest form of the R2 geometry and the answer to its measured gap:
+E5 found identity DOES NOT SELF-HEAL in stock ref2v re-generation (died first, 0.12) —
+and Viggle-Animate is a 33B ref2va finetune trained precisely for identity-through-
+propagation. The arm: **degraded chain = the driving video (structure/motion), the
+canonical character reference (or a repainted anchor frame — Viggle's native input) =
+the identity input** → regeneration with identity held by a specialist rather than
+hoped for from a generalist.
+
+- **R2-VG joins the matrix** alongside R2-stock: if the finetune beats stock ref2va on
+  identity-in (the ArcFace falsifier already defined), the re-anchor lane gets its
+  engine; if it doesn't, the finetune's value stays confined to propagation.
+- Composes with VG-2 (the reference-geometry falsifier — now doubly load-bearing) and
+  with the R+S combined-best candidate (R2-VG as R's engine, S doctoring its seams).
+- Material status: code in custody (fork-stripped, v1.3.2), weights mirroring to the
+  central home — the arm is runnable the moment a GPU window opens.
