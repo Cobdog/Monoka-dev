@@ -18,35 +18,35 @@
  *    (+2,788 MiB at the 480×832×124 f reference geometry — 20,074 vs 17,286).
  */
 import { createHash } from 'node:crypto'
+import { h3NativeFrameCounts, h3TruncateToGridDown } from '../../src/lib/engineSemantics'
 
 // ---------------------------------------------------------------------------
-// Frame grid (17n+5 @ 24.000 fps)
+// Frame grid (17n+5 @ 24.000 fps) — read from the engine-semantics ledger
+// (R1, central-model audit): the grid arithmetic lives in ONE home; this
+// module owns only the TRAINING-range policy over it.
 // ---------------------------------------------------------------------------
 
 export const TRAINING_FPS = 24.0
 
 /** All legal 17n+5 frame counts in the released training range (22 f … 345 f).
+ *  The range starts at the first full grid STEP — the 5-frame point is a
+ *  legal engine render but not a training target, so it stays excluded even
+ *  when minFrames dips below it (the pre-ledger loop's n ≥ 1 behavior).
  *
  * FIXME(wiring): gridTargets and cropRectForRatio (below) are dead — zero
  * callers anywhere (the export wizard's grid target and the client-side
  * CropEditor cover both concerns). Tracked in
  * docs/audit/wiring-check-2026-09-26.md §6. */
 export function gridTargets(minFrames = 22, maxFrames = 345): number[] {
-  const targets: number[] = []
-  for (let n = 1; ; n += 1) {
-    const frames = 17 * n + 5
-    if (frames > maxFrames) break
-    if (frames >= minFrames) targets.push(frames)
-  }
-  return targets
+  return h3NativeFrameCounts(maxFrames).filter((frames) => frames >= minFrames && frames >= 22)
 }
 
 /** The largest grid target ≤ frameCount (the trainer's clamp direction — it
- * walks DOWN, so a clip's effective grid target is the floor on the grid). */
+ * walks DOWN, so a clip's effective grid target is the floor on the grid):
+ *  the ledger's truncate-down policy under this module's 22-frame floor. */
 export function gridTargetFor(frameCount: number): number | null {
   if (!Number.isFinite(frameCount) || frameCount < 22) return null
-  const n = Math.floor((frameCount - 5) / 17)
-  return Math.max(1, n) * 17 + 5
+  return h3TruncateToGridDown(frameCount)
 }
 
 /** Trim length (frames) needed to bake `target` safely: target + 2 headroom

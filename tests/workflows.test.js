@@ -610,6 +610,28 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
   assert.equal(layeredLegacy.vae, 'kept.safetensors', 'mergeModelOverrides carries the legacy key to the resolution seam')
   assert.equal(mergeModelOverrides({ videoVae: 'chain.safetensors' }, { vae: 'global-legacy.safetensors' }).videoVae, 'chain.safetensors', 'a chain-level split pick beats the legacy global')
 
+  // (R4, central-model audit) The ONE stored-slot normalizer, both of its
+  // modes pinned here — the server's settings-load seam (heal ON) and the
+  // resolution-time migration (heal OFF, conscious wrong-slot picks refuse
+  // at the seam instead of silently moving). The server's end-to-end
+  // round-trip lives in tests/instance.test.js; this is the contract at the
+  // function the seam calls.
+  const t1Name = 'minimax_h3_t1_image_vae_step1597.safetensors'
+  const loaded = overridesModule.normalizeStoredOverrideSlots('minimax', { vae: 'legacy.safetensors', videoVae: t1Name })
+  assert.equal(loaded.videoVae, undefined, 'load seam: a stored cross-class WEDGE (videoVae naming the T=1 decoder) heals away — the unmarked legacy vae never overwrites the occupied slot')
+  assert.equal(loaded.imageVae, undefined, 'load seam: minimax exposes no imageVae slot — the unrouteable name drops entirely')
+  assert.equal(loaded.audioVae, undefined)
+  assert.equal('vae' in loaded, false, 'the consumed legacy key never persists')
+  const healedToImage = overridesModule.normalizeStoredOverrideSlots('h3image', { videoVae: t1Name })
+  assert.equal(healedToImage.imageVae, t1Name, 'load seam: on h3image the wedged videoVae re-routes to the one legal slot')
+  assert.equal(healedToImage.videoVae, undefined)
+  const conscious = overridesModule.normalizeStoredOverrideSlots('minimax', { videoVae: t1Name }, { healCrossClassPicks: false })
+  assert.equal(conscious.videoVae, t1Name, 'resolution time (heal OFF): a CONSCIOUS wrong-slot pick stays where the user put it — the seam refuses it loudly, never silently moves it')
+  const droppedAudio = overridesModule.normalizeStoredOverrideSlots('music3', { audioVae: 'minimax_h3_video_vae_fp16.safetensors' })
+  assert.equal(droppedAudio.audioVae, undefined, 'load seam: a video-named audioVae on the audio family has no legal landing — dropped')
+  const keptCheckpoint = overridesModule.normalizeStoredOverrideSlots('music3', { checkpoint: 'dit.safetensors' })
+  assert.equal(keptCheckpoint.checkpoint, 'dit.safetensors', 'non-H3 families keep the generic checkpoint slot')
+
   // 20. The auto labels name each decoder's own inference.
   assert.equal(inferredOverrideSlotFile('minimax', 'videoVae', vaeSplitScan), 'minimax_h3_video_vae_fp16.safetensors')
   assert.equal(inferredOverrideSlotFile('minimax', 'audioVae', vaeSplitScan), 'minimax_h3_audio_vae_fp32.safetensors')

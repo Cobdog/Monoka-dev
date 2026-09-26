@@ -280,6 +280,41 @@ test('(d) preflight — the graph-vs-object_info diff and the pack-row refusal (
   ok(preflight.STOCK_GRAPH_CLASSES.includes('KSamplerSelect') && preflight.STOCK_GRAPH_CLASSES.includes('SaveVideo'), 'the factory base classes are covered')
 })
 
+// (R2, central-model audit) ONE stack-ready predicate: h3StackReady — the
+// membership definition every surface reads (the submit gates' modelReady,
+// the canvas chip, the diagnostics pair, and the report's own `ready`).
+// Parameterized by what is actually being gated: the render lane (text
+// loads the FL2VA set; reference adds Ref2VA — the graph's own UNETLoader
+// choice), the turbo plan (its lane's LoRA), and render readiness (the
+// core-node check when a snapshot is at hand). Failing-without-it: four
+// hand-rolled predicates disagreed — the chip demanded ref2va a text-only
+// stack never loads (soft-gating first-frame renders the graph could run),
+// and no submit gate required the turbo LoRA its own graph would silently
+// run 8 steps without.
+test('(r2) h3StackReady — the one membership definition, parameterized by what is gated', () => {
+  const stack = loadTs('src/lib/h3Stack.ts')
+  const base = {
+    fl2va: 'fl2va.safetensors',
+    ref2va: '',
+    textEncoder: 'te.safetensors',
+    videoVae: 'videoVae.safetensors',
+    audioVae: 'audioVae.safetensors',
+    fl2vLora: '',
+    ref2vLora: '',
+  }
+  eq(stack.h3StackReady({ selection: base, mode: 'text' }), true, 'text lane: the FL2VA set is enough — a text-only stack (no ref2va) IS ready')
+  eq(stack.h3StackReady({ selection: base, mode: 'reference' }), false, 'reference lane: ref2va is the lane model — required')
+  eq(stack.h3StackReady({ selection: { ...base, ref2va: 'ref2va.safetensors' }, mode: 'reference' }), true, 'reference lane ready with ref2va')
+  eq(stack.h3StackReady({ selection: { ...base, fl2va: '' }, mode: 'text' }), false, 'the text lane needs fl2va')
+  eq(stack.h3StackReady({ selection: base, mode: 'text', turbo: '8' }), false, 'a turbo plan adds its LoRA — an 8-step render without the distillation LoRA is a broken render, never a ready one')
+  eq(stack.h3StackReady({ selection: { ...base, fl2vLora: 'turbo8.safetensors' }, mode: 'text', turbo: '8' }), true, 'turbo plan ready with the lane LoRA')
+  eq(stack.h3StackReady({ selection: { ...base, ref2va: 'ref2va.safetensors' }, mode: 'reference', turbo: '8' }), false, 'reference turbo requires the REFERENCE LoRA (ref2vLora), not the fl2v one')
+  eq(stack.h3StackReady({ selection: { ...base, ref2va: 'ref2va.safetensors', ref2vLora: 'refturbo.safetensors' }, mode: 'reference', turbo: '8' }), true, 'reference turbo ready with ref2vLora')
+  const staleEngine = { KSamplerSelect: {} }
+  eq(stack.h3StackReady({ selection: base, mode: 'text', info: staleEngine }), false, 'render readiness adds the core-node check when a snapshot is at hand')
+  eq(stack.h3StackReady({ selection: base, mode: 'text', info: undefined }), true, 'no snapshot keeps the file-only verdict (the connection rung owns that refusal)')
+})
+
 // (a2) The truth-surface sweep #1 (audit F2 / C3, task 68e9k17): the stack
 // report must read the registry the way the pickers do — BASENAME truth. The
 // registry lists engine-relative subpaths ("H3/ssd/x.safetensors"); the

@@ -59,6 +59,7 @@ function same(actual, expected, label) {
 
 const lib = loadTs('src/lib/camera/index.ts')
 const parity = loadTs('src/lib/camera/parity.ts')
+const semantics = loadTs('src/lib/engineSemantics.ts')
 
 const PROVENANCE = FIXTURE._provenance
 
@@ -364,6 +365,11 @@ test('(i) Motion Frame semantics', () => {
       passed += 1
       console.log(`  ok - motionFrameResample(${row.count}@${row.source_fps}fps) -> ${plan.aligned}`)
     }
+    // (R1, central-model audit) the reference truncation reads the LEDGER's
+    // named down-policy — the port's grid arithmetic is the same one home as
+    // the video factory's snap-up, never a second grid.
+    assert.strictEqual(plan.aligned, semantics.h3TruncateToGridDown(plan.target),
+      `motionFrameResample(${row.count}@${row.source_fps}) aligned ≡ the ledger's truncate-down`)
   }
   for (const row of FIXTURE.resample) {
     if (!row.mode) continue

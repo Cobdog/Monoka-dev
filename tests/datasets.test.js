@@ -71,7 +71,11 @@ const {
   videoFloorVerdict,
   stillFloorVerdict,
   recipeCard,
+  gridTargets,
 } = require(path.join(REPO, 'dist-server/server/datasets/model.js'))
+// (R1, central-model audit) the ledger itself — the one grid authority this
+// suite ties the trainer's clamp and range policy back to.
+const { h3NativeFrameCounts, h3TruncateToGridDown } = require(path.join(REPO, 'dist-server/src/lib/engineSemantics.js'))
 const { handCaptionGuard, planVlmPass, denseInstruction } = require(path.join(REPO, 'dist-server/server/datasets/vlm.js'))
 const { evaluateGates, validateMusubiToml, validateDiffsynxRows, planBake } = require(path.join(REPO, 'dist-server/server/datasets/bake.js'))
 const { aHashBits, tier1Distance, clusterBy, perceptualEmbed, cosineSimilarity, evaluateSlowMo, adaptiveThreshold } = require(path.join(REPO, 'dist-server/server/datasets/curation.js'))
@@ -212,6 +216,16 @@ afterAll(() => { if (server) server.child.kill() })
 test('(0b) pure-model units (no server): grid, floors, budget goldens, triggers, aspects', () => {
   check(gridTargetFor(57) === 56, 'gridTargetFor(57) = 56 (the trainer clamps DOWN)')
   check(gridTargetFor(22) === 22 && gridTargetFor(21) === null, 'grid floor is 22 (17×1+5)')
+  // (R1) The trainer's grid math IS the engine-semantics ledger's, exactly:
+  // the clamp direction is the ledger's truncate-down under this module's
+  // 22-frame floor, and the target list is the ledger's native grid in the
+  // released range (5 excluded — a legal render, not a training target).
+  for (let frames = 22; frames <= 400; frames += 1) {
+    check(gridTargetFor(frames) === h3TruncateToGridDown(frames), `gridTargetFor(${frames}) ≡ the ledger's truncate-down`)
+  }
+  check(JSON.stringify(gridTargets()) === JSON.stringify(h3NativeFrameCounts(345).filter((frames) => frames >= 22)),
+    'gridTargets() ≡ the ledger native grid over the released range [22, 345]')
+  check(!gridTargets().includes(5) && gridTargets()[0] === 22 && gridTargets().at(-1) === 345, 'the training range is exactly 22…345')
   check(assertDecodedCount(56, 56).ok && assertDecodedCount(56, 58).ok, 'decoded ∈ [target, target+2] accepts 56 and 58')
   check(!assertDecodedCount(56, 55).ok && /55 .*below the grid target 56/.test(assertDecodedCount(56, 55).reason ?? ''), 'decoded < target refuses with the delta (the f56 class)')
   check(!assertDecodedCount(56, 59).ok, 'decoded > target+2 also refuses')

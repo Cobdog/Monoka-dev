@@ -26,6 +26,7 @@ import { failureRef, logEvent, logFailure } from './logger'
 import { sanitizeEngineLogLine, sanitizeErrorMessage } from './logSanitize'
 import { structuralPromptError } from '../src/lib/promptError'
 import { CORE_RENDER_CLASSES, missingCoreNodeClasses, preflightRefusal } from '../src/lib/preflight'
+import { normalizeStoredOverrideSlots, OVERRIDE_SLOTS, type ModelOverrideSlotName } from '../src/lib/modelOverrides'
 import type { ExternalEngineStatus } from '../src/types'
 import { createStudioRepository, type StudioRepository } from './repo'
 import { CANVAS_SCHEMA_VERSION, CanvasSchemaVersionError, DocumentsRuleError, PlanConflictError } from './documents'
@@ -804,93 +805,26 @@ export function createStudioServer(paths: StudioServerPaths) {
       // unknown family keys stay inert there, so the server only guards the
       // SHAPE: per family, at most the nine slot keys, non-empty bounded
       // strings. Absent/empty = auto (inference) — nothing changes for
-      // existing settings files. The H3 families split their checkpoint
-      // into the per-lane trio (task rq0lsax, 2026-09-20): a legacy single
-      // 'checkpoint' pick drove BOTH lanes, so it migrates onto fl2va AND
-      // ref2va — fill-if-unset, never silently dropped. The VAE pick split
-      // by decoder class (task epdvxd4, 2026-09-20): a legacy 'vae' pick
-      // migrates onto videoVae where the old slot meant the video decoder
-      // (the H3 video families) and onto audioVae where the family's
-      // one decoder is audio-class (music3) — same
-      // meaning-preserving rule (mirrors
-      // migrateLegacyModelOverrideSlots in src/lib/modelOverrides.ts,
-      // reimplemented because the server never imports the renderer
-      // registry).
-      //
-      // DECODER-CLASS ROUTING (tmz8vh7, dated 2026-09-20): this seam runs on
-      // every settings LOAD, so it is the one that already rewrote the
-      // maintainer's pre-split legacy 'vae' pick of the Mamad8 T=1 decoder
-      // onto videoVae — the stored pick wedged EVERY video render with the
-      // T=1 refusal and no UI pointer to it (the post-split Settings page
-      // has no 'vae' row). Marked names route to the slot where they are
-      // legal, both for the legacy key AND for the already-normalized
-      // cross-class picks this seam itself produced (an unrouteable marked
-      // name drops — it is unrenderable in the family by construction, the
-      // factory ban; keeping it wedges every render). Mirrors the same
-      // dated rule in migrateLegacyModelOverrideSlots.
+      // existing settings files. The STORED-SLOT RULES (legacy checkpoint/vae
+      // migration, decoder-class routing, and the cross-class healing —
+      // rq0lsax/epdvxd4/tmz8vh7, all dated 2026-09-20) are IMPORTED from that
+      // one home since R4 (central-model audit): normalizeStoredOverrideSlots
+      // replaced the hand-copied markers, family sets, and routing that used
+      // to live here — drift between the two runtimes is now impossible, not
+      // merely commented against.
       modelOverrides: (() => {
-        const slots = ['checkpoint', 'fl2va', 'ref2va', 'merged', 'textEncoder', 'vae', 'videoVae', 'audioVae', 'imageVae'] as const
-        const laneFamilies = new Set(['minimax', 'h3image'])
-        const imageVaeFamilies = new Set(['h3image'])
-        // (ltx25/ltx23 dropped from this set with LTX — Phase 0, 2026-09-20;
-        // acestep dropped with the ACE-Step cut — 2026-09-21, nn5ld47. A
-        // stored acestep family's picks stay inert: the renderer registry no
-        // longer knows the family, and an unknown key never reaches a graph.)
-        const videoVaeFamilies = new Set(['minimax', 'h3image'])
-        const audioVaeFamilies = new Set(['music3'])
-        const t1Marker = /^minimax_h3_t1_image_vae/i
-        const audioMarker = /audio|dav/i
-        const videoMarker = /video/i
-        /** Decoder-class landing for one pick on a video family: T=1-named
-         *  onto imageVae where the family exposes it, audio-named onto
-         *  audioVae, else videoVae; a T=1 name with no imageVae slot has no
-         *  legal landing (undefined = drop). */
-        const routeOnVideoFamily = (family: string, pick: string): 'imageVae' | 'audioVae' | 'videoVae' | null => {
-          const t1Class = t1Marker.test(pick)
-          if (t1Class) return imageVaeFamilies.has(family) ? 'imageVae' : null
-          if (audioMarker.test(pick)) return 'audioVae'
-          return 'videoVae'
-        }
         const rawOverrides = (raw.modelOverrides && typeof raw.modelOverrides === 'object' ? raw.modelOverrides : {}) as Record<string, unknown>
-        const normalized: Record<string, Partial<Record<(typeof slots)[number], string>>> = {}
+        const normalized: Record<string, Partial<Record<ModelOverrideSlotName, string>>> = {}
         for (const family of Object.keys(rawOverrides).slice(0, 64)) {
           const rawSlots = (rawOverrides[family] && typeof rawOverrides[family] === 'object' ? rawOverrides[family] : null) as Record<string, unknown> | null
           if (!rawSlots) continue
           const familySlots: Record<string, string> = {}
-          for (const slot of slots) {
+          for (const slot of OVERRIDE_SLOTS) {
             const value = rawSlots[slot]
             if (typeof value === 'string' && value.trim()) familySlots[slot] = value.trim().slice(0, 512)
           }
-          if (familySlots.checkpoint && laneFamilies.has(family)) {
-            if (!familySlots.fl2va) familySlots.fl2va = familySlots.checkpoint
-            if (!familySlots.ref2va) familySlots.ref2va = familySlots.checkpoint
-            delete familySlots.checkpoint
-          }
-          if (familySlots.vae) {
-            if (videoVaeFamilies.has(family)) {
-              const landing = routeOnVideoFamily(family, familySlots.vae)
-              if (landing && !familySlots[landing]) familySlots[landing] = familySlots.vae
-            } else if (audioVaeFamilies.has(family)) {
-              if (!videoMarker.test(familySlots.vae) && !familySlots.audioVae) familySlots.audioVae = familySlots.vae
-            }
-            delete familySlots.vae
-          }
-          // The already-normalized cross-class picks (this seam's pre-
-          // tmz8vh7 output): heal them with the same routing so a stored
-          // wedge unwedges on the next load.
-          if (familySlots.videoVae && videoVaeFamilies.has(family)) {
-            const landing = routeOnVideoFamily(family, familySlots.videoVae)
-            if (landing && landing !== 'videoVae') {
-              if (!familySlots[landing]) familySlots[landing] = familySlots.videoVae
-              delete familySlots.videoVae
-            } else if (!landing) {
-              delete familySlots.videoVae
-            }
-          }
-          if (familySlots.audioVae && audioVaeFamilies.has(family) && videoMarker.test(familySlots.audioVae)) {
-            delete familySlots.audioVae
-          }
-          if (Object.keys(familySlots).length) normalized[family] = familySlots
+          const routed = normalizeStoredOverrideSlots(family, familySlots)
+          if (Object.keys(routed).length) normalized[family] = routed
         }
         return normalized
       })(),

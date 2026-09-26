@@ -50,7 +50,7 @@ import { detectPackFolderVersion, managedNoticeText, relateVersionToPin, type Pa
 // renderer's submit-time preflight maps missing node classes to pack rows
 // from the same entries — one source of truth). Re-exported so the server
 // import sites stay unchanged.
-import { ENGINE_NODE_PACKS, findNodePack } from '../src/lib/nodePackRegistry'
+import { ENGINE_NODE_PACKS, findNodePack, resolvePackPresence } from '../src/lib/nodePackRegistry'
 
 export { ENGINE_NODE_PACKS, findNodePack }
 
@@ -306,14 +306,17 @@ export async function nodePackFolderPresence(pack: NodePackDefinition, target: N
 }
 
 /** Live-instance verdict from the CONNECTED engine's object_info keys
- *  (task 9om4bi9): 'active' when any registered class id is served (the
- *  pack is installed AND the instance loaded it), 'absent' when the instance
- *  answered but serves none of them, 'unknown' when there was no object_info
- *  to ask (engine offline / request failed). */
+ *  (task 9om4bi9): 'active' when the served classes satisfy the row's
+ *  presenceRule (R5 — resolvePackPresence, the ONE rule the turbo plan and
+ *  the canvas gates already used; any-match rows keep their hook detection,
+ *  all-match rows read a partial serving as absent), 'absent' when the
+ *  instance answered but the rule is not satisfied, 'unknown' when there
+ *  was no object_info to ask (engine offline / request failed). */
 export function nodePackInstanceState(pack: NodePackDefinition, objectInfoKeys: string[] | null): 'active' | 'absent' | 'unknown' {
   if (!objectInfoKeys) return 'unknown'
   if (pack.instanceNodeClasses.length === 0) return 'unknown'
-  return objectInfoKeys.some((nodeClass) => pack.instanceNodeClasses.includes(nodeClass)) ? 'active' : 'absent'
+  const served = new Set(objectInfoKeys)
+  return resolvePackPresence(pack, (nodeClass) => served.has(nodeClass)) ? 'active' : 'absent'
 }
 
 /** True when the target itself is usable for the operations below. */

@@ -454,9 +454,29 @@ test('(d) semantic rules: the grid, the promotion, the slice window, emitted len
   ok(semantics.h3TemporalSlices(9) === 7 && semantics.h3TemporalSlices(13) === 7 && semantics.h3TemporalSlices(5) === 2 && semantics.h3TemporalSlices(22) === 7 && semantics.h3TemporalSlices(39) === 12,
     "slice counts (video_latent_t mirrored): 9 and 13 both carry the 22-frame packet's 7 slices; 5→2, 22→7, 39→12")
 
+  // (R1, central-model audit) The DOWN policy is ledger-owned too: the
+  // largest grid point ≤ n, floored at 5 — the camera port's reference
+  // truncation and the dataset trainer's clamp direction both read this one
+  // helper, so up-snap and down-truncate can never become two grids.
+  for (let n = 1; n <= 200; n += 1) {
+    const down = semantics.h3TruncateToGridDown(n)
+    ok(down >= 5 && (down - 5) % 17 === 0 && down <= Math.max(5, n), `truncateDown(${n}) = ${down} is the grid point at or below the request`)
+    ok(down <= semantics.h3AlignFrameCount(n), `truncateDown(${n}) never exceeds align(${n})`)
+  }
+  ok(semantics.h3TruncateToGridDown(21) === 5 && semantics.h3TruncateToGridDown(22) === 22 && semantics.h3TruncateToGridDown(38) === 22 && semantics.h3TruncateToGridDown(48) === 39,
+    'the down policy: 21→5, 22→22, 38→22, 48→39 (cut, never padded)')
+  ok(Number.isNaN(semantics.h3AlignFrameCount(NaN)) && Number.isNaN(semantics.h3TruncateToGridDown(NaN)), 'the grid helpers are total: NaN passes through, never loops')
+
   // The video factory's duration ladder is grid-true (the already-correct lane).
   for (const seconds of [2, 3, 5, 8, 15]) {
     ok(semantics.isH3NativeFrameCount(workflow.frameCount(seconds)), `frameCount(${seconds}) = ${workflow.frameCount(seconds)} is a grid point the engine honors as requested`)
+  }
+  // (R1) And it is LEDGER-derived, not a re-derivation: the factory's
+  // frameCount is exactly the ledger's snap-up over round(seconds × 24) —
+  // the equivalence that used to hold only by two copies agreeing.
+  for (let seconds = 0.1; seconds <= 16; seconds += 0.37) {
+    assert.equal(workflow.frameCount(seconds), semantics.h3AlignFrameCount(Math.round(seconds * 24)),
+      `frameCount(${seconds.toFixed(2)}) ≡ h3AlignFrameCount(round(×24)) — one grid, one home`)
   }
 
   // Emitted H3 conditioning lengths across the corpus: honored, or exactly
