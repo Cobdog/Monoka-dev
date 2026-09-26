@@ -100,6 +100,7 @@ network is touched); we never redistribute them.
 | `h3-audio-t8` | T8mars @ branch `main` (SHA stamped) | **GPL-3.0-or-later** — combining-compatible with AGPLv3, but vendoring would fold third-party GPL code into our distribution and couple releases to an unmaintained-by-us contributor set | fetch-consent, flagged; pattern-adopt only in our code | none triggered (never redistributed) | trivial |
 | `krea2edit` | lbouaraba @ `86f886da…` | Apache-2.0 `[API-2026-09-14]` | fetch-consent | clean; solo-maintained, v2 retrain in progress — re-verify at v2 | trivial |
 | `krea2-anypaint` | alexw5702-afk @ `675be5a9…` | MIT `[API-2026-09-14]` (NOTICE credits Rebels + ostris) | fetch-consent | clean | trivial |
+| `krea2-ostris-edit` | ostris @ `7756566…` | MIT `[LOCAL 2026-09-26 — LICENSE file read from the shared install's copy at this rev; GitHub API MIT]` | fetch-consent (vendor candidate) | clean; the original source of the reference-attention/K/V-cache pattern anypaint's NOTICE credits — the Cierpliwy weights row is the reason this is wired (ruling #1, 2026-09-26) | trivial |
 | `autocontext` | supElement @ `f1062d34…` | Apache-2.0 `[API-2026-09-16]` | fetch-consent (vendor candidate — 14 files, no weights) | clean | trivial |
 | `h3-image-studio` | astropuzzo @ `47dea30…` (v23.0.0) | Unlicense `[code-read 2026-09-21 — pack assessment; served-schema capture from the shared install's clone at this rev 2026-09-22]` | fetch-consent (vendor-eligible: public-domain-equivalent; user-fetch matches the current posture — "adopt now, port later" per the maintainer's 2026-09-22 ruling) | clean | trivial — the ADOPTED T=1/exact-9-13/slice-decode machinery (task afvlbk4; the gate's pack, d4er4ati); our builder emits its 5 load-bearing classes |
 | `h3-motion-context` | NikoDemon80 @ `5335715a…` (v0.6.2) | **GPL-3.0-only** — plain v3 LICENSE (no or-later grant), read from the canonical shared install's copy at this rev `[LOCAL 2026-09-21]` | fetch-consent, flagged; never vendored (the T8mars posture) | none triggered (never redistributed); the chain lane's engine side (GAP-1 closed, task 06jr4eh) | trivial |
@@ -161,6 +162,7 @@ position, 68rnn84 F10).
 | --- | --- | --- |
 | `krea2-identity-edit` (conradlocke v1.2 + r128/r64) | `krea-2-community-license` `[API]` | fetch-consent |
 | `krea2-anypaint` (yijunwang2 rank-32 adapter; its pipeline code carries a separate PIPELINE_LICENSE — only the adapter is fetched) | `krea-2-community-license` `[API]` | fetch-consent |
+| `krea2-ostris-inpaint-edit` (Cierpliwy default + _mild + _strong; license declared via card metadata `license: other` → license_name krea-2-community-license — no LICENSE file ships in the repo, the card IS the grant record `[API-2026-09-26]`) | `krea-2-community-license` `[API-2026-09-26]` | fetch-consent |
 | Krea 2 base + style-reference module | Krea AI Community License `[DOC]` | verify at first-classing |
 
 ### 5c. The LTX-2 community-license family
@@ -278,3 +280,26 @@ mechanical:
 
 *This registry is engineering diligence, not legal advice (IANAL, as ever).
 The grey areas and the disclaimer live in [policy.md §5](policy.md).*
+
+### §4 addendum — ComfyUI-Viggle-Animate-H3 (2026-09-26: custody taken)
+Upstream (`bhardwajRahul/ComfyUI-Viggle-Animate-H3`) REMOVED; the maintainer handed
+over their local copy (installed at the shared install's `custom_nodes/`, git tree
+intact at `6ae081a` — v1.3.2, "Fix long-video tail conditioning"). **Apache-2.0** —
+clean for full first-party adoption (vendor-eligible, no constraints). Code + example
+workflows only (chunked-sampler, long-video-advanced); the WEIGHTS remain the separate
+drbaph HF quants (int8 47GB / pruned-int8 21GB / r64 DMD-LoRA) — status checked
+2026-09-26, see the Viggle assessment addendum. Posture per the maintainer's ruling:
+managed by us entirely; the local git history is the archive of record.
+
+**Correction (2026-09-26, maintainer):** the handed-over tree is a FORK of the original
+pack (bhardwajRahul's fork, not the pack creator's upstream). Per the maintainer's
+ruling the `origin` remote has been REMOVED from the local tree — no accidental
+fetches from a non-creator repo; Monoka is the sole manager and only upstream of
+this copy from here.
+
+**Weights mirrored (2026-09-26, hash-pinned):** pruned_int8_convrot checkpoint
+(21,033,720,080 B, sha256 `c16db9a4…d3540`) + both DMD-LoRA cuts (full 3.77GB
+`71361eb8…5930`; r64 0.94GB `8dc50f29…4446`) + the frozen anyframe embed
+(`86ae5987…0fde`) — all in the central home, symlinked into the shared install.
+Viggle-Animate is now FULLY local: code (custody), weights (mirrored), recipe
+(the v1.3.2 examples), documentation. Nothing upstream-removable remains.

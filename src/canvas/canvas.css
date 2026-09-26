@@ -50,6 +50,12 @@
 .canvas-edges { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
 .canvas-edge { fill: none; stroke: color-mix(in srgb, var(--accent) 55%, transparent); stroke-width: 2; marker-end: url("#canvas-edge-arrow"); }
 .canvas-edge-arrow-head { fill: color-mix(in srgb, var(--accent) 55%, transparent); }
+/* FIXME(wiring): orphaned classes — zero TSX/TS references, no dynamic
+   template produces them: .canvas-edge-arrows (this line), .canvas-bar-stub,
+   .canvas-inspector-mono, .canvas-inspector-note, .canvas-inspector-prompt,
+   .canvas-menu-row-fetch, .canvas-audio-instrumental, .canvas-studios-body,
+   .canvas-studios-fallback, .canvas-studios-tabs (StudiosDock residue).
+   Tracked in docs/audit/wiring-check-2026-09-26.md §6. */
 .canvas-edge-arrows { position: absolute; width: 0; height: 0; }
 .canvas-zoom-controls { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--color-surface-abyss) 82%, transparent); backdrop-filter: blur(4px); }
 .canvas-zoom-controls button { display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }

@@ -65,6 +65,11 @@ import type { NodePackDefinition } from '../types'
  *    experimentalT1Decode flag until the E-FS0/E-FS1 bake-off reports. */
 export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
   {
+    // FIXME(wiring): no builder emits ApplyVDNH3 — machinery fully wired
+    // (vendored tree, vdn engine profile, LongCache patch consent, stage-weight
+    // fetch rows) but the graph lane never fires. Ruled FINISH 2026-09-26
+    // (adopted as our own; task 9up52mj), sequenced behind the centralization
+    // wave. Tracked in docs/audit/wiring-check-2026-09-26.md §1.
     id: 'vdn-h3',
     name: 'ComfyUI-VDN-H3',
     featureGroup: 'H3 video',
@@ -132,6 +137,10 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
     instanceNodeClasses: ['MiniMaxH3HybridLoader'],
   },
   {
+    // FIXME(wiring): row without emission — no builder emits Krea2Control*
+    // classes. Ruled CUT 2026-09-26 (the node-inventory decision, ruling #4);
+    // the row is dead pending its removal. Tracked in
+    // docs/audit/wiring-check-2026-09-26.md §1.
     id: 'krea2-controlnet',
     name: 'comfyui-krea2-controlnet',
     featureGroup: 'Krea 2 edit',
@@ -146,6 +155,10 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
     instanceNodeClasses: ['Krea2ControlLoRALoader', 'Krea2ControlApply', 'Krea2ControlImageEncode'],
   },
   {
+    // FIXME(wiring): row without emission — no builder emits the T8 audio
+    // classes; the audio-editing lane is parked (silent-inference toggle,
+    // vzpyldn) and only the pattern was adopted. Tracked in
+    // docs/audit/wiring-check-2026-09-26.md §1.
     id: 'h3-audio-t8',
     name: 'comfyui-minimax-h3-audio-T8',
     featureGroup: 'Audio',
@@ -193,6 +206,27 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
     instanceNodeClasses: ['Krea2AnyPaintPrepare', 'Krea2AnyPaintEncode', 'Krea2AnyPaintModelPatch'],
   },
   {
+    // The ostris t=0 edit-LoRA runner — ruling #1 of the 2026-09-26 inventory
+    // decision (docs/research/node-inventory-decision-2026-09-26.md §Rulings):
+    // "Krea 2 edit should also use the Ostris edit, so we can utilize
+    // Cierpliwy/krea2-inpaint-edit" — the cut candidate reverses to KEPT+WIRED
+    // (registry §1.3's redundancy verdict held only where Kreatine runs).
+    id: 'krea2-ostris-edit',
+    name: 'comfyui-krea2-ostris-edit',
+    featureGroup: 'Krea 2 edit',
+    description: 'ostris\' Kontext-style multi-reference edit conditioning for Krea 2 (TextEncodeKrea2OstrisEdit + Krea2OstrisEditModelPatch): reference images ride the Qwen3-VL encode AND attach as VAE reference latents, carried by the patched model as t=0 tokens ("index_timestep_zero", the ai-toolkit recipe) with an optional isolated reference K/V cache. Powers the krea2edit.ostris inpaint-edit family with Cierpliwy\'s krea2-inpaint-edit LoRA (the black-region masked-edit weights).',
+    repoUrl: 'https://github.com/ostris/ComfyUI-Krea2-Ostris-Edit',
+    pinnedRevision: '7756566160c4a1b24bb1bd9f0ff3ced1a83d7547',
+    licenseSpdx: 'MIT',
+    licenseNote: 'MIT (LICENSE file read from the canonical shared install\'s copy at this exact rev, 2026-09-26; GitHub API license record MIT). Vendor-eligible; user-fetch (the Larryvrh posture). NOTE (anypaint\'s own row): this pack is the original source of the reference-attention/K-V-cache pattern anypaint\'s NOTICE credits. The Cierpliwy LoRA is a separate Krea-2-licensed fetch.',
+    installMode: 'user-fetch',
+    homepage: 'https://github.com/ostris/ComfyUI-Krea2-Ostris-Edit',
+    // NODE_CLASS_MAPPINGS read from the canonical shared install's copy of
+    // the pack at this rev (2026-09-26); mirrored by OSTRIS_NODES in
+    // src/lib/graph/krea2edit.ts.
+    instanceNodeClasses: ['TextEncodeKrea2OstrisEdit', 'Krea2OstrisEditModelPatch'],
+  },
+  {
     // The H3-image engine-truth gate (task d4er4ti, Wave 3 rung 0; deep-read
     // docs/research/h3-image-studio-pack-assessment.md). astropuzzo's parallel
     // H3 conditioning pack: legal T=1 latents (own latent construction — the
@@ -218,6 +252,10 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
   },
   // -- segmented inference for H3 (task lxmtgss deep-read → task p8oyfy1) --
   {
+    // FIXME(wiring): row without emission — no builder emits AutoContext
+    // classes; the long-form lane decision (TS test vs Motion-Context) is
+    // named but not scheduled. Tracked in
+    // docs/audit/wiring-check-2026-09-26.md §1.
     id: 'autocontext',
     name: 'ComfyUI_MinimaxH3_AutoContext',
     featureGroup: 'H3 video',

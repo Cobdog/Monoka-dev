@@ -139,6 +139,11 @@ export const FETCH_CATALOG: FetchCatalogEntry[] = [
   nodePackEntry('h3-audio-t8'),
   nodePackEntry('krea2edit'),
   nodePackEntry('krea2-anypaint'),
+  // The ostris t=0 edit-LoRA runner (ruling #1, 2026-09-26 —
+  // docs/research/node-inventory-decision-2026-09-26.md §Rulings): sha-pinned
+  // MIT row, single-sourced from ENGINE_NODE_PACKS. This entry is the fetch
+  // affordance the krea2edit.ostris family's honest refusal names.
+  nodePackEntry('krea2-ostris-edit'),
   // supElement's segmented-inference pack (task p8oyfy1, deep-read
   // docs/research/autocontext-deepread.md §7): sha-pinned Apache-2.0 row,
   // single-sourced from ENGINE_NODE_PACKS like every pack entry.
@@ -232,6 +237,31 @@ export const FETCH_CATALOG: FetchCatalogEntry[] = [
     sizeBytes: 228_587_752,
     sizeClass: 'large',
     homepage: 'https://huggingface.co/yijunwang2/krea2-anypaint',
+  },
+  {
+    // The ostris-recipe inpaint-edit weights (ruling #1, 2026-09-26): the
+    // reason the ostris pack is kept + wired. Pins verified against the HF
+    // APIs on 2026-09-26 (tree-API sizes + LFS sha256 oids at repo HEAD
+    // 9faed2d2b6cfd909401e8d6139d87b93b36c01e4 — created 2026-09-24, two
+    // days fresh at pin time; the freshness note rides the research doc).
+    id: 'krea2-ostris-inpaint-edit',
+    name: 'Krea 2 ostris inpaint-edit (default + mild + strong)',
+    group: 'weights',
+    description: 'Cierpliwy\'s masked-edit LoRA line for the ostris/ai-toolkit t=0 recipe: the region to regenerate is black-filled into the source and the model paints it from the prompt while the reference conditioning holds the rest. Three strength variants — default (general), _mild (fewer changes to non-masked areas; better when the mask covers the main focus point), _strong (better outpainting; adapts more to the prompt); the edit-mode detection resolves whichever is present, default first. Requires the comfyui-krea2-ostris-edit node pack with kv_cache ENABLED on its model patch (the card\'s explicit requirement). The author\'s gallery compares these directly against AnyPaint (yijunwang2).',
+    licenseSpdx: 'krea-2-community-license',
+    licenseNote: 'Declared Krea 2 Community License via the model card (license: other, license_name krea-2-community-license, link krea.ai/krea-2-licensing) — no LICENSE file ships in the repo, the card metadata is the grant record. Same class as the other Krea 2 derivative rows: commercial use under the revenue threshold, content-moderation and AI-disclosure duties ride the outputs; surfaced at consent, never enforced in-app. Training data not disclosed; unofficial.',
+    licenseUrl: 'https://www.krea.ai/krea-2-licensing',
+    source: { kind: 'hf', repo: 'Cierpliwy/krea2-inpaint-edit', revision: { kind: 'sha', value: '9faed2d2b6cfd909401e8d6139d87b93b36c01e4' } },
+    destination: { kind: 'model-root', root: 'loras' },
+    files: [
+      { path: 'krea2_inpaint_edit.safetensors', sizeBytes: 457_111_984, sha256: '4c09533fdd243200e7afad92f1ed1a92dacd39c53fe64412f938ae093c82a26b' },
+      { path: 'krea2_inpaint_edit_mild.safetensors', sizeBytes: 457_111_984, sha256: '59d00eb3559e69a57a68dc6bb1f2a38aebaf9365de12a9bbd7387f2435cbc5f4' },
+      { path: 'krea2_inpaint_edit_strong.safetensors', sizeBytes: 457_111_984, sha256: '26e2e80e00c9547439786404d17ee4a6335b68f19c744633a8ad582f6df1e2eb' },
+    ],
+    detectGlob: 'krea2_inpaint_edit*',
+    sizeBytes: 1_371_335_952,
+    sizeClass: 'huge',
+    homepage: 'https://huggingface.co/Cierpliwy/krea2-inpaint-edit',
   },
 
   // ---- Experiment prerequisites: Fun Control input surface ---------------
@@ -891,7 +921,11 @@ export function describeFetchDestination(entry: FetchCatalogEntry, settings: App
 }
 
 /** The pack registry entries the fetcher can install (license data lives in
- *  ENGINE_NODE_PACKS — surfaced here for the integrity tests). */
+ *  ENGINE_NODE_PACKS — surfaced here for the integrity tests).
+ *
+ *  FIXME(wiring): dead export — zero callers anywhere, including the
+ *  integrity tests this was surfaced for. Tracked in
+ *  docs/audit/wiring-check-2026-09-26.md §1. */
 export function fetchableNodePacks(): typeof ENGINE_NODE_PACKS {
   return ENGINE_NODE_PACKS.filter((pack) => FETCH_CATALOG.some((entry) => entry.packId === pack.id))
 }

@@ -251,7 +251,11 @@ export async function submitWorkbenchGeneration(
 
 /** Frame attribution for a finished workbench job: EVERY image output of
  * the prompt (the per-frame publish nodes), in frame order. The landing
- * loop calls this before appending the take. */
+ * loop calls this before appending the take.
+ *
+ * FIXME(wiring): dead helper — zero callers; the landing loop appends the
+ * take without per-frame attribution. Tracked in
+ * docs/audit/wiring-check-2026-09-26.md §6. */
 export function frameDescriptorsForJob(history: Record<string, unknown>, promptId: string) {
   return extractAllOutputFiles(history, promptId, 'image')
 }

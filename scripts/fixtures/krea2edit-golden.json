@@ -118,7 +118,8 @@
     "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
     "vae": "qwen_image_vae.safetensors",
     "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
-    "anypaintLora": "krea2_anypaint_rank32.safetensors"
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
    },
    "graph": {
     "1": {
@@ -246,7 +247,8 @@
     "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
     "vae": "qwen_image_vae.safetensors",
     "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
-    "anypaintLora": "krea2_anypaint_rank32.safetensors"
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
    },
    "graph": {
     "1": {
@@ -449,7 +451,8 @@
     "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
     "vae": "qwen_image_vae.safetensors",
     "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
-    "anypaintLora": "krea2_anypaint_rank32.safetensors"
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
    },
    "graph": {
     "1": {
@@ -651,7 +654,8 @@
     "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
     "vae": "qwen_image_vae.safetensors",
     "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
-    "anypaintLora": "krea2_anypaint_rank32.safetensors"
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
    },
    "graph": {
     "1": {
@@ -867,7 +871,8 @@
     "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
     "vae": "qwen_image_vae.safetensors",
     "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
-    "anypaintLora": "krea2_anypaint_rank32.safetensors"
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
    },
    "graph": {
     "1": {
@@ -1067,7 +1072,8 @@
     "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
     "vae": "qwen_image_vae.safetensors",
     "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
-    "anypaintLora": "krea2_anypaint_rank32.safetensors"
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
    },
    "graph": {
     "1": {
@@ -1284,7 +1290,8 @@
     "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
     "vae": "qwen_image_vae.safetensors",
     "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
-    "anypaintLora": "krea2_anypaint_rank32.safetensors"
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
    },
    "graph": {
     "1": {
@@ -1516,7 +1523,8 @@
     "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
     "vae": "qwen_image_vae.safetensors",
     "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
-    "anypaintLora": "krea2_anypaint_rank32.safetensors"
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
    },
    "graph": {
     "1": {
@@ -1709,7 +1717,8 @@
     "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
     "vae": "qwen_image_vae.safetensors",
     "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
-    "anypaintLora": "krea2_anypaint_rank32.safetensors"
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
    },
    "graph": {
     "1": {
@@ -1902,7 +1911,8 @@
     "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
     "vae": "qwen_image_vae.safetensors",
     "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
-    "anypaintLora": "krea2_anypaint_rank32.safetensors"
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
    },
    "graph": {
     "1": {
@@ -2095,7 +2105,8 @@
     "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
     "vae": "qwen_image_vae.safetensors",
     "identityEditLora": "krea2_identity_edit_v1_2_r64.safetensors",
-    "anypaintLora": "krea2_anypaint_rank32.safetensors"
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
    },
    "graph": {
     "1": {
@@ -2267,6 +2278,446 @@
        0
       ],
       "grounding_px": 768
+     }
+    }
+   }
+  },
+  {
+   "name": "ostris-inpaint-default",
+   "options": {
+    "prompt": "a ceramic bowl of lemons on an oak table, morning light",
+    "width": 1024,
+    "height": 1024,
+    "seed": 424242,
+    "filenamePrefix": "krea2/test",
+    "edit": {
+     "family": "krea2edit.ostris",
+     "prompt": "a bowl of glossy ceramic lemons, hand-thrown, morning light through a window",
+     "source": "masked_source.png",
+     "width": 1024,
+     "height": 1024,
+     "seed": 424242,
+     "filenamePrefix": "krea2/test"
+    }
+   },
+   "models": {
+    "turbo": "krea2_turbo_int8_convrot.safetensors",
+    "raw": "krea2_raw_int8_convrot.safetensors",
+    "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
+    "vae": "qwen_image_vae.safetensors",
+    "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit.safetensors"
+   },
+   "graph": {
+    "1": {
+     "class_type": "UNETLoader",
+     "inputs": {
+      "unet_name": "krea2_turbo_int8_convrot.safetensors",
+      "weight_dtype": "default"
+     }
+    },
+    "2": {
+     "class_type": "CLIPLoader",
+     "inputs": {
+      "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
+      "type": "krea2",
+      "device": "default"
+     }
+    },
+    "3": {
+     "class_type": "VAELoader",
+     "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+     }
+    },
+    "4": {
+     "class_type": "CLIPTextEncode",
+     "inputs": {
+      "clip": [
+       "2",
+       0
+      ],
+      "text": "a bowl of glossy ceramic lemons, hand-thrown, morning light through a window"
+     }
+    },
+    "5": {
+     "class_type": "CLIPTextEncode",
+     "inputs": {
+      "clip": [
+       "2",
+       0
+      ],
+      "text": ""
+     }
+    },
+    "6": {
+     "class_type": "EmptySD3LatentImage",
+     "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+     }
+    },
+    "7": {
+     "class_type": "KSampler",
+     "inputs": {
+      "model": [
+       "11",
+       0
+      ],
+      "positive": [
+       "47",
+       0
+      ],
+      "negative": [
+       "48",
+       0
+      ],
+      "latent_image": [
+       "6",
+       0
+      ],
+      "seed": 424242,
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "simple",
+      "denoise": 1
+     }
+    },
+    "8": {
+     "class_type": "VAEDecode",
+     "inputs": {
+      "samples": [
+       "7",
+       0
+      ],
+      "vae": [
+       "3",
+       0
+      ]
+     }
+    },
+    "9": {
+     "class_type": "SaveImage",
+     "inputs": {
+      "images": [
+       "8",
+       0
+      ],
+      "filename_prefix": "krea2/test"
+     }
+    },
+    "10": {
+     "class_type": "LoraLoaderModelOnly",
+     "inputs": {
+      "lora_name": "krea2_inpaint_edit.safetensors",
+      "strength_model": 1,
+      "model": [
+       "1",
+       0
+      ]
+     }
+    },
+    "11": {
+     "class_type": "Krea2OstrisEditModelPatch",
+     "inputs": {
+      "kv_cache": true,
+      "model": [
+       "10",
+       0
+      ]
+     }
+    },
+    "30": {
+     "class_type": "LoadImage",
+     "inputs": {
+      "image": "masked_source.png"
+     }
+    },
+    "44": {
+     "class_type": "SolidMask",
+     "inputs": {
+      "value": 0,
+      "width": 1024,
+      "height": 1024
+     }
+    },
+    "45": {
+     "class_type": "MaskToImage",
+     "inputs": {
+      "mask": [
+       "44",
+       0
+      ]
+     }
+    },
+    "46": {
+     "class_type": "ImageCompositeMasked",
+     "inputs": {
+      "destination": [
+       "30",
+       0
+      ],
+      "source": [
+       "45",
+       0
+      ],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": [
+       "30",
+       1
+      ]
+     }
+    },
+    "47": {
+     "class_type": "TextEncodeKrea2OstrisEdit",
+     "inputs": {
+      "clip": [
+       "2",
+       0
+      ],
+      "prompt": "a bowl of glossy ceramic lemons, hand-thrown, morning light through a window",
+      "vae": [
+       "3",
+       0
+      ],
+      "image1": [
+       "46",
+       0
+      ]
+     }
+    },
+    "48": {
+     "class_type": "ConditioningZeroOut",
+     "inputs": {
+      "conditioning": [
+       "47",
+       0
+      ]
+     }
+    }
+   }
+  },
+  {
+   "name": "ostris-inpaint-strong-variant",
+   "options": {
+    "prompt": "a ceramic bowl of lemons on an oak table, morning light",
+    "width": 1024,
+    "height": 1024,
+    "seed": 424242,
+    "filenamePrefix": "krea2/test",
+    "edit": {
+     "family": "krea2edit.ostris",
+     "prompt": "recolor the car to matte black",
+     "source": "masked_source.png",
+     "width": 1024,
+     "height": 1024,
+     "seed": 424242,
+     "filenamePrefix": "krea2/test"
+    }
+   },
+   "models": {
+    "turbo": "krea2_turbo_int8_convrot.safetensors",
+    "raw": "krea2_raw_int8_convrot.safetensors",
+    "textEncoder": "qwen3vl_4b_fp8_scaled.safetensors",
+    "vae": "qwen_image_vae.safetensors",
+    "identityEditLora": "krea2_identity_edit_v1_2.safetensors",
+    "anypaintLora": "krea2_anypaint_rank32.safetensors",
+    "ostrisInpaintLora": "krea2_inpaint_edit_strong.safetensors"
+   },
+   "graph": {
+    "1": {
+     "class_type": "UNETLoader",
+     "inputs": {
+      "unet_name": "krea2_turbo_int8_convrot.safetensors",
+      "weight_dtype": "default"
+     }
+    },
+    "2": {
+     "class_type": "CLIPLoader",
+     "inputs": {
+      "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
+      "type": "krea2",
+      "device": "default"
+     }
+    },
+    "3": {
+     "class_type": "VAELoader",
+     "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+     }
+    },
+    "4": {
+     "class_type": "CLIPTextEncode",
+     "inputs": {
+      "clip": [
+       "2",
+       0
+      ],
+      "text": "recolor the car to matte black"
+     }
+    },
+    "5": {
+     "class_type": "CLIPTextEncode",
+     "inputs": {
+      "clip": [
+       "2",
+       0
+      ],
+      "text": ""
+     }
+    },
+    "6": {
+     "class_type": "EmptySD3LatentImage",
+     "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+     }
+    },
+    "7": {
+     "class_type": "KSampler",
+     "inputs": {
+      "model": [
+       "11",
+       0
+      ],
+      "positive": [
+       "47",
+       0
+      ],
+      "negative": [
+       "48",
+       0
+      ],
+      "latent_image": [
+       "6",
+       0
+      ],
+      "seed": 424242,
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "simple",
+      "denoise": 1
+     }
+    },
+    "8": {
+     "class_type": "VAEDecode",
+     "inputs": {
+      "samples": [
+       "7",
+       0
+      ],
+      "vae": [
+       "3",
+       0
+      ]
+     }
+    },
+    "9": {
+     "class_type": "SaveImage",
+     "inputs": {
+      "images": [
+       "8",
+       0
+      ],
+      "filename_prefix": "krea2/test"
+     }
+    },
+    "10": {
+     "class_type": "LoraLoaderModelOnly",
+     "inputs": {
+      "lora_name": "krea2_inpaint_edit_strong.safetensors",
+      "strength_model": 1,
+      "model": [
+       "1",
+       0
+      ]
+     }
+    },
+    "11": {
+     "class_type": "Krea2OstrisEditModelPatch",
+     "inputs": {
+      "kv_cache": true,
+      "model": [
+       "10",
+       0
+      ]
+     }
+    },
+    "30": {
+     "class_type": "LoadImage",
+     "inputs": {
+      "image": "masked_source.png"
+     }
+    },
+    "44": {
+     "class_type": "SolidMask",
+     "inputs": {
+      "value": 0,
+      "width": 1024,
+      "height": 1024
+     }
+    },
+    "45": {
+     "class_type": "MaskToImage",
+     "inputs": {
+      "mask": [
+       "44",
+       0
+      ]
+     }
+    },
+    "46": {
+     "class_type": "ImageCompositeMasked",
+     "inputs": {
+      "destination": [
+       "30",
+       0
+      ],
+      "source": [
+       "45",
+       0
+      ],
+      "x": 0,
+      "y": 0,
+      "resize_source": false,
+      "mask": [
+       "30",
+       1
+      ]
+     }
+    },
+    "47": {
+     "class_type": "TextEncodeKrea2OstrisEdit",
+     "inputs": {
+      "clip": [
+       "2",
+       0
+      ],
+      "prompt": "recolor the car to matte black",
+      "vae": [
+       "3",
+       0
+      ],
+      "image1": [
+       "46",
+       0
+      ]
+     }
+    },
+    "48": {
+     "class_type": "ConditioningZeroOut",
+     "inputs": {
+      "conditioning": [
+       "47",
+       0
+      ]
      }
     }
    }

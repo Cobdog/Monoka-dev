@@ -31,7 +31,12 @@ export const TRAINING_FPS = 24.0
 /** All legal 17n+5 frame counts in the released training range (22 f … 345 f).
  *  The range starts at the first full grid STEP — the 5-frame point is a
  *  legal engine render but not a training target, so it stays excluded even
- *  when minFrames dips below it (the pre-ledger loop's n ≥ 1 behavior). */
+ *  when minFrames dips below it (the pre-ledger loop's n ≥ 1 behavior).
+ *
+ * FIXME(wiring): gridTargets and cropRectForRatio (below) are dead — zero
+ * callers anywhere (the export wizard's grid target and the client-side
+ * CropEditor cover both concerns). Tracked in
+ * docs/audit/wiring-check-2026-09-26.md §6. */
 export function gridTargets(minFrames = 22, maxFrames = 345): number[] {
   return h3NativeFrameCounts(maxFrames).filter((frames) => frames >= minFrames && frames >= 22)
 }

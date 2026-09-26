@@ -1,4 +1,9 @@
-/** Media playback and input widgets shared across views. */
+/** Media playback and input widgets shared across views.
+ *
+ * FIXME(wiring): dead module — zero importers (PooledVideoCard + the video
+ * pool replaced these widgets; nothing renders VideoPlayer,
+ * VideoContinuationControls, or MediaDrop). Tracked in
+ * docs/audit/wiring-check-2026-09-26.md §4. */
 import { useEffect, useState } from 'react'
 import { AlertCircle, LoaderCircle, RefreshCw, Scissors, SkipForward, Upload, X } from 'lucide-react'
 import type { GenerationJob, MediaFile } from '../types'

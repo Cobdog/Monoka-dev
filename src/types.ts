@@ -406,7 +406,12 @@ export type AppSettings = {
    *  shape-tolerantly without importing the renderer registry). Absent or
    *  {} = pure inference, the pre-override behavior exactly. */
   modelOverrides?: Record<string, ModelOverrideSlots>
-  /** Chosen GPU tier — drives community quant/resolution guidance. */
+  /** Chosen GPU tier — drives community quant/resolution guidance.
+   *
+   * FIXME(wiring): gpuTier is saved but gates nothing — the Settings tier
+   * picker writes it and nothing reads it at any effect site (no quant/
+   * resolution consumer exists; only an e2e render-poison test touches it).
+   * Tracked in docs/audit/wiring-check-2026-09-26.md §3. */
   gpuTier?: '8' | '16' | '24' | 'blackwell'
   /** The T=1 decode-path experiment flag (E-FS1, task 464xfvd — the
    *  Fizgig-H3-Still challenge): 'image-studio' (default = the landed lane,

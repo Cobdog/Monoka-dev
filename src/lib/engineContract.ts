@@ -259,7 +259,11 @@ export function validateGraphAgainstSchemas(graph: ContractGraph, info: ObjectIn
   return violations
 }
 
-/** The readable one-line verdict for a violation list (the log/report form). */
+/** The readable one-line verdict for a violation list (the log/report form).
+ *
+ * FIXME(wiring): dead export — zero callers anywhere, including the
+ * engine-contract suite it was written for. Tracked in
+ * docs/audit/wiring-check-2026-09-26.md §1. */
 export function contractVerdict(violations: ContractViolation[]): string | null {
   if (!violations.length) return null
   return violations.map((v) => `${v.nodeId} (${v.classType})${v.inputName ? ` '${v.inputName}'` : ''}: ${v.type} — ${v.message}`).join('\n')
