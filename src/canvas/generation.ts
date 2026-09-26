@@ -13,6 +13,7 @@
  */
 import type { AppSettings, CharacterProject, GenerationMode, LocationProject, MediaFile, ModelOverrideSlots, ModelSelection, MovieReferenceBinding, UpscaleMode, WardrobeProject } from '../types'
 import type { ComfyPrompt } from '../lib/graph'
+import type { ObjectInfo } from '../lib/comfyInfo'
 import { imageEngineChoices } from '../lib/graph/engineFamilies'
 import { buildMiniMaxWorkflow } from '../lib/workflow'
 import { allocateWorkspaceReferences } from '../lib/promptComposer'
@@ -64,6 +65,10 @@ export type CanvasChainSettings = {
   duration: number
   resolution: string
   turbo: 'off' | '4' | '8'
+  /** The VDN acceleration rung (task 9up52mj — adopted first-party): XOR
+   *  with the tier (both patch the same model slot; the VDN stage's own
+   *  distilled adapter replaces the turbo LoRA). 'off' default/inert. */
+  vdn: 'off' | 'dmd-8' | 'stage-b-50'
   /** Explicit turbo family (optimization-registry entry id, '' = auto-rank). */
   turboFamily: string
   turboLoader: 'auto' | 'plain'
@@ -141,6 +146,7 @@ export function chainSettingsDefaults(settings?: AppSettings | null): CanvasChai
     duration: defaults?.duration ?? 6,
     resolution: defaults?.resolution && isRenderableResolution(defaults.resolution) ? defaults.resolution : '1344x768',
     turbo: defaults?.turbo ?? 'off',
+    vdn: 'off',
     turboFamily: '',
     turboLoader: 'auto',
     steps: defaults?.steps ?? 30,
@@ -219,6 +225,7 @@ export function readChainSettings(raw: Record<string, unknown>, settings?: AppSe
     duration: Math.max(2, Math.min(15, num(raw.duration, base.duration))),
     resolution: isRenderableResolution(str(raw.resolution, '')) ? str(raw.resolution, base.resolution) : base.resolution,
     turbo,
+    vdn: raw.vdn === 'dmd-8' || raw.vdn === 'stage-b-50' ? raw.vdn : 'off',
     turboFamily: str(raw.turboFamily, base.turboFamily),
     turboLoader: raw.turboLoader === 'plain' ? 'plain' : 'auto',
     steps: Math.max(1, Math.min(60, num(raw.steps, base.steps))),
@@ -472,6 +479,7 @@ export function buildCanvasRenderRequest(
     seed: settings.seed,
     steps: settings.steps,
     turbo: settings.turbo,
+    vdn: settings.vdn,
     turboLoader: settings.turboLoader,
     experimentalSampling: false,
     loraStrength: settings.loraStrength,
@@ -517,7 +525,7 @@ export type PlanUploads = { first?: string; last?: string; images?: string[]; gu
  * and the engine-independent tests read — graph CONSTRUCTION never needs an
  * engine, only the submit does.
  */
-export function planCanvasGraph(request: H3RenderRequest, selection: ModelSelection, uploads: PlanUploads = {}): ComfyPrompt {
+export function planCanvasGraph(request: H3RenderRequest, selection: ModelSelection, uploads: PlanUploads = {}, info?: ObjectInfo): ComfyPrompt {
   return buildMiniMaxWorkflow({
     mode: request.mode,
     prompt: request.prompt,
@@ -527,6 +535,7 @@ export function planCanvasGraph(request: H3RenderRequest, selection: ModelSelect
     seed: request.seed,
     steps: request.steps,
     turbo: request.turbo,
+    vdn: request.vdn,
     turboLoader: request.turboLoader,
     experimentalSampling: request.experimentalSampling,
     loraStrength: request.loraStrength,
@@ -551,7 +560,7 @@ export function planCanvasGraph(request: H3RenderRequest, selection: ModelSelect
     videos: [],
     audios: [],
     guides: (uploads.guides ?? []).map((name) => ({ name })),
-  })
+  }, info)
 }
 
 // ---- fork gestures (§2 outputRef substrates) ------------------------------------

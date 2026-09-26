@@ -168,8 +168,8 @@ function goldenEntries() {
 
 function runInertness(entries) {
   let checked = 0
-  for (const { name, options, models, uploads, graph } of entries) {
-    const rebuilt = buildMiniMaxWorkflow(options, models, uploads)
+  for (const { name, options, models, uploads, info, graph } of entries) {
+    const rebuilt = buildMiniMaxWorkflow(options, models, uploads, info)
     assert.equal(canon(rebuilt), canon(graph), `inertness violated by config '${name}' — an unselected entry perturbed the base graph`)
     checked += 1
   }
@@ -180,7 +180,7 @@ function runInertness(entries) {
 // The matrix configs reused as the transform-correctness base.
 // ---------------------------------------------------------------------------
 const MATRIX_BY_NAME = {}
-for (const { name, options, models, uploads } of GOLDEN_MATRIX) MATRIX_BY_NAME[name] = { options, models, uploads }
+for (const { name, options, models, uploads, info } of GOLDEN_MATRIX) MATRIX_BY_NAME[name] = { options, models, uploads, info }
 const BASE_MODELS = MATRIX_BY_NAME['native-quality'].models
 
 function buildWithLora(loraName, { turbo = '4', info, turboLoader, mode = 'text' } = {}) {
@@ -199,9 +199,9 @@ function ok(condition, message) {
 }
 
 updateMaybe('--update-golden: re-snapshot the registry + krea2 fixtures from the CURRENT builders', () => {
-  const entries = GOLDEN_MATRIX.map(({ name, options, models, uploads }) => ({
-    name, options, models, uploads,
-    graph: buildMiniMaxWorkflow(options, models, uploads),
+  const entries = GOLDEN_MATRIX.map(({ name, options, models, uploads, info }) => ({
+    name, options, models, uploads, ...(info ? { info } : {}),
+    graph: buildMiniMaxWorkflow(options, models, uploads, info),
   }))
   fs.writeFileSync(FIXTURE, JSON.stringify({ version: 1, generatedFrom: 'buildMiniMaxWorkflow (registry era)', entries }, null, 1) + '\n')
   const krea2Entries = KREA2_MATRIX.map(({ name, options, models }) => ({
@@ -228,7 +228,7 @@ maybe('(a) inertness vs the pre-registry goldens + registry shape', () => {
     ok(entry.ui.description.length > 0, `${entry.id} has a UI description`)
     ok(entry.appliesTo.includes('minimax'), `${entry.id} applies to the H3 engine`)
   }
-  for (const required of ['turbo.official-fl2v-8', 'turbo.lightx2v-fl2v-4', 'turbo.lightx2v-ref2v-8', 'turbo.pdd-fl2va-8', 'turbo.pdd-ref2va-8', 'turbo.drbaph-4', 'turbo.larryvrh-v4-8', 'turbo.ref2v-4', 'upscale.lbh2d', 'upscale.lbh3d', 'upscale.rtx', 'preview.h3-override']) {
+  for (const required of ['turbo.official-fl2v-8', 'turbo.lightx2v-fl2v-4', 'turbo.lightx2v-ref2v-8', 'turbo.pdd-fl2va-8', 'turbo.pdd-ref2va-8', 'turbo.drbaph-4', 'turbo.larryvrh-v4-8', 'turbo.ref2v-4', 'upscale.lbh2d', 'upscale.lbh3d', 'upscale.rtx', 'preview.h3-override', 'vdn.apply']) {
     ok(Boolean(findOptimization(required)), `registry contains ${required}`)
   }
   assert.throws(() => registerOptimization(entries[0]), /duplicate id/, 'duplicate registration is rejected')
@@ -259,6 +259,21 @@ maybe('(b) transform correctness', () => {
     ok(graph['15'].inputs.sampler.join('|') === '13|0', 'SamplerCustomAdvanced still consumes node 13')
     ok(graph['14'].inputs.steps === 4, 'steps still driven by the pairing contract')
     ok(graph['12'].inputs.model.join('|') === '5|0', 'model chain flows through the dedicated loader')
+  }
+  // The VDN acceleration arm (task 9up52mj — the matrix's VDN_INFO serves
+  // the pack + both stages, the engine's own enumeration): dmd-8 wraps at
+  // node 29 with the measured pairing and NO turbo loader (the XOR rule,
+  // graph-side); stage-b-50 keeps the user's steps on the official pair.
+  {
+    const dmd = MATRIX_BY_NAME['vdn-dmd8']
+    const graph = buildMiniMaxWorkflow(dmd.options, dmd.models, { images: [], videos: [], audios: [] }, dmd.info)
+    ok(graph['29'] && graph['29'].class_type === 'ApplyVDNH3' && graph['29'].inputs.apply_turbo_adapter === true, 'vdn dmd-8: ApplyVDNH3 with the distilled adapter at node 29')
+    ok(graph['5'] === undefined && graph['14'].inputs.steps === 8, 'vdn dmd-8: no turbo loader, 8 steps')
+    ok(graph['13'].inputs.sampler_name === 'er_sde' && graph['14'].inputs.scheduler === 'beta', 'vdn dmd-8: the pack\'s measured er_sde/beta pairing')
+    const stageB = MATRIX_BY_NAME['vdn-stageb50']
+    const graph50 = buildMiniMaxWorkflow(stageB.options, stageB.models, { images: [], videos: [], audios: [] }, stageB.info)
+    ok(graph50['29'].inputs.apply_turbo_adapter === false && graph50['14'].inputs.steps === 50, 'vdn stage-b-50: adapter off, the user\'s steps')
+    ok(graph50['13'].inputs.sampler_name === OFFICIAL_H3_SAMPLER && graph50['14'].inputs.scheduler === OFFICIAL_H3_SCHEDULER, 'vdn stage-b-50: the official sampler pair')
   }
   // Plain-loader opt-in (community quality path) overrides the pack swap.
   {

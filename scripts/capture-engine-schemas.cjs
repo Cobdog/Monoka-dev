@@ -94,6 +94,13 @@ const PACK_CLASSES = [
   // NOT installed on the shared install — source-derived from the pinned
   // repo revision below (the form-adapter pattern).
   'FizgigH3StillLatent', 'FizgigH3StillDecode',
+  // ComfyUI-VDN-H3 (task 9up52mj — the 2026-09-26 FINISH: adopted as our
+  // own entirely; upstream removed): the pack's entire 2 classes, emitted
+  // by the video factory's vdn.apply acceleration entry. The shared install
+  // serves only the separately-named -24GB variant (*_24GB classes), so
+  // these are SOURCE-DERIVED from OUR vendored tree at the pin — it is our
+  // code now (the form-adapter/Fizgig pattern).
+  'ApplyVDNH3', 'ApplyVDNH3Advanced',
   // (The four AceStep classes were removed with the engine, 2026-09-21 —
   // nn5ld47; no builder emits them, so they left contract scope. The
   // committed fixture keeps its captured entries until the next
@@ -110,6 +117,9 @@ const FILE_LISTING_FIELDS = new Set([
   'MiniMaxH3TurboLoRA.lora_name', 'MiniMaxH3LoraFormLoader.lora_name',
   'LoadImage.image', 'LoadAudio.audio', 'LoadVideo.file',
   'MinimaxH3LatentUpscalerNode2D.model_name', 'MinimaxH3LatentUpscaler3D.model_name',
+  // The VDN stage combo enumerates models/vdn server-side (the node's own
+  // INPUT_TYPES walks it) — environment-enumerated like the model folders.
+  'ApplyVDNH3.vdn_checkpoint', 'ApplyVDNH3Advanced.vdn_checkpoint',
 ])
 
 /** Why an expected class may be absent from a given install. */
@@ -202,6 +212,90 @@ function fizgigEntries() {
   }
 }
 
+/** Source-derived schemas for ComfyUI-VDN-H3 (task 9up52mj — the 2026-09-26
+ * FINISH ruling: adopted as our own entirely; the vendored tree IS the code
+ * of record), transcribed from vendor/nodes/ComfyUI-VDN-H3/vdn_h3/nodes.py
+ * INPUT_TYPES + RETURN_TYPES at the pinned 3eb6349 (v1.5.2). The shared
+ * install serves only the separately-named -24GB variant, so like the
+ * form-adapter/Fizgig entries these are source-derived until a capture boot
+ * serves OUR pack. Tooltips are omitted (the fizgig precedent — the schema
+ * contract is types/constraints/defaults/enums, transcribed verbatim).
+ *
+ * Transcription truths worth naming: (1) BOTH nodes carry retain_buffers in
+ * required (the base node's apply() also re-states it as a Python default —
+ * ComfyUI convention, not an absence); (2) vdn_checkpoint is the
+ * environment-enumerated models/vdn walk — emptied per FILE_LISTING_FIELDS,
+ * like every model-folder combo. */
+function vdnEntries() {
+  const sourceDerived = 'vendor/nodes/ComfyUI-VDN-H3 @ 3eb63496c24ca70faaf8a14b6c75fcb480e34bf1 vdn_h3/nodes.py (OUR adopted tree — INPUT_TYPES transcribed verbatim; not installed on the shared install, which serves the -24GB variant)'
+  const model = ['MODEL', {}]
+  const applyTurboAdapter = ['BOOLEAN', { default: true }]
+  const loraMode = [['bypass', 'merge'], { default: 'merge' }]
+  const branchWeights = [['auto', 'stream', 'cache_gpu'], { default: 'auto' }]
+  const retainBuffers = [['auto', 'on', 'off'], { default: 'auto' }]
+  const verbose = ['BOOLEAN', { default: false }]
+  const attentionBackend = [['grouped', 'flex'], { default: 'grouped' }]
+  return {
+    ApplyVDNH3: {
+      input: {
+        required: {
+          model,
+          vdn_checkpoint: [[], {}],
+          apply_turbo_adapter: applyTurboAdapter,
+          strength: ['FLOAT', { default: 1.0, min: 0.0, max: 2.0, step: 0.05 }],
+          lora_mode: loraMode,
+          branch_weights: branchWeights,
+          retain_buffers: retainBuffers,
+          verbose,
+          attention_backend: attentionBackend,
+        },
+      },
+      input_order: { required: ['model', 'vdn_checkpoint', 'apply_turbo_adapter', 'strength', 'lora_mode', 'branch_weights', 'retain_buffers', 'verbose', 'attention_backend'] },
+      output: ['MODEL'],
+      output_name: ['MODEL'],
+      output_is_list: [false],
+      name: 'ApplyVDNH3',
+      display_name: 'Apply VDN-H3 (MiniMax-H3 Hybrid Attention)',
+      category: 'model_patch/video',
+      output_node: false,
+      __sourceDerived: sourceDerived,
+    },
+    ApplyVDNH3Advanced: {
+      input: {
+        required: {
+          model,
+          vdn_checkpoint: [[], {}],
+          apply_turbo_adapter: applyTurboAdapter,
+          stage_b_strength: ['FLOAT', { default: 1.0, min: 0.0, max: 2.0, step: 0.05 }],
+          turbo_strength: ['FLOAT', { default: 1.0, min: 0.0, max: 2.0, step: 0.05 }],
+          lora_mode: loraMode,
+          branch_weights: branchWeights,
+          retain_buffers: retainBuffers,
+          verbose,
+          attention_backend: attentionBackend,
+        },
+        optional: {
+          window_radius: ['INT', { default: 1, min: 0, max: 8 }],
+          window_chunk: ['INT', { default: 5, min: 0, max: 64 }],
+          anchor_frames: [['both', 'columns', 'rows', 'none'], { default: 'both' }],
+          text_state: ['BOOLEAN', { default: true }],
+          linear_branch: ['BOOLEAN', { default: true }],
+          fast_kernels: ['BOOLEAN', { default: false }],
+        },
+      },
+      input_order: { required: ['model', 'vdn_checkpoint', 'apply_turbo_adapter', 'stage_b_strength', 'turbo_strength', 'lora_mode', 'branch_weights', 'retain_buffers', 'verbose', 'attention_backend'] },
+      output: ['MODEL'],
+      output_name: ['MODEL'],
+      output_is_list: [false],
+      name: 'ApplyVDNH3Advanced',
+      display_name: 'Apply VDN-H3 Advanced (Ablations & Fast Kernels)',
+      category: 'model_patch/video',
+      output_node: false,
+      __sourceDerived: sourceDerived,
+    },
+  }
+}
+
 /** Empty one combo's options in place, preserving the serving shape. */
 function emptyCombo(classType, fieldName, spec) {
   if (Array.isArray(spec) && Array.isArray(spec[0])) return [ [], spec[1] ?? {} ]
@@ -233,7 +327,7 @@ function main() {
   const rawPath = path.resolve(argv[0])
   const raw = JSON.parse(fs.readFileSync(rawPath, 'utf8'))
   const wanted = [...new Set([...STOCK_CLASSES, ...PACK_CLASSES])]
-  const sourceDerived = { MiniMaxH3LoraFormLoader: formAdapterEntry, ...fizgigEntries() }
+  const sourceDerived = { MiniMaxH3LoraFormLoader: formAdapterEntry, ...fizgigEntries(), ...vdnEntries() }
 
   const nodes = {}
   const absent = []
@@ -268,11 +362,15 @@ function main() {
       formAdapterSource,
       ...(nodes.H3ImageDecode !== undefined ? { h3ImageStudioPackCapture: 'astropuzzo/ComfyUI-MiniMax-H3-Image-Studio @ 47dea30d0bf07e7340ef0cc97e8174a15edf55b9 (v23.0.0) cloned into the shared install custom_nodes before this capture (task afvlbk4) — its 5 load-bearing classes (Prepare set + H3ImageDecode) captured REAL from /object_info; the pack\'s own test suite passed on the venv first (26/26)' } : {}),
       ...(nodes.FizgigH3StillDecode !== undefined ? { fizgigPackCapture: 'shootthesound/ComfyUI-Fizgig-H3-Still @ f3252d2b6c94c2e34d71f583d5e1804b683afe06 SOURCE-DERIVED (task 464xfvd, E-FS1): the pack is NOT installed on the shared install — both classes (the whole pack) transcribed from __init__.py INPUT_TYPES + RETURN_TYPES at this pin during the 2026-09-25 assessment. An /object_info capture replaces these entries the day the pack is installed for the bake-off.' } : {}),
+      ...(nodes.ApplyVDNH3 !== undefined ? { vdnPackCapture: 'ComfyUI-VDN-H3 @ 3eb63496c24ca70faaf8a14b6c75fcb480e34bf1 SOURCE-DERIVED from OUR vendored tree (task 9up52mj — adopted as our own entirely, 2026-09-26): the shared install serves only the separately-named -24GB variant, so both classes (the whole pack) are transcribed from vendor/nodes/ComfyUI-VDN-H3/vdn_h3/nodes.py at the pin. An /object_info capture replaces these entries the day a capture boot serves OUR pinned pack.' } : {}),
       normalizations: [
         'trimmed to STOCK_GRAPH_CLASSES (src/lib/preflight.ts, lockstep-checked by tests) + the pack/family classes builders can emit',
         'file-listing combos (model folders, input dirs) EMPTIED: options are this box\'s filesystem, not engine truth — the contract validator treats empty options as environment-enumerated and skips membership; non-file enums keep their real captured options',
         'MiniMaxH3LoraFormLoader source-derived from this repo\'s first-party pack (not installed on the shared install); see __sourceDerived on the entry',
         'FizgigH3StillLatent/FizgigH3StillDecode source-derived from the pack repo at pinned f3252d2 (E-FS1, not installed on the shared install — flag-gated, not adopted); see __sourceDerived on the entries',
+        'SolidMask/MaskToImage/ImageCompositeMasked source-derived from the shared install\'s ComfyUI v0.37.4 comfy_extras/nodes_mask.py at the capture revision (stock classes the krea2edit.ostris black-region fill began emitting after the 2026-09-26 capture); see __sourceDerived on the entries',
+        'TextEncodeKrea2OstrisEdit/Krea2OstrisEditModelPatch source-derived from the installed comfyui-krea2-ostris-edit pack at pinned 7756566 (served by the capture boot, trimmed from the kept set because no builder emitted them at capture; krea2edit.ostris emits them since ruling #1, 2026-09-26); see __sourceDerived on the entries',
+        'ApplyVDNH3/ApplyVDNH3Advanced source-derived from OUR vendored tree at pinned 3eb6349 (task 9up52mj — adopted first-party; the shared install serves only the -24GB variant); vdn_checkpoint emptied as the environment-enumerated models/vdn walk; see __sourceDerived on the entries',
         'absent classes recorded with reasons (inert-by-design lanes)',
       ],
       regenerate: 'per the header of scripts/capture-engine-schemas.cjs (runbook-governed CPU-only capture, then this script over the raw JSON)',
@@ -287,4 +385,4 @@ function main() {
 }
 
 if (require.main === module) main()
-module.exports = { STOCK_CLASSES, PACK_CLASSES, FILE_LISTING_FIELDS, formAdapterEntry, fizgigEntries }
+module.exports = { STOCK_CLASSES, PACK_CLASSES, FILE_LISTING_FIELDS, formAdapterEntry, fizgigEntries, vdnEntries }

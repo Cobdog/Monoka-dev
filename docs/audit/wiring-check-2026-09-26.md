@@ -48,7 +48,7 @@ we have planned, mark it as a stub and document it."* Per-finding outcomes
 | 1.1 | **RESOLVED-WIRED** | promptWatch adopted as the queue sweep's loop engine — `9ddb11c` |
 | 1.2 | **RESOLVED-STUB** | awaits the asset-authoring surface (remediation plan D1's re-attachment point) — `7f8f2fe` |
 | 1.3 | **RESOLVED-STUB** | awaits the composer's contract-layer adoption (prompt-doctrine consolidation) — `7f8f2fe` |
-| 1.4 | **RESOLVED-STUB** | FINISH stands, task 9up52mj, behind the centralization wave — tag restyled `7f8f2fe` |
+| 1.4 | **RESOLVED-WIRED** | the VDN FINISH landed (task 9up52mj, ruling #3 — adopted as our own): the factory emits ApplyVDNH3 as the `vdn.apply` acceleration rung (XOR with the turbo tier), registry-row STUB deleted, custody posture recorded |
 | 1.5 | **RESOLVED-CUT** | registry row + fetch entry + retired license rows — `7f8f2fe` |
 | 1.6 | **RESOLVED-STUB** | parked with the audio lane (silent-inference toggle, vzpyldn) — `7f8f2fe` |
 | 1.7 | **RESOLVED-STUB** | parked with the long-form lane decision (TS test vs Motion-Context) — `7f8f2fe` |
