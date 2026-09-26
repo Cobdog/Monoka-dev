@@ -25,7 +25,12 @@ import { createHash } from 'node:crypto'
 
 export const TRAINING_FPS = 24.0
 
-/** All legal 17n+5 frame counts in the released training range (22 f … 345 f). */
+/** All legal 17n+5 frame counts in the released training range (22 f … 345 f).
+ *
+ * FIXME(wiring): gridTargets and cropRectForRatio (below) are dead — zero
+ * callers anywhere (the export wizard's grid target and the client-side
+ * CropEditor cover both concerns). Tracked in
+ * docs/audit/wiring-check-2026-09-26.md §6. */
 export function gridTargets(minFrames = 22, maxFrames = 345): number[] {
   const targets: number[] = []
   for (let n = 1; ; n += 1) {

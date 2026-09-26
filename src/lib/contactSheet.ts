@@ -2,7 +2,13 @@
  *  five coordinated views of a subject in one pass through the H3 video DiT.
  *  Topology verified against the repo's example API workflow — H3ContactSheet
  *  emits both the conditioning and the latent; H3ContactSheetDecode returns
- *  [views, sheet] image batches. */
+ *  [views, sheet] image batches.
+ *
+ *  FIXME(wiring): the contact-sheet family is built but unreachable from any
+ *  live journey — its submit path (lib/contactSheetSubmit.ts) was deleted
+ *  2026-09-20 and no surface triggers buildContactSheetWorkflow; only
+ *  tests/workflows.test.js asserts its topology. Tracked in
+ *  docs/audit/wiring-check-2026-09-26.md §1. */
 import type { ModelFile } from '../types'
 
 export type ContactSheetSelection = {

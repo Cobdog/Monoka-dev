@@ -211,7 +211,12 @@ export async function extractGrayPixels(path: string, options: ToolOptions, atSe
   }
 }
 
-/** Decodes a poster/thumbnail JPEG for the gallery (a representative frame). */
+/** Decodes a poster/thumbnail JPEG for the gallery (a representative frame).
+ *
+ * FIXME(wiring): extractPoster and listDir (below) are dead — zero callers;
+ * gallery posters come from the client-side media pipeline and the
+ * tests/scale fixtures this served no longer exist. Tracked in
+ * docs/audit/wiring-check-2026-09-26.md §6. */
 export async function extractPoster(path: string, options: ToolOptions, atSec: number, maxEdge = 320): Promise<Buffer> {
   const frames = await extractFramesAt(path, options, [atSec], maxEdge)
   if (!frames.length) throw new Error('The poster frame could not be extracted.')
