@@ -303,3 +303,16 @@ The Windows CI leg catches what a Linux checkout structurally cannot. Two classe
 2. **CRLF vs byte-identity** — git autocrlf converts text files on Windows checkout; any test asserting byte-identity of a *committed generated artifact* (leaderboards, goldens, fixtures) will pass on Linux and fail on Windows. Fix: pin the file in `.gitattributes` (`eol=lf`) when you commit generated artifacts; the repo currently has zero CRLF-exposed files — keep it that way. the invariant is the eol PIN on byte-compared artifacts plus a clean index — asserted in the benchmarks suite as: no i/crlf in the index, and LEADERBOARD.md explicitly pinned eol=lf. (Working-tree w/crlf on ordinary text=auto files is the NORMAL benign Windows autocrlf condition — git normalizes back on commit — and is deliberately not checked.)
 
 Rule of thumb: if your code builds a filesystem path dynamically and either imports it or byte-compares it, assume the Windows leg will treat it differently — fix preemptively, don't wait for the red.
+
+## CI on demand (maintainer standing rule, 2026-09-26)
+
+**CI runs when we want to ensure correctness — NOT on every push.** The GitHub
+Actions budget and failure-email spam are real costs; intermediate broken
+pushes are part of normal work and must not trigger runs. Mechanism: the CI
+workflow fires ONLY on (1) `workflow_dispatch` (Actions → CI → Run workflow,
+or `gh workflow run CI --ref <branch>`) and (2) the `run-ci` label on a PR
+(the cheap merge-readiness opt-in). Superseding runs cancel in-flight
+(concurrency group per ref). Merge discipline for agents: push freely; when a
+PR is believed merge-ready, apply `run-ci` OR dispatch once; report for merge
+on one deliberate green check. Main-push verification is a dispatch away, not
+automatic. The Windows engine leg stays scheduled-weekly + dispatch.
