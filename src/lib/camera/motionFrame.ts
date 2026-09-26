@@ -16,6 +16,7 @@ import { compileCamera, choice } from './compileCamera'
 import { diagnosticText, reviewPath } from './diagnostics'
 import { pyFormatG, pyJsonStringify, pyRound, replaceAll } from './parity'
 import { planText } from './promptText'
+import { h3TruncateToGridDown } from '../engineSemantics'
 import type {
   CameraStoryboard, CompileMotionParams, CompileMotionResult, ImageShape, MotionResample,
 } from './types'
@@ -40,8 +41,10 @@ export function motionFrameResample(frameCount: number, sourceFps: number): Moti
   }
   const indices: number[] = []
   for (let i = 0; i < target; i += 1) indices.push(Math.min(frameCount - 1, Math.trunc(i * sourceFps / 24)))
-  // Native H3 video references truncate to 17k+5; make that visible in our own output.
-  const aligned = 5 + 17 * Math.floor((target - 5) / 17)
+  // Native H3 video references truncate to 17k+5; make that visible in our
+  // own output. The DOWN direction is the ledger's named policy (R1): the
+  // resampled reference is cut to its grid point, never padded up.
+  const aligned = h3TruncateToGridDown(target)
   return { target, aligned, indices: indices.slice(0, aligned) }
 }
 

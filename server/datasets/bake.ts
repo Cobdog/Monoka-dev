@@ -14,6 +14,7 @@ import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
+import { isH3NativeFrameCount } from '../../src/lib/engineSemantics'
 import {
   assertDecodedCount,
   TRAINING_FPS,
@@ -516,7 +517,10 @@ export function validateMusubiToml(toml: string): boolean {
       if (key === 'enable_bucket' && value !== 'true') return false
       if (key === 'target_frames') {
         const values = value.replace(/[[\]]/g, '').split(',').map((entry) => Number(entry.trim())).filter((entry) => Number.isFinite(entry))
-        if (!values.length || !values.every((entry) => entry === 1 || (entry >= 22 && entry <= 345 && (entry - 5) % 17 === 0))) return false
+        // Grid membership reads the ledger (R1): isH3NativeFrameCount is the
+        // engine's own 17k+5 test; the [22, 345] band is the trainer's
+        // released range (this module's domain, not the grid's).
+        if (!values.length || !values.every((entry) => entry === 1 || (entry >= 22 && entry <= 345 && isH3NativeFrameCount(entry)))) return false
       }
     }
   }
