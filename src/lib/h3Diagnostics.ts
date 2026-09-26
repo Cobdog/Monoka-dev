@@ -6,7 +6,7 @@
  */
 import { createId } from './createId'
 import { buildMiniMaxWorkflow } from './workflow'
-import { diagnosticPrompt } from './h3Stack'
+import { diagnosticPrompt, h3StackReady } from './h3Stack'
 import { inferSelections } from './modelSelection'
 import type { ObjectInfo } from './comfyInfo'
 import type { AppSettings, GenerationJob, ModelFile, ModelSelection } from '../types'
@@ -33,7 +33,10 @@ export async function submitH3DiagnosticPair(facts: H3DiagnosticsFacts, io: H3Di
   }
   const qualityModels = inferSelections(facts.models, 'off')
   const turboModels = inferSelections(facts.models, '8')
-  if (![qualityModels.fl2va, qualityModels.textEncoder, qualityModels.videoVae, qualityModels.audioVae, turboModels.fl2vLora].every(Boolean)) {
+  // (R2) The pair's gate is the ONE predicate: the Turbo-8 plan's membership
+  // (text lane + the 8-step LoRA) — the diagnostic renders are text-mode
+  // turbo graphs, exactly what h3StackReady parameterizes.
+  if (!h3StackReady({ selection: turboModels, mode: 'text', turbo: '8' })) {
     const message = 'The FL2VA base stack and official 8-step Turbo LoRA are required for the diagnostic.'
     io.notify('error', message)
     return message
@@ -66,9 +69,11 @@ export async function submitH3DiagnosticPair(facts: H3DiagnosticsFacts, io: H3Di
   return queuedCount === tests.length ? null : message
 }
 
-/** Selection helper re-export for callers computing readiness the same way. */
+/** Selection helper re-export for callers computing readiness the same way
+ *  (R2: "the same way" is now literal — the ready bit IS h3StackReady over
+ *  the Turbo-8 selection, the one membership definition). */
 export function diagnosticSelectionsReady(models: ModelFile[]): { quality: ModelSelection; turbo: ModelSelection; ready: boolean } {
   const quality = inferSelections(models, 'off')
   const turbo = inferSelections(models, '8')
-  return { quality, turbo, ready: Boolean(quality.fl2va && quality.textEncoder && quality.videoVae && quality.audioVae && turbo.fl2vLora) }
+  return { quality, turbo, ready: h3StackReady({ selection: turbo, mode: 'text', turbo: '8' }) }
 }

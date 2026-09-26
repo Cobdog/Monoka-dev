@@ -59,7 +59,6 @@ import {
   mediaForOutput,
   modeLabelFor,
   motionContextFolder,
-  MOTION_CONTEXT_NODES,
   planCanvasGraph,
   readChainSettings,
   resolveChainReferences,
@@ -85,7 +84,8 @@ import {
 import { activeLorasOf, compileLoraTimeline, loraTimelineToPlanDocument, readLoraTimelineDoc } from './loraTimeline'
 import { DEFAULT_SETTINGS, type OpKind } from './ops'
 import type { EndpointDirection, EndpointOption, OptionAvailability } from './options'
-import { findH3PreviewOverrideNode } from '../lib/h3Stack'
+import { findH3PreviewOverrideNode, h3StackReady } from '../lib/h3Stack'
+import { packPresence } from '../lib/nodePackRegistry'
 import { mergeModelOverrides, resolveModelOverrides, resolveModels, type ModelFamilyId, type OverrideResolution } from '../lib/modelOverrides'
 import { inferSelections } from '../lib/modelSelection'
 import { submitH3Render, validateH3Render } from '../lib/h3Submit'
@@ -142,10 +142,11 @@ function locationReferencesOf(location: ReturnType<typeof loadLocationProjects>[
   return locationReferences(location).map((file) => file.path)
 }
 
-/** Motion-Context readiness: all four node classes reported by the engine. */
+/** Motion-Context readiness: the pack's classes satisfy the registry row's
+ *  presence rule (all four — a partial serving cannot run a continuation),
+ *  read through the one packPresence helper (R5, central-model audit). */
 function motionContextReady(): boolean {
-  const info = engineFacts().info
-  return MOTION_CONTEXT_NODES.every((node) => Boolean(info?.[node]))
+  return packPresence(engineFacts().info, 'h3-motion-context')
 }
 
 /** The model-override layers for one family as the seam sees them: the
@@ -200,10 +201,11 @@ const CANVAS_T1_TEST_SELECTION = {
   klein: { unet: '', textEncoder: '', vae: '' },
 } as const
 
-function modelReadyFor(selection: ModelSelection, turbo: 'off' | '4' | '8'): boolean {
-  const activeModel = turbo === 'off' ? selection.fl2va : selection.ref2va
-  return Boolean(selection.fl2va && selection.ref2va && selection.textEncoder && selection.videoVae && selection.audioVae && activeModel)
-}
+// (R2, central-model audit) modelReadyFor is DELETED — its membership (both
+// lanes always, turbo never) was one of four drifting encodings. Every
+// submit gate now reads h3StackReady (h3Stack.ts) with the REQUEST's own
+// mode and turbo tier: the lane the graph actually loads, plus the turbo
+// plan's LoRA when a turbo render is what's being gated.
 
 // ---------------------------------------------------------------------------------
 
@@ -1189,7 +1191,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
           {
             settings: facts.settings,
             connected: facts.connected,
-            modelReady: modelReadyFor(selection, context.settings.turbo),
+            modelReady: h3StackReady({ selection, mode: request.mode, turbo: context.settings.turbo }),
             selection,
             models: facts.models,
             info: facts.info,
@@ -1659,7 +1661,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         {
           settings: facts.settings,
           connected: facts.connected,
-          modelReady: modelReadyFor(selection, settings.turbo),
+          modelReady: h3StackReady({ selection, mode: request.mode, turbo: settings.turbo }),
           selection,
           models: facts.models,
           info: facts.info,
@@ -1734,7 +1736,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       const request = buildCanvasRenderRequest(settings, { firstFrame, lastFrame, referenceImages: referenceMedia, referenceVideos, referenceAudios }, bindings)
       return validateH3Render(request, {
         connected: facts.connected,
-        modelReady: facts.settings ? modelReadyFor(selection, settings.turbo) : false,
+        modelReady: facts.settings ? h3StackReady({ selection, mode: request.mode, turbo: settings.turbo }) : false,
         selection,
         h3PreviewOverrideNode: findH3PreviewOverrideNode(facts.info) || undefined,
         modelOverrides: overrideOutcomeFor('minimax', settings.modelOverrides),
@@ -2261,8 +2263,8 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       const music3Selection = music3SelectionOf()
       return {
         connected: facts.connected,
-        h3Ready: modelReadyFor(selection, 'off'),
-        motionContextReady: MOTION_CONTEXT_NODES.every((node) => Boolean(facts.info[node])),
+        h3Ready: h3StackReady({ selection, mode: 'text' }),
+        motionContextReady: packPresence(facts.info, 'h3-motion-context'),
         music3: {
           available: Boolean(facts.connected && music3Selection.diffusion && music3Selection.textEncoder && music3Selection.vae),
           missing: [music3Selection.diffusion ? '' : 'Music 3 diffusion model', music3Selection.textEncoder ? '' : 'Music 3 text encoder', music3Selection.vae ? '' : 'Music 3 DAV VAE'].filter(Boolean),
@@ -2643,7 +2645,7 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
       const selection = selectionFor(settings.turbo, settings.turboFamily, spec.modelOverrides)
       const validation = validateH3Render(request, {
         connected: facts.connected,
-        modelReady: facts.settings ? modelReadyFor(selection, settings.turbo) : false,
+        modelReady: facts.settings ? h3StackReady({ selection, mode: request.mode, turbo: settings.turbo }) : false,
         selection,
         h3PreviewOverrideNode: findH3PreviewOverrideNode(facts.info) || undefined,
         modelOverrides: overrideOutcomeFor('minimax', spec.modelOverrides),
