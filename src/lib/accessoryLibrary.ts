@@ -1,10 +1,9 @@
-import type { AccessoryProject, MediaFile } from '../types'
+import type { AccessoryProject } from '../types'
 import { createId } from './createId'
 import { persistToLocalStorage } from './libraryStorage'
 
 const KEY = 'minimax.accessory-projects'
 const MIGRATION_KEY = 'minimax.accessories-migrated-from-wardrobe-v1'
-export const ACCESSORY_LIBRARY_EVENT = 'minimax-accessory-library-changed'
 
 export function newAccessoryProject(index = 1): AccessoryProject {
   const now = Date.now()
@@ -22,18 +21,4 @@ export function loadAccessoryProjects(): AccessoryProject[] {
     if (persistToLocalStorage(KEY, next)) localStorage.setItem(MIGRATION_KEY, '1')
     return next
   } catch { return [] }
-}
-
-// FIXME(wiring): saveAccessoryProjects + accessoryReference below are dead —
-// zero callers (the accessory authoring UI left with the studios; the kept
-// asset spine reads accessories through promptComposer only). The spine
-// itself is ruled KEEP (remediation plan D1/R-14). Tracked in
-// docs/audit/wiring-check-2026-09-26.md §1.
-export function saveAccessoryProjects(projects: AccessoryProject[]) {
-  if (!persistToLocalStorage(KEY, projects)) return
-  window.dispatchEvent(new CustomEvent(ACCESSORY_LIBRARY_EVENT))
-}
-
-export function accessoryReference(project: AccessoryProject): MediaFile[] {
-  return project.referenceImage ? [project.referenceImage] : []
 }

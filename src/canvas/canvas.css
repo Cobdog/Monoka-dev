@@ -50,13 +50,6 @@
 .canvas-edges { position: absolute; top: 0; left: 0; width: 1px; height: 1px; overflow: visible; pointer-events: none; }
 .canvas-edge { fill: none; stroke: color-mix(in srgb, var(--accent) 55%, transparent); stroke-width: 2; marker-end: url("#canvas-edge-arrow"); }
 .canvas-edge-arrow-head { fill: color-mix(in srgb, var(--accent) 55%, transparent); }
-/* FIXME(wiring): orphaned classes — zero TSX/TS references, no dynamic
-   template produces them: .canvas-edge-arrows (this line), .canvas-bar-stub,
-   .canvas-inspector-mono, .canvas-inspector-note, .canvas-inspector-prompt,
-   .canvas-menu-row-fetch, .canvas-audio-instrumental, .canvas-studios-body,
-   .canvas-studios-fallback, .canvas-studios-tabs (StudiosDock residue).
-   Tracked in docs/audit/wiring-check-2026-09-26.md §6. */
-.canvas-edge-arrows { position: absolute; width: 0; height: 0; }
 .canvas-zoom-controls { position: absolute; right: 14px; bottom: 14px; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--color-surface-abyss) 82%, transparent); backdrop-filter: blur(4px); }
 .canvas-zoom-controls button { display: grid; place-items: center; width: 26px; height: 26px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
 .canvas-zoom-controls button:hover { border-color: var(--line-strong); color: var(--text); }
@@ -227,9 +220,6 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-inspector-body dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; margin: 0; font-size: var(--text-sm); }
 .canvas-inspector-body dt { color: var(--muted-2); }
 .canvas-inspector-body dd { margin: 0; color: var(--color-text-soft); overflow-wrap: anywhere; }
-.canvas-inspector-prompt { max-height: 96px; overflow-y: auto; }
-.canvas-inspector-mono { font-family: ui-monospace, Consolas, monospace; font-size: var(--text-2xs); }
-.canvas-inspector-note { margin: 0; padding-top: 8px; border-top: 1px dashed var(--line); color: var(--muted-2); font-size: var(--text-2xs); }
 
 /* ---- summonable index (§4) -------------------------------------------------- */
 .canvas-index-overlay { position: absolute; inset: 0; z-index: 50; display: grid; place-items: start center; padding-top: 16vh; background: rgba(0,0,0,.7); }
@@ -282,7 +272,6 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-bar-mode { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
 .canvas-bar-chip-tile { max-width: 160px; overflow: hidden; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .canvas-bar-chip-tile:hover { color: var(--text); border-color: var(--line-strong); }
-.canvas-bar-stub { padding: 4px 9px; border: 1px dashed var(--line-strong); border-radius: 999px; color: var(--muted-2); font-size: var(--text-sm); white-space: nowrap; }
 .canvas-bar-opmenu { position: relative; }
 .canvas-bar-opmenu-pop { position: absolute; bottom: calc(100% + 6px); left: 0; display: grid; gap: 2px; min-width: 170px; padding: 5px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); box-shadow: 0 18px 48px rgba(0,0,0,.5); }
 .canvas-bar-opmenu-pop button { padding: 6px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text); font-size: var(--text-md); text-align: left; cursor: pointer; }
@@ -308,8 +297,6 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
    wrapper stacks the (disabled) action button and the deep-link so the
    guidance stays clickable without enabling the action. */
 .canvas-menu-rowwrap { display: grid; gap: 3px; }
-.canvas-menu-row-fetch { display: inline-flex; align-items: center; gap: 5px; width: max-content; padding: 3px 8px; border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--accent) 7%, transparent); color: var(--accent); font-size: var(--text-2xs); font-weight: 600; cursor: pointer; }
-.canvas-menu-row-fetch:hover { border-style: solid; background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .canvas-endpoint-menu footer { padding: 7px 11px; border-top: 1px solid var(--line); color: var(--muted-2); font-size: var(--text-2xs); }
 .canvas-take-fork { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: var(--text-2xs); cursor: pointer; }
 .canvas-take-fork:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
@@ -599,7 +586,6 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-audio-dock { z-index: 55; display: grid !important; grid-template-rows: auto minmax(0, 1fr) auto; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); box-shadow: 0 18px 48px rgba(0,0,0,.5); overflow: hidden; }
 .canvas-audio-dock .canvas-inspector-header svg { color: var(--accent); flex: none; }
 .canvas-audio-dock .canvas-properties-section textarea { width: 100%; padding: 7px 9px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: var(--text-sm); resize: vertical; }
-.canvas-audio-instrumental { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: var(--text-sm); }
 
 /* ---- Phase 4: the docked Settings panel (§8) ------------------------------------- */
 /* display needs !important: react-rnd writes `display: inline-block` as an INLINE
@@ -610,14 +596,6 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-settings-dock .canvas-inspector-header svg { color: var(--accent); flex: none; }
 .canvas-settings-body { min-height: 0; overflow: auto; }
 .canvas-settings-body .standard-page { min-height: auto; padding: 14px 16px 22px; }
-
-/* ---- Phase 5: the studios + diagnostics docks (§8 kept surfaces) ------------------ */
-.canvas-studios-tabs { display: flex; gap: 4px; margin-left: 10px; flex-wrap: wrap; }
-/* The tab row lives inside the inspector header, whose `button` rule pins
-   icon-close buttons to 22x22 — text tabs must size to their label again. */
-.canvas-studios-tabs .canvas-chip { width: auto; height: auto; padding: 2px 8px; font-size: var(--text-2xs); }
-.canvas-studios-body .studio-shell, .canvas-studios-body .movie-shell { min-height: auto; padding: 12px 14px 20px; }
-.canvas-studios-fallback { padding: 24px; color: var(--muted-2); font-size: var(--text-xs); }
 
 /* ---- Phase 4: the library projection (§7 V) -------------------------------------- */
 .canvas-library-panel { width: min(720px, 90vw); }

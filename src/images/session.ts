@@ -164,10 +164,10 @@ export function readSessionSettings(raw: Record<string, unknown> | null | undefi
 
 /** The effective transport of a slot: expert override > auto-per-role.
  *
- * FIXME(wiring): effectiveTransport + hasTransportOverrides (below) have zero
- * callers — the expert transport-override seam was built (slot.transport, the
- * per-role table) but no UI surfaces it and no submit path consults it.
- * Tracked in docs/audit/wiring-check-2026-09-26.md §5. */
+ * STUB(wiring): the expert transport-override seam is built (slot.transport,
+ * the per-role table below) but no UI surfaces it and no submit path consults
+ * it — awaits the images workbench's expert surface. Ruled 2026-09-26, see
+ * docs/audit/wiring-check-2026-09-26.md §5. */
 export function effectiveTransport(slot: SessionRefSlot): H3ImgTransport {
   return slot.transport ?? TRANSPORT_FOR_ROLE[slot.role]
 }

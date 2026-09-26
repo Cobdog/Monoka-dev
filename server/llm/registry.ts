@@ -81,14 +81,6 @@ export function loadFamilyManifests(): Map<string, FamilyManifest> {
   return loaded
 }
 
-/** Test hook: drops the memoized manifests so the next load re-reads disk.
- *
- * FIXME(wiring): dead test hook — zero callers, including tests. Tracked in
- * docs/audit/wiring-check-2026-09-26.md §1. */
-export function resetFamilyManifestCache() {
-  cache = null
-}
-
 /** Infers a model's family from its name: the manifest whose match token
  *  appears in the (lowercased) model name wins — longest token first so
  *  'deepseek-vl' style compounds resolve deterministically. Unknown names

@@ -429,17 +429,19 @@ export const SCENARIOS: VisionScenario[] = [
       // a FOREIGN folder (no marker → the present badge) on krea2-anypaint —
       // the row DIRECTLY below krea2edit in the registry order, so the
       // honest states share one capture frame; a Comfy-Registry pyproject
-      // folder (managed-by-ComfyUI badge + version 1.4.2) on krea2-controlnet
-      // two rows above krea2edit; and a studio marker at an OLD revision
-      // (outdated badge) on ComfyUI-MiniMax-H3-Turbo (radiance carried this
-      // fixture before the LTX pack removal — Phase 0, 2026-09-20; first
-      // judged bundle 2026-09-19; the state set extended 2026-09-19 by
-      // mjhlt3k).
+      // folder (managed-by-ComfyUI badge + version 1.4.2) on
+      // comfyui-minimax-h3-audio-T8 directly above krea2edit (the CNR
+      // vehicle moved there when the facok krea2-controlnet row was cut —
+      // wiring-check §1.5, 2026-09-26); and a studio marker at an OLD
+      // revision (outdated badge) on ComfyUI-MiniMax-H3-Turbo (radiance
+      // carried this fixture before the LTX pack removal — Phase 0,
+      // 2026-09-20; first judged bundle 2026-09-19; the state set extended
+      // 2026-09-19 by mjhlt3k).
       writeFileSync(join(externalDir, 'comfyui-krea2edit', '.studio-node.json'), `${JSON.stringify({ id: 'krea2edit', revision: '86f886dac23013d88996e3a2e99093ba44d322fb', mode: 'user-fetch', installedAt: Date.now(), source: 'vision' }, null, 2)}\n`)
       mkdirSync(join(externalDir, 'krea2-anypaint'), { recursive: true })
       writeFileSync(join(externalDir, 'krea2-anypaint', 'user-file.py'), '# theirs\n')
-      mkdirSync(join(externalDir, 'comfyui-krea2-controlnet'), { recursive: true })
-      writeFileSync(join(externalDir, 'comfyui-krea2-controlnet', 'pyproject.toml'), '[project]\nname = "comfyui-krea2-controlnet"\nversion = "1.4.2"\n\n[tool.comfy]\nPublisherId = "facok"\n')
+      mkdirSync(join(externalDir, 'comfyui-minimax-h3-audio-T8'), { recursive: true })
+      writeFileSync(join(externalDir, 'comfyui-minimax-h3-audio-T8', 'pyproject.toml'), '[project]\nname = "comfyui-minimax-h3-audio-T8"\nversion = "1.4.2"\n\n[tool.comfy]\nPublisherId = "T8mars"\n')
       mkdirSync(join(externalDir, 'ComfyUI-MiniMax-H3-Turbo'), { recursive: true })
       writeFileSync(join(externalDir, 'ComfyUI-MiniMax-H3-Turbo', '.studio-node.json'), `${JSON.stringify({ id: 'minimax-h3-turbo', revision: '0123456789abcdef0123456789abcdef01234567', mode: 'user-fetch', installedAt: Date.now(), source: 'vision' }, null, 2)}\n`)
 
@@ -485,7 +487,7 @@ export const SCENARIOS: VisionScenario[] = [
           SHELL_CONTEXT,
           'A floating Settings DOCK panel over the dimmed canvas (header "Settings — docked" with an × close). The body scrolls INSIDE the panel and this capture is taken with the "Node packs" card pinned at the TOP of the visible body; sections above it sit above the fold (intended scrolling, not clipping; judge only what is in frame).',
           'The "Node packs" card is in frame: title "Node packs" with a branch icon, a one-line sub-note about rows being grouped by the feature they serve with install state and version verdicts per row (the full install policy sits behind a collapsed "How node-pack installs work" summary — the collapsed state is intended, not a defect), and a "Refresh" button on the heading\'s right side.',
-          'Each pack row is a horizontal strip: a bold pack name, a small license badge (e.g. "Apache-2.0", "GPL-3.0", "NO-LICENSE"), an install-mode tag ("user-fetch" / "first-party"), a STATUS BADGE, optionally a muted version string beside the badge, a one-line description, a muted meta line with the repository URL and pinned revision, and at the right "Fetch…" / "Install" / "Uninstall" buttons as applicable (buttons may be disabled — intended availability state, not a defect; there is NO "local repo directory" path input anywhere — installs never prompt for an absolute path, by design). Rows sit under small uppercase FEATURE GROUP headings (e.g. "H3 VIDEO", "KREA 2 EDIT") — intended grouping by the feature a pack serves, not a defect.',
+          'Each pack row is a horizontal strip: a bold pack name, a small license badge (e.g. "Apache-2.0", "GPL-3.0", "MIT"), an install-mode tag ("user-fetch" / "first-party"), a STATUS BADGE, optionally a muted version string beside the badge, a one-line description, a muted meta line with the repository URL and pinned revision, and at the right "Fetch…" / "Install" / "Uninstall" buttons as applicable (buttons may be disabled — intended availability state, not a defect; there is NO "local repo directory" path input anywhere — installs never prompt for an absolute path, by design). Rows sit under small uppercase FEATURE GROUP headings (e.g. "H3 VIDEO", "KREA 2 EDIT") — intended grouping by the feature a pack serves, not a defect.',
           'STATUS BADGES in THIS frame: at least one row reading "installed on instance" (a green/positive tone — the instance serves that pack\'s node classes with no folder install at all) and most visible rows reading "missing" (a muted tone). The other badge states live further down the list and are captured in the companion checkpoints — their absence here is NOT a defect.',
           'The engine being a fake local instance is invisible in this capture; no red error banner is expected in this card (the route-level error strip ABSENT is correct).',
           'Defects to flag: rows with no status badge, two badges overlapping other text, a badge clipped mid-word, the card title truncated, pack descriptions overlapping the action column, a "local repo directory" input visible anywhere.',
@@ -496,17 +498,16 @@ export const SCENARIOS: VisionScenario[] = [
         label: 'Settings dock — node packs matrix rows: managed-by-ComfyUI, restart-needed, present-not-managed',
         drive: async (page) => {
           // The pack list is long; the honest states live mid-list. Bring the
-          // comfyui-krea2-controlnet row (managed by ComfyUI) to the top so
-          // four badge states share one frame: controlnet (managed), the
-          // h3-audio-t8 row below it (missing), then krea2edit (installed @
-          // pin — restart) and krea2-anypaint directly below (present — not
-          // studio-managed).
+          // comfyui-minimax-h3-audio-T8 row (managed by ComfyUI) to the top
+          // so three badge states share one frame: T8 (managed), then
+          // krea2edit directly below (installed @ pin — restart) and
+          // krea2-anypaint below that (present — not studio-managed).
           // (Section class is node-packsS-section — a wrong selector here
           // silently captures an identical frame; the first judged bundle
           // caught exactly that, judge fail 2026-09-19.)
           await page.evaluate(() => {
             const rows = Array.from(document.querySelectorAll<HTMLElement>('.node-packs-section .node-pack-row'))
-            const target = rows.find((row) => row.textContent?.includes('comfyui-krea2-controlnet'))
+            const target = rows.find((row) => row.textContent?.includes('comfyui-minimax-h3-audio-T8'))
             target?.scrollIntoView({ block: 'start' })
             // The sticky Settings rail is OPAQUE since the ghost-token fix
             // (it used to compute transparent — the judge could read rows
@@ -521,11 +522,11 @@ export const SCENARIOS: VisionScenario[] = [
         },
         rubric: [
           SHELL_CONTEXT,
-          'The same Settings dock, now scrolled WITHIN the "Node packs" list: the visible frame starts at or near the "comfyui-krea2-controlnet" pack row (bold name, a "NO-LICENSE" license badge, a "user-fetch" mode tag); rows above sit above the fold (intended scrolling, not clipping; judge only what is in frame).',
-          'The comfyui-krea2-controlnet row carries a STATUS BADGE reading "managed by ComfyUI" in an AMBER informational tone (distinct from both the green ok tone and the red-leaning warning tone) followed by a muted version string reading "1.4.2": the folder carries ComfyUI-Registry metadata, the studio never touches it — this attribution is CORRECT, not a defect.',
-          'Two rows below, the "comfyui-krea2edit" row (an "Apache-2.0" license badge) carries a STATUS BADGE reading "installed @ pin — restart engine to activate" (a warning tone) with a muted version string showing a 12-character revision hash ("86f886dac230"): the files are placed at the pinned revision but the running instance has not loaded them — this honest state is CORRECT, not a defect.',
+          'The same Settings dock, now scrolled WITHIN the "Node packs" list: the visible frame starts at or near the "comfyui-minimax-h3-audio-T8" pack row (bold name, a "GPL-3.0" license badge, a "user-fetch" mode tag); rows above sit above the fold (intended scrolling, not clipping; judge only what is in frame).',
+          'The comfyui-minimax-h3-audio-T8 row carries a STATUS BADGE reading "managed by ComfyUI" in an AMBER informational tone (distinct from both the green ok tone and the red-leaning warning tone) followed by a muted version string reading "1.4.2": the folder carries ComfyUI-Registry metadata, the studio never touches it — this attribution is CORRECT, not a defect.',
+          'Directly below, the "comfyui-krea2edit" row (an "Apache-2.0" license badge) carries a STATUS BADGE reading "installed @ pin — restart engine to activate" (a warning tone) with a muted version string showing a 12-character revision hash ("86f886dac230"): the files are placed at the pinned revision but the running instance has not loaded them — this honest state is CORRECT, not a defect.',
           'The row DIRECTLY below that (the "krea2-anypaint" pack, an "MIT" license badge) carries a STATUS BADGE reading "present — not studio-managed" (the warning tone — a pre-existing folder in the external target: reported as present, never replaced or deleted by the studio): also CORRECT.',
-          'The row between controlnet and krea2edit ("comfyui-minimax-h3-audio-T8") reads "missing" (muted tone). Pack descriptions and muted repository-URL meta lines sit under each name; the right column holds "Fetch…" / "Install" / "Uninstall" buttons as applicable (disabled states are intended availability, not defects; the action column may WRAP to two lines on narrow docks — intended; NO path input anywhere).',
+          'Pack descriptions and muted repository-URL meta lines sit under each name; the right column holds "Fetch…" / "Install" / "Uninstall" buttons as applicable (disabled states are intended availability, not defects; the action column may WRAP to two lines on narrow docks — intended; NO path input anywhere).',
           'Defects to flag: any of the three named badges illegible or mislabeled (e.g. reading "missing"), badges overlapping other text, a badge clipped mid-word, the version strings missing beside the managed and restart badges, descriptions overlapping the action column, an action button clipped to a sliver at the card edge, a "local repo directory" input visible.',
         ].join(' '),
       },

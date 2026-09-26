@@ -36,7 +36,7 @@ export const FAILURE_BUCKETS: Record<FailureBucketId, FailureBucket> = {
   'out-of-memory': {
     id: 'out-of-memory',
     label: 'GPU memory exhausted',
-    cause: 'The engine ran out of VRAM mid-render. Lower resolution or duration, use a smaller quant of the diffusion model, or let the automatic engine-reset + tiled-VAE retry absorb it — see the GPU tier guidance in Settings.',
+    cause: 'The engine ran out of VRAM mid-render. Lower resolution or duration, use a smaller quant of the diffusion model, or let the automatic engine-reset + tiled-VAE retry absorb it.',
   },
   'engine-unreachable': {
     id: 'engine-unreachable',
