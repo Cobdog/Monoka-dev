@@ -341,3 +341,38 @@ Two instances, two regimes — and our emitted graphs are pass-through/inert in 
 From **multishot's** README: `ComfyUI_JoyAI_Echo_GGUF_Nodes` (bundled **modified** in its release zip — license unread), base Motion-Context pinned 0.3.1 by its preflight (conflicts with one-node's MultiRef preference), `RES4LYF` (beta57), `ComfyUI-sol-attn`, `comfyui-minimax-h3-blockcache-T8` (T8mars — same author as our h3-audio-T8 row), `ComfyUI-Custom-Scripts`, `comfyui-inspire-pack`. From **one-node's** README: `ComfyUI-H3-Motion-Context-MultiRef` (seitanism, GPL-3.0 — **the actual extra_conds patch owner in its recipe**; pin `0719855` on core 0.32), `comfyui-vrgamedevgirl` (Audio Lock), upstream `LeonQ8/ComfyUI-ALLinONE-MinimaxH3`. **Caveat:** the five-dir mirror inventory is assembled from session evidence — if their real instance carries more, this list is the likely residue; the next mirror pass reconciles.
 
 **Examined this pass (ledger extension):** lora-manager @`77109b3c` (local, GPL-3.0) · ComfyUI-H3-Multishot @`d7d1977` (web, MIT) · OneNode-MinimaxH3 @`2ba3a2e` (web, GPL-3.0, identification caveated) · ComfyUI-VideoHelperSuite @`4d907be` (web, GPL-3.0) · base Motion-Context v0.6.2 extra_conds negative check (local) · VHS `utils.hook` chain semantics (web). Crash traces: **[COMM]** summaries only, not re-read.
+
+---
+
+## 12. ADDENDUM 2026-09-26 (later) — ruling #1 flows back: ostris-edit KEPT+WIRED (task `aunt0rl`)
+
+The maintainer's inventory decision
+([node-inventory-decision-2026-09-26.md](node-inventory-decision-2026-09-26.md)
+§Rulings #1 — *"Krea 2 edit should also use the Ostris edit, so we can
+utilize Cierpliwy/krea2-inpaint-edit"*) **reverses §1.3's and §2-note-2's
+cut-candidate verdict** for `comfyui-krea2-ostris-edit`. The redundancy
+argument survives unchanged *where Kreatine runs* — but the Cierpliwy
+weights are an ostris-recipe artifact with no Kreatine dependency, so the
+non-Kreatine lane now has a reason to keep the pack. What landed:
+
+- **`ENGINE_NODE_PACKS` row `krea2-ostris-edit`** (MIT, user-fetch, sha
+  `7756566160c4a1b24bb1bd9f0ff3ced1a83d7547` — the shared install's rev;
+  classes `TextEncodeKrea2OstrisEdit` + `Krea2OstrisEditModelPatch`) + the
+  `pack:krea2-ostris-edit` fetch entry and the
+  `krea2-ostris-inpaint-edit` weights row (all three variants,
+  sha256-pinned at repo `9faed2d2…`, `krea-2-community-license` per card
+  metadata). Licenses-registry rows in the same commit.
+- **The `krea2edit.ostris` family** in `src/lib/graph/krea2edit.ts` — the
+  t=0 inpaint arm with the black-region input convention, kv_cache ON
+  pinned (the card's hard rule; the recipe audit now flags it off).
+  Assessment + wiring truth:
+  [cierpliwy-krea2-inpaint-edit.md](cierpliwy-krea2-inpaint-edit.md).
+  STATUS **PROPOSED-PENDING-TEST** vs the refine/outpaint families on the
+  edit-preservation golden domains, cost-scored — baseline candidate, no
+  default flip (the card's gallery evidence is author-selected, not
+  measured).
+
+§1.3's row verdict is superseded by this addendum (the table cell is left
+as-captured; this section is the dated record). Kreatine adoption on the
+Krea lane would re-apply the supersession the other way — the modularity
+contract keeps the pull-out trivial either way.

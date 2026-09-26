@@ -64,6 +64,7 @@ const STOCK_CLASSES = [
   'ReferenceLatent', 'ConditioningZeroOut', 'CLIPTextEncode', 'KSampler',
   'GetImageSize', 'EmptyFlux2LatentImage', 'Flux2Scheduler', 'ModelSamplingAuraFlow', 'EmptySD3LatentImage',
   'EmptyMiniMaxMusic3LatentAudio', 'MiniMaxMusic3TextEncode',
+  'SolidMask', 'MaskToImage', 'ImageCompositeMasked',
 ]
 
 /** Family + pack classes beyond stock that our builders/registry can emit. */
@@ -78,6 +79,10 @@ const PACK_CLASSES = [
   'MiniMaxH3LoraFormLoader',                   // first-party form adapter (source-derived entry below)
   'Krea2EditModelPatch', 'Krea2EditGroundedEncode',
   'Krea2AnyPaintPrepare', 'Krea2AnyPaintEncode', 'Krea2AnyPaintModelPatch',
+  // ostris Krea2 edit pack (ruling #1, 2026-09-26 — the Cierpliwy inpaint-edit
+  // lane): the pack's entire 2 classes. Installed on the shared install at
+  // 7756566; source-derived in the committed fixture until the next capture.
+  'TextEncodeKrea2OstrisEdit', 'Krea2OstrisEditModelPatch',
   // astropuzzo H3 Image Studio (task afvlbk4 — the T=1/packet adoption):
   // the five load-bearing classes this repo's builders emit. Captured REAL
   // from the shared install with the pack cloned at 47dea30 (2026-09-22);
