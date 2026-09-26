@@ -850,6 +850,17 @@ test('the summonable index searches and navigates to the region (⌘K)', async (
 // ---------------------------------------------------------------------------
 test('scene deletion reaches the UI: trash, restore, and the one explicit empty', async ({ page }) => {
   const problems = await trackErrors(page)
+  // (testing.md's shared-home discipline, the datasets pattern) this spec
+  // asserts EXACT row counts — start from a clean project slate through the
+  // store's own tombstone API, never a hand deletion. Other specs' seeded
+  // projects otherwise accumulate in the shared home and shift the counts.
+  {
+    const listed = await page.request.get('/api/lan/documents/projects')
+    const body = await listed.json() as { projects?: Array<{ id: string }> }
+    for (const project of body.projects ?? []) {
+      await page.request.post('/api/lan/documents/projects/delete', { data: { id: project.id } })
+    }
+  }
   await resetSession(page)
   await page.goto('/?canvas=1')
   await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
@@ -917,6 +928,77 @@ test('scene deletion reaches the UI: trash, restore, and the one explicit empty'
   const emptied = await (await page.request.get('/api/lan/documents/chains?trash=1')).json() as { chains: Array<{ id: string }> }
   expect(emptied.chains.map((chain) => chain.id)).not.toContain(victim.id)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// THE ARCHIVE EXPORT + CONTROL-TRACK DELETE (wiring-check §2.4 + §2.2,
+// 2026-09-26): the store always had both routes; these are the UI reaching
+// them. Export = the backup story (a .canvas.zip download per project row
+// in the index); control-track delete = the chain inspector's per-track
+// trash with the blast radius stated (the row + its GC protection go; the
+// media is only collected by a later sweep; no graph consumes a track yet).
+// ---------------------------------------------------------------------------
+test('documents export + control-track delete reach the UI', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('archive export probe scene')
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 10_000 })
+  const document0 = await activeDocument(page)
+  const chainId = document0.chains[0]!.id
+
+  // The export affordance: a project row in the index carries the download,
+  // and clicking it produces the archive (a real browser download event).
+  await page.keyboard.press('ControlOrMeta+k')
+  await expect(page.locator('[data-canvas-index]')).toBeVisible()
+  const exportButton = page.locator('[data-canvas-index-export]').first()
+  await expect(exportButton).toBeVisible()
+  const downloadReady = page.waitForEvent('download', { timeout: 15_000 })
+  await exportButton.click()
+  const download = await downloadReady
+  expect(download.suggestedFilename()).toMatch(/\.canvas\.zip$/)
+  await expect(page.locator('[data-canvas-toast="success"]').first()).toContainText('Archive downloaded', { timeout: 10_000 })
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-canvas-index]')).toHaveCount(0)
+
+  // The control-track affordance: a stored track (written the way the pose
+  // rig dock writes one) shows in the inspector's disclosure and deletes
+  // with the blast radius stated. The raw-API write needs a reload for the
+  // client's document to see it (the store refreshes on its own writes).
+  const created = await page.request.post('/api/lan/documents/control-tracks', { data: { chainId, kind: 'pose', source: 'pose-rig', inputRef: 'canvas-blobs/aa/deadbeef' } })
+  expect(created.status()).toBe(200)
+  await page.reload()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-tile]').first().click()
+  const panel = page.locator('[data-canvas-properties]')
+  await expect(panel).toBeVisible()
+  const tracksSection = panel.locator('[data-canvas-section="control-tracks"]')
+  await expect(tracksSection).toBeVisible({ timeout: 10_000 })
+  await tracksSection.locator('summary').click()
+  await expect(tracksSection.locator('[data-canvas-control-track-delete]')).toHaveCount(1)
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('Delete this pose control track')
+    expect(dialog.message()).toContain("garbage collector")
+    void dialog.accept()
+  })
+  await tracksSection.locator('[data-canvas-control-track-delete]').first().click()
+  await expect(page.locator('[data-canvas-toast="success"]').first()).toContainText('Control track deleted', { timeout: 10_000 })
+  // The disclosure leaves with the last track (authored-content gating).
+  await expect(tracksSection).toHaveCount(0, { timeout: 10_000 })
+  const document1 = await activeDocument(page)
+  const chainAfter = document1.chains.find((chain) => chain.id === chainId)!
+  expect(chainAfter.controlTracks ?? []).toHaveLength(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  // Shared-home hygiene: this spec seeds its own project — tombstone it
+  // through the store's own API on the way out (the datasets discipline) so
+  // the exact-count specs never see it accumulate.
+  const sessionAtEnd = await (await page.request.get('/api/lan/documents/session')).json() as { session: { activeProject: string | null } }
+  if (sessionAtEnd.session.activeProject) {
+    await page.request.post('/api/lan/documents/projects/delete', { data: { id: sessionAtEnd.session.activeProject } }).catch(() => undefined)
+    await page.request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } })
+  }
 })
 
 // ---------------------------------------------------------------------------

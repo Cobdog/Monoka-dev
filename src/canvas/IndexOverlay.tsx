@@ -17,7 +17,7 @@
  * deletes from here — the store's GC owns those.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Clapperboard, Search, Trash2 } from 'lucide-react'
+import { Clapperboard, Download, Search, Trash2 } from 'lucide-react'
 import { documentsApi, type SearchHit } from './api'
 import { useCanvasStore } from './store'
 import { useJobsStore } from '../state/jobsStore'
@@ -66,6 +66,8 @@ export function IndexOverlay() {
   // undo window the GC owns), fetched on entry, refreshed after acts.
   const [trashMode, setTrashMode] = useState(false)
   const [trashed, setTrashed] = useState<DocumentChain[] | null>(null)
+  // The in-flight project-archive download (one at a time, keyed by project).
+  const [exporting, setExporting] = useState<string | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -223,6 +225,23 @@ export function IndexOverlay() {
     refreshTrash()
   }
 
+  // The project archive download (§7 export — the backup story): the zip
+  // (manifest + document rows + blob tree) lands as a browser download via
+  // the existing documents route. Import stays a deliberate stub — the
+  // design rounds' project-home owns that surface.
+  const exportProject = async (row: Row) => {
+    if (!row.projectId || exporting) return
+    setExporting(row.projectId)
+    try {
+      const { fileName } = await documentsApi.exportProjectArchive(row.projectId)
+      toast('success', `Archive downloaded — ${fileName}.`)
+    } catch (error) {
+      toast('error', `The archive could not be exported: ${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setExporting(null)
+    }
+  }
+
   const trashRows = (trashed ?? []).filter((chain) => {
     const needle = query.trim().toLowerCase()
     if (!needle) return true
@@ -321,6 +340,19 @@ export function IndexOverlay() {
                   onClick={() => void trashScene(row)}
                 >
                   <Trash2 size={11} />
+                </button>
+              )}
+              {row.kind === 'project' && row.projectId && (
+                <button
+                  type="button"
+                  className="canvas-index-row-cancel"
+                  aria-label={`Export ${row.label} as an archive`}
+                  data-canvas-index-export
+                  title="Download this canvas as a .canvas.zip archive (manifest, scenes, takes, media) — the backup/migration copy"
+                  disabled={exporting !== null}
+                  onClick={() => void exportProject(row)}
+                >
+                  {exporting === row.projectId ? '…' : <Download size={11} />}
                 </button>
               )}
             </li>
