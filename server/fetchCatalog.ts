@@ -921,7 +921,11 @@ export function describeFetchDestination(entry: FetchCatalogEntry, settings: App
 }
 
 /** The pack registry entries the fetcher can install (license data lives in
- *  ENGINE_NODE_PACKS — surfaced here for the integrity tests). */
+ *  ENGINE_NODE_PACKS — surfaced here for the integrity tests).
+ *
+ *  FIXME(wiring): dead export — zero callers anywhere, including the
+ *  integrity tests this was surfaced for. Tracked in
+ *  docs/audit/wiring-check-2026-09-26.md §1. */
 export function fetchableNodePacks(): typeof ENGINE_NODE_PACKS {
   return ENGINE_NODE_PACKS.filter((pack) => FETCH_CATALOG.some((entry) => entry.packId === pack.id))
 }

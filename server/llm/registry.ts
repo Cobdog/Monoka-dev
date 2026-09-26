@@ -81,7 +81,10 @@ export function loadFamilyManifests(): Map<string, FamilyManifest> {
   return loaded
 }
 
-/** Test hook: drops the memoized manifests so the next load re-reads disk. */
+/** Test hook: drops the memoized manifests so the next load re-reads disk.
+ *
+ * FIXME(wiring): dead test hook — zero callers, including tests. Tracked in
+ * docs/audit/wiring-check-2026-09-26.md §1. */
 export function resetFamilyManifestCache() {
   cache = null
 }

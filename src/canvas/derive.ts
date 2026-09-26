@@ -533,7 +533,12 @@ export type MockJob = { id: string; prompt: string; mediaType: 'video' | 'image'
 /** The seed tile's queued-state job (jobsStore shape subset). Generation is
  *  Phase 2 — Phase 1 parks the job honestly in the queue with status
  *  'queued' and marks it a canvas mock by id prefix + manifest, so the radar
- *  and the tile ring read real store state and nothing pretends to render. */
+ *  and the tile ring read real store state and nothing pretends to render.
+ *
+ *  FIXME(wiring): mockJobFor + isCanvasMockJob below are dead helpers — zero
+ *  callers; the store builds its mock job facts inline (store.ts uses
+ *  CANVAS_MOCK_JOB_PREFIX directly), so this Phase-1 seam never got its
+ *  caller. Tracked in docs/audit/wiring-check-2026-09-26.md §5. */
 export function mockJobFor(spec: MockJob): JobFact & { status: 'queued'; mode: string; createdAt: number } {
   return { id: `${CANVAS_MOCK_JOB_PREFIX}${spec.id}`, status: 'queued', progress: 0, prompt: spec.prompt, mode: spec.mediaType === 'image' ? 'text' : 'text', createdAt: Date.now() }
 }
