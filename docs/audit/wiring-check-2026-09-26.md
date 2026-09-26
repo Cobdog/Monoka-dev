@@ -36,6 +36,49 @@ incremental reindex (now 15,363 symbols, current). The stale index produced
 false candidates (e.g. `MobileApp.tsx`, `CharacterStudio.tsx`) — a reminder
 that index verdicts were cross-checked by grep against the tree throughout.
 
+## Resolutions — the wire-or-remove pass (2026-09-26, task bp6vyzq)
+
+The maintainer's ruling on this inventory: *"either we wire them up, or we
+scrap them; if it is stubbed for a future component or waiting on something
+we have planned, mark it as a stub and document it."* Per-finding outcomes
+(the FIXME/STUB tags at each site are the in-code record; this is the map):
+
+| § | Outcome | Where it landed |
+|---|---|---|
+| 1.1 | **RESOLVED-WIRED (PR B)** | promptWatch adopted as the queue sweep's loop engine |
+| 1.2 | **RESOLVED-STUB** | awaits the asset-authoring surface (remediation plan D1's re-attachment point) — `7f8f2fe` |
+| 1.3 | **RESOLVED-STUB** | awaits the composer's contract-layer adoption (prompt-doctrine consolidation) — `7f8f2fe` |
+| 1.4 | **RESOLVED-STUB** | FINISH stands, task 9up52mj, behind the centralization wave — tag restyled `7f8f2fe` |
+| 1.5 | **RESOLVED-CUT** | registry row + fetch entry + retired license rows — `7f8f2fe` |
+| 1.6 | **RESOLVED-STUB** | parked with the audio lane (silent-inference toggle, vzpyldn) — `7f8f2fe` |
+| 1.7 | **RESOLVED-STUB** | parked with the long-form lane decision (TS test vs Motion-Context) — `7f8f2fe` |
+| 1.8 | **REFUTED-KEPT** | `contractVerdict` HAS a live caller — `scripts/experiments/efs1-arms.cjs` (the E-FS1 bake-off arm runner) renders a failed arm's violations with it. The audit's "zero callers" was wrong; the export stays — `7f8f2fe` |
+| 1.9 | **RESOLVED-CUT** | `fetchableNodePacks` removed — `7f8f2fe` |
+| 1.10 | **RESOLVED-CUT** | `resetFamilyManifestCache` removed — `7f8f2fe` |
+| 1.11 | **RESOLVED-CUT** | the two authoring exports removed; the spine stays (ruled KEEP, D1/R-14) — `7f8f2fe` |
+| 2.1 | **RESOLVED-CUT** | route + `streamLanEvents` + the query-token entry removed — `7f8f2fe` |
+| 2.2 | **RESOLVED-WIRED (PR B)** | control-track delete affordance on the chain inspector |
+| 2.3 | **RESOLVED-STUB** | awaits the maintenance/ops surface (Control Center diagnostics) — `7f8f2fe` |
+| 2.4 | **RESOLVED-WIRED (PR B)** | export affordance on the canvas index; import stays stubbed (project-home owns it) |
+| 2.5 | **RESOLVED-STUB** | awaits the maintenance/ops surface (Control Center diagnostics) — `7f8f2fe` |
+| 2.6 | **RESOLVED-CUT** | the standalone exports listing removed — `7f8f2fe` |
+| 2.7 | **RESOLVED-STUB** | awaits the LLM module surface — `7f8f2fe` |
+| 2.8 | **RESOLVED-CUT** | `chooseDirectory` removed (client + type) — `7f8f2fe` |
+| 3.1 | **RESOLVED-CUT** | maintainer ruling 2026-09-26: *"sounds like a neat feature but more hassle than it's worth to get right"* — key, picker, CSS, pointers, and the poison-test vehicle all removed — `7f8f2fe` |
+| 4.1 | **RESOLVED-CUT** | `LicenseNotice.tsx` + `.license-notice` CSS removed (minimal-surface posture recorded) — `7f8f2fe` |
+| 4.2 | **RESOLVED-CUT** | `components/media.tsx` removed — `7f8f2fe` |
+| 5.1 | **RESOLVED-CUT** | the mock-job seam pair removed — `7f8f2fe` |
+| 5.2 | **RESOLVED-STUB** | awaits the images workbench's expert surface — `7f8f2fe` |
+| 5.3 | **RESOLVED-CUT** | `knownDivergenceIds` removed — `7f8f2fe` |
+| 6.1–6.8 | **RESOLVED-CUT** | all orphaned artifacts removed — `7f8f2fe` |
+
+Test disposition for the cuts (tests die with what they tested; coverage of
+live machinery was re-vehicleed, not lost): the fetcher consent/stamp/remove
+and runtime/instance foreign + Comfy-Registry flows moved from
+krea2-controlnet to the h3-audio-t8 row; the camera/plan assertions that
+used dead helpers as instruments now inline the transform or read GAP_MENU
+directly. Same commit.
+
 ---
 
 ## §1 — Unwired machinery (built, no live journey reaches it)
