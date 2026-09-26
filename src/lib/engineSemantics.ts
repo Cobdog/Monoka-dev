@@ -24,11 +24,28 @@ export const ENGINE_SEMANTICS_PROVENANCE = {
 
 /** The engine's own frame-grid math, mirrored exactly: promote to the
  * min-5 floor, then snap UP to the 17k+5 grid (5, 22, 39, 56, ...). This is
- * what temporal_shape() does to every `length` before the latent exists. */
+ * what temporal_shape() does to every `length` before the latent exists.
+ * Non-finite input returns as-is (NaN in, NaN out) — the grid is total and
+ * never loops on garbage. */
 export function h3AlignFrameCount(requested: number): number {
   let n = Math.max(5, Math.trunc(requested))
+  if (!Number.isFinite(n)) return n
   while (n % 17 !== 5) n += 1
   return n
+}
+
+/** Truncate DOWN to the grid: the largest 17k+5 point ≤ frames, floored at
+ *  the grid's own minimum (5). The ONE deliberately opposite policy to
+ *  h3AlignFrameCount's snap-up — named, owned, and tested HERE (R1,
+ *  central-model audit) instead of re-derived per reader: the camera port's
+ *  reference truncation (a resampled reference is CUT to its grid point,
+ *  never padded up) and the dataset trainer's clamp direction both read
+ *  this. Which direction a surface needs stays that surface's documented
+ *  decision; the arithmetic is the ledger's alone. */
+export function h3TruncateToGridDown(frames: number): number {
+  const n = Math.max(5, Math.trunc(frames))
+  if (!Number.isFinite(n)) return n
+  return 5 + 17 * Math.max(0, Math.floor((n - 5) / 17))
 }
 
 /** Frame counts the engine honors AS REQUESTED: exactly the 17k+5 grid

@@ -20,7 +20,7 @@
  *  a resolved TE of the wrong dimension class) narrates the existing
  *  refusal machinery's reason and blocks readiness, exactly like the
  *  submission would. */
-import type { ModelFile, ModelSelection, ModelOverrideSlots } from '../types'
+import type { GenerationMode, ModelFile, ModelSelection, ModelOverrideSlots } from '../types'
 import type { ObjectInfo } from './comfyInfo'
 import { dbg } from './dbg'
 import { basenameOf, inferSelections, teDimClassRefusal } from './modelSelection'
@@ -92,6 +92,47 @@ export type H3StackSlotRow = {
  *  classes the engine does not serve, and `ready` is false while any are
  *  missing. No snapshot (or an empty one) keeps the file-only verdict: the
  *  connection rung owns that refusal. */
+/** (R2, central-model audit) THE ONE stack-ready predicate — the membership
+ *  definition of "this H3 render can run," parameterized by what is actually
+ *  being gated, so every surface (the submit gates' modelReady, the canvas
+ *  chip, the diagnostics pair, and this report's own `ready`) derives from
+ *  one rule instead of re-encoding membership per file:
+ *
+ *  - `mode` — which lane the gated graph loads. The video factory's
+ *    UNETLoader picks ref2va ONLY in reference mode, fl2va otherwise, so the
+ *    text/image/frames lanes do not require ref2va (a text-only stack is a
+ *    READY stack — the old chip's blanket ref2va demand soft-gated
+ *    first-frame renders the graph could actually run) and the reference
+ *    lane does. The shared spine (textEncoder, videoVae, audioVae) is always
+ *    required.
+ *  - `turbo` — a turbo plan additionally requires ITS LANE's LoRA: the
+ *    graph runs the tier's step count, and N distilled steps without the
+ *    distillation LoRA is a broken render the old gates waved through.
+ *  - `info` — render readiness: with an object_info snapshot at hand, the
+ *    engine must serve the H3 core node classes (R-29: weights cannot fix a
+ *    node class). No snapshot keeps the file-only verdict — the connection
+ *    rung owns that refusal.
+ *
+ *  Refusal NARRATION stays with the narrators (the report's rows, the submit
+ *  ladder's named messages); this predicate owns membership and nothing
+ *  else. */
+export type H3StackReadinessQuery = {
+  selection: Pick<ModelSelection, 'fl2va' | 'ref2va' | 'textEncoder' | 'videoVae' | 'audioVae' | 'fl2vLora' | 'ref2vLora'>
+  mode?: GenerationMode
+  turbo?: 'off' | '4' | '8'
+  info?: ObjectInfo | Record<string, unknown>
+}
+
+export function h3StackReady(query: H3StackReadinessQuery): boolean {
+  const mode = query.mode ?? 'text'
+  const turbo = query.turbo ?? 'off'
+  const lane = mode === 'reference' ? query.selection.ref2va : query.selection.fl2va
+  const members = [lane, query.selection.textEncoder, query.selection.videoVae, query.selection.audioVae]
+  if (turbo !== 'off') members.push(mode === 'reference' ? query.selection.ref2vLora : query.selection.fl2vLora)
+  if (!members.every(Boolean)) return false
+  return missingCoreNodeClasses(query.info, 'h3-video').length === 0
+}
+
 export function h3StackReport(models: ModelFile[], overrides?: ModelOverrideSlots, info?: ObjectInfo | Record<string, unknown>) {
   const quality = resolveModels('minimax', inferSelections(models, 'off'), models, overrides, { global: overrides })
   const turbo = resolveModels('minimax', inferSelections(models, '8'), models, overrides, { global: overrides })
@@ -128,7 +169,11 @@ export function h3StackReport(models: ModelFile[], overrides?: ModelOverrideSlot
   return {
     rows,
     validated: rows.every((row) => row.present && row.isCanonical),
-    ready: rows.every((row) => row.present) && rows.every((row) => !row.refusal) && missingNodes.length === 0,
+    // (R2) The report's ready is the ONE predicate over its own table
+    // membership: the full stack (text lane + the Turbo-8 row's LoRA) with
+    // no refused pick, on a core-serving engine. Same verdict as before the
+    // recomposition — now derived, never re-encodable.
+    ready: h3StackReady({ selection: turbo.selection, mode: 'text', turbo: '8', info }) && rows.every((row) => !row.refusal),
     warnings: quality.resolution.warnings,
     nodes: { missing: missingNodes },
   }
