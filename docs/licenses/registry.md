@@ -278,3 +278,13 @@ mechanical:
 
 *This registry is engineering diligence, not legal advice (IANAL, as ever).
 The grey areas and the disclaimer live in [policy.md §5](policy.md).*
+
+### §4 addendum — ComfyUI-Viggle-Animate-H3 (2026-09-26: custody taken)
+Upstream (`bhardwajRahul/ComfyUI-Viggle-Animate-H3`) REMOVED; the maintainer handed
+over their local copy (installed at the shared install's `custom_nodes/`, git tree
+intact at `6ae081a` — v1.3.2, "Fix long-video tail conditioning"). **Apache-2.0** —
+clean for full first-party adoption (vendor-eligible, no constraints). Code + example
+workflows only (chunked-sampler, long-video-advanced); the WEIGHTS remain the separate
+drbaph HF quants (int8 47GB / pruned-int8 21GB / r64 DMD-LoRA) — status checked
+2026-09-26, see the Viggle assessment addendum. Posture per the maintainer's ruling:
+managed by us entirely; the local git history is the archive of record.
