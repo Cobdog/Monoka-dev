@@ -3,10 +3,9 @@
 // is covered by e2e/canvas.spec.ts. Sections:
 //   (a) camera store — subscribe/notify, no-op set silence, batch, k clamp
 //   (b) bands — thresholds as data, bandFor at boundaries
-//   (c) coordinate transforms — screenToWorld/worldToScreen round-trip,
-//       zoomAbout anchor stability
-//   (d) culling — visibleWorldRect margin in world units, visibleTileIds
-//       membership + stable order, empty viewport
+//   (c) coordinate transforms — screenToWorld, zoomAbout anchor stability
+//   (d) culling — visibleWorldRect margin in world units (the substrate's
+//       own signature-gated culling consumes it)
 //   (e) cameraForRect — fit respects padding + clamp; centers on the rect
 //   (f) parseViewBlob — tolerant default, layout kept, garbage tolerated
 //   (g) tileStatus — the §4 priority ladder (failed durable-until-dismissed
@@ -89,13 +88,11 @@ test('(c) coordinate transforms', () => {
   const world = cameraMod.screenToWorld(300, 60, camera)
   close(world.x, 400, 1e-9, 'screenToWorld: x = (sx - tx)/k')
   close(world.y, 200, 1e-9, 'screenToWorld: y = (sy - ty)/k')
-  const screen = cameraMod.worldToScreen(world.x, world.y, camera)
-  close(screen.x, 300, 1e-9, 'worldToScreen∘screenToWorld is identity (x)')
-  close(screen.y, 60, 1e-9, 'worldToScreen∘screenToWorld is identity (y)')
   const zoomed = cameraMod.zoomAbout(camera, 2, 300, 60)
-  const anchored = cameraMod.worldToScreen(world.x, world.y, zoomed)
-  close(anchored.x, 300, 1e-6, 'zoomAbout: the anchor point stays fixed')
-  close(anchored.y, 60, 1e-6, 'zoomAbout: the anchor point stays fixed (y)')
+  // (worldToScreen died with wiring-check §6.2 — the anchor check inlines
+  // the wx·k + tx transform it used to provide.)
+  close(world.x * zoomed.k + zoomed.x, 300, 1e-6, 'zoomAbout: the anchor point stays fixed')
+  close(world.y * zoomed.k + zoomed.y, 60, 1e-6, 'zoomAbout: the anchor point stays fixed (y)')
 })
 
 test('(d) viewport + margin culling', () => {
@@ -106,25 +103,16 @@ test('(d) viewport + margin culling', () => {
   const zoomedOut = { x: 0, y: 0, k: 0.5 }
   const zoomedRect = cameraMod.visibleWorldRect(zoomedOut, 1920, 1080, 600)
   close(zoomedRect.w, (1920 + 1200) / 0.5, 1e-9, 'cull rect: screen-px margin converts to world units by 1/k')
-  const tiles = [
-    { id: 'on', x: 0, y: 0, w: 320, h: 296 },
-    { id: 'margin', x: 2400, y: 0, w: 320, h: 296 }, // inside +600 margin
-    { id: 'off', x: 4000, y: 0, w: 320, h: 296 },
-    { id: 'edge-touch', x: -320, y: 0, w: 320, h: 296 }, // touches the left edge exactly
-  ]
-  eq(cameraMod.visibleTileIds(tiles, camera, 1920, 1080, 600), ['on', 'margin', 'edge-touch'], 'culling: membership follows input order (stable)')
-  eq(cameraMod.visibleTileIds([], camera, 1920, 1080, 600), [], 'culling: no tiles yields no ids')
-  const tiny = { x: 940, y: 500, w: 2, h: 2 }
-  eq(cameraMod.visibleTileIds([{ id: 'center', ...tiny }], camera, 1920, 1080, 0), ['center'], 'culling: zero margin still keeps on-screen tiles')
 })
 
 test('(e) cameraForRect (zoom-to-attention / fit)', () => {
   const rect = { x: 0, y: 0, w: 2400, h: 500 }
   const fitted = cameraMod.cameraForRect(rect, 1920, 1080, { fit: true, paddingPx: 200 })
   ok(fitted.k < 1, 'fit: a rect wider than the viewport zooms out')
-  const center = cameraMod.worldToScreen(rect.x + rect.w / 2, rect.y + rect.h / 2, fitted)
-  close(center.x, 960, 1e-6, 'fit: the rect centers horizontally')
-  close(center.y, 540, 1e-6, 'fit: the rect centers vertically')
+  const centerX = (rect.x + rect.w / 2) * fitted.k + fitted.x
+  const centerY = (rect.y + rect.h / 2) * fitted.k + fitted.y
+  close(centerX, 960, 1e-6, 'fit: the rect centers horizontally')
+  close(centerY, 540, 1e-6, 'fit: the rect centers vertically')
   const huge = cameraMod.cameraForRect({ x: 0, y: 0, w: 1e9, h: 1e9 }, 1920, 1080, { fit: true })
   close(huge.k, cameraMod.CAMERA_MIN_K, 0, 'fit: an absurd rect clamps at MIN_K instead of degenerating')
   const attention = cameraMod.cameraForRect({ x: 5000, y: 2000, w: 320, h: 296 }, 1920, 1080, { k: 1 })
@@ -310,9 +298,10 @@ test('(j) attention (radar)', () => {
 test('(k) seedSpawnPoint (spatial-queue contract c) + spawn anti-overlap', () => {
   const camera = { x: 0, y: 0, k: 1 }
   const spawn = derive.seedSpawnPoint(camera, 1920, 1080)
-  const screen = cameraMod.worldToScreen(spawn.x + derive.TILE_W / 2, spawn.y, camera)
-  close(screen.x, 960, 1e-6, 'spawn: centered under the prompt bar')
-  ok(screen.y > 300 && screen.y < 540, 'spawn: lands in the upper-middle band where the bar sits')
+  const screenX = (spawn.x + derive.TILE_W / 2) * camera.k + camera.x
+  const screenY = spawn.y * camera.k + camera.y
+  close(screenX, 960, 1e-6, 'spawn: centered under the prompt bar')
+  ok(screenY > 300 && screenY < 540, 'spawn: lands in the upper-middle band where the bar sits')
   const occupied = [{ x: spawn.x, y: spawn.y, w: derive.TILE_W, h: derive.TILE_H_MEDIA }]
   const nudged = derive.avoidOverlap(spawn, occupied)
   ok(nudged.y > spawn.y, 'spawn: a colliding spawn nudges down out of the existing tile')
@@ -1256,12 +1245,15 @@ test('(y) Phase 5b — plan documents + the measured gap menu + the timeline pro
   eq(plan.GAP_KINDS, ['cut', 'nle', 'flf', 'black', 'bridge'], 'gap kinds: the schema\'s five, hard cut first (the measured default)')
   eq(plan.GAP_MENU.map((entry) => entry.kind), plan.GAP_KINDS, 'gap menu: exactly one entry per kind, in menu order')
   ok(plan.GAP_MENU.every((entry) => entry.verdict.length > 40), 'gap menu: every entry carries its measured verdict')
-  const flf = plan.gapMenuEntry('flf')
+  // (gapMenuEntry died with wiring-check §6.5 — the data contract is asserted
+  // against GAP_MENU directly.)
+  const byKind = (kind) => plan.GAP_MENU.find((entry) => entry.kind === kind)
+  const flf = byKind('flf')
   eq([flf.mechanism, flf.executable, flf.engineDependent], ['in-model', true, false], 'gap menu: FLF is THE executable in-model splice (36 dB class, tranche 1)')
-  const bridge = plan.gapMenuEntry('bridge')
+  const bridge = byKind('bridge')
   eq([bridge.mechanism, bridge.executable, bridge.engineDependent], ['in-model', false, true], 'gap menu: the diegetic bridge is in-model but engine-dependent (a labeled choice, never a pretend button)')
-  ok(plan.gapMenuEntry('nle').mechanism === 'post' && plan.gapMenuEntry('cut').mechanism === 'assembly', 'gap menu: NLE is post-production, the hard cut is assembly')
-  ok(plan.gapMenuEntry('black').engineDependent === true, 'gap menu: the guided dip-to-black is engine-dependent (the plain dip is post)')
+  ok(byKind('nle').mechanism === 'post' && byKind('cut').mechanism === 'assembly', 'gap menu: NLE is post-production, the hard cut is assembly')
+  ok(byKind('black').engineDependent === true, 'gap menu: the guided dip-to-black is engine-dependent (the plain dip is post)')
 
   const read = plan.readPlanDocument({
     brief: 'a night train heist',
@@ -1341,9 +1333,6 @@ test('(y) Phase 5b — plan documents + the measured gap menu + the timeline pro
   ok(Math.abs(adopted.segments[0].duration - 8.2) < 1e-9, 'adopt chronology: the segment duration comes from the take')
   eq(adopted.segments[0].title, 'the drummer boards', 'adopt chronology: titles derive from the prompts (first clause, capped)')
   eq(adopted.gaps.length, 0, 'adopt chronology: gaps start at the measured default (implicit hard cuts)')
-
-  eq(plan.formatTimelineDuration(83), '1:23', 'format: m:ss')
-  eq(plan.formatTimelineDuration(0), '0:00', 'format: zero')
 })
 
 // ---------------------------------------------------------------------------
@@ -1504,15 +1493,15 @@ test('(aa) LoRA timeline — the compiler, the grid, the measured windows', () =
   eq(lt.conformFrames(144), 141, 'grid: 6.0s (144f) snaps to the NEAREST rung 141f (3 away, vs 158 14 away)')
   eq(lt.conformFrames(156), 158, 'grid: 6.5s (156f) snaps to the nearest rung 158f (2 away, vs 141 15 away)')
   eq(lt.conformFrames(360), 345, 'grid: 15s clamps to the band ceiling 345f')
-  ok(Math.abs(lt.conformDurationSeconds(6) - 141 / 24) < 1e-9, 'grid: duration conformance is frames/24')
-  // The drift guard: every conformed duration is a fixed point of
-  // workflow.frameCount (the two grid implementations can never diverge).
+  // The drift guard: every conformed frame count is a fixed point of
+  // workflow.frameCount over its seconds form (the two grid implementations
+  // can never diverge). (conformDurationSeconds died with wiring-check §6.3 —
+  // the seconds form is inlined as frames / TIMELINE_FPS.)
   for (let seconds = 2; seconds <= 15; seconds += 0.25) {
     const frames = lt.conformFrames(seconds * 24)
     ok(frames % 17 === 5, `grid: ${frames}f ≡ 5 (mod 17) for painted ${seconds}s`)
-    eq(workflow.frameCount(lt.conformDurationSeconds(seconds)), frames, `grid: frameCount(conform(${seconds}s)) === ${frames}f (the shared grid holds)`)
+    eq(workflow.frameCount(frames / 24), frames, `grid: frameCount(${frames}f / 24s) === ${frames}f (the shared grid holds)`)
   }
-  eq(lt.legalBoundarySeconds(0, 15).length, 18, 'grid: 18 legal boundary positions across 0–15s (56..345 step 17)')
   ok(Math.abs(lt.snapRangeBoundary(6, 0, 12) - 141 / 24) < 1e-9, 'grid: a dragged boundary snaps to the nearest legal position (6s → 5.875s)')
   ok(lt.snapRangeBoundary(6, 0, 4) === null, 'grid: a 4s span cannot split into two ≥2s legal segments — the drag is REFUSED (null), never clamped degenerate')
 

@@ -98,12 +98,6 @@ export const GAP_LABEL: Record<PlanGapKind, string> = {
   bridge: 'Diegetic bridge',
 }
 
-// FIXME(wiring): gapMenuEntry + formatTimelineDuration (below) have no live
-// callers — tests only. Tracked in docs/audit/wiring-check-2026-09-26.md §6.
-export function gapMenuEntry(kind: PlanGapKind): GapMenuEntry {
-  return GAP_MENU.find((entry) => entry.kind === kind) ?? GAP_MENU[0]
-}
-
 // ---- the plan document (canvas_plan.document_json; schema spec §1) --------------
 
 /**
@@ -419,9 +413,4 @@ export function planDocumentFromChains(document: CanvasDocument): PlanDocumentDa
     })
   }
   return { brief: '', segments, gaps: [] }
-}
-
-export function formatTimelineDuration(seconds: number): string {
-  const value = Math.max(0, Math.round(seconds))
-  return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`
 }

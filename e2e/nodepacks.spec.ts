@@ -111,9 +111,9 @@ test('node-pack status board — badges, versions, managed notices, refresh, no 
     const markerDir = path.join(externalDir, 'comfyui-krea2edit')
     fs.mkdirSync(markerDir, { recursive: true })
     fs.writeFileSync(path.join(markerDir, '.studio-node.json'), `${JSON.stringify({ id: 'krea2edit', revision: '86f886dac23013d88996e3a2e99093ba44d322fb', mode: 'user-fetch', installedAt: Date.now(), source: 'e2e' }, null, 2)}\n`)
-    const cnrDir = path.join(externalDir, 'comfyui-krea2-controlnet')
+    const cnrDir = path.join(externalDir, 'comfyui-minimax-h3-audio-T8')
     fs.mkdirSync(cnrDir, { recursive: true })
-    fs.writeFileSync(path.join(cnrDir, 'pyproject.toml'), '[project]\nname = "comfyui-krea2-controlnet"\nversion = "1.4.2"\n\n[tool.comfy]\nPublisherId = "facok"\n')
+    fs.writeFileSync(path.join(cnrDir, 'pyproject.toml'), '[project]\nname = "comfyui-minimax-h3-audio-T8"\nversion = "1.4.2"\n\n[tool.comfy]\nPublisherId = "T8mars"\n')
     const gitSha = craftGitPackFixture(path.join(externalDir, 'ComfyUI_MinimaxH3_AutoContext'))
     const plainDir = path.join(externalDir, 'krea2-anypaint')
     fs.mkdirSync(plainDir, { recursive: true })
@@ -137,7 +137,7 @@ test('node-pack status board — badges, versions, managed notices, refresh, no 
     await expect(krea2editRow.locator('[data-node-pack-chip]')).toHaveAttribute('data-node-pack-chip', 'installed @ pin — restart engine to activate')
     await expect(krea2editRow.locator('[data-node-pack-version]')).toHaveText('86f886dac230')
 
-    const cnrRow = page.locator('.node-pack-row').filter({ hasText: 'comfyui-krea2-controlnet' })
+    const cnrRow = page.locator('.node-pack-row').filter({ hasText: 'comfyui-minimax-h3-audio-T8' })
     await expect(cnrRow.locator('[data-node-pack-chip]')).toHaveAttribute('data-node-pack-chip', 'managed by ComfyUI')
     await expect(cnrRow.locator('[data-node-pack-version]')).toHaveText('1.4.2')
     // Branch pin (main) vs a registry semver: no relation claimed, no notice.

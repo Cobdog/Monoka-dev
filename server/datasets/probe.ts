@@ -4,7 +4,7 @@
  * probes never mutate anything (the source is sacred).
  */
 import { spawn } from 'node:child_process'
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -209,21 +209,4 @@ export async function extractGrayPixels(path: string, options: ToolOptions, atSe
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }
-}
-
-/** Decodes a poster/thumbnail JPEG for the gallery (a representative frame).
- *
- * FIXME(wiring): extractPoster and listDir (below) are dead — zero callers;
- * gallery posters come from the client-side media pipeline and the
- * tests/scale fixtures this served no longer exist. Tracked in
- * docs/audit/wiring-check-2026-09-26.md §6. */
-export async function extractPoster(path: string, options: ToolOptions, atSec: number, maxEdge = 320): Promise<Buffer> {
-  const frames = await extractFramesAt(path, options, [atSec], maxEdge)
-  if (!frames.length) throw new Error('The poster frame could not be extracted.')
-  return frames[0].bytes
-}
-
-/** Lists one file per directory entry — helper for tests/scale fixtures. */
-export async function listDir(path: string): Promise<string[]> {
-  return readdir(path)
 }

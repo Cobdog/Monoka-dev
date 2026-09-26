@@ -300,8 +300,10 @@ test('the realtime fabric connects on boot and telemetry samples flow', async ({
 // must be sanitized (the injected crash message carries sentinel "prompt"
 // words that may never survive anywhere). The crash is forced by wrapping the
 // window.minimax bridge at install time: getSettings hands the app a settings
-// object whose `gpuTier` getter throws — only SettingsView reads that field
-// during render, so the canvas root and every other dock stay healthy.
+// object whose `promptContentLevel` getter throws — only SettingsView reads
+// that field during render, so the canvas root and every other dock stay
+// healthy. (The original poison vehicle was `gpuTier`, removed with the
+// dead Settings tier picker 2026-09-26 — wiring-check §3.1.)
 test('a crashing docked surface is contained by its error boundary without leaking prompt text', async ({ page }) => {
   const consoleErrors: string[] = []
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()) })
@@ -318,9 +320,9 @@ test('a crashing docked surface is contained by its error boundary without leaki
             return async () => {
               const settings = await (value as () => Promise<Record<string, unknown>>)()
               const poisoned = { ...settings, testedComfyVersion: 'e2e-pinned' }
-              Object.defineProperty(poisoned, 'gpuTier', {
+              Object.defineProperty(poisoned, 'promptContentLevel', {
                 enumerable: true,
-                get: () => { throw new Error('settings.gpuTier render failed: moonlit qzxveldra umbrella merchants waltzing') },
+                get: () => { throw new Error('settings.promptContentLevel render failed: moonlit qzxveldra umbrella merchants waltzing') },
               })
               return poisoned
             }

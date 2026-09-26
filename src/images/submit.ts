@@ -8,7 +8,6 @@
  * h3img record the packet-aware landing reads.
  */
 import { createId } from '../lib/createId'
-import { extractAllOutputFiles } from '../lib/workflow'
 import { buildH3ImageGraph, detectH3ImgFamilies, findH3ImgFamily, inferH3ImgSelection, H3IMG_RECIPE_PINS, t1BuildOptionsFromSettings } from '../lib/graph/h3image'
 import { resolveModelOverrides, resolveModels } from '../lib/modelOverrides'
 import { resolveKrea2EditModels } from '../lib/graph/krea2edit'
@@ -247,15 +246,4 @@ export async function submitWorkbenchGeneration(
   } finally {
     io.cancellationRequests?.current.delete(localId)
   }
-}
-
-/** Frame attribution for a finished workbench job: EVERY image output of
- * the prompt (the per-frame publish nodes), in frame order. The landing
- * loop calls this before appending the take.
- *
- * FIXME(wiring): dead helper — zero callers; the landing loop appends the
- * take without per-frame attribution. Tracked in
- * docs/audit/wiring-check-2026-09-26.md §6. */
-export function frameDescriptorsForJob(history: Record<string, unknown>, promptId: string) {
-  return extractAllOutputFiles(history, promptId, 'image')
 }

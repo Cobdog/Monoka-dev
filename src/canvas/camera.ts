@@ -54,14 +54,6 @@ export function screenToWorld(sx: number, sy: number, camera: CameraState): { x:
   return { x: (sx - camera.x) / camera.k, y: (sy - camera.y) / camera.k }
 }
 
-// FIXME(wiring): worldToScreen, rectCenterPoint, and visibleTileIds (below)
-// have no live callers (tests-only or dead) — the substrate's culling runs
-// its own signature-gated path over ViewBlobs. Tracked in
-// docs/audit/wiring-check-2026-09-26.md §6.
-export function worldToScreen(wx: number, wy: number, camera: CameraState): { x: number; y: number } {
-  return { x: wx * camera.k + camera.x, y: wy * camera.k + camera.y }
-}
-
 /**
  * The visible world rectangle for a camera over a `width × height` viewport,
  * expanded by `marginPx` SCREEN pixels on every side (the screen→world
@@ -76,27 +68,6 @@ export function visibleWorldRect(camera: CameraState, width: number, height: num
 
 export function rectsIntersect(a: WorldRect, b: WorldRect): boolean {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
-}
-
-export function rectCenterPoint(rect: WorldRect): { x: number; y: number; h: number } {
-  return { x: rect.x, y: rect.y, h: rect.h }
-}
-
-/** Culling set: the ids of tiles whose rects intersect the visible rect.
- *  Order follows the input (stable — React reconciliation keys stay put). */
-export function visibleTileIds(
-  tiles: ReadonlyArray<{ id: string; x: number; y: number; w: number; h: number }>,
-  camera: CameraState,
-  width: number,
-  height: number,
-  marginPx: number,
-): string[] {
-  const rect = visibleWorldRect(camera, width, height, marginPx)
-  const ids: string[] = []
-  for (const tile of tiles) {
-    if (rectsIntersect(rect, { x: tile.x, y: tile.y, w: tile.w, h: tile.h })) ids.push(tile.id)
-  }
-  return ids
 }
 
 /**

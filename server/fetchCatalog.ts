@@ -12,7 +12,7 @@
  * police it (schema, license presence, destination validity).
  *
  * Seed policy — every entry is something our own research committed to:
- *  - the ENGINE_NODE_PACKS user-fetch list (facok NO-LICENSE, T8mars
+ *  - the ENGINE_NODE_PACKS user-fetch list (T8mars
  *    GPL-3.0, Larryvrh turbo Apache-2.0, krea2edit Apache-2.0, anypaint
  *    MIT, AutoContext Apache-2.0 — the supElement segmented-inference
  *    pack, deep-read docs/research/autocontext-deepread.md), single-sourced
@@ -62,7 +62,7 @@
  */
 import { join, resolve } from 'node:path'
 import type { AppSettings, FetchCatalogEntry, FetchDestination, FetchModelRoot, ModelKind } from '../src/types'
-import { ENGINE_NODE_PACKS, findNodePack } from './engineNodes'
+import { findNodePack } from './engineNodes'
 
 // ---------------------------------------------------------------------------
 // Catalog
@@ -135,7 +135,6 @@ export function networkFetchPackIds(): Set<string> {
 export const FETCH_CATALOG: FetchCatalogEntry[] = [
   nodePackEntry('minimax-h3-turbo'),
   nodePackEntry('h3-hybrid-loader'),
-  nodePackEntry('krea2-controlnet'),
   nodePackEntry('h3-audio-t8'),
   nodePackEntry('krea2edit'),
   nodePackEntry('krea2-anypaint'),
@@ -918,14 +917,4 @@ export function describeFetchDestination(entry: FetchCatalogEntry, settings: App
     case 'engine-checkout':
       return 'a ComfyUI checkout fetched next to the studio home (nominate it for the managed engine afterwards)'
   }
-}
-
-/** The pack registry entries the fetcher can install (license data lives in
- *  ENGINE_NODE_PACKS — surfaced here for the integrity tests).
- *
- *  FIXME(wiring): dead export — zero callers anywhere, including the
- *  integrity tests this was surfaced for. Tracked in
- *  docs/audit/wiring-check-2026-09-26.md §1. */
-export function fetchableNodePacks(): typeof ENGINE_NODE_PACKS {
-  return ENGINE_NODE_PACKS.filter((pack) => FETCH_CATALOG.some((entry) => entry.packId === pack.id))
 }

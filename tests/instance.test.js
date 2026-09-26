@@ -215,7 +215,9 @@ maybe('(b) external custom-nodes target resolution + installs + foreign refusal 
     ok(checked.installed === true && checked.targetKind === 'external' && checked.instanceState === 'absent', 'an installed pack whose instance does not serve the classes carries installed + absent (the restart-needed state)')
 
     // Foreign refusal: a pack folder that exists WITHOUT our marker.
-    const foreignPack = ENGINE_NODE_PACKS.find((entry) => entry.id === 'krea2-controlnet')
+    // (Vehicle was krea2-controlnet before its registry row was cut —
+    // wiring-check §1.5, 2026-09-26; the T8 row serves the same role.)
+    const foreignPack = ENGINE_NODE_PACKS.find((entry) => entry.id === 'h3-audio-t8')
     fs.mkdirSync(path.join(externalDir, foreignPack.name), { recursive: true })
     fs.writeFileSync(path.join(externalDir, foreignPack.name, 'mine.py'), '# not ours\n')
     const refused = await installNodePack(foreignPack, { target, sourceDirectory: sourceDir })
@@ -365,10 +367,10 @@ maybe('(f) the checkNodePack status matrix on crafted folders', async () => {
     ok(outdated.versionRelation === 'differs' && /pinned revision changed — reinstall to move/.test(outdated.note ?? ''), 'a drifted marker reports differs + the honest reinstall note')
 
     // (3) foreign + Comfy-Registry pyproject — managed by ComfyUI.
-    const cnrDir = path.join(fixtures.matrixDir, 'comfyui-krea2-controlnet')
+    const cnrDir = path.join(fixtures.matrixDir, 'comfyui-minimax-h3-audio-T8')
     fs.mkdirSync(cnrDir, { recursive: true })
-    fs.writeFileSync(path.join(cnrDir, 'pyproject.toml'), '[project]\nname = "comfyui-krea2-controlnet"\nversion = "1.4.2"\n\n[tool.comfy]\nPublisherId = "facok"\nDisplayName = "Krea2 ControlNet"\n')
-    const cnr = await checkNodePack(ENGINE_NODE_PACKS.find((entry) => entry.id === 'krea2-controlnet'), matrixTarget, null, 'absent')
+    fs.writeFileSync(path.join(cnrDir, 'pyproject.toml'), '[project]\nname = "comfyui-minimax-h3-audio-T8"\nversion = "1.4.2"\n\n[tool.comfy]\nPublisherId = "T8mars"\nDisplayName = "MiniMax H3 Audio T8"\n')
+    const cnr = await checkNodePack(ENGINE_NODE_PACKS.find((entry) => entry.id === 'h3-audio-t8'), matrixTarget, null, 'absent')
     ok(cnr.folderState === 'foreign' && cnr.versionInfo?.source === 'comfyui-registry' && cnr.versionInfo?.managedBy === 'comfyui' && cnr.versionInfo?.version === '1.4.2', 'a Comfy-Registry pyproject folder reports comfyui-registry @ its version, managed by ComfyUI')
     ok(cnr.versionRelation === 'unknown' && cnr.managedNotice === undefined, 'a branch pin (main) vs a registry semver claims no relation and raises no notice')
 
@@ -691,12 +693,12 @@ routesMaybe('(d) app-relative io defaults through the real settings pipeline + (
       ok(fs.existsSync(path.join(externalDir, 'minimax-lora-form-adapter', 'nodes.py')), 'the pre-existing form-adapter folder is untouched')
 
       // Foreign refusal through the route (the user-fetch pack).
-      const foreignDir = path.join(externalDir, 'comfyui-krea2-controlnet')
+      const foreignDir = path.join(externalDir, 'comfyui-minimax-h3-audio-T8')
       fs.mkdirSync(foreignDir, { recursive: true })
       fs.writeFileSync(path.join(foreignDir, 'user-file.py'), '# theirs\n')
-      const foreign = await api('/api/lan/engine/nodes/install', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'krea2-controlnet', sourceDirectory: localCopy }) })
+      const foreign = await api('/api/lan/engine/nodes/install', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'h3-audio-t8', sourceDirectory: localCopy }) })
       ok(foreign.status === 400 && /refusing to replace/i.test(foreign.body.error), 'the route refuses a foreign folder in the external target')
-      const foreignRow = (await api('/api/lan/engine/nodes')).body.packs.find((pack) => pack.id === 'krea2-controlnet')
+      const foreignRow = (await api('/api/lan/engine/nodes')).body.packs.find((pack) => pack.id === 'h3-audio-t8')
       ok(foreignRow.folderState === 'foreign', 'the foreign state is listed honestly for the Settings chip')
 
       // ---- the status board (task mjhlt3k): version-aware rows + the
@@ -710,9 +712,9 @@ routesMaybe('(d) app-relative io defaults through the real settings pipeline + (
         const markerDir = path.join(externalDir, 'comfyui-krea2edit')
         fs.mkdirSync(markerDir, { recursive: true })
         fs.writeFileSync(path.join(markerDir, '.studio-node.json'), `${JSON.stringify({ id: 'krea2edit', revision: '86f886dac23013d88996e3a2e99093ba44d322fb', mode: 'user-fetch', installedAt: Date.now(), source: 'route' }, null, 2)}\n`)
-        const cnrDir = path.join(externalDir, 'comfyui-krea2-controlnet')
+        const cnrDir = path.join(externalDir, 'comfyui-minimax-h3-audio-T8')
         fs.mkdirSync(cnrDir, { recursive: true })
-        fs.writeFileSync(path.join(cnrDir, 'pyproject.toml'), '[project]\nname = "comfyui-krea2-controlnet"\nversion = "1.4.2"\n\n[tool.comfy]\nPublisherId = "facok"\n')
+        fs.writeFileSync(path.join(cnrDir, 'pyproject.toml'), '[project]\nname = "comfyui-minimax-h3-audio-T8"\nversion = "1.4.2"\n\n[tool.comfy]\nPublisherId = "T8mars"\n')
         const gitDir = path.join(externalDir, 'ComfyUI_MinimaxH3_AutoContext')
         fs.cpSync(fixtures.gitRepo, gitDir, { recursive: true })
 
@@ -720,7 +722,7 @@ routesMaybe('(d) app-relative io defaults through the real settings pipeline + (
         const byBoardId = new Map(board.map((pack) => [pack.id, pack]))
         const markerRow = byBoardId.get('krea2edit')
         ok(markerRow.installed === true && markerRow.versionInfo?.source === 'studio-marker' && markerRow.versionRelation === 'at-pin' && markerRow.versionInfo.version === markerRow.pinnedRevision, 'a marker at the pin reports studio-marker / at-pin with the revision')
-        const cnrRow = byBoardId.get('krea2-controlnet')
+        const cnrRow = byBoardId.get('h3-audio-t8')
         ok(cnrRow.folderState === 'foreign' && cnrRow.versionInfo?.source === 'comfyui-registry' && cnrRow.versionInfo?.managedBy === 'comfyui' && cnrRow.versionInfo?.version === '1.4.2', 'a Comfy-Registry pyproject folder reports managed-by-comfyui with its version')
         const gitRow = byBoardId.get('autocontext')
         ok(gitRow.folderState === 'foreign' && gitRow.versionInfo?.source === 'git-checkout' && gitRow.versionInfo?.version === fixtures.shaB, 'a git-checkout folder reports the HEAD sha as its version')

@@ -171,15 +171,3 @@ export async function landWorkbenchTake(input: WorkbenchLandingInput): Promise<W
   })
   return { landed: true }
 }
-
-/** The settings-echo helper the surface uses after landing (session store
- * refresh reads the new take through the ordinary document reload).
- *
- * FIXME(wiring): dead helper — zero callers; the surface never grew the
- * settings-echo that was planned to consume it. Tracked in
- * docs/audit/wiring-check-2026-09-26.md §6. */
-export function workbenchTakeSummary(job: GenerationJob): { frames: number; family: string } | null {
-  const provenance = workbenchJobProvenance(job)
-  if (!provenance) return null
-  return { frames: typeof provenance.frames === 'number' ? provenance.frames : 0, family: typeof provenance.family === 'string' ? provenance.family : '' }
-}
