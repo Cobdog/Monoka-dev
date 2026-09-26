@@ -65,11 +65,11 @@ import type { NodePackDefinition } from '../types'
  *    experimentalT1Decode flag until the E-FS0/E-FS1 bake-off reports. */
 export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
   {
-    // FIXME(wiring): no builder emits ApplyVDNH3 — machinery fully wired
-    // (vendored tree, vdn engine profile, LongCache patch consent, stage-weight
-    // fetch rows) but the graph lane never fires. Ruled FINISH 2026-09-26
-    // (adopted as our own; task 9up52mj), sequenced behind the centralization
-    // wave. Tracked in docs/audit/wiring-check-2026-09-26.md §1.
+    // STUB(wiring): no builder emits ApplyVDNH3 — the machinery is fully
+    // wired (vendored tree, vdn engine profile, LongCache patch consent,
+    // stage-weight fetch rows) but the graph lane never fires. Ruled FINISH
+    // 2026-09-26 (adopted as our own; task 9up52mj), sequenced behind the
+    // centralization wave — see docs/audit/wiring-check-2026-09-26.md §1.
     id: 'vdn-h3',
     name: 'ComfyUI-VDN-H3',
     featureGroup: 'H3 video',
@@ -134,27 +134,9 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
     instanceNodeClasses: ['MiniMaxH3HybridLoader'],
   },
   {
-    // FIXME(wiring): row without emission — no builder emits Krea2Control*
-    // classes. Ruled CUT 2026-09-26 (the node-inventory decision, ruling #4);
-    // the row is dead pending its removal. Tracked in
-    // docs/audit/wiring-check-2026-09-26.md §1.
-    id: 'krea2-controlnet',
-    name: 'comfyui-krea2-controlnet',
-    featureGroup: 'Krea 2 edit',
-    description: 'facok\'s Krea 2 ControlNet-LoRA pack (depth structure lock for Krea 2 regeneration). The repo carries NO license file — all-rights-reserved by default — so it is never vendored and only ever installed into your own instance from a local copy, with your consent.',
-    repoUrl: 'https://github.com/facok/comfyui-krea2-controlnet',
-    pinnedRevision: 'main',
-    licenseSpdx: 'NO-LICENSE',
-    licenseNote: 'No license file in the upstream repo — redistribution not permitted; user-fetch only, never vendored (docs/research/krea2-edit-mode.md).',
-    installMode: 'user-fetch',
-    homepage: 'https://github.com/facok/comfyui-krea2-controlnet',
-    // NODE_CLASS_MAPPINGS read from the canonical shared install (2026-09-19).
-    instanceNodeClasses: ['Krea2ControlLoRALoader', 'Krea2ControlApply', 'Krea2ControlImageEncode'],
-  },
-  {
-    // FIXME(wiring): row without emission — no builder emits the T8 audio
-    // classes; the audio-editing lane is parked (silent-inference toggle,
-    // vzpyldn) and only the pattern was adopted. Tracked in
+    // STUB(wiring): no builder emits the T8 audio classes — the audio-editing
+    // lane is parked behind the silent-inference toggle (vzpyldn) and only
+    // the pattern was adopted. Ruled parked 2026-09-26 — see
     // docs/audit/wiring-check-2026-09-26.md §1.
     id: 'h3-audio-t8',
     name: 'comfyui-minimax-h3-audio-T8',
@@ -249,10 +231,9 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
   },
   // -- segmented inference for H3 (task lxmtgss deep-read → task p8oyfy1) --
   {
-    // FIXME(wiring): row without emission — no builder emits AutoContext
-    // classes; the long-form lane decision (TS test vs Motion-Context) is
-    // named but not scheduled. Tracked in
-    // docs/audit/wiring-check-2026-09-26.md §1.
+    // STUB(wiring): no builder emits AutoContext classes — the long-form
+    // lane decision (TS test vs Motion-Context) is named but not scheduled.
+    // Ruled parked 2026-09-26 — see docs/audit/wiring-check-2026-09-26.md §1.
     id: 'autocontext',
     name: 'ComfyUI_MinimaxH3_AutoContext',
     featureGroup: 'H3 video',

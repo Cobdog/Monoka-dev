@@ -50,20 +50,11 @@ export function conformFrames(rawFrames: number): number {
   return candidates[0]
 }
 
-/** Conform a painted duration to the grid: the seconds of the nearest legal
- * frame count.
- *
- * FIXME(wiring): conformDurationSeconds is tests-only and
- * snapBoundarySeconds (below) has zero callers anywhere — the timeline paints
- * through conformFrames directly. Tracked in
- * docs/audit/wiring-check-2026-09-26.md §6. */
-export function conformDurationSeconds(seconds: number): number {
-  return conformFrames(seconds * TIMELINE_FPS) / TIMELINE_FPS
-}
-
 /** Legal boundary positions for the rail's snapping: `from + d` for every
- * legal duration d that keeps the result within [from, through]. */
-export function legalBoundarySeconds(from: number, through: number): number[] {
+ * legal duration d that keeps the result within [from, through]. (Private —
+ * snapRangeBoundary is its only consumer; the old public surface died with
+ * wiring-check §6.3.) */
+function legalBoundarySeconds(from: number, through: number): number[] {
   const positions: number[] = []
   for (let frames = MIN_SEGMENT_FRAMES; frames <= MAX_SEGMENT_FRAMES; frames += GRID_STEP) {
     const position = from + frames / TIMELINE_FPS
@@ -71,18 +62,6 @@ export function legalBoundarySeconds(from: number, through: number): number[] {
     positions.push(position)
   }
   return positions
-}
-
-/** The nearest snap for a dragged boundary (the rail gesture): nearest legal
- * position, floored at `from + min`, ceiled at `through`. */
-export function snapBoundarySeconds(seconds: number, from: number, through: number): number {
-  const legal = legalBoundarySeconds(from, through)
-  if (!legal.length) return through
-  let best = legal[0]
-  for (const position of legal) {
-    if (Math.abs(position - seconds) < Math.abs(best - seconds) - 1e-12) best = position
-  }
-  return best
 }
 
 /** The rail's boundary-drag snap: the nearest legal position that keeps BOTH

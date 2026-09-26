@@ -100,7 +100,7 @@ function keepSources(camelSource: string): string {
     camelSource,
     // 7. snake_case identifiers (load_draft, my_counter).
     /\b[A-Za-z_][A-Za-z0-9]*_[A-Za-z0-9_]+\b/.source,
-    // 8. Dotted property paths (settings.gpuTier, error.message, node.inputs).
+    // 8. Dotted property paths (settings.ollamaModel, error.message, node.inputs).
     /[A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)+/.source,
     // 9. Technical vocabulary (case-insensitive via keywordPattern).
     '\\b(?:' + KEYWORDS.map(keywordPattern).join('|') + ')\\b',

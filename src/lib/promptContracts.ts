@@ -9,10 +9,10 @@
  *  as whole-asset relationships. These builders scaffold that exact shape
  *  from live workspace state; the validators catch drift.
  *
- *  FIXME(wiring): the contract builders/validators are unwired — no live
- *  importer (promptComposer resolves its contract layers elsewhere); only
- *  tests/workflows.test.js exercises them. Tracked in
- *  docs/audit/wiring-check-2026-09-26.md §1. */
+ *  STUB(wiring): the contract builders/validators are unwired — no live
+ *  importer (promptComposer resolves its contract layers elsewhere). Awaits
+ *  the composer's contract-layer adoption (the prompt-doctrine consolidation)
+ *  — ruled 2026-09-26, see docs/audit/wiring-check-2026-09-26.md §1. */
 import type { GenerationMode, MediaFile, MovieReferenceBinding } from '../types'
 
 export type ContractSection = { key: string; guidance: string }

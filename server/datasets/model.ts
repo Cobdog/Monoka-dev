@@ -25,22 +25,6 @@ import { createHash } from 'node:crypto'
 
 export const TRAINING_FPS = 24.0
 
-/** All legal 17n+5 frame counts in the released training range (22 f … 345 f).
- *
- * FIXME(wiring): gridTargets and cropRectForRatio (below) are dead — zero
- * callers anywhere (the export wizard's grid target and the client-side
- * CropEditor cover both concerns). Tracked in
- * docs/audit/wiring-check-2026-09-26.md §6. */
-export function gridTargets(minFrames = 22, maxFrames = 345): number[] {
-  const targets: number[] = []
-  for (let n = 1; ; n += 1) {
-    const frames = 17 * n + 5
-    if (frames > maxFrames) break
-    if (frames >= minFrames) targets.push(frames)
-  }
-  return targets
-}
-
 /** The largest grid target ≤ frameCount (the trainer's clamp direction — it
  * walks DOWN, so a clip's effective grid target is the floor on the grid). */
 export function gridTargetFor(frameCount: number): number | null {
@@ -87,27 +71,6 @@ export function alignCropRect(rect: CropRect, width: number, height: number): Cr
   const x = Math.max(0, Math.min(Math.round(rect.x / GRID_PX) * GRID_PX, maxX - w))
   const y = Math.max(0, Math.min(Math.round(rect.y / GRID_PX) * GRID_PX, maxY - h))
   return { x, y, w, h }
-}
-
-/** Largest grid-aligned rect with aspect `ratio` (w/h) inside the frame,
- * anchored at the rect's current center. */
-export function cropRectForRatio(anchor: CropRect, ratio: number, width: number, height: number): CropRect {
-  const maxW = Math.floor(width / GRID_PX) * GRID_PX
-  const maxH = Math.floor(height / GRID_PX) * GRID_PX
-  let w = maxW
-  let h = Math.round(w / ratio)
-  if (h > maxH) {
-    h = maxH
-    w = Math.round(h * ratio)
-  }
-  w = snapToGrid(w, maxW)
-  h = snapToGrid(h, maxH)
-  // Re-derive h from the snapped w so the ratio survives grid snapping as
-  // closely as the grid allows (the crop is exact-ratio at full res; the
-  // trainer bucket does the mechanical scaling).
-  const cx = anchor.x + anchor.w / 2
-  const cy = anchor.y + anchor.h / 2
-  return alignCropRect({ x: cx - w / 2, y: cy - h / 2, w, h }, width, height)
 }
 
 // ---------------------------------------------------------------------------

@@ -4,11 +4,11 @@
  *  emits both the conditioning and the latent; H3ContactSheetDecode returns
  *  [views, sheet] image batches.
  *
- *  FIXME(wiring): the contact-sheet family is built but unreachable from any
- *  live journey — its submit path (lib/contactSheetSubmit.ts) was deleted
- *  2026-09-20 and no surface triggers buildContactSheetWorkflow; only
- *  tests/workflows.test.js asserts its topology. Tracked in
- *  docs/audit/wiring-check-2026-09-26.md §1. */
+ *  STUB(wiring): the family is built but unreachable from any live journey —
+ *  its submit path (lib/contactSheetSubmit.ts) was deleted 2026-09-20 and no
+ *  surface triggers buildContactSheetWorkflow. Awaits the asset-authoring
+ *  surface (remediation plan D1's re-attachment point) — ruled 2026-09-26,
+ *  see docs/audit/wiring-check-2026-09-26.md §1. */
 import type { ModelFile } from '../types'
 
 export type ContactSheetSelection = {

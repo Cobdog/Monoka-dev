@@ -260,10 +260,9 @@ export function validateGraphAgainstSchemas(graph: ContractGraph, info: ObjectIn
 }
 
 /** The readable one-line verdict for a violation list (the log/report form).
- *
- * FIXME(wiring): dead export — zero callers anywhere, including the
- * engine-contract suite it was written for. Tracked in
- * docs/audit/wiring-check-2026-09-26.md §1. */
+ * Consumed by the E-FS1 arm runner (scripts/experiments/efs1-arms.cjs) to
+ * render a failed arm's violations — the wiring audit's §1.8 "zero callers"
+ * was refuted 2026-09-26 and the export stays. */
 export function contractVerdict(violations: ContractViolation[]): string | null {
   if (!violations.length) return null
   return violations.map((v) => `${v.nodeId} (${v.classType})${v.inputName ? ` '${v.inputName}'` : ''}: ${v.type} — ${v.message}`).join('\n')

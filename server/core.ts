@@ -19,7 +19,6 @@ import { createServer as createHttpServer, type IncomingMessage, type Server, ty
 import { createServer as createHttpsServer } from 'node:https'
 import { networkInterfaces, tmpdir } from 'node:os'
 import { Readable } from 'node:stream'
-import WebSocket from 'ws'
 import { FILMSTRIP_CELL_WIDTH, FILMSTRIP_FPS, filmstripLayout } from '../src/media/filmstripLayout'
 import type { AppSettings, GpuTelemetry, LanStatus, ModelFile, ModelKind } from '../src/types'
 import { failureRef, logEvent, logFailure } from './logger'
@@ -1338,39 +1337,6 @@ export function createStudioServer(paths: StudioServerPaths) {
     Readable.fromWeb(upstream.body as Parameters<typeof Readable.fromWeb>[0]).pipe(response)
   }
 
-  function streamLanEvents(request: IncomingMessage, response: ServerResponse, search: URLSearchParams, comfyUrl: string) {
-    response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' })
-    const heartbeat = setInterval(() => response.write(': keepalive\n\n'), 15_000)
-    let socket: WebSocket | null = null
-    const forward = (data: unknown) => response.write(`data: ${typeof data === 'string' ? data : JSON.stringify(data)}\n\n`)
-    const connect = () => {
-      if (!isLocalServiceUrl(comfyUrl)) { forward({ type: 'error', error: 'The configured ComfyUI address is not a local service address.' }); return }
-      const clientId = search.get('clientId') ?? ''
-      const target = new URL(cleanUrl(comfyUrl))
-      socket = new WebSocket(`${target.origin.replace(/^http/, 'ws')}/ws${clientId ? `?clientId=${encodeURIComponent(clientId)}` : ''}`)
-      socket.binaryType = 'nodebuffer'
-      socket.on('message', (data: WebSocket.RawData, isBinary: boolean) => {
-        if (isBinary) {
-          const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer)
-          const event = buffer.subarray(0, 8).toString('utf8')
-          const mime = buffer.subarray(8, 24).toString('utf8').replace(/\0.*$/, '')
-          const payload = buffer.subarray(24)
-          forward({ type: 'preview', event, mime, data: payload.toString('base64') })
-        } else {
-          const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data)
-          try { forward(JSON.parse(text)) } catch { forward(text) }
-        }
-      })
-      socket.on('error', (error: Error) => { logFailure('events/socket', error, undefined, 'debug'); socket?.close() })
-      // A ComfyUI restart must not freeze every connected stream: reconnect
-      // the upstream while the SSE client is still here.
-      socket.on('close', () => { if (!response.writableEnded) retry = setTimeout(connect, 3000) })
-    }
-    let retry: ReturnType<typeof setTimeout> | undefined
-    connect()
-    request.on('close', () => { clearInterval(heartbeat); clearTimeout(retry); socket?.close() })
-  }
-
   /** (R-30/R-31, audits C F8/F9) The honest external-mode status: the managed
    *  runtime's vocabulary (state/log-tail/pid) is a non-concept for an
    *  instance the studio did not launch. What the engine itself can answer —
@@ -1601,7 +1567,7 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           const headerToken = Array.isArray(header) ? header[0] : header
           // The filmstrip GET joins the browser-native group: <img> posters
           // cannot set headers either. Query tokens stay GET-only there.
-          const queryTokenAllowed = url.pathname === '/api/lan/events' || url.pathname === '/api/lan/realtime' || url.pathname === '/api/lan/media' || (url.pathname === '/api/lan/assets/filmstrip' && request.method === 'GET') || (url.pathname === '/api/lan/documents/blobs/file' && request.method === 'GET') || (url.pathname === '/api/lan/datasets/media' && request.method === 'GET')
+          const queryTokenAllowed = url.pathname === '/api/lan/realtime' || url.pathname === '/api/lan/media' || (url.pathname === '/api/lan/assets/filmstrip' && request.method === 'GET') || (url.pathname === '/api/lan/documents/blobs/file' && request.method === 'GET') || (url.pathname === '/api/lan/datasets/media' && request.method === 'GET')
           const presented = headerToken ?? (queryTokenAllowed ? url.searchParams.get('token') ?? undefined : undefined)
           if (!tokenMatches(presented, lanToken)) return sendJson(response, 401, { error: 'This link is no longer authorized. Request a fresh link with the current access token.' })
         }
@@ -1854,13 +1820,14 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
               throw error
             }
           }
-          // FIXME(wiring): tests-only maintenance routes — exercised by
+          // STUB(wiring): tests-only maintenance routes — exercised by
           // tests/documents.test.js, never fetched from any live journey:
           // documents/projects/delete (this route), documents/projects/restore,
           // documents/import, documents/import/legacy, documents/prune,
           // documents/gc, documents/jobs/state (the client uses the
           // non-documents /api/lan/projects/delete for deletes and has no
-          // affordance for the rest). Tracked in
+          // affordance for the rest). Awaits the maintenance/ops surface
+          // (Control Center diagnostics) — ruled 2026-09-26, see
           // docs/audit/wiring-check-2026-09-26.md §2.
           if (url.pathname === '/api/lan/documents/projects/delete' && request.method === 'POST') {
             const body = await readJson(request, 10_000)
@@ -2216,10 +2183,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
             if (body.confirm !== 'empty-trash') return sendJson(response, 400, { error: 'Emptying the trash is destructive; send confirm:"empty-trash".' })
             return sendJson(response, 200, { emptied: documents.emptyTrash() })
           }
-          // FIXME(wiring): route without a caller — a deliberate maintenance
-          // seam (documents.ts notes "the UX around it is open"), but nothing
-          // in the client fetches it. Tracked in
-          // docs/audit/wiring-check-2026-09-26.md §2.
+          // STUB(wiring): a deliberate maintenance seam (documents.ts notes
+          // "the UX around it is open") with no client fetcher yet — awaits
+          // the maintenance/ops surface (Control Center diagnostics) — ruled
+          // 2026-09-26, see docs/audit/wiring-check-2026-09-26.md §2.
           if (url.pathname === '/api/lan/documents/blobs/relink' && request.method === 'POST') {
             const body = await readJson(request, 100_000)
             const roots = stringArray(body.roots)
@@ -2493,17 +2460,6 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
             return sendJson(response, 400, { error: structuralPromptError(raw) || 'The engine rejected the prompt.', stage: 'comfy/prompt', ref })
           }
         }
-        // LEGACY (wave 0 SSE bridge): one upstream ComfyUI WebSocket per SSE
-        // client, binary previews base64-wrapped. Kept functional through
-        // wave 1 so existing remote clients keep working; new clients use the
-        // realtime fabric (/ws + /api/lan/realtime). Retire after the fabric
-        // proves out in real use.
-        // FIXME(wiring): zero consumers remain — the last client (MobileApp)
-        // was removed with Phase 0 (2026-09-20); every live surface rides
-        // /api/lan/realtime. The keep-for-remote-clients justification is
-        // void; candidate for the retirement this comment names. Tracked in
-        // docs/audit/wiring-check-2026-09-26.md §2.
-        if (url.pathname === '/api/lan/events' && request.method === 'GET') return streamLanEvents(request, response, url.searchParams, settings.comfyUrl)
         // Realtime fabric — SSE v2 fallback: the typed JSON channels only
         // (previews degrade to base64 here; WS is the primary transport).
         if (url.pathname === '/api/lan/realtime' && request.method === 'GET') return realtimeHub.handleSse(request, response, url.searchParams)
@@ -2934,13 +2890,6 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
               return sendJson(response, 200, result)
             } catch (error) { return fail(error, 400) }
           }
-          // FIXME(wiring): route without a caller — the datasets bootstrap
-          // payload already carries the exports list; nothing fetches the
-          // standalone listing. Tracked in
-          // docs/audit/wiring-check-2026-09-26.md §2.
-          if (url.pathname === '/api/lan/datasets/exports' && request.method === 'GET') {
-            return sendJson(response, 200, { exports: manager.listExports() })
-          }
           // Canvas bridge, direction 2 (§11): a dataset layer pinned as a
           // reference asset for op stacks — returns the reference descriptor
           // the canvas consumes (media URL + caption + geometry).
@@ -3087,9 +3036,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
         }
         // User-editable composer fragments: factory seeds + persisted
         // overrides (workspace_state kv, smallest surface).
-        // FIXME(wiring): tests-only route pair (GET+POST) — the fragment
+        // STUB(wiring): tests-only route pair (GET+POST) — the fragment
         // override feature has no UI; tests/llm.test.js is the only fetcher.
-        // Tracked in docs/audit/wiring-check-2026-09-26.md §2.
+        // Awaits the LLM module surface — ruled 2026-09-26, see
+        // docs/audit/wiring-check-2026-09-26.md §2.
         if (url.pathname === '/api/lan/llm/fragments' && request.method === 'GET') {
           return sendJson(response, 200, llm.listFragments())
         }

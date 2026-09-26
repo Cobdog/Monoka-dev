@@ -398,13 +398,6 @@ export type AppSettings = {
    *  shape-tolerantly without importing the renderer registry). Absent or
    *  {} = pure inference, the pre-override behavior exactly. */
   modelOverrides?: Record<string, ModelOverrideSlots>
-  /** Chosen GPU tier — drives community quant/resolution guidance.
-   *
-   * FIXME(wiring): gpuTier is saved but gates nothing — the Settings tier
-   * picker writes it and nothing reads it at any effect site (no quant/
-   * resolution consumer exists; only an e2e render-poison test touches it).
-   * Tracked in docs/audit/wiring-check-2026-09-26.md §3. */
-  gpuTier?: '8' | '16' | '24' | 'blackwell'
   /** The T=1 decode-path experiment flag (E-FS1, task 464xfvd — the
    *  Fizgig-H3-Still challenge): 'image-studio' (default = the landed lane,
    *  zero behavior change) or 'fizgig' (stock conditioning kept legal +
@@ -817,7 +810,6 @@ export type DesktopApi = {
    *  settings plus any save-warnings (well-formed but nonexistent paths) —
    *  M4 (review 2026-09-19): the client must surface them, not drop them. */
   saveSettings(settings: AppSettings): Promise<{ settings: AppSettings; warnings?: string[] }>
-  chooseDirectory(initialPath?: string): Promise<string | null>
   chooseMedia(type: MediaKind): Promise<{ path: string; name: string } | null>
   scanModels(settings: AppSettings, options?: { refresh?: boolean }): Promise<ModelFile[]>
   /** (sweep #2, 68e9k17) The LIGHT models-only listing for the connected-

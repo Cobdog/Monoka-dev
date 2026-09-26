@@ -675,13 +675,16 @@ routesMaybe('(g) routes against the real built server: status/start/stop, profil
   ok(nodes.status === 200 && Array.isArray(nodes.body.packs) && nodes.body.packs.length >= 3, 'the node-pack registry lists its entries')
   const vdnPack = nodes.body.packs.find((pack) => pack.id === 'vdn-h3')
   ok(vdnPack && vdnPack.vendored === true && vdnPack.availability === 'ready', 'the vendored VDN pack reports ready against the real vendor payload')
-  const facokPack = nodes.body.packs.find((pack) => pack.id === 'krea2-controlnet')
-  ok(facokPack && facokPack.licenseSpdx === 'NO-LICENSE' && facokPack.installMode === 'user-fetch', 'the unlicensed pack is listed as NO-LICENSE user-fetch (never vendored)')
+  // (The flagged-license row vehicle was krea2-controlnet before its
+  // registry row was cut — wiring-check §1.5, 2026-09-26; the GPL T8 row
+  // carries the same never-vendored user-fetch posture.)
+  const t8Pack = nodes.body.packs.find((pack) => pack.id === 'h3-audio-t8')
+  ok(t8Pack && t8Pack.licenseSpdx === 'GPL-3.0-or-later' && t8Pack.installMode === 'user-fetch', 'the GPL pack is listed as flagged user-fetch (never vendored)')
 
   const installPack = await api('/api/lan/engine/nodes/install', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'vdn-h3' }) })
   ok(installPack.status === 200 && installPack.body.pack.installed === true, 'the install route places the vendored pack into the configured checkout')
   ok(fs.existsSync(path.join(checkout, 'custom_nodes', 'ComfyUI-VDN-H3', '__init__.py')), 'the installed pack is on disk in custom_nodes/')
-  const noSource = await api('/api/lan/engine/nodes/install', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'krea2-controlnet' }) })
+  const noSource = await api('/api/lan/engine/nodes/install', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'minimax-h3-turbo' }) })
   ok(noSource.status === 400, 'a user-fetch install without a source directory is a 400 with the reason')
   const uninstallPack = await api('/api/lan/engine/nodes/uninstall', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'vdn-h3' }) })
   ok(uninstallPack.status === 200 && uninstallPack.body.pack.installed === false, 'the uninstall route removes the pack (delete folder)')
@@ -760,8 +763,11 @@ maybe('(j) vendored node packs (increment 2): licensing discipline, install/unin
   {
     // Licensing discipline on the REAL registry data.
     ok(ENGINE_NODE_PACKS.every((pack) => typeof pack.licenseSpdx === 'string' && pack.licenseSpdx.length > 0), 'every registry entry carries an SPDX record')
-    const facok = ENGINE_NODE_PACKS.find((pack) => pack.repoUrl.includes('facok'))
-    ok(facok && facok.licenseSpdx === 'NO-LICENSE' && facok.installMode === 'user-fetch', 'the unlicensed facok pack is NO-LICENSE + user-fetch (never vendored)')
+    // (The unlicensed-row vehicle was facok/krea2-controlnet before its cut —
+    // wiring-check §1.5, 2026-09-26; the GPL T8 row carries the same
+    // flagged-never-vendored discipline.)
+    const flagged = ENGINE_NODE_PACKS.find((pack) => pack.id === 'h3-audio-t8')
+    ok(flagged && flagged.licenseSpdx === 'GPL-3.0-or-later' && flagged.installMode === 'user-fetch', 'the GPL T8 pack is flagged user-fetch (never vendored)')
     const vdnEntry = ENGINE_NODE_PACKS.find((pack) => pack.id === 'vdn-h3')
     ok(vdnEntry && vdnEntry.installMode === 'vendor' && vdnEntry.licenseSpdx === 'Apache-2.0', 'the VDN port is the vendored entry at Apache-2.0')
     const vendorRoot = resolveVendorRoot()

@@ -267,7 +267,7 @@ maybe('(a) catalog integrity: schema, licenses, destinations, single-sourcing, p
       }
     }
     // The seed commitments (mission + licensing pass) are all present.
-    for (const expected of ['pack:minimax-h3-turbo', 'pack:krea2-controlnet', 'pack:h3-audio-t8', 'fun-control-union', 'vdn-stage-dmd-250', 'vdn-stage-b-2000', 'smhfacct-hybrid-b25-49', 'dwpose-onnx', 'dwpose-torchscript', 'da3-base', 'hed-annotator', 'mlsd-annotator', 'engine-comfyui', 'fasth3-vae-w4a8', 'matlowai-fused-turbo-int8', 'pack:autocontext', 'pack:h3-motion-context', 'pack:lbh-latent-upscaler', 'pack:h3-preview-override']) {
+    for (const expected of ['pack:minimax-h3-turbo', 'pack:h3-audio-t8', 'fun-control-union', 'vdn-stage-dmd-250', 'vdn-stage-b-2000', 'smhfacct-hybrid-b25-49', 'dwpose-onnx', 'dwpose-torchscript', 'da3-base', 'hed-annotator', 'mlsd-annotator', 'engine-comfyui', 'fasth3-vae-w4a8', 'matlowai-fused-turbo-int8', 'pack:autocontext', 'pack:h3-motion-context', 'pack:lbh-latent-upscaler', 'pack:h3-preview-override']) {
       ok(ids.has(expected), `seed entry present: ${expected}`)
     }
     // The GAP-1/GAP-2 rows (06jr4eh) carry the fetch affordance their lanes'
@@ -282,10 +282,8 @@ maybe('(a) catalog integrity: schema, licenses, destinations, single-sourcing, p
     // finds the pack absent — MIT at the assessed sha pin.
     const previewOverride = findFetchEntry('pack:h3-preview-override')
     ok(previewOverride.licenseSpdx === 'MIT' && previewOverride.source.revision.kind === 'sha' && previewOverride.source.revision.value === 'd1eb17beb5e11856f93eb682e0998b6f232969d1', 'PreviewOverride pack is MIT at the assessed sha pin (immutable)')
-    const facok = findFetchEntry('pack:krea2-controlnet')
-    ok(facok.licenseSpdx === 'NO-LICENSE' && facok.source.revision.kind === 'branch', 'facok is NO-LICENSE with a moving branch pin (the stamping case)')
     const t8 = findFetchEntry('pack:h3-audio-t8')
-    ok(t8.licenseSpdx === 'GPL-3.0-or-later' && t8.source.revision.kind === 'branch', 'T8mars is GPL-3.0-or-later user-fetch (fetchable-but-flagged, never vendored)')
+    ok(t8.licenseSpdx === 'GPL-3.0-or-later' && t8.source.revision.kind === 'branch', 'T8mars is GPL-3.0-or-later user-fetch (fetchable-but-flagged, never vendored; the branch-stamp case — the facok NO-LICENSE row was cut with wiring-check §1.5, 2026-09-26)')
     const larryvrh = findFetchEntry('pack:minimax-h3-turbo')
     ok(larryvrh.licenseSpdx === 'Apache-2.0' && larryvrh.source.revision.kind === 'sha', 'Larryvrh turbo pins a SHA (immutable)')
     // AutoContext row (task p8oyfy1, docs/research/autocontext-deepread.md §7):
@@ -419,20 +417,20 @@ maybe('(d) pin stamping: branch pins resolve-and-stamp the HEAD SHA into the rec
     const checkout = makeCheckout()
     const settings = makeSettings(home, { checkout })
     const stamped = '79ebfd3bd80d2180b334dd7ce57f3c9ddaa0848f'
-    const transport = makeClaimingTransport({ resolveGitHead: async () => stamped, archiveFiles: [['__init__.py', '# facok pack\n'], ['LICENSE', ''], ['nodes.py', '# nodes\n']] })
+    const transport = makeClaimingTransport({ resolveGitHead: async () => stamped, archiveFiles: [['__init__.py', '# t8 pack\n'], ['LICENSE', ''], ['nodes.py', '# nodes\n']] })
     const { manager, events } = makeManager(home, settings, transport)
-    settings.fetch.consents['pack:krea2-controlnet'] = { consented: true, licenseSpdx: 'NO-LICENSE' }
+    settings.fetch.consents['pack:h3-audio-t8'] = { consented: true, licenseSpdx: 'GPL-3.0-or-later' }
 
-    const result = await fetchAndAwait(manager, events, 'pack:krea2-controlnet')
-    ok(!result.failure, `the facok pack fetches cleanly (${result.failure?.message ?? 'ok'})`)
+    const result = await fetchAndAwait(manager, events, 'pack:h3-audio-t8')
+    ok(!result.failure, `the T8 pack fetches cleanly (${result.failure?.message ?? 'ok'})`)
     const state = JSON.parse(fs.readFileSync(path.join(home, 'fetcher', 'fetch-state.json'), 'utf8'))
-    const record = state.installs['pack:krea2-controlnet']
+    const record = state.installs['pack:h3-audio-t8']
     ok(record.revision === stamped && record.pinKind === 'branch', `the install record stamps the resolved HEAD SHA (${record.revision.slice(0, 12)}), never the branch string`)
-    ok(record.licenseSpdx === 'NO-LICENSE' && record.licenseAcknowledged === true, 'the record carries the acknowledged license')
-    const marker = JSON.parse(fs.readFileSync(path.join(checkout, 'custom_nodes', 'comfyui-krea2-controlnet', '.studio-node.json'), 'utf8'))
+    ok(record.licenseSpdx === 'GPL-3.0-or-later' && record.licenseAcknowledged === true, 'the record carries the acknowledged license')
+    const marker = JSON.parse(fs.readFileSync(path.join(checkout, 'custom_nodes', 'comfyui-minimax-h3-audio-T8', '.studio-node.json'), 'utf8'))
     ok(marker.revision === stamped, `the node-pack marker records the stamped SHA (${marker.revision.slice(0, 12)}), not 'main'`)
-    const pack = findNodePack('krea2-controlnet')
-    const status = (await manager.catalogStatus()).find((entry) => entry.id === 'pack:krea2-controlnet')
+    const pack = findNodePack('h3-audio-t8')
+    const status = (await manager.catalogStatus()).find((entry) => entry.id === 'pack:h3-audio-t8')
     ok(status.state === 'placed' && status.installedRevision === stamped, 'catalog status reports the stamped revision')
     const packStatus = await checkNodePack(pack, { kind: 'checkout', checkout }, null)
     ok(packStatus.installed && !/pinned revision changed/.test(packStatus.note ?? ''), 'a stamped branch pin does NOT read as registry drift in the pack status')
@@ -743,13 +741,13 @@ routesMaybe('(i) routes against the real built server: catalog GET, 403 without 
     const home = makeHome()
     const checkout = makeCheckout()
     fs.mkdirSync(path.join(checkout, 'custom_nodes', 'comfyui_controlnet_aux', 'ckpts', 'lllyasviel', 'Annotators'), { recursive: true })
-    // The mock transport tree: a githead pin for facok + its archive, and
+    // The mock transport tree: a githead pin for T8mars + its archive, and
     // a WRONG-bytes file for mlsd (the mismatch-through-routes case).
     const mockRoot = path.join(home, 'fetch-mock')
-    fs.mkdirSync(path.join(mockRoot, 'githead', 'facok_comfyui-krea2-controlnet'), { recursive: true })
-    fs.writeFileSync(path.join(mockRoot, 'githead', 'facok_comfyui-krea2-controlnet', 'main'), '79ebfd3bd80d2180b334dd7ce57f3c9ddaa0848f')
+    fs.mkdirSync(path.join(mockRoot, 'githead', 'T8mars_comfyui-minimax-h3-audio-T8'), { recursive: true })
+    fs.writeFileSync(path.join(mockRoot, 'githead', 'T8mars_comfyui-minimax-h3-audio-T8', 'main'), '79ebfd3bd80d2180b334dd7ce57f3c9ddaa0848f')
     fs.mkdirSync(path.join(mockRoot, 'archive'), { recursive: true })
-    fs.writeFileSync(path.join(mockRoot, 'archive', 'facok_comfyui-krea2-controlnet_79ebfd3bd80d2180b334dd7ce57f3c9ddaa0848f.tar.gz'), makeTarGz([['__init__.py', '# facok\n'], ['nodes.py', '# depth lock\n']]))
+    fs.writeFileSync(path.join(mockRoot, 'archive', 'T8mars_comfyui-minimax-h3-audio-T8_79ebfd3bd80d2180b334dd7ce57f3c9ddaa0848f.tar.gz'), makeTarGz([['__init__.py', '# t8\n'], ['nodes.py', '# audio sidecar\n']]))
     fs.mkdirSync(path.join(mockRoot, 'hf', 'lllyasviel', 'Annotators'), { recursive: true })
     fs.writeFileSync(path.join(mockRoot, 'hf', 'lllyasviel', 'Annotators', 'mlsd_large_512_fp32.pth'), Buffer.alloc(128, 5)) // wrong size + sha
 
@@ -781,24 +779,24 @@ routesMaybe('(i) routes against the real built server: catalog GET, 403 without 
     ok(catalog.body.entries.every((entry) => ['present', 'placed', 'cached', 'absent'].includes(entry.state)), 'every catalog row carries a state')
     ok(catalog.body.entries.every((entry) => typeof entry.licenseSpdx === 'string'), 'every catalog row surfaces its license (the consent contract)')
 
-    const noConsent = await api('/api/lan/fetch/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'pack:krea2-controlnet' }) })
+    const noConsent = await api('/api/lan/fetch/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'pack:h3-audio-t8' }) })
     ok(noConsent.status === 403 && /consent/i.test(noConsent.body.error), 'POST start without consent is a 403 with the reason')
 
-    const consented = await api('/api/lan/fetch/consent', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ id: 'pack:krea2-controlnet', consented: true }) })
+    const consented = await api('/api/lan/fetch/consent', { method: 'POST', headers: { 'content-type': 'application/json', origin: base }, body: JSON.stringify({ id: 'pack:h3-audio-t8', consented: true }) })
     ok(consented.status === 200, 'POST consent records the acknowledgement')
     const savedSettings = (await api('/api/lan/settings')).body.settings
-    ok(savedSettings.fetch.consents['pack:krea2-controlnet']?.consented === true && savedSettings.fetch.consents['pack:krea2-controlnet']?.licenseSpdx === 'NO-LICENSE', 'the consent persists through normalizeSettings with its license')
+    ok(savedSettings.fetch.consents['pack:h3-audio-t8']?.consented === true && savedSettings.fetch.consents['pack:h3-audio-t8']?.licenseSpdx === 'GPL-3.0-or-later', 'the consent persists through normalizeSettings with its license')
 
-    const started = await api('/api/lan/fetch/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'pack:krea2-controlnet' }) })
+    const started = await api('/api/lan/fetch/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'pack:h3-audio-t8' }) })
     ok(started.status === 200 && started.body.started === true, 'POST start with consent kicks off the fetch')
     await waitUntil(async () => {
       const state = await api('/api/lan/fetch/catalog')
-      return state.body.entries.find((entry) => entry.id === 'pack:krea2-controlnet')?.state === 'placed'
-    }, 20_000, 'the facok pack to place')
+      return state.body.entries.find((entry) => entry.id === 'pack:h3-audio-t8')?.state === 'placed'
+    }, 20_000, 'the T8 pack to place')
     const placedState = await api('/api/lan/fetch/catalog')
-    const placed = placedState.body.entries.find((entry) => entry.id === 'pack:krea2-controlnet')
+    const placed = placedState.body.entries.find((entry) => entry.id === 'pack:h3-audio-t8')
     ok(placed.installedRevision === '79ebfd3bd80d2180b334dd7ce57f3c9ddaa0848f', 'the route-placed pack reports the fetch-stamped HEAD SHA')
-    const marker = JSON.parse(fs.readFileSync(path.join(checkout, 'custom_nodes', 'comfyui-krea2-controlnet', '.studio-node.json'), 'utf8'))
+    const marker = JSON.parse(fs.readFileSync(path.join(checkout, 'custom_nodes', 'comfyui-minimax-h3-audio-T8', '.studio-node.json'), 'utf8'))
     ok(marker.revision === '79ebfd3bd80d2180b334dd7ce57f3c9ddaa0848f', 'the pack marker carries the stamped SHA over the routes path')
 
     // Mismatch through the routes: wrong bytes in the mock → failed fetch,
@@ -812,9 +810,9 @@ routesMaybe('(i) routes against the real built server: catalog GET, 403 without 
     }, 20_000, 'the mismatched fetch to fail')
     ok(!fs.existsSync(path.join(checkout, 'custom_nodes', 'comfyui_controlnet_aux', 'ckpts', 'lllyasviel', 'Annotators', 'mlsd_large_512_fp32.pth')), 'no unverified bytes were placed through the routes')
 
-    const removed = await api('/api/lan/fetch/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'pack:krea2-controlnet' }) })
+    const removed = await api('/api/lan/fetch/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'pack:h3-audio-t8' }) })
     ok(removed.status === 200 && removed.body.removed === true, 'POST remove takes the placement back')
-    ok(!fs.existsSync(path.join(checkout, 'custom_nodes', 'comfyui-krea2-controlnet')), 'the fetched pack folder is gone')
+    ok(!fs.existsSync(path.join(checkout, 'custom_nodes', 'comfyui-minimax-h3-audio-T8')), 'the fetched pack folder is gone')
     const unknownRemove = await api('/api/lan/fetch/remove', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'nope' }) })
     ok(unknownRemove.status === 404, 'removing an unknown id is a 404')
 
