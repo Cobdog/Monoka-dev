@@ -22,6 +22,7 @@ import { extractAutomatedReferenceSet, hydrateLoadedJobs, playableOutputUrl, rec
 import { fetchServerJobs, saveServerJobs, serverStorageMigrationDone } from '../lib/serverStorage'
 import { registerOutputAsset } from '../media/httpPreview'
 import { dbg } from '../lib/dbg'
+import { startPollLoop } from '../lib/promptWatch'
 import { engineRestartFailure, engineUnreachableFailure, ENGINE_LOST_JOB_GRACE_MS } from '../lib/engineWatch'
 import type { LiveProgress } from '../lib/useLivePreview'
 import { subscribe } from '../lib/useRealtime'
@@ -232,8 +233,30 @@ export function useGenerationQueue(options: {
       }
     }
     sweepRef.current = sweep
-    const timer = window.setInterval(sweep, 1000)
-    return () => { sweepRef.current = null; window.clearInterval(timer) }
+    // (§1.1 wiring, 2026-09-26) The sweep rides the shared prompt-watch
+    // kernel (lib/promptWatch) — the loop mechanics (immediate-run guard,
+    // cancel, teardown) come from there instead of a bare setInterval. The
+    // kernel's own tolerance/deadline stay inert BY DESIGN here: a failed
+    // poll is an observation the reducer already counts per job (the streak
+    // in reduceJobPoll), and per-job deadlines belong to the 30 s deadline
+    // sweep below — so the tick never throws and the wall-clock cap is
+    // disabled. The armed flag preserves setInterval's first-fire-at-t+1s
+    // semantics exactly (startPollLoop otherwise ticks immediately).
+    let armed = false
+    const loop = startPollLoop({
+      tick: async () => {
+        if (!armed) { armed = true; return false }
+        sweep()
+        return jobsRef.current.every((job) => isTerminalStatus(job.status))
+      },
+      intervalMs: 1000,
+      deadlineMs: Number.MAX_SAFE_INTEGER,
+      onExhausted: (message) => {
+        dbg('queue', { verdict: 'sweep-exhausted', message })
+        notify('error', message)
+      },
+    })
+    return () => { sweepRef.current = null; loop.cancel() }
   }, [connected, notify, pendingKey, setJobs, settings])
 
   // Realtime fabric resync (wave 1): a per-channel sequence gap means the
