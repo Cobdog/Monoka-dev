@@ -6,7 +6,7 @@
  * two sentences, two buttons (m3's wall-of-text fix; the implementation
  * detail moved into the wizard's steps where it's actionable).
  *
- * Dismissible ONCE per browser (the LicenseNotice precedent — localStorage,
+ * Dismissible ONCE per browser (the notice latch pattern — localStorage,
  * never a nag): dismissed means dismissed until the profile is reset. The
  * latch is keep-listed (§4): dismiss-once, never-flash-before-scan.
  */

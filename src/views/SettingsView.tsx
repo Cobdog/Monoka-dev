@@ -260,12 +260,6 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
       setNodePackBusy(null)
     }
   }
-  const gpuTiers: Array<{ id: NonNullable<AppSettings['gpuTier']>; label: string; guidance: string }> = [
-    { id: '8', label: '8 GB', guidance: 'Pruned INT4 diffusion + INT4 text encoder · 864×480 · 5 s · one render at a time. GGUF only if INT4 is unavailable (ComfyUI manages dynamic VRAM better with safetensors).' },
-    { id: '16', label: '16 GB', guidance: 'Pruned INT8/Q4 diffusion + INT4/INT8 text encoder · 1344×768 · 5 s first · queue one at a time. Tiled VAE covers the auto-retry path.' },
-    { id: '24', label: '24 GB', guidance: 'Q5 or pruned INT8 diffusion + INT8 text encoder · 1344×768 · up to 10 s · comfortable queueing. INT8 is the best-tested community tier.' },
-    { id: 'blackwell', label: 'Blackwell', guidance: 'NVFP4 diffusion + NVFP4-AWQ text encoder · native resolution/duration headroom · SageAttention and Sol-Attn give the largest speedups here.' },
-  ]
   // R-15 (Wave 3): the three-group IA + the sticky rail. The measured
   // baseline was the contract: 17 sections / 15,147 px / 144 controls in one
   // flat scroll — the absorption surface of a year of increments. The groups
@@ -566,13 +560,6 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
       </div>
       <p className="settings-note">Prompts go directly to the local Ollama server. Embedding and cloud-backed models are excluded.</p>
     </section>
-    <section className="settings-section defaults-subsection-section" aria-label="GPU tier guidance">
-<div className="settings-heading"><div><Gauge size={19} /><span><strong>GPU tier guidance</strong><small>Community quant and workload recommendations per VRAM tier — reference help, not a setting you must touch.</small></span></div></div>
-<details className="settings-subsection" data-settings-gpu-details><summary><strong>Per-tier recommendations</strong><small>stored with settings; guidance only</small></summary><div className="settings-heading"><div><Gauge size={19} /><span><strong>GPU tier guidance</strong><small>Community quant and workload recommendations per VRAM tier. Stored with settings; guidance only.</small></span></div></div>
-      <div className="preset-row" aria-label="GPU tiers">
-        {gpuTiers.map((tier) => <button type="button" className={settings.gpuTier === tier.id ? 'tier-selected' : ''} key={tier.id} onClick={() => setSettings({ ...settings, gpuTier: tier.id })}><strong>{tier.label}</strong><small>{tier.guidance}</small></button>)}
-      </div></details>
-</section>
 </section>
 <section className="settings-group" data-settings-group="status" aria-label="Status and diagnostics">
 <h2 className="settings-group-heading">Status &amp; diagnostics <small>what the engine and this workstation actually have</small></h2>
