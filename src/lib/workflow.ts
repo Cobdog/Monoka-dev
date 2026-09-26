@@ -2,6 +2,7 @@ import type { GenerationOptions, ModelSelection, UploadedFile } from '../types'
 import type { ObjectInfo } from './comfyInfo'
 import { assertNoT1ImageVaeInVideoGraph, createGraphContext, findOptimization, FORM_ADAPTER_NODE, H3, resolveTurboPlan, upscaleEntryFor } from './graph'
 import type { ComfyPrompt, Link, TransformOptions } from './graph'
+import { h3AlignFrameCount } from './engineSemantics'
 
 // The graph data model + optimization registry live in ./graph; the type is
 // re-exported here because every sibling builder imports it from this module.
@@ -15,9 +16,12 @@ export type { ComfyPrompt }
 export const OFFICIAL_H3_SAMPLER = 'res_multistep'
 export const OFFICIAL_H3_SCHEDULER = 'simple'
 
+/** The 24 fps seconds → engine frame count, through the ONE grid authority
+ *  (R1, central-model audit): the ledger's snap-up IS the arithmetic this
+ *  factory used to re-derive — min-5 floor, then up to the next 17k+5
+ *  point — so the graph's `length` and the ledger can never disagree. */
 export function frameCount(seconds: number) {
-  const base = Math.max(5, Math.round(seconds * 24))
-  return base + ((5 - (base % 17) + 17) % 17)
+  return h3AlignFrameCount(Math.round(seconds * 24))
 }
 
 /** Swaps the final video VAEDecode for the tiled variant — the standard

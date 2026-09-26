@@ -18,19 +18,22 @@
  *    (+2,788 MiB at the 480×832×124 f reference geometry — 20,074 vs 17,286).
  */
 import { createHash } from 'node:crypto'
+import { h3TruncateToGridDown } from '../../src/lib/engineSemantics'
 
 // ---------------------------------------------------------------------------
-// Frame grid (17n+5 @ 24.000 fps)
+// Frame grid (17n+5 @ 24.000 fps) — read from the engine-semantics ledger
+// (R1, central-model audit): the grid arithmetic lives in ONE home; this
+// module owns only the TRAINING-range policy over it.
 // ---------------------------------------------------------------------------
 
 export const TRAINING_FPS = 24.0
 
 /** The largest grid target ≤ frameCount (the trainer's clamp direction — it
- * walks DOWN, so a clip's effective grid target is the floor on the grid). */
+ * walks DOWN, so a clip's effective grid target is the floor on the grid):
+ *  the ledger's truncate-down policy under this module's 22-frame floor. */
 export function gridTargetFor(frameCount: number): number | null {
   if (!Number.isFinite(frameCount) || frameCount < 22) return null
-  const n = Math.floor((frameCount - 5) / 17)
-  return Math.max(1, n) * 17 + 5
+  return h3TruncateToGridDown(frameCount)
 }
 
 /** Trim length (frames) needed to bake `target` safely: target + 2 headroom

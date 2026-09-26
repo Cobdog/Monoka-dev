@@ -64,7 +64,7 @@ const { buildMiniMaxWorkflow, OFFICIAL_H3_SAMPLER, OFFICIAL_H3_SCHEDULER } = wor
 const graphModule = loadTs('src/lib/graph/index.ts')
 const {
   optimizationEntries, findOptimization, registerOptimization, detectOptimizations,
-  turboProvenance, classifyTurboFamily, turboLoraPatterns, resolveTurboPlan, larryvrhTurboPackPresent,
+  turboProvenance, classifyTurboFamily, turboLoraPatterns, resolveTurboPlan, larryvrhTurboPackPresent, turboFetchPlan,
 } = graphModule
 const {
   buildKrea2Graph, buildKrea2T2iGraph, detectKrea2EditFamilies, findKrea2EditFamily,
@@ -353,6 +353,35 @@ maybe('classification + provenance', () => {
       const isFourStep = entry.pairing?.steps === 4
       ok(!declaresSamplerNode || isFourStep, `${entry.id}: a dedicated-sampler pairing only appears on a 4-step family`)
     }
+  }
+})
+
+// (R3, central-model audit) The turbo matcher joins the ladder discipline:
+// registry names are SUBPATHS ("H3/turbo/x.safetensors" — the shape Wave 2
+// R-12 documented and the registry serves), so every turbo pattern must be
+// tested against the BASENAME through the one shared basenameOf — the same
+// rule findRegistryModel already applies. Failing-without-it: an anchored
+// full-name test reports the family UNAVAILABLE (detect) and unclassifiable
+// (classifyTurboFamily/resolveTurboPlan) for a file the video ladder
+// resolves fine — the stack report's F2/C3 basename bug class, one layer
+// down. The fetch plan already matched basenames (its local copy of the
+// helper — the copy itself is the finding); these assertions pin its
+// behavior so the import swap cannot change it.
+maybe('(c2) turbo matching is basename truth (R3 — subpath\'d registry rows)', () => {
+  {
+    const subpathRow = 'H3/turbo/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'
+    const family = classifyTurboFamily(subpathRow)
+    ok(family && family.id === 'turbo.official-fl2v-8', `a subpath'd registry name classifies its family (got ${family && family.id})`)
+    const detected = detectOptimizations(BARE_INFO, [loraFile(subpathRow)])
+    const official = detected.find(({ entry }) => entry.id === 'turbo.official-fl2v-8')
+    ok(official && official.detection.available === true, `a subpath'd registry row detects as available (got ${official && official.detection.available})`)
+    const plan = resolveTurboPlan({ turbo: '8', loraName: subpathRow, info: FULL_INFO })
+    ok(plan && plan.entryId === 'turbo.official-fl2v-8', 'resolveTurboPlan classifies a subpath\'d loraName')
+    // The fetch plan counted subpath'd catalog file paths before (local
+    // basenameOf) and must keep counting them after the import swap.
+    const fetched = turboFetchPlan(optimizationEntries(), [{ id: 'row-a', files: [{ path: `loras/${subpathRow}` }] }])
+    ok(fetched.fetchable.some((item) => item.entryId === 'turbo.official-fl2v-8' && item.catalogEntryIds.join() === 'row-a'), 'turboFetchPlan matches catalog file paths by basename')
+    ok(fetched.note === '', 'a deliverable catalog row means no dead-end note')
   }
 })
 
