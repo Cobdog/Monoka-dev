@@ -596,14 +596,11 @@ export function forkInputSpec(source: { outputId: string; takeId: string | null;
 
 // ---- latent continuation (Phase 4: the Motion-Context engine seam) ----------
 
-/** The Motion-Context custom-node classes a latent continuation needs (the
- *  same availability computation the old shell's scene chains gate on). */
-export const MOTION_CONTEXT_NODES = [
-  'MiniMaxH3MotionContext',
-  'MiniMaxH3MotionContextLoadLatent',
-  'MiniMaxH3MotionContextSaveLatent',
-  'MiniMaxH3MotionContextTrim',
-] as const
+// The Motion-Context node classes live in ONE spelling: the node-pack
+// registry row 'h3-motion-context' (R5, central-model audit). Readiness is
+// packPresence(info, 'h3-motion-context') — the canvas-side class list this
+// section once carried is gone; workflow.ts's chain builds name the classes
+// they emit directly.
 
 /** Where one canvas chain's sampler latents live (engine-side, under the
  *  ComfyUI output directory — the scene-chain convention). */
