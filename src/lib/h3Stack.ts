@@ -25,6 +25,7 @@ import type { ObjectInfo } from './comfyInfo'
 import { dbg } from './dbg'
 import { basenameOf, inferSelections, teDimClassRefusal } from './modelSelection'
 import { resolveModels, type ModelOverrideSlotName } from './modelOverrides'
+import { vdnAvailability } from './graph'
 import { missingCoreNodeClasses, type MissingNodeClass } from './preflight'
 
 export const diagnosticPrompt = 'A woman standing beside a window in soft daylight, natural skin texture, subtle head movement, realistic cinematic photography.'
@@ -120,16 +121,32 @@ export type H3StackReadinessQuery = {
   selection: Pick<ModelSelection, 'fl2va' | 'ref2va' | 'textEncoder' | 'videoVae' | 'audioVae' | 'fl2vLora' | 'ref2vLora'>
   mode?: GenerationMode
   turbo?: 'off' | '4' | '8'
+  /** The VDN acceleration rung (task 9up52mj): when set, the turbo-LoRA
+   *  member does not apply (the VDN stage's own distilled adapter replaces
+   *  it — the XOR rule) and the engine-side members do (pack + the rung's
+   *  stage, read from the same object_info snapshot the core-class check
+   *  uses). No snapshot keeps the file-only verdict, exactly like the core
+   *  check. Both a rung AND a tier set is not a runnable graph (the factory
+   *  throws) — membership answers false, narration stays with the ladder. */
+  vdn?: 'off' | 'dmd-8' | 'stage-b-50'
   info?: ObjectInfo | Record<string, unknown>
 }
 
 export function h3StackReady(query: H3StackReadinessQuery): boolean {
   const mode = query.mode ?? 'text'
   const turbo = query.turbo ?? 'off'
+  const vdn = query.vdn ?? 'off'
+  if (vdn !== 'off' && turbo !== 'off') return false
   const lane = mode === 'reference' ? query.selection.ref2va : query.selection.fl2va
   const members = [lane, query.selection.textEncoder, query.selection.videoVae, query.selection.audioVae]
   if (turbo !== 'off') members.push(mode === 'reference' ? query.selection.ref2vLora : query.selection.fl2vLora)
   if (!members.every(Boolean)) return false
+  if (vdn !== 'off' && query.info) {
+    const availability = vdnAvailability(query.info)
+    if (!availability.packPresent) return false
+    if (vdn === 'dmd-8' && !availability.dmd) return false
+    if (vdn === 'stage-b-50' && !availability.stageB) return false
+  }
   return missingCoreNodeClasses(query.info, 'h3-video').length === 0
 }
 

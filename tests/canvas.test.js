@@ -726,6 +726,23 @@ test('(q) graph construction per selection (engine-free, L4)', () => {
   ok(classes(turboGraph).some((cls) => cls.includes('LoraLoader')), 'graph: the fast tier wires the turbo LoRA loader')
   const quality = request({ prompt: 'slow pass', turbo: 'off' })
   ok(!classes(generation.planCanvasGraph(quality, fakeSelection)).some((cls) => cls.includes('LoraLoader')), 'graph: the quality tier stays LoRA-free (registry inertness)')
+
+  // The VDN acceleration rung (9up52mj): the plan surface threads engine
+  // truth — a serving snapshot puts ApplyVDNH3 in the plan; no snapshot
+  // stays inert; a contradictory stored doc (rung + tier) THROWS from the
+  // factory's XOR invariant (the store's plan action catches and reports
+  // the empty build beside the validation refusal).
+  const VDN_INFO = { ApplyVDNH3: { input: { required: { vdn_checkpoint: [['stage-dmd-step-250']] } } } }
+  const vdnRequest = request({ prompt: 'vdn pass', turbo: 'off', vdn: 'dmd-8' })
+  ok(vdnRequest.vdn === 'dmd-8', 'graph: the chain\'s VDN rung rides the request')
+  const vdnGraph = generation.planCanvasGraph(vdnRequest, fakeSelection, {}, VDN_INFO)
+  ok(classes(vdnGraph).includes('ApplyVDNH3'), 'graph: a serving engine puts the VDN wrap in the plan')
+  ok(!classes(vdnGraph).some((cls) => cls.includes('LoraLoader')), 'graph: the VDN rung is LoRA-free (the XOR rule, plan-side)')
+  ok(!classes(generation.planCanvasGraph(vdnRequest, fakeSelection)).includes('ApplyVDNH3'), 'graph: without a snapshot the plan stays inert (never a guess)')
+  const contradictory = { ...vdnRequest, turbo: '8' }
+  let threw = false
+  try { generation.planCanvasGraph(contradictory, fakeSelection, {}, VDN_INFO) } catch { threw = true }
+  ok(threw, 'graph: a rung + tier contradiction throws at the factory (never a double-distilled plan)')
 })
 
 // ---- Phase 3 (task j5sj28v): the op-stack model (§5.1) ----------------------

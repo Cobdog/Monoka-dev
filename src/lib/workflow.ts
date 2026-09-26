@@ -1,6 +1,6 @@
 import type { GenerationOptions, ModelSelection, UploadedFile } from '../types'
 import type { ObjectInfo } from './comfyInfo'
-import { assertNoT1ImageVaeInVideoGraph, createGraphContext, findOptimization, FORM_ADAPTER_NODE, H3, resolveTurboPlan, upscaleEntryFor } from './graph'
+import { assertNoT1ImageVaeInVideoGraph, createGraphContext, findOptimization, FORM_ADAPTER_NODE, H3, resolveTurboPlan, resolveVdnPlan, upscaleEntryFor } from './graph'
 import type { ComfyPrompt, Link, TransformOptions } from './graph'
 import { h3AlignFrameCount } from './engineSemantics'
 
@@ -124,6 +124,21 @@ export function buildMiniMaxWorkflow(
     previewOverride: options.previewOverride,
     experimentalSampling: options.experimentalSampling,
     info,
+  }
+
+  // Registry seam 0 — the VDN acceleration wrap (node '29', task 9up52mj:
+  // the adopted-first-party arm). FIRST in the model chain — the pack's own
+  // example workflow and README prescribe between-loader-and-sampler, i.e.
+  // before the LoRA stack and every later wrap. XOR with the turbo tier at
+  // the resolver (both are acceleration patches on the same slot; the VDN
+  // stage's distilled adapter replaces the turbo LoRA): with a rung active
+  // the tier is 'off', so seam 1 stays inert below. Environment absences
+  // (no snapshot / pack not served / stage not fetched) resolve no plan and
+  // the graph stays byte-identical to the pre-VDN base — never a guess.
+  const vdnPlan = resolveVdnPlan({ vdn: options.vdn, turbo: options.turbo, info })
+  transformOptions.vdnPlan = vdnPlan
+  if (vdnPlan) {
+    findOptimization('vdn.apply')?.transform(prompt, ctx, transformOptions)
   }
 
   // Registry seam 1 — turbo loader (node '5'). The plan resolves the selected
@@ -260,8 +275,8 @@ export function buildMiniMaxWorkflow(
   }
   prompt['11'] = { class_type: 'RandomNoise', inputs: { noise_seed: options.seed } }
   prompt['12'] = { class_type: 'BasicGuider', inputs: { model: modelLink, conditioning: conditioningSource } }
-  const sampler = options.experimentalSampling ? options.sampler : OFFICIAL_H3_SAMPLER
-  const scheduler = options.experimentalSampling ? options.scheduler : OFFICIAL_H3_SCHEDULER
+  const sampler = options.experimentalSampling ? options.sampler : (vdnPlan?.sampler ?? OFFICIAL_H3_SAMPLER)
+  const scheduler = options.experimentalSampling ? options.scheduler : (vdnPlan?.scheduler ?? OFFICIAL_H3_SCHEDULER)
   // Pairing contract: a dedicated sampler node (from the entry's declared
   // pairing, e.g. larryvrh's MiniMaxH3TurboSampler) replaces KSamplerSelect —
   // it carries no widgets. The user's experimental-sampling opt-in still wins.
@@ -271,7 +286,7 @@ export function buildMiniMaxWorkflow(
     : { class_type: 'KSamplerSelect', inputs: { sampler_name: sampler } }
   prompt['14'] = {
     class_type: 'BasicScheduler',
-    inputs: { model: modelLink, scheduler, steps: turboPlan?.steps ?? (options.turbo === 'off' ? options.steps : Number(options.turbo)), denoise: 1 },
+    inputs: { model: modelLink, scheduler, steps: vdnPlan?.steps ?? turboPlan?.steps ?? (options.turbo === 'off' ? options.steps : Number(options.turbo)), denoise: 1 },
   }
   prompt['15'] = {
     class_type: 'SamplerCustomAdvanced',

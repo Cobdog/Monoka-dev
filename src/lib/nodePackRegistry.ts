@@ -65,25 +65,39 @@ import type { NodePackDefinition } from '../types'
  *    experimentalT1Decode flag until the E-FS0/E-FS1 bake-off reports. */
 export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
   {
-    // STUB(wiring): no builder emits ApplyVDNH3 — the machinery is fully
-    // wired (vendored tree, vdn engine profile, LongCache patch consent,
-    // stage-weight fetch rows) but the graph lane never fires. Ruled FINISH
-    // 2026-09-26 (adopted as our own; task 9up52mj), sequenced behind the
-    // centralization wave — see docs/audit/wiring-check-2026-09-26.md §1.
+    // ADOPTED AS OUR OWN ENTIRELY (maintainer ruling 2026-09-26, the
+    // inventory decision §Rulings #3: "the upstream repo has been removed
+    // but we still have local copies — we adopt it entirely as our own. We
+    // take on the debt of managing this one"). The vendored tree at this
+    // pin IS the code of record — there is no upstream to contend with.
+    // The graph lane FINISHED with it (task 9up52mj): the video factory
+    // emits ApplyVDNH3 as the 'vdn.apply' acceleration entry (graph/vdn.ts
+    // — rungs dmd-8 / stage-b-50, XOR with the turbo tier).
     id: 'vdn-h3',
     name: 'ComfyUI-VDN-H3',
     featureGroup: 'H3 video',
-    description: 'The community VDN port — a node pack, not a fork. VDN-proper is applied as runtime model patches on ComfyUI\'s native MiniMax-H3 ModelPatcher: nothing outside custom_nodes/, no core patch, no new dependencies. Weights are downloaded separately from Hugging Face and land as links in your model roots.',
+    description: 'The VDN port we adopted as our own (upstream removed 2026-09-26 — the vendored tree is the code of record). A node pack, not a fork: VDN-proper is applied as runtime model patches on ComfyUI\'s native MiniMax-H3 ModelPatcher, nothing outside custom_nodes/, no core patch, no new dependencies. Stage weights are separate Hugging Face fetches that land under models/vdn (the engine enumerates them itself).',
     repoUrl: 'https://github.com/Saganaki22/ComfyUI-VDN-H3',
     pinnedRevision: '3eb63496c24ca70faaf8a14b6c75fcb480e34bf1',
     licenseSpdx: 'Apache-2.0',
+    licenseNote: 'Apache-2.0 (LICENSE in-tree, verified 2026-09-14). CUSTODY TAKEN 2026-09-26: upstream removed, Monoka is the sole manager and only upstream of this copy from here (the Viggle posture) — the vendored tree and its pin are the archive of record.',
     installMode: 'vendor',
     vendorDir: 'ComfyUI-VDN-H3',
     homepage: 'https://github.com/Saganaki22/ComfyUI-VDN-H3',
     // NODE_CLASS_MAPPINGS read from the vendored payload (vendor/nodes/
     // ComfyUI-VDN-H3, 2026-09-19). The separately-named 24GB variant install
     // registers *_24GB-suffixed classes — detection is by OUR pinned pack.
+    //
+    // presenceRule 'any' (R5's deliberate-subset case, decided when the
+    // graph lane landed): our builders emit ONLY the base ApplyVDNH3 —
+    // ApplyVDNH3Advanced is the ablation surface we never emit (its
+    // fast_kernels is documented to drift on 8-step DMD stages). A serving
+    // of just the base class runs every VDN graph we build, so 'all' would
+    // misread it absent; the lane's own gate additionally requires the
+    // engine-served vdn_checkpoint stage (object_info truth), which lives
+    // under ApplyVDNH3 specifically.
     instanceNodeClasses: ['ApplyVDNH3', 'ApplyVDNH3Advanced'],
+    presenceRule: 'any',
   },
   {
     id: 'lora-form-adapter',
