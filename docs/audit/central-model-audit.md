@@ -450,3 +450,72 @@ Two build agents were in flight during this audit (worktrees at b3ba921): the st
 centralization (touches `h3Stack.ts`, `modelOverrides.ts`, `SettingsView`, wizard) and the
 hands-on review trio (`submit`/`h3Submit`/`imageCrop`). Rows R2/R8 overlap the first worktree's
 territory by design — they are its natural follow-through, not conflicts.
+
+---
+
+## Closure addendum — the centralization wave (2026-09-26, task t6z9sqg)
+
+The punch list's top five rows executed. Every row below names its commit; behavior changes
+landed failing-first (the red run recorded in the task), behavior-preserving refactors rode
+existing characterization goldens plus new ledger-equivalence assertions. The full unit suite
+(24 files / 302 tests) and both typecheck legs are green at the wave's head.
+
+- **R1 — centralized (`ea25c33`).** The ledger gained `h3TruncateToGridDown` (the snap-down
+  policy, named and tested — previously re-derived per reader) and a non-finite guard making
+  both grid helpers total. All five readers import it: `workflow.frameCount` IS
+  `h3AlignFrameCount(round(×24))`; `motionFrameResample`'s aligned, `gridTargets`,
+  `gridTargetFor`, and bake's `target_frames` validator all read the ledger's helpers under
+  their own documented range/lane policies. New equivalence assertions tie each reader to
+  the ledger exactly (engine-contract, camera, datasets suites).
+- **R2 — centralized (`acdd3ec`, riding PR #55's report rework).** `h3StackReady`
+  (h3Stack.ts) is the one membership definition, parameterized by what is gated: `mode`
+  (the graph's own UNETLoader lane — reference adds ref2va; nothing else demands it),
+  `turbo` (the plan's lane LoRA — a turbo render without it is now refused as
+  model-missing instead of silently shipping N undistilled steps), `info` (the R-29
+  core-node check). `modelReadyFor` deleted; the five store call sites pass the request's
+  own mode+turbo; EngineHost's chip reads the text lane (modeless — the deliberate
+  parameter choice, documented in the predicate: no blanket ref2va soft-gate, no turbo
+  demand on a modeless verdict); the diagnostics pair and helper read the Turbo-8
+  parameterization; `h3StackReport().ready` is the predicate over its table plus its
+  refusal narration. The chip and the report can still legitimately disagree (a stack with
+  no turbo LoRA: chip ready, report incomplete) — but both are now DERIVED from one rule
+  with named parameters, never two encodings; the report's turbo row explains its own
+  verdict.
+- **R3 — centralized (`97cbd94`).** `firstLoraMatch` and `classifyTurboFamily` test the
+  BASENAME through the exported `basenameOf`; `turboFetchPlan`'s local copy deleted. A
+  subpath'd turbo LoRA now classifies, detects, and plans identically to the video ladder
+  (failing-first: red in registry.test.js (c2) before the fix).
+- **R4 — centralized (`13b4950`).** `normalizeStoredOverrideSlots` exported from
+  modelOverrides.ts — pure, server-imported, with the routing and family sets as module
+  data and a `healCrossClassPicks` gate (ON = the load seam's wedge healing; OFF = the
+  resolution-time migration, ruling D3: conscious wrong-slot picks refuse, never silently
+  move). core.ts's hand-copied markers/sets/router are deleted; the "mirrors" comments
+  with them. The instance suite's real-seam round-trips (legacy migration, T1 routing,
+  stored-wedge healing) stayed green unchanged — the equivalence proof.
+- **R5 — centralized (`97cbd94` + the canvas tail in `acdd3ec`).** One rule as registry
+  data: `NodePackDefinition.presenceRule` ('any' default — hook detection; 'all' where the
+  app's graphs load every listed class: the turbo dedicated pair, Motion-Context's four,
+  Fizgig's two), applied by `resolvePackPresence`/`packPresence` (nodePackRegistry). The
+  board (`nodePackInstanceState`) delegates — a partial Motion-Context/turbo serving now
+  reads ABSENT everywhere, agreeing with the gates that always required the full set
+  (failing-first: the inverted instance.test.js assertion was proven red against the old
+  any-match board). `larryvrhTurboPackPresent` and `fizgigH3StillPackPresent` read the
+  helper; `motionContextReady` (store) and the option-availability check read
+  `packPresence(info, 'h3-motion-context')`; the dead `MOTION_CONTEXT_NODES` and
+  `LARRYVRH_TURBO_NODES` class-list mirrors died with them. **Documented boundary:**
+  `h3ImageStudioPackPresent` keeps its Prepare-set any-match by design — it gates the
+  studio-conditioned PATH (whose vocabulary is the four Prepare classes the builder picks
+  between), not pack presence; the row's own detection stays 'any' and the two agree.
+
+**Enforcement greps, spot-checked against the wave's diff** (`git diff 825c62b..<wave-head>`):
+(1) every added `.test(` references the one home's existing patterns (the turbo registry's
+`entry.patterns`, modelOverrides' module-private VAE markers) — three hand-copied marker
+regexes left the tree and no new one entered; (2) the new verdicts (`h3StackReady`,
+`packPresence`) read the resolution seam's output and registry data respectively; (3) the
+single added `5 + 17 × …` line is the ledger itself, and five reader-side copies died;
+(4) zero occurrences of the flagged word in added comment lines; (5) no new object_info
+channel — packPresence answers from the caller's snapshot; (6) no advice strings added.
+
+**Honest deferrals (unchanged rows):** R6's remaining builder mirrors (`KREA2EDIT_NODES`,
+`ANYPAINT_NODES`, krea2edit's per-family gates) and every row below R5 are untouched by
+this wave — the audit's ranking stands, and R6 just lost two of its mirrors for free.
