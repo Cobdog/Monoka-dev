@@ -45,7 +45,7 @@ we have planned, mark it as a stub and document it."* Per-finding outcomes
 
 | § | Outcome | Where it landed |
 |---|---|---|
-| 1.1 | **RESOLVED-WIRED (PR B)** | promptWatch adopted as the queue sweep's loop engine |
+| 1.1 | **RESOLVED-WIRED** | promptWatch adopted as the queue sweep's loop engine — `9ddb11c` |
 | 1.2 | **RESOLVED-STUB** | awaits the asset-authoring surface (remediation plan D1's re-attachment point) — `7f8f2fe` |
 | 1.3 | **RESOLVED-STUB** | awaits the composer's contract-layer adoption (prompt-doctrine consolidation) — `7f8f2fe` |
 | 1.4 | **RESOLVED-STUB** | FINISH stands, task 9up52mj, behind the centralization wave — tag restyled `7f8f2fe` |
@@ -57,9 +57,9 @@ we have planned, mark it as a stub and document it."* Per-finding outcomes
 | 1.10 | **RESOLVED-CUT** | `resetFamilyManifestCache` removed — `7f8f2fe` |
 | 1.11 | **RESOLVED-CUT** | the two authoring exports removed; the spine stays (ruled KEEP, D1/R-14) — `7f8f2fe` |
 | 2.1 | **RESOLVED-CUT** | route + `streamLanEvents` + the query-token entry removed — `7f8f2fe` |
-| 2.2 | **RESOLVED-WIRED (PR B)** | control-track delete affordance on the chain inspector |
+| 2.2 | **RESOLVED-WIRED** | control-track delete affordance on the chain inspector (blast radius stated in the confirm) — `9ddb11c` |
 | 2.3 | **RESOLVED-STUB** | awaits the maintenance/ops surface (Control Center diagnostics) — `7f8f2fe` |
-| 2.4 | **RESOLVED-WIRED (PR B)** | export affordance on the canvas index; import stays stubbed (project-home owns it) |
+| 2.4 | **RESOLVED-WIRED** | export affordance on the canvas index's project rows; import stays stubbed (the design rounds' project-home owns it) — `9ddb11c` |
 | 2.5 | **RESOLVED-STUB** | awaits the maintenance/ops surface (Control Center diagnostics) — `7f8f2fe` |
 | 2.6 | **RESOLVED-CUT** | the standalone exports listing removed — `7f8f2fe` |
 | 2.7 | **RESOLVED-STUB** | awaits the LLM module surface — `7f8f2fe` |

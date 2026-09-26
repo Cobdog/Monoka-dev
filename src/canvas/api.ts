@@ -169,6 +169,44 @@ export const documentsApi = {
   addControlTrack: (input: { chainId: string; kind: string; source: string; inputRef: string; maskRef?: string | null; params?: Record<string, unknown> | null }) =>
     post<{ controlTrack: { id: string } }>('/api/lan/documents/control-tracks', input),
 
+  /** Control-track delete (§7 document rows): the chain inspector's
+   *  per-track trash action. Server-side it is a plain row delete — the
+   *  track's referenced media keeps its blob rows and only becomes
+   *  collectable at the next store sweep. */
+  deleteControlTrack: (id: string) =>
+    post<{ deleted: number }>('/api/lan/documents/control-tracks/delete', { id }),
+
+  /** Project archive download (§7 export): the zip (manifest + document
+   *  rows + blob tree) as a browser download. Rides the auth header like
+   *  every documents call — the blob + object-URL hop is what a
+   *  content-disposition download cannot do from JS without a query
+   *  token. */
+  exportProjectArchive: async (projectId: string): Promise<{ fileName: string }> => {
+    const headers = new Headers()
+    headers.set('x-minimax-token', new URLSearchParams(window.location.search).get('token') ?? '')
+    const response = await fetch(`/api/lan/documents/export?id=${encodeURIComponent(projectId)}`, { headers })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as { error?: string }
+      throw new DocumentsHttpError(response.status, typeof body.error === 'string' ? body.error : `the archive download failed (${response.status})`)
+    }
+    const disposition = response.headers.get('content-disposition') ?? ''
+    const named = /filename="([^"]+)"/.exec(disposition)
+    const fileName = named?.[1] ?? `${projectId}.canvas.zip`
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    try {
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = fileName
+      document.body.appendChild(anchor)
+      anchor.click()
+      anchor.remove()
+    } finally {
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    }
+    return { fileName }
+  },
+
   /** Phase 2 media ingestion: dropped bytes → engine-visible output-dir copy
    *  + content-addressed blob row. Returns both paths. */
   ingestBlob: async (input: { dataBase64: string; name: string; kind: 'image' | 'video' | 'audio' }) =>

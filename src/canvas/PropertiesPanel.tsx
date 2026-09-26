@@ -557,6 +557,17 @@ export function PropertiesPanel() {
     }
   }
 
+  // Control-track delete (§2.1): the blast radius stated up front — the row
+  // and its GC protection go now, the referenced media only at the next
+  // store sweep, and nothing else consumes a track today (the pose
+  // conditioning lane is parked).
+  const deleteControlTrack = async (track: { id: string; kind: string; maskRef: string | null }) => {
+    if (!window.confirm(`Delete this ${track.kind} control track?\n\nThe stored row leaves this scene and its media stops being protected from the store's garbage collector (collected only by the next sweep, and only if nothing else references it). No graph consumes a track yet — this does not affect any existing take.`)) return
+    const deleted = await useCanvasStore.getState().deleteControlTrack(track.id)
+    if (deleted) useCanvasStore.getState().toast('success', 'Control track deleted.')
+    else useCanvasStore.getState().toast('error', 'Nothing was deleted — the track was already gone (the panel refreshes).')
+  }
+
   // ---- The structured ⇄ freeform toggle (fh94g76, spec §4) ----
   // `prompt` stays the engine's single source of truth: in structured mode
   // every box edit composes into it; toggling never rewrites it (AC 1 — the
@@ -1126,6 +1137,31 @@ export function PropertiesPanel() {
           {!tile.takes.length && <li className="canvas-properties-empty">No takes yet.</li>}
         </ul>
       </details>
+
+      {/* Control tracks (§2.1 rows — written by the pose rig dock's export).
+          Present only when authored, per the R-18 disclosure discipline. */}
+      {(chain?.controlTracks?.length ?? 0) > 0 && <details className="canvas-properties-section canvas-properties-disclosure" data-canvas-section="control-tracks" data-control-tracks-count={chain!.controlTracks!.length}>
+        <summary>Control tracks <span className="canvas-properties-hint">{chain!.controlTracks!.length} stored · {chain!.controlTracks!.every((track) => track.kind === chain!.controlTracks![0]!.kind) ? chain!.controlTracks![0]!.kind : 'mixed'}</span></summary>
+        {chain!.controlTracks!.map((track) => (
+          <div className="canvas-properties-row" key={track.id} data-canvas-control-track={track.id}>
+            <span className="canvas-properties-ref-tag">§</span>
+            <span className="canvas-properties-ref-label">{track.kind}{track.maskRef ? ' · mask' : ''}</span>
+            <button
+              type="button"
+              aria-label={`Delete control track ${track.kind}`}
+              data-canvas-control-track-delete={track.id}
+              title="Delete this control track — the stored row and its GC protection go; the media itself is only collected by the next store sweep"
+              onClick={() => { void deleteControlTrack(track) }}
+            >
+              <X size={11} />
+            </button>
+          </div>
+        ))}
+        <p className="canvas-properties-note">
+          Pose/control data stored for this scene. No graph lane consumes a
+          track yet — the conditioning consumer is the parked pose lane.
+        </p>
+      </details>}
 
     </div>
       {libraryOpen && <PromptLibraryBrowser onClose={() => setLibraryOpen(false)} onInsert={(prompt) => {

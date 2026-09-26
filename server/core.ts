@@ -2070,10 +2070,8 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
               throw error
             }
           }
-          // FIXME(wiring): route without a caller — the UI creates control
-          // tracks (PoseRigDock) but no surface ever deletes one; nothing in
-          // the client fetches this. Tracked in
-          // docs/audit/wiring-check-2026-09-26.md §2.
+          // (Wired 2026-09-26, wiring-check §2.2: the chain inspector's
+          // control-tracks disclosure deletes through this route.)
           if (url.pathname === '/api/lan/documents/control-tracks/delete' && request.method === 'POST') {
             const body = await readJson(request, 10_000)
             const id = idFrom(body)
@@ -2275,10 +2273,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           }
           // Archive (§7): export = zip (manifest + document rows + blob tree);
           // import refuses unknown-newer versions loudly.
-          // FIXME(wiring): the export half has no caller — nothing in the
-          // client (or tests) fetches this archive; the backup/migration
-          // affordance was never surfaced. Tracked in
-          // docs/audit/wiring-check-2026-09-26.md §2.
+          // (Export wired 2026-09-26, wiring-check §2.4: the canvas index's
+          // project rows download the archive through this route. The IMPORT
+          // half stays a deliberate stub — the design rounds' project-home
+          // owns that surface.)
           if (url.pathname === '/api/lan/documents/export' && request.method === 'GET') {
             const id = url.searchParams.get('id') ?? ''
             if (!id || id.length > 400) return sendJson(response, 400, { error: 'A project id is required.' })

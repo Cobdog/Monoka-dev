@@ -1,10 +1,10 @@
 /**
  * Shared polling kernel for watching a ComfyUI prompt to completion.
  *
- * FIXME(wiring): this kernel is unwired — no live importer anywhere in src/
- * or server/ (the submit paths keep their own poll loops; only
- * tests/workflows.test.js loads this standalone). Tracked in
- * docs/audit/wiring-check-2026-09-26.md §1.
+ * (Wired 2026-09-26, wiring-check §1.1: the generation queue's sweep loop —
+ * the one poll loop the submit paths ride — runs on this kernel; its
+ * tolerance/deadline are deliberately inert there because per-job failure
+ * streaks and deadlines live in jobReducer.)
  *
  * Every caller-supplied `tick` does one poll round and returns:
  *   true  — the watch is finished (success or a terminal error the tick
