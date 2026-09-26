@@ -232,3 +232,18 @@ before any cut makes the pack share *look* bigger than it is.
 *Rulings from the DECISION column flow back to
 [node-pack-registry.md](node-pack-registry.md) as dated addenda — this file is
 the mark-up surface, not the record.*
+
+---
+
+## THE RULINGS (maintainer, 2026-09-26 — the DECISION column, filled)
+
+1. **krea2-ostris-edit: KEEP + WIRE** — "Krea 2 edit should also use the Ostris edit, so we can utilize Cierpliwy/krea2-inpaint-edit" (the cut candidate is reversed; the ostris recipe joins the Krea 2 edit lane + the Cierpliwy weights get a fetch row).
+2. **Kreatine: PENDING** — "can remain pending until I finish working with it."
+3. **VDN: FINISH — ADOPTED AS OUR OWN ENTIRELY** — "the upstream repo has been removed but we still have local copies; we adopt it entirely as our own. We take on the debt of managing this one, since there is no upstream to contend with." First-party ownership posture; the graph lane (the zero-emission machinery) gets finished.
+4. **facok controlnet: CUT** (confirmed).
+5. **one-node-minimax-h3: CUT** — "we only cared about using the workflows as examples, even then we are likely going to create our own that are optimized for our workflows."
+6. **SeedVR2: STAYS for now** — "considered in our upscale design; we likely decide which upscale paths work best; cut candidate in the future."
+7. **CrossView-Warp: STAYS. All first-party ports: STAY. ETN bridge: STAYS. krea2t-enhancer: STAYS** ("recently got updated").
+8. **The maintainer will author a PURE TWO-STAGE SAMPLER NODE for both Krea and H3** — "simple and to the point by design; other paths are going to be ours to wire in directly." First-party, maintainer-authored; the program makes room (registry/family entries at arrival; TS-1's scoreboard informs the design).
+
+Execution notes: the VDN finish + the two cuts sequence BEHIND the in-flight centralization wave (shared files: engineNodes/turbo/workflow seams); the ostris-keep + Cierpliwy lane is disjoint and dispatches immediately. h3-multishot's instance-level warning stands regardless (the maintainer's own instance call).
