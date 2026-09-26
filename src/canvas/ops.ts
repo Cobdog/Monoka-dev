@@ -47,6 +47,8 @@ export const OP_META: OpMeta[] = [
   { kind: 'h3img.tone-lock', label: 'tone-lock', applies: 'image', note: 'Frequency-separated blend: the source keeps low frequencies (tone lock), the refine output supplies detail. Radius/strength dials; runs at export.' },
 ]
 
+// FIXME(wiring): dead helper — zero callers; OpEditor looks entries up via
+// OP_META.find directly. Tracked in docs/audit/wiring-check-2026-09-26.md §6.
 export function opMetaFor(kind: string): OpMeta | null {
   return OP_META.find((meta) => meta.kind === kind) ?? null
 }

@@ -51,7 +51,12 @@ export function conformFrames(rawFrames: number): number {
 }
 
 /** Conform a painted duration to the grid: the seconds of the nearest legal
- * frame count. */
+ * frame count.
+ *
+ * FIXME(wiring): conformDurationSeconds is tests-only and
+ * snapBoundarySeconds (below) has zero callers anywhere — the timeline paints
+ * through conformFrames directly. Tracked in
+ * docs/audit/wiring-check-2026-09-26.md §6. */
 export function conformDurationSeconds(seconds: number): number {
   return conformFrames(seconds * TIMELINE_FPS) / TIMELINE_FPS
 }

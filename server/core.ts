@@ -1854,6 +1854,14 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
               throw error
             }
           }
+          // FIXME(wiring): tests-only maintenance routes — exercised by
+          // tests/documents.test.js, never fetched from any live journey:
+          // documents/projects/delete (this route), documents/projects/restore,
+          // documents/import, documents/import/legacy, documents/prune,
+          // documents/gc, documents/jobs/state (the client uses the
+          // non-documents /api/lan/projects/delete for deletes and has no
+          // affordance for the rest). Tracked in
+          // docs/audit/wiring-check-2026-09-26.md §2.
           if (url.pathname === '/api/lan/documents/projects/delete' && request.method === 'POST') {
             const body = await readJson(request, 10_000)
             const id = idFrom(body)
@@ -2095,6 +2103,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
               throw error
             }
           }
+          // FIXME(wiring): route without a caller — the UI creates control
+          // tracks (PoseRigDock) but no surface ever deletes one; nothing in
+          // the client fetches this. Tracked in
+          // docs/audit/wiring-check-2026-09-26.md §2.
           if (url.pathname === '/api/lan/documents/control-tracks/delete' && request.method === 'POST') {
             const body = await readJson(request, 10_000)
             const id = idFrom(body)
@@ -2204,6 +2216,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
             if (body.confirm !== 'empty-trash') return sendJson(response, 400, { error: 'Emptying the trash is destructive; send confirm:"empty-trash".' })
             return sendJson(response, 200, { emptied: documents.emptyTrash() })
           }
+          // FIXME(wiring): route without a caller — a deliberate maintenance
+          // seam (documents.ts notes "the UX around it is open"), but nothing
+          // in the client fetches it. Tracked in
+          // docs/audit/wiring-check-2026-09-26.md §2.
           if (url.pathname === '/api/lan/documents/blobs/relink' && request.method === 'POST') {
             const body = await readJson(request, 100_000)
             const roots = stringArray(body.roots)
@@ -2292,6 +2308,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           }
           // Archive (§7): export = zip (manifest + document rows + blob tree);
           // import refuses unknown-newer versions loudly.
+          // FIXME(wiring): the export half has no caller — nothing in the
+          // client (or tests) fetches this archive; the backup/migration
+          // affordance was never surfaced. Tracked in
+          // docs/audit/wiring-check-2026-09-26.md §2.
           if (url.pathname === '/api/lan/documents/export' && request.method === 'GET') {
             const id = url.searchParams.get('id') ?? ''
             if (!id || id.length > 400) return sendJson(response, 400, { error: 'A project id is required.' })
@@ -2478,6 +2498,11 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
         // wave 1 so existing remote clients keep working; new clients use the
         // realtime fabric (/ws + /api/lan/realtime). Retire after the fabric
         // proves out in real use.
+        // FIXME(wiring): zero consumers remain — the last client (MobileApp)
+        // was removed with Phase 0 (2026-09-20); every live surface rides
+        // /api/lan/realtime. The keep-for-remote-clients justification is
+        // void; candidate for the retirement this comment names. Tracked in
+        // docs/audit/wiring-check-2026-09-26.md §2.
         if (url.pathname === '/api/lan/events' && request.method === 'GET') return streamLanEvents(request, response, url.searchParams, settings.comfyUrl)
         // Realtime fabric — SSE v2 fallback: the typed JSON channels only
         // (previews degrade to base64 here; WS is the primary transport).
@@ -2909,6 +2934,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
               return sendJson(response, 200, result)
             } catch (error) { return fail(error, 400) }
           }
+          // FIXME(wiring): route without a caller — the datasets bootstrap
+          // payload already carries the exports list; nothing fetches the
+          // standalone listing. Tracked in
+          // docs/audit/wiring-check-2026-09-26.md §2.
           if (url.pathname === '/api/lan/datasets/exports' && request.method === 'GET') {
             return sendJson(response, 200, { exports: manager.listExports() })
           }
@@ -3058,6 +3087,9 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
         }
         // User-editable composer fragments: factory seeds + persisted
         // overrides (workspace_state kv, smallest surface).
+        // FIXME(wiring): tests-only route pair (GET+POST) — the fragment
+        // override feature has no UI; tests/llm.test.js is the only fetcher.
+        // Tracked in docs/audit/wiring-check-2026-09-26.md §2.
         if (url.pathname === '/api/lan/llm/fragments' && request.method === 'GET') {
           return sendJson(response, 200, llm.listFragments())
         }
