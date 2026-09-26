@@ -17,18 +17,22 @@
 import type { ObjectInfo } from '../comfyInfo'
 import type { ModelFile } from '../../types'
 import type { ComfyNode, ComfyPrompt, GraphContext, OptimizationEntry, TransformOptions, TurboLoaderChoice, TurboPlan } from './types'
-import { H3, LARRYVRH_TURBO_NODES } from './ids'
+import { H3 } from './ids'
+import { basenameOf } from '../modelSelection'
+import { packPresence } from '../nodePackRegistry'
 
 /** True when the larryvrh ComfyUI-MiniMax-H3-Turbo pack is installed
- * (MiniMaxH3TurboLoRA + MiniMaxH3TurboSampler both present in object_info). */
+ * (MiniMaxH3TurboLoRA + MiniMaxH3TurboSampler both present in object_info —
+ * the registry row's all-classes rule, read through the one packPresence
+ * helper; R5 of the central-model audit). */
 export function larryvrhTurboPackPresent(info: ObjectInfo | undefined): boolean {
-  return Boolean(info && LARRYVRH_TURBO_NODES.every((node) => info[node]))
+  return packPresence(info, 'minimax-h3-turbo')
 }
 
 function firstLoraMatch(files: ModelFile[], patterns: RegExp[]): ModelFile | undefined {
   const candidates = files.filter((file) => file.kind === 'loras')
   for (const pattern of patterns) {
-    const match = candidates.find((file) => pattern.test(file.name))
+    const match = candidates.find((file) => pattern.test(basenameOf(file.name)))
     if (match) return match
   }
   return undefined
@@ -208,10 +212,14 @@ export const GENERIC_TURBO_ENTRY: OptimizationEntry = {
   },
 }
 
-/** First family whose patterns classify the filename (registry order wins). */
+/** First family whose patterns classify the filename (registry order wins).
+ *  Basename truth (R3): callers hand it REGISTRY names — subpaths included —
+ *  so the anchored patterns test the basename through the one shared
+ *  basenameOf, exactly like findRegistryModel. */
 export function classifyTurboFamily(filename: string, entries: readonly OptimizationEntry[] = TURBO_ENTRIES): OptimizationEntry | undefined {
   if (!filename) return undefined
-  return entries.find((entry) => entry.patterns?.some((pattern) => pattern.test(filename)))
+  const base = basenameOf(filename)
+  return entries.find((entry) => entry.patterns?.some((pattern) => pattern.test(base)))
 }
 
 /** The truth-table behind the turbo fetch affordance (journey sweep #7,
@@ -233,11 +241,6 @@ export type TurboFetchPlan = {
 type CatalogRowLike = { id: string; files?: Array<{ path: string }> }
 
 export function turboFetchPlan(entries: readonly OptimizationEntry[], catalog: readonly CatalogRowLike[]): TurboFetchPlan {
-  const basenameOf = (name: string) => {
-    const clean = name.replace(/\\/g, '/')
-    const slash = clean.lastIndexOf('/')
-    return slash === -1 ? clean : clean.slice(slash + 1)
-  }
   const fetchable: TurboFetchPlan['fetchable'] = []
   for (const entry of entries) {
     if (!entry.patterns) continue

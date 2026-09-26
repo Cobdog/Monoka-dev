@@ -69,7 +69,8 @@ export const H3 = {
   lbhSaveVideo: '99',
 } as const
 
-/** Node classes of the larryvrh ComfyUI-MiniMax-H3-Turbo pack (Apache-2.0):
- * a MODEL→MODEL turbo loader and a →SAMPLER node purpose-built for 4-step
- * audio-video stepping. Presence in object_info upgrades 4-step families. */
-export const LARRYVRH_TURBO_NODES = ['MiniMaxH3TurboLoRA', 'MiniMaxH3TurboSampler'] as const
+/** Node classes of the larryvrh ComfyUI-MiniMax-H3-Turbo pack live in the
+ * node-pack registry row 'minimax-h3-turbo' (R5: the registry is the one
+ * spelling; presence is read through packPresence — the local class-list
+ * copy died with it). */
+

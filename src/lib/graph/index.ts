@@ -17,7 +17,7 @@
  * See docs/architecture.md → "Optimization registry" for how to add an entry. */
 export type { ComfyNode, ComfyPrompt, DetectionResult, EngineId, GraphContext, Link, OptimizationEntry, TransformOptions, TurboLoaderChoice, TurboPlan, WrapPoint } from './types'
 export { createGraphContext } from './types'
-export { H3, LARRYVRH_TURBO_NODES } from './ids'
+export { H3 } from './ids'
 export { TURBO_ENTRIES, GENERIC_TURBO_ENTRY, larryvrhTurboPackPresent } from './turbo'
 export { UPSCALE_ENTRIES } from './upscale'
 export { PREVIEW_ENTRY } from './preview'
