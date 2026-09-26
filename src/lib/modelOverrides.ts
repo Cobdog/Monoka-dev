@@ -224,38 +224,89 @@ const VIDEO_VAE_FAMILIES: ReadonlySet<string> = new Set(['minimax', 'h3image'])
  *  under that key drops with the family — Phase-0 LTX precedent.) */
 const AUDIO_VAE_FAMILIES: ReadonlySet<string> = new Set(['music3'])
 
-/** Legacy migration (rq0lsax, dated decision 2026-09-20): the pre-split
- *  single 'checkpoint' pick on an H3 family drove BOTH lanes (fl2va and
- *  ref2va — the old SLOT_FIELDS pair), so it migrates onto fl2va AND
- *  ref2va, fill-if-unset — never silently dropped, and behavior-preserving
- *  (an existing user's reference-mode renders keep loading the picked file
- *  exactly as before; fl2va-only would have silently re-inferred the
- *  reference lane). Non-H3 families keep 'checkpoint'; an empty/absent
- *  legacy pick is a no-op.
+/** The stored-slot rules' DATED DECISIONS (rq0lsax + epdvxd4 + tmz8vh7,
+ *  all 2026-09-20) and their full provenance narrative — the maintainer's
+ *  first-session T=1 wedge report included — live at the one home that now
+ *  implements them: normalizeStoredOverrideSlots below (R4, central-model
+ *  audit; previously re-implemented by hand in server/core.ts's settings
+ *  loader, held together only by lockstep comments). */
+/** Decoder-class landing for one VAE-named pick on a video family (the
+ *  tmz8vh7 routing, ONE home — R4, central-model audit): T=1-named onto
+ *  imageVae where the family exposes it, audio-named onto audioVae, else
+ *  videoVae; a T=1 name with no imageVae slot has no legal landing (null =
+ *  drop). The server's settings-load seam and the client's legacy migration
+ *  both route through THIS — the markers and family sets are module data,
+ *  never hand-copied. */
+function routeVaePickOnVideoFamily(familyId: string, pick: string): 'imageVae' | 'audioVae' | 'videoVae' | null {
+  if (T1_IMAGE_VAE_PATTERN.test(pick)) return IMAGE_VAE_FAMILIES.has(familyId as ModelFamilyId) ? 'imageVae' : null
+  if (AUDIO_VAE_MARKER.test(pick)) return 'audioVae'
+  return 'videoVae'
+}
+
+/** Stored-slot normalization — the ONE dated rule the server's settings-load
+ *  seam and the client's resolution-time migration both derive from (R4):
  *
- *  The VAE arm (epdvxd4, dated decision 2026-09-20): the pre-split single
- *  'vae' pick migrates onto the slot that PRESERVES its meaning per family —
- *  videoVae where the old slot drove the video decoder (the H3/LTX video
- *  families), audioVae where the family's one decoder is audio-class
- *  (music3). Fill-if-unset; the consumed key never re-refuses as
- *  an unexposed slot; an empty/absent pick is a no-op.
+ *  - LEGACY 'checkpoint' (rq0lsax): on the H3 lane families it migrates onto
+ *    fl2va AND ref2va, fill-if-unset; non-H3 families keep the key.
+ *  - LEGACY 'vae' (epdvxd4): routes to the slot that preserves its meaning
+ *    per family — decoder-class landing on the video families (the router
+ *    above), audioVae on the audio families unless the name is video-class;
+ *    any other family drops the key (it never exposed a vae pick).
+ *  - CROSS-CLASS HEALING (tmz8vh7), gated by `healCrossClassPicks` (default
+ *    ON — the load seam's behavior): ALREADY-NORMALIZED cross-class picks
+ *    (the exact wedged shape this seam's earlier output wrote) re-route with
+ *    the same rule so a stored wedge unwedges on the next load. The
+ *    resolution-time migration passes FALSE — a conscious wrong-slot pick
+ *    must REFUSE at the seam (ruling D3), never silently move slots.
  *
- *  DECODER-CLASS ROUTING (tmz8vh7, dated decision 2026-09-20): the pre-split
- *  slot's dropdown listed EVERY scanned VAE file, so the pick's NAME is the
- *  only evidence of which decoder the user actually pinned — and a pick that
- *  migrates onto a slot its class REFUSES wedges every render in the family.
- *  This is the maintainer's first-session T=1 report verbatim: a pre-split
- *  pick of the Mamad8 T=1 decoder migrated onto videoVae and refused every
- *  video submit ("Model override refused — videoVae: … Mamad8 T=1 image
- *  decoder…"), invisible in the UI (no 'vae' row exists post-split, and the
- *  chain panel only verdicts the chain's OWN pick). Marked names therefore
- *  route to the slot where they are LEGAL: T=1-named onto imageVae (only
- *  h3image exposes it), audio-named onto audioVae on the video families,
- *  video-named onto videoVae; a marked name NO slot in the family can load
- *  (T=1 on a pure video family, video-class on an audio family) drops — it
- *  was already unrenderable pre-split (the factory guard threw), so dropping
- *  restores the honest state instead of propagating the wedge. Unmarked
- *  names keep the family-meaning landing above. */
+ *  Pure and store-free — the server imports it directly (core.ts), so the
+ *  markers, family sets, and routing live in exactly one module. */
+export function normalizeStoredOverrideSlots(
+  familyId: string,
+  slots: ModelOverrideSlots,
+  options?: { healCrossClassPicks?: boolean },
+): ModelOverrideSlots {
+  const heal = options?.healCrossClassPicks !== false
+  const next: ModelOverrideSlots = { ...slots }
+  if (typeof next.checkpoint === 'string' && next.checkpoint.trim() && H3_LANE_FAMILIES.has(familyId)) {
+    if (!next.fl2va) next.fl2va = next.checkpoint.trim()
+    if (!next.ref2va) next.ref2va = next.checkpoint.trim()
+    delete next.checkpoint
+  }
+  if (typeof next.vae === 'string' && next.vae.trim()) {
+    const legacyVae = next.vae.trim()
+    if (VIDEO_VAE_FAMILIES.has(familyId)) {
+      const landing = routeVaePickOnVideoFamily(familyId, legacyVae)
+      if (landing && !next[landing]) next[landing] = legacyVae
+    } else if (AUDIO_VAE_FAMILIES.has(familyId)) {
+      if (!VIDEO_VAE_MARKER.test(legacyVae) && !next.audioVae) next.audioVae = legacyVae
+    }
+    // Any other family never exposed a 'vae' pick (it refused as unexposed
+    // before the split) — the key drops rather than haunting the stored set.
+    delete next.vae
+  }
+  if (heal) {
+    // A videoVae pick whose NAME marks another decoder class: re-route (or
+    // drop, when no slot in the family can load it — it was unrenderable by
+    // construction, the factory ban; keeping it wedges every render).
+    if (typeof next.videoVae === 'string' && next.videoVae.trim() && VIDEO_VAE_FAMILIES.has(familyId)) {
+      const landing = routeVaePickOnVideoFamily(familyId, next.videoVae.trim())
+      if (landing && landing !== 'videoVae') {
+        if (!next[landing]) next[landing] = next.videoVae.trim()
+        delete next.videoVae
+      } else if (!landing) {
+        delete next.videoVae
+      }
+    }
+    // An audioVae pick whose name is video-class, on an audio family: no
+    // legal landing — dropped.
+    if (typeof next.audioVae === 'string' && next.audioVae.trim() && AUDIO_VAE_FAMILIES.has(familyId) && VIDEO_VAE_MARKER.test(next.audioVae.trim())) {
+      delete next.audioVae
+    }
+  }
+  return next
+}
+
 export function migrateLegacyModelOverrideSlots(familyId: string, slots?: ModelOverrideSlots): ModelOverrideSlots {
   return migrateLegacyModelOverrideSlotsWithOrigin(familyId, slots).slots
 }
@@ -269,45 +320,19 @@ export type LegacyMigrationOrigin = Partial<Record<ModelOverrideSlotName, 'check
 
 export function migrateLegacyModelOverrideSlotsWithOrigin(familyId: string, slots?: ModelOverrideSlots): { slots: ModelOverrideSlots; migratedFrom: LegacyMigrationOrigin } {
   if (!slots) return { slots: {}, migratedFrom: {} }
-  let next: ModelOverrideSlots | null = null
+  // (R4, central-model audit) The resolution-time migration is the LOAD-time
+  // normalizer WITHOUT the cross-class healing: D3's design is that a
+  // CONSCIOUS wrong-slot pick REFUSES at the seam (loudly, naming the layer)
+  // — only picks the legacy MIGRATION filled auto-clear. Healing at resolve
+  // time would silently move conscious picks between slots instead.
+  const migrated = normalizeStoredOverrideSlots(familyId, slots, { healCrossClassPicks: false })
   const migratedFrom: LegacyMigrationOrigin = {}
-  if (typeof slots.checkpoint === 'string' && slots.checkpoint.trim() && H3_LANE_FAMILIES.has(familyId)) {
-    next = { ...slots }
-    delete next.checkpoint
-    if (!next.fl2va) { next.fl2va = slots.checkpoint.trim(); migratedFrom.fl2va = 'checkpoint' }
-    if (!next.ref2va) { next.ref2va = slots.checkpoint.trim(); migratedFrom.ref2va = 'checkpoint' }
+  if (!slots.fl2va && migrated.fl2va) migratedFrom.fl2va = 'checkpoint'
+  if (!slots.ref2va && migrated.ref2va) migratedFrom.ref2va = 'checkpoint'
+  for (const slot of ['imageVae', 'audioVae', 'videoVae'] as const) {
+    if (!slots[slot] && migrated[slot]) migratedFrom[slot] = 'vae'
   }
-  if (typeof slots.vae === 'string' && slots.vae.trim()) {
-    const legacyVae = slots.vae.trim()
-    const t1Class = T1_IMAGE_VAE_PATTERN.test(legacyVae)
-    const audioClass = AUDIO_VAE_MARKER.test(legacyVae)
-    const videoClass = VIDEO_VAE_MARKER.test(legacyVae)
-    if (VIDEO_VAE_FAMILIES.has(familyId)) {
-      next = next ?? { ...slots }
-      if (t1Class && familyId === 'h3image') {
-        if (!next.imageVae) { next.imageVae = legacyVae; migratedFrom.imageVae = 'vae' }
-      } else if (audioClass && !t1Class) {
-        if (!next.audioVae) { next.audioVae = legacyVae; migratedFrom.audioVae = 'vae' }
-      } else if (!t1Class) {
-        if (!next.videoVae) { next.videoVae = legacyVae; migratedFrom.videoVae = 'vae' }
-      }
-      // A T=1-named pick on a pure video family has no legal slot — dropped.
-      delete next.vae
-    } else if (AUDIO_VAE_FAMILIES.has(familyId)) {
-      next = next ?? { ...slots }
-      if (!videoClass) {
-        if (!next.audioVae) { next.audioVae = legacyVae; migratedFrom.audioVae = 'vae' }
-      }
-      delete next.vae
-    }
-    // Any other family never exposed a 'vae' pick (it refused as unexposed
-    // before the split) — the key drops rather than haunting the stored set.
-    else {
-      next = next ?? { ...slots }
-      delete next.vae
-    }
-  }
-  return { slots: next ?? slots, migratedFrom }
+  return { slots: migrated, migratedFrom }
 }
 
 /** chain > global, per slot; unset slots stay unset (auto). */
