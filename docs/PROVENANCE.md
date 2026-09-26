@@ -177,9 +177,10 @@ License verdicts recorded by the same increment (registry entries in
   GitHub badge; verified against the cloned payload before vendoring).
 - **Larryvrh/ComfyUI-MiniMax-H3-Turbo — Apache-2.0** (LICENSE file read from the
   local testbed install). Not vendored yet; user-fetch mode from a local copy.
-- **facok/comfyui-krea2-controlnet — NO LICENSE FILE** (all-rights-reserved by
-  default). Never vendored; user-fetch only, flagged in
-  `docs/research/krea2-edit-mode.md` as a hard blocker.
+- ~~**facok/comfyui-krea2-controlnet — NO LICENSE FILE**~~ (all-rights-reserved
+  by default; never vendored, user-fetch only). **RETIRED 2026-09-26** — the
+  registry row + fetch entry were cut with wiring-check §1.5 (no builder ever
+  emitted `Krea2Control*` classes); the record stays as license history.
 
 ## Name
 

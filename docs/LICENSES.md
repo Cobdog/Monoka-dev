@@ -142,7 +142,7 @@ are not loadable model assets and never leave the test fixture.
 
 ## 3. User-fetch-only components (never vendored)
 
-The installable subset (facok, Larryvrh, T8mars) is tracked as data in
+The installable subset (Larryvrh, T8mars) is tracked as data in
 `server/engineNodes.ts` (`ENGINE_NODE_PACKS`), surfaced in Settings → Node
 packs with the SPDX badge visible at consent time, and fetchable through the
 consent-gated local-first fetcher (task hgjbea2: `server/fetchCatalog.ts` +
@@ -156,7 +156,7 @@ our own code.
 
 | Component | Pin | SPDX | Why user-fetch | Obligations | Status |
 | --- | --- | --- | --- | --- | --- |
-| facok/comfyui-krea2-controlnet | `main` (branch — resolved + stamped at fetch time, §9.1) | **NO-LICENSE** `[API-2026-09-14]` (no license file in repo → all-rights-reserved) | redistribution not permitted, ever | none triggered (we never redistribute); user installs from their own local copy or fetch with consent | gate holds |
+| ~~facok/comfyui-krea2-controlnet~~ | `main` (branch) | **NO-LICENSE** `[API-2026-09-14]` | **RETIRED 2026-09-26** — the registry row + fetch entry were cut (wiring-check §1.5: no builder ever emitted the classes); kept as license history | none — never redistributed, now not installable | retired |
 | T8mars/comfyui-minimax-h3-audio-T8 | `main` (branch — resolved + stamped at fetch time) | **GPL-3.0-or-later** `[API-2026-09-14]` (LICENSE file is an SPDX-notice, not full text) | policy: GPL packs are never vendored even though GPL-3.0 ↔ AGPLv3 are combining-compatible — vendoring would fold third-party GPL code into our distribution and couple our releases to an unmaintained-by-us contributor set; fetching the user their own copy triggers none of that | none triggered (we never redistribute); if we ever vendored: full GPL §4–§6 duties + combined-work terms | fetchable-but-flagged through the consent flow; pattern-adopt remains the rule for our own code; gate holds |
 | Larryvrh/ComfyUI-MiniMax-H3-Turbo | `4274783a23afcfdbea3b4876cb79effd6c510785` | Apache-2.0 `[API-2026-09-14]` | **not a license reason** — simply not vendored yet; user-fetch from a local copy or the fetcher until the vendoring increment | none beyond notices when vendored | candidate for vendoring |
 | lbouaraba/comfyui-krea2edit | `86f886dac23013d88996e3a2e99093ba44d322fb` | Apache-2.0 `[API-2026-09-14]` (LICENSE file + GitHub license record) | permissive, but not vendored (task t8u00uu ships no third-party code; same posture as Larryvrh) — the Identity Edit dual-conditioning node pack behind the Instruct/removal/two-ref edit families | notice when vendored | fetchable; pinned by SHA (solo-maintained, v2 retrain in progress — re-verify at v2) |
