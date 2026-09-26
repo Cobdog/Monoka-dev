@@ -20,6 +20,7 @@ import { useLivePreview } from '../lib/useLivePreview'
 import { engineResyncedNotice, engineResyncFailedNotice, inventoryDriftNotice } from '../lib/engineWatch'
 import { resolveModels } from '../lib/modelOverrides'
 import { inferSelections } from '../lib/modelSelection'
+import { h3StackReady } from '../lib/h3Stack'
 import { submitH3DiagnosticPair } from '../lib/h3Diagnostics'
 import { CHARACTER_LIBRARY_EVENT } from '../lib/characterLibrary'
 import { WARDROBE_LIBRARY_EVENT } from '../lib/wardrobeLibrary'
@@ -61,7 +62,12 @@ export function CanvasEngineHost({ children }: { children?: ReactNode }) {
     let lastResyncAt: number | null = null
     const unsubscribe = useSessionStore.subscribe((state) => {
       const selection = resolveModels('minimax', inferSelections(state.models, 'off'), state.models, state.settings?.modelOverrides?.minimax).selection
-      const ready = Boolean(state.status.connected && selection.fl2va && selection.ref2va && selection.textEncoder && selection.videoVae && selection.audioVae)
+      // (R2) The chip reads the ONE predicate: the text lane's membership
+      // (FL2VA set — no blanket ref2va demand soft-gating first-frame
+      // renders), no turbo requirement (the chip is modeless; a quality-tier
+      // stack without a turbo LoRA renders fine), no node check (the chip is
+      // connection-level — the connection rung owns that refusal).
+      const ready = state.status.connected && h3StackReady({ selection, mode: 'text' })
       const current = useCanvasStore.getState().engine
       if (current.connected !== state.status.connected || current.modelReady !== ready) {
         useCanvasStore.getState().setEngineFacts({ connected: state.status.connected, modelReady: ready })
