@@ -288,3 +288,9 @@ workflows only (chunked-sampler, long-video-advanced); the WEIGHTS remain the se
 drbaph HF quants (int8 47GB / pruned-int8 21GB / r64 DMD-LoRA) — status checked
 2026-09-26, see the Viggle assessment addendum. Posture per the maintainer's ruling:
 managed by us entirely; the local git history is the archive of record.
+
+**Correction (2026-09-26, maintainer):** the handed-over tree is a FORK of the original
+pack (bhardwajRahul's fork, not the pack creator's upstream). Per the maintainer's
+ruling the `origin` remote has been REMOVED from the local tree — no accidental
+fetches from a non-creator repo; Monoka is the sole manager and only upstream of
+this copy from here.
