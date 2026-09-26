@@ -22,16 +22,29 @@
 # very low priority) — it is not part of the PR or merge-to-main path.
 name: CI
 
+# ON DEMAND (maintainer standing rule, 2026-09-26): CI runs when we want to
+# ensure correctness, NOT on every push — the GitHub Actions budget and the
+# failure-email spam are real costs. Triggers: (1) workflow_dispatch (the
+# deliberate check — "Actions → CI → Run workflow", or gh workflow run CI);
+# (2) the `run-ci` label on a PR (the cheap opt-in for merge-readiness);
+# (3) workflow_dispatch covers main-push verification — there is NO automatic
+# push/PR trigger anymore. Agents: push intermediate states freely; dispatch
+# ONE check when merge-ready; never spam re-runs at broken states.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+# A superseding dispatch/label on the same ref cancels the in-flight run —
+# no stacked runs burning budget.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # ---- the manifest walk: changed files → the plan (PR legs only) -------
+  # ---- the manifest walk: changed files → the plan (dispatch + label legs) --
   select:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.label.name == 'run-ci')
     runs-on: ubuntu-latest
     outputs:
       suites: ${{ steps.plan.outputs.suites }}
@@ -69,7 +82,7 @@ jobs:
 
   # ---- the fast PR leg ---------------------------------------------------
   fast:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.label.name == 'run-ci')
     needs: select
     runs-on: ubuntu-latest
     env:
@@ -143,10 +156,12 @@ jobs:
         if: env.RUN_E2E == 'true'
         run: pnpm exec playwright test --project=e2e
 
-  # ---- the full gate: merge to main + explicit dispatch -----------------
-  # The pre-A-CI chain, verbatim — do not slow or narrow this leg.
+  # ---- the full gate: the deliberate correctness check (on demand) -------
+  # The pre-A-CI chain, verbatim — do not slow or narrow this leg. Runs on
+  # dispatch (any ref) or the run-ci label; main-push verification is a
+  # dispatch away, not automatic (the 2026-09-26 standing rule).
   full:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.label.name == 'run-ci')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -202,7 +217,7 @@ jobs:
   #     the golden registries' entry sets are append-only across the merge
   #     boundary — additions free, removals fail.
   contracts:
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.label.name == 'run-ci')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
