@@ -294,3 +294,10 @@ pack (bhardwajRahul's fork, not the pack creator's upstream). Per the maintainer
 ruling the `origin` remote has been REMOVED from the local tree — no accidental
 fetches from a non-creator repo; Monoka is the sole manager and only upstream of
 this copy from here.
+
+**Weights mirrored (2026-09-26, hash-pinned):** pruned_int8_convrot checkpoint
+(21,033,720,080 B, sha256 `c16db9a4…d3540`) + both DMD-LoRA cuts (full 3.77GB
+`71361eb8…5930`; r64 0.94GB `8dc50f29…4446`) + the frozen anyframe embed
+(`86ae5987…0fde`) — all in the central home, symlinked into the shared install.
+Viggle-Animate is now FULLY local: code (custody), weights (mirrored), recipe
+(the v1.3.2 examples), documentation. Nothing upstream-removable remains.
