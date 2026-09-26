@@ -364,6 +364,10 @@ type CanvasActions = {
   /** Restores a tombstoned scene whole; refreshes its project's document
    *  when loaded. Same honest-count contract as deleteScene. */
   restoreScene(chainId: string, projectId: string): Promise<number>
+  /** Control-track delete (§7 rows — the chain inspector's trash action):
+   *  removes the track row and refreshes every loaded document that holds
+   *  it. Honest-count contract as deleteScene. */
+  deleteControlTrack(trackId: string): Promise<number>
   /** The explicit destructive act (§3) — tombstoned documents/chains/assets
    *  hard-deleted server-side. The UI double-confirms; this returns the
    *  store's per-kind counts for the receipt toast. */
@@ -1387,6 +1391,25 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         return deleted
       } catch (error) {
         get().toast('error', `Could not trash this scene: ${error instanceof Error ? error.message : String(error)}`)
+        return 0
+      }
+    },
+
+    deleteControlTrack: async (trackId) => {
+      try {
+        const { deleted } = await documentsApi.deleteControlTrack(trackId)
+        dbg('documents', { action: 'control-track-delete', trackId, deleted })
+        if (!deleted) return 0
+        // Refresh every LOADED document that holds the track — the chain
+        // inspector can be open on any canvas, not just the active one.
+        for (const document of Object.values(get().documents)) {
+          if (!document.chains.some((chain) => (chain.controlTracks ?? []).some((track) => track.id === trackId))) continue
+          const refreshed = await loadDocument(document.project.id)
+          if (refreshed && document.project.id === get().activeProjectId) recomputeTiles()
+        }
+        return deleted
+      } catch (error) {
+        get().toast('error', `Could not delete this control track: ${error instanceof Error ? error.message : String(error)}`)
         return 0
       }
     },
