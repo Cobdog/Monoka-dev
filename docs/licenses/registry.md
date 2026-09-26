@@ -79,7 +79,7 @@ vendorable); anything NC/proprietary/missing FAILs.
 
 | Component | Source / pin | License as stated | Mode | Obligations (and how met) | Blast radius |
 | --- | --- | --- | --- | --- | --- |
-| `ComfyUI-VDN-H3` (vendor tree) | `Saganaki22/ComfyUI-VDN-H3` @ `3eb63496c24ca70faaf8a14b6c75fcb480e34bf1` (v1.5.2) | Apache-2.0 `[API-2026-09-14]` `[LOCAL]` | vendored | Apache §4: LICENSE ships in-tree (audit-checked); changes stated (functional content verbatim; `.git/`, `.github/`, `assets/`, workflow PNGs excluded — recorded in PROVENANCE) | manifest pattern; pack `vdn-h3` row goes with it |
+| `ComfyUI-VDN-H3` (vendor tree) | `Saganaki22/ComfyUI-VDN-H3` @ `3eb63496c24ca70faaf8a14b6c75fcb480e34bf1` (v1.5.2) — **upstream REMOVED; custody taken 2026-09-26 (§3 addendum)** | Apache-2.0 `[API-2026-09-14]` `[LOCAL]` | adopted-our-own | Apache §4: LICENSE ships in-tree (audit-checked); changes stated (functional content verbatim; `.git/`, `.github/`, `assets/`, workflow PNGs excluded — recorded in PROVENANCE); Monoka is the sole manager and only upstream of this copy from here (the Viggle posture) | manifest pattern; pack `vdn-h3` row goes with it |
 | LongCache patch constants (`server/enginePatch.ts`) | maintainer's ComfyUI-VDN-H3-24GB fork, `tools/install_minimax_block_loop_hook.py` @ local scratchpad | Apache-2.0 as the fork states it; **second reading** — if the ~45 constant lines substantially copy ComfyUI's own loop, they are GPL-3.0 in origin (a licensee cannot relicense the licensor's code). Either reading: no blocker, only attribution (LICENSES.md §8; sign-off still staged) | replicated (verbatim port of constants, TS) | in-file attribution header `[LOCAL]`; never ship a pre-applied patch; applies user-locally behind consent, reversible | self-contained module; the §8 analysis is the record |
 | Camera-path compiler (`src/lib/camera/`) | `NyckM/3d-Camera-control-H3-Minimax` @ `846880de859959e801b2c506dc424bd5c8b5c6c4` | Apache-2.0 `[LOCAL]` (LICENSE read from the clone before porting) | replicated (faithful TS port, compiler half only; no upstream bytes) | Apache §4 via per-file provenance headers (repo + commit) + deviations documented in module headers; fidelity locked by upstream-generated goldens (`pnpm test:camera`) | delete the module + goldens; zero import edges outside its seam |
 | `minimax-lora-form-adapter` (custom node) | first-party, `v1.0.0` | MIT (LICENSE in the pack) | first-party | MIT notice (shipped); **zero MiniMax-derived runtime bytes** — the projection encoder derives at first use from the user's own artifacts; test-only golden vectors documented in the pack's FIXTURES.md | copy-the-directory = the pack; independently releasable |
@@ -303,3 +303,22 @@ this copy from here.
 (`86ae5987…0fde`) — all in the central home, symlinked into the shared install.
 Viggle-Animate is now FULLY local: code (custody), weights (mirrored), recipe
 (the v1.3.2 examples), documentation. Nothing upstream-removable remains.
+
+### §3 addendum — ComfyUI-VDN-H3 (2026-09-26: custody taken, the graph lane finished)
+
+Upstream (`Saganaki22/ComfyUI-VDN-H3`) REMOVED; the maintainer's ruling (the
+2026-09-26 inventory decision, §Rulings #3): *"we still have local copies — we
+adopt it entirely as our own. We take on the debt of managing this one, since
+there is no upstream to contend with."* **Apache-2.0** — clean for full
+first-party adoption. Posture per the ruling, mirroring the Viggle custody
+language: managed by us entirely; the vendored tree at the pinned
+`3eb6349` (v1.5.2) and its pin are the archive of record — Monoka is the sole
+manager and only upstream of this copy from here. Nothing upstream-removable
+remains in the product path: code (custody, `vendor/nodes/ComfyUI-VDN-H3`),
+engine integration (the `vdn` launch profile + the consent-gated LongCache
+patch), graph lane (the `vdn.apply` acceleration entry, task 9up52mj), and
+documentation. The WEIGHTS stay the separate OpenVDN fetch rows
+(`vdn-stage-dmd-250` / `vdn-stage-b-2000`, §5a class) — fetched with consent,
+never redistributed; the separately-installed `-24GB` variant on the shared
+install is environment, not product (it registers `*_24GB`-suffixed classes;
+detection and emission are by OUR pinned pack).
