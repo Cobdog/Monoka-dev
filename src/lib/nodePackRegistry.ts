@@ -190,6 +190,27 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
     instanceNodeClasses: ['Krea2AnyPaintPrepare', 'Krea2AnyPaintEncode', 'Krea2AnyPaintModelPatch'],
   },
   {
+    // The ostris t=0 edit-LoRA runner — ruling #1 of the 2026-09-26 inventory
+    // decision (docs/research/node-inventory-decision-2026-09-26.md §Rulings):
+    // "Krea 2 edit should also use the Ostris edit, so we can utilize
+    // Cierpliwy/krea2-inpaint-edit" — the cut candidate reverses to KEPT+WIRED
+    // (registry §1.3's redundancy verdict held only where Kreatine runs).
+    id: 'krea2-ostris-edit',
+    name: 'comfyui-krea2-ostris-edit',
+    featureGroup: 'Krea 2 edit',
+    description: 'ostris\' Kontext-style multi-reference edit conditioning for Krea 2 (TextEncodeKrea2OstrisEdit + Krea2OstrisEditModelPatch): reference images ride the Qwen3-VL encode AND attach as VAE reference latents, carried by the patched model as t=0 tokens ("index_timestep_zero", the ai-toolkit recipe) with an optional isolated reference K/V cache. Powers the krea2edit.ostris inpaint-edit family with Cierpliwy\'s krea2-inpaint-edit LoRA (the black-region masked-edit weights).',
+    repoUrl: 'https://github.com/ostris/ComfyUI-Krea2-Ostris-Edit',
+    pinnedRevision: '7756566160c4a1b24bb1bd9f0ff3ced1a83d7547',
+    licenseSpdx: 'MIT',
+    licenseNote: 'MIT (LICENSE file read from the canonical shared install\'s copy at this exact rev, 2026-09-26; GitHub API license record MIT). Vendor-eligible; user-fetch (the Larryvrh posture). NOTE (anypaint\'s own row): this pack is the original source of the reference-attention/K-V-cache pattern anypaint\'s NOTICE credits. The Cierpliwy LoRA is a separate Krea-2-licensed fetch.',
+    installMode: 'user-fetch',
+    homepage: 'https://github.com/ostris/ComfyUI-Krea2-Ostris-Edit',
+    // NODE_CLASS_MAPPINGS read from the canonical shared install's copy of
+    // the pack at this rev (2026-09-26); mirrored by OSTRIS_NODES in
+    // src/lib/graph/krea2edit.ts.
+    instanceNodeClasses: ['TextEncodeKrea2OstrisEdit', 'Krea2OstrisEditModelPatch'],
+  },
+  {
     // The H3-image engine-truth gate (task d4er4ti, Wave 3 rung 0; deep-read
     // docs/research/h3-image-studio-pack-assessment.md). astropuzzo's parallel
     // H3 conditioning pack: legal T=1 latents (own latent construction — the

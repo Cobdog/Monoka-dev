@@ -6,7 +6,7 @@
     "comfyuiVersion": "0.37.4",
     "captureDate": "2026-09-26",
     "rawClassCount": 1788,
-    "keptClassCount": 72,
+    "keptClassCount": 77,
     "formAdapterSource": "v0.37.4-tag",
     "h3ImageStudioPackCapture": "astropuzzo/ComfyUI-MiniMax-H3-Image-Studio @ 47dea30d0bf07e7340ef0cc97e8174a15edf55b9 (v23.0.0) cloned into the shared install custom_nodes before this capture (task afvlbk4) — its 5 load-bearing classes (Prepare set + H3ImageDecode) captured REAL from /object_info; the pack's own test suite passed on the venv first (26/26)",
     "fizgigPackCapture": "shootthesound/ComfyUI-Fizgig-H3-Still @ f3252d2b6c94c2e34d71f583d5e1804b683afe06 SOURCE-DERIVED (task 464xfvd, E-FS1): the pack is NOT installed on the shared install — both classes (the whole pack) transcribed from __init__.py INPUT_TYPES + RETURN_TYPES at this pin during the 2026-09-25 assessment. An /object_info capture replaces these entries the day the pack is installed for the bake-off.",
@@ -15,7 +15,9 @@
       "file-listing combos (model folders, input dirs) EMPTIED: options are this box's filesystem, not engine truth — the contract validator treats empty options as environment-enumerated and skips membership; non-file enums keep their real captured options",
       "MiniMaxH3LoraFormLoader source-derived from this repo's first-party pack (not installed on the shared install); see __sourceDerived on the entry",
       "FizgigH3StillLatent/FizgigH3StillDecode source-derived from the pack repo at pinned f3252d2 (E-FS1, not installed on the shared install — flag-gated, not adopted); see __sourceDerived on the entries",
-      "absent classes recorded with reasons (inert-by-design lanes)"
+      "absent classes recorded with reasons (inert-by-design lanes)",
+      "SolidMask/MaskToImage/ImageCompositeMasked source-derived from the shared install's ComfyUI v0.37.4 comfy_extras/nodes_mask.py at the capture revision (stock classes the krea2edit.ostris black-region fill began emitting after the 2026-09-26 capture); see __sourceDerived on the entries",
+      "TextEncodeKrea2OstrisEdit/Krea2OstrisEditModelPatch source-derived from the installed comfyui-krea2-ostris-edit pack at pinned 7756566 (served by the capture boot, trimmed from the kept set because no builder emitted them at capture; krea2edit.ostris emits them since ruling #1, 2026-09-26); see __sourceDerived on the entries"
     ],
     "regenerate": "per the header of scripts/capture-engine-schemas.cjs (runbook-governed CPU-only capture, then this script over the raw JSON)"
   },
@@ -5960,6 +5962,247 @@
       "category": "Fizgig",
       "output_node": false,
       "__sourceDerived": "shootthesound/ComfyUI-Fizgig-H3-Still @ f3252d2b6c94c2e34d71f583d5e1804b683afe06 __init__.py (not installed on the shared install — INPUT_TYPES transcribed verbatim)"
+    },
+    "SolidMask": {
+      "input": {
+        "required": {
+          "value": [
+            "FLOAT",
+            {
+              "default": 1.0,
+              "min": 0.0,
+              "max": 1.0,
+              "step": 0.01
+            }
+          ],
+          "width": [
+            "INT",
+            {
+              "default": 512,
+              "min": 1,
+              "max": 16384,
+              "step": 1
+            }
+          ],
+          "height": [
+            "INT",
+            {
+              "default": 512,
+              "min": 1,
+              "max": 16384,
+              "step": 1
+            }
+          ]
+        }
+      },
+      "input_order": {
+        "required": [
+          "value",
+          "width",
+          "height"
+        ]
+      },
+      "output": [
+        "MASK"
+      ],
+      "output_name": [
+        "MASK"
+      ],
+      "output_is_list": [
+        false
+      ],
+      "name": "SolidMask",
+      "display_name": "Create Solid Mask",
+      "category": "image/mask",
+      "output_node": false,
+      "__sourceDerived": "ComfyUI v0.37.4 comfy_extras/nodes_mask.py at the capture revision (stock core; the krea2edit.ostris family began emitting it after the 2026-09-26 capture — the next /object_info capture folds the real entry in)"
+    },
+    "MaskToImage": {
+      "input": {
+        "required": {
+          "mask": [
+            "MASK"
+          ]
+        }
+      },
+      "input_order": {
+        "required": [
+          "mask"
+        ]
+      },
+      "output": [
+        "IMAGE"
+      ],
+      "output_name": [
+        "IMAGE"
+      ],
+      "output_is_list": [
+        false
+      ],
+      "name": "MaskToImage",
+      "display_name": "Convert Mask to Image",
+      "category": "image/mask",
+      "output_node": false,
+      "__sourceDerived": "ComfyUI v0.37.4 comfy_extras/nodes_mask.py at the capture revision (stock core; the krea2edit.ostris family began emitting it after the 2026-09-26 capture — the next /object_info capture folds the real entry in)"
+    },
+    "ImageCompositeMasked": {
+      "input": {
+        "required": {
+          "destination": [
+            "IMAGE"
+          ],
+          "source": [
+            "IMAGE"
+          ],
+          "x": [
+            "INT",
+            {
+              "default": 0,
+              "min": 0,
+              "max": 16384,
+              "step": 1
+            }
+          ],
+          "y": [
+            "INT",
+            {
+              "default": 0,
+              "min": 0,
+              "max": 16384,
+              "step": 1
+            }
+          ],
+          "resize_source": [
+            "BOOLEAN",
+            {
+              "default": false
+            }
+          ]
+        },
+        "optional": {
+          "mask": [
+            "MASK"
+          ]
+        }
+      },
+      "input_order": {
+        "required": [
+          "destination",
+          "source",
+          "x",
+          "y",
+          "resize_source"
+        ],
+        "optional": [
+          "mask"
+        ]
+      },
+      "output": [
+        "IMAGE"
+      ],
+      "output_name": [
+        "IMAGE"
+      ],
+      "output_is_list": [
+        false
+      ],
+      "name": "ImageCompositeMasked",
+      "display_name": "Image Composite Masked",
+      "category": "image/compositing",
+      "output_node": false,
+      "__sourceDerived": "ComfyUI v0.37.4 comfy_extras/nodes_mask.py at the capture revision (stock core; the krea2edit.ostris family began emitting it after the 2026-09-26 capture — the next /object_info capture folds the real entry in)"
+    },
+    "TextEncodeKrea2OstrisEdit": {
+      "input": {
+        "required": {
+          "clip": [
+            "CLIP"
+          ],
+          "prompt": [
+            "STRING",
+            {
+              "multiline": true,
+              "dynamicPrompts": true
+            }
+          ]
+        },
+        "optional": {
+          "vae": [
+            "VAE"
+          ],
+          "image1": [
+            "IMAGE"
+          ],
+          "image2": [
+            "IMAGE"
+          ],
+          "image3": [
+            "IMAGE"
+          ]
+        }
+      },
+      "input_order": {
+        "required": [
+          "clip",
+          "prompt"
+        ],
+        "optional": [
+          "vae",
+          "image1",
+          "image2",
+          "image3"
+        ]
+      },
+      "output": [
+        "CONDITIONING"
+      ],
+      "output_name": [
+        "CONDITIONING"
+      ],
+      "output_is_list": [
+        false
+      ],
+      "name": "TextEncodeKrea2OstrisEdit",
+      "display_name": "Text Encode Krea 2 Ostris Edit",
+      "category": "ostris/krea2",
+      "output_node": false,
+      "__sourceDerived": "ostris/ComfyUI-Krea2-Ostris-Edit @ 7756566160c4a1b24bb1bd9f0ff3ced1a83d7547 nodes.py INPUT_TYPES (pack installed on the shared install at this pin and served by the 2026-09-26 capture boot, but trimmed from the kept set — no builder emitted its classes at capture; krea2edit.ostris does since ruling #1)"
+    },
+    "Krea2OstrisEditModelPatch": {
+      "input": {
+        "required": {
+          "model": [
+            "MODEL"
+          ],
+          "kv_cache": [
+            "BOOLEAN",
+            {
+              "default": false,
+              "tooltip": "Cache the reference tokens' attention K/V: they are precomputed in one t=0 pass and reused every denoising step, so the refs never ride along in the per-step sequence. The LoRA must be trained with ai-toolkit's kv_cache model kwarg for this to work properly. Leave off for normal edit LoRAs."
+            }
+          ]
+        }
+      },
+      "input_order": {
+        "required": [
+          "model",
+          "kv_cache"
+        ]
+      },
+      "output": [
+        "MODEL"
+      ],
+      "output_name": [
+        "MODEL"
+      ],
+      "output_is_list": [
+        false
+      ],
+      "name": "Krea2OstrisEditModelPatch",
+      "display_name": "Krea 2 Ostris Edit Model Patch",
+      "category": "ostris/krea2",
+      "output_node": false,
+      "__sourceDerived": "ostris/ComfyUI-Krea2-Ostris-Edit @ 7756566160c4a1b24bb1bd9f0ff3ced1a83d7547 nodes.py INPUT_TYPES (pack installed on the shared install at this pin and served by the 2026-09-26 capture boot, but trimmed from the kept set — no builder emitted its classes at capture; krea2edit.ostris does since ruling #1)"
     }
   },
   "absent": [

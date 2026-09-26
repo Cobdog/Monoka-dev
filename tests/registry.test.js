@@ -143,6 +143,8 @@ const KREA2_FULL_INFO = {
   Krea2AnyPaintPrepare: node({}),
   Krea2AnyPaintEncode: node({}),
   Krea2AnyPaintModelPatch: node({}),
+  TextEncodeKrea2OstrisEdit: node({}),
+  Krea2OstrisEditModelPatch: node({}),
 }
 const KREA2_BARE_INFO = {}
 
@@ -154,6 +156,7 @@ const KREA2_FULL_SCAN = [
   krea2File('vae', 'qwen_image_vae.safetensors'),
   krea2File('loras', 'krea2_identity_edit_v1_2.safetensors'),
   krea2File('loras', 'krea2_anypaint_rank32.safetensors'),
+  krea2File('loras', 'krea2_inpaint_edit.safetensors'),
 ]
 
 // ---------------------------------------------------------------------------
@@ -487,9 +490,9 @@ for (const { name, options, models } of KREA2_MATRIX) matrixByName[name] = { opt
 maybe('(f1) Krea 2 registry shape + E-K1 honesty-label / prompt-contract pins', () => {
   ok(krea2Fixture.entries.length === KREA2_MATRIX.length, 'krea2 golden fixture covers the whole matrix — regenerate with --update-golden if the matrix changed')
 
-  // (f1) Registry shape: five families, unique ids, detect + guidance, and
+  // (f1) Registry shape: six families, unique ids, detect + guidance, and
   // zero leakage into the H3 optimization registry.
-  ok(KREA2_EDIT_FAMILIES.length === 5, 'five edit families ship')
+  ok(KREA2_EDIT_FAMILIES.length === 6, 'six edit families ship (the ostris inpaint family joined at ruling #1, 2026-09-26)')
   const familyIds = KREA2_EDIT_FAMILIES.map((family) => family.id)
   ok(new Set(familyIds).size === familyIds.length, 'family ids are unique')
   for (const family of KREA2_EDIT_FAMILIES) {
@@ -513,6 +516,7 @@ maybe('(f1) Krea 2 registry shape + E-K1 honesty-label / prompt-contract pins', 
     ok((instructUi.promptGuidance ?? '').includes('whole resulting scene'), 'instruct prompt contract: scene-style guidance — describe the whole resulting scene, not just the changed object')
     ok((byId['krea2edit.refine'].ui.promptGuidance ?? '').includes('complete finished image'), 'refine prompt contract: describe the complete finished image, never just the masked object (the measured AnyPaint contract — object-local prompts painted planks, not the bowl)')
     ok((byId['krea2edit.outpaint'].ui.promptGuidance ?? '').length > 0, 'outpaint carries the scene-style prompt guidance too (the grown canvas described as one scene)')
+    ok((byId['krea2edit.ostris'].ui.promptGuidance ?? '').includes('masked region'), 'ostris prompt contract: describe the masked content — the card\'s own convention, the deliberate opposite of AnyPaint\'s scene-style (the reference carries the unmasked rest)')
   }
 })
 
@@ -552,11 +556,13 @@ maybe('(f4) Krea 2 research-pinned defaults — the recipes are data, and this i
     ok(pins.turboStepsBand.min === 8 && pins.turboStepsBand.max === 12, 'Turbo identity step band: 8–12')
     ok(pins.canvasMultiple === 16, 'canvas multiple pin: 16')
     ok(pins.anypaint.steps === 8 && pins.anypaint.cfg === 1.0 && pins.anypaint.referenceMaxEdge === 384 && pins.anypaint.boundaryRedrawPx === 32 && pins.anypaint.vlmReference === true && pins.anypaint.kvCache === true && pins.anypaint.loraStrength === 1.0, 'AnyPaint pin: Turbo 8 / CFG 1.0 (ComfyUI form of the card\'s guidance 0) / 384px ref / 32px band / VLM + K/V on / LoRA 1.0')
+    ok(pins.ostris.steps === 8 && pins.ostris.cfg === 1.0 && pins.ostris.sampler === 'euler_ancestral' && pins.ostris.scheduler === 'simple' && pins.ostris.denoise === 1 && pins.ostris.loraStrength === 1.0 && pins.ostris.kvCache === true, 'ostris pin: Turbo 8 / CFG 1.0 / euler_ancestral+simple (all three Cierpliwy example workflows) / LoRA 1.0 / kv_cache ON (the card\'s explicit requirement against the pack\'s off default)')
     ok(byId['krea2edit.instruct'].recipe.steps === 8 && byId['krea2edit.instruct'].recipe.cfg === 1.0, 'instruct family ships the Turbo pin')
     ok(byId['krea2edit.removal'].recipe.steps === 20 && byId['krea2edit.removal'].recipe.cfg === 3.0 && byId['krea2edit.removal'].checkpoint === 'raw', 'removal family ships the RAW pin')
     ok(byId['krea2edit.refine'].recipe.steps === 8 && byId['krea2edit.refine'].recipe.cfg === 1.0, 'refine family ships the AnyPaint pin')
     ok(byId['krea2edit.outpaint'].checkpoint === 'turbo' && byId['krea2edit.two-ref'].checkpoint === 'turbo', 'refine/outpaint/two-ref ride the resident Turbo checkpoint')
     ok(krea2LoraKindOfFilename('krea2_identity_edit_v1_2_r128.safetensors') === 'identity-edit' && krea2LoraKindOfFilename('krea2_anypaint_rank32.safetensors') === 'anypaint' && krea2LoraKindOfFilename('minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors') === undefined, 'LoRA classification separates the two edit kinds from everything else')
+    ok(krea2LoraKindOfFilename('krea2_inpaint_edit.safetensors') === 'ostris-inpaint' && krea2LoraKindOfFilename('krea2_inpaint_edit_strong.safetensors') === 'ostris-inpaint' && krea2LoraKindOfFilename('krea2_inpaint_editor_other.safetensors') === undefined, 'LoRA classification: the three Cierpliwy variants classify ostris-inpaint; lookalikes do not')
   }
 })
 
@@ -614,6 +620,20 @@ maybe('(f5) Krea 2 transform correctness — hand-asserted wiring per family', (
     ok(outpaint['41'].inputs.generated_mask === undefined, 'padding-only outpaint wires no mask')
     const mixed = buildKrea2Graph(matrixByName['outpaint-mixed-mask-right512'].options, KREA2_MODELS)
     ok(mixed['41'].inputs.right === 512 && mixed['41'].inputs.generated_mask.join('|') === '40|1', 'mask + padding in one request is the mixed form')
+
+    const ostris = buildKrea2Graph(matrixByName['ostris-inpaint-default'].options, KREA2_MODELS)
+    ok(ostris['30'].class_type === 'LoadImage' && ostris['30'].inputs.image === 'masked_source.png', 'ostris: the masked source loads once')
+    ok(ostris['44'].class_type === 'SolidMask' && ostris['44'].inputs.value === 0 && ostris['44'].inputs.width === 1024 && ostris['44'].inputs.height === 1024, 'ostris: solid value-0 mask at the canvas size (the black fill source)')
+    ok(ostris['45'].class_type === 'MaskToImage' && ostris['45'].inputs.mask.join('|') === '44|0', 'ostris: the solid mask becomes the black image')
+    ok(ostris['46'].class_type === 'ImageCompositeMasked' && ostris['46'].inputs.destination.join('|') === '30|0' && ostris['46'].inputs.source.join('|') === '45|0' && ostris['46'].inputs.x === 0 && ostris['46'].inputs.y === 0 && ostris['46'].inputs.resize_source === false && ostris['46'].inputs.mask.join('|') === '30|1', 'ostris: the edit region black-fills through the Mask-Editor mask (white = regenerate) — the publisher\'s own pre-encode mechanism')
+    ok(ostris['10'].class_type === 'LoraLoaderModelOnly' && ostris['10'].inputs.lora_name === 'krea2_inpaint_edit.safetensors' && ostris['10'].inputs.strength_model === 1 && ostris['10'].inputs.model.join('|') === '1|0', 'ostris: the inpaint-edit LoRA @1.0 wraps the checkpoint')
+    ok(ostris['11'].class_type === 'Krea2OstrisEditModelPatch' && ostris['11'].inputs.kv_cache === true && ostris['11'].inputs.model.join('|') === '10|0', 'ostris: model chain UNet → LoRA → ostris patch with kv_cache ON (the card\'s hard rule against the pack default)')
+    ok(ostris['47'].class_type === 'TextEncodeKrea2OstrisEdit' && ostris['47'].inputs.clip.join('|') === '2|0' && ostris['47'].inputs.vae.join('|') === '3|0' && ostris['47'].inputs.image1.join('|') === '46|0', 'ostris: the encode sees the black-region image with BOTH the clip and the vae (VL reference + reference latents)')
+    ok(ostris['48'].class_type === 'ConditioningZeroOut' && ostris['48'].inputs.conditioning.join('|') === '47|0' && ostris['7'].inputs.negative.join('|') === '48|0' && ostris['7'].inputs.positive.join('|') === '47|0', 'ostris: the negative is the zeroed conditioning (the publisher wiring; unused at CFG 1.0, never an ungrounded text encode)')
+    ok(ostris['7'].inputs.model.join('|') === '11|0' && ostris['7'].inputs.latent_image.join('|') === '6|0' && ostris['7'].inputs.steps === 8 && ostris['7'].inputs.cfg === 1 && ostris['7'].inputs.sampler_name === 'euler_ancestral' && ostris['7'].inputs.scheduler === 'simple' && ostris['7'].inputs.denoise === 1, 'ostris: sampler on the patched model, empty canvas latent, the card\'s operating point')
+    ok(ostris['9'].inputs.images.join('|') === '8|0', 'ostris: raw decode saved directly — the composite sits BEFORE the encode, never after the decode')
+    const strong = buildKrea2Graph(matrixByName['ostris-inpaint-strong-variant'].options, matrixByName['ostris-inpaint-strong-variant'].models)
+    ok(strong['10'].inputs.lora_name === 'krea2_inpaint_edit_strong.safetensors' && canon(strong) !== canon(ostris), 'ostris: the strong variant swaps only the LoRA file')
   }
 })
 
@@ -635,10 +655,21 @@ maybe('(f6) Krea 2 recipe audit — the correctness rules fire on adversarial gr
     ok(krea2RecipeAudit(withCarrierIndex).length === 0, 'the on-recipe core carrier (ReferenceLatent + method index) audits clean')
     const wrongLora = buildKrea2Graph(matrixByName['instruct-default'].options, { ...KREA2_MODELS, identityEditLora: 'krea2_anypaint_rank32.safetensors' })
     ok(krea2RecipeAudit(wrongLora).length >= 2, 'the audit rejects a mismatched encode/transport/LoRA triple')
-    const withComposite = { ...instruct, '52': { class_type: 'ImageCompositeMasked', inputs: {} } }
-    ok(krea2RecipeAudit(withComposite).some((violation) => violation.includes('composite')), 'the audit rejects any post-hoc composite node')
+    // The composite rule is POSITION-AWARE since the ostris family (ruling #1):
+    // pre-encode input construction is the publisher's own mechanism and must
+    // pass; a composite consuming the DECODED output is the forbidden doctoring.
+    const withComposite = { ...instruct, '52': { class_type: 'ImageCompositeMasked', inputs: { destination: ['8', 0], source: ['30', 0] } } }
+    ok(krea2RecipeAudit(withComposite).some((violation) => violation.includes('composite')), 'the audit rejects a post-hoc composite: one wired to the DECODE output fails (rule strengthened from any-composite to position-aware at the ostris wiring)')
+    const ostrisGraph = buildKrea2Graph(matrixByName['ostris-inpaint-default'].options, KREA2_MODELS)
+    ok(ostrisGraph['46'].class_type === 'ImageCompositeMasked' && krea2RecipeAudit(ostrisGraph).length === 0, 'the PRE-encode composite (the black-region fill) audits clean — input construction, not output doctoring')
+    const kvOff = { ...ostrisGraph, '11': { ...ostrisGraph['11'], inputs: { ...ostrisGraph['11'].inputs, kv_cache: false } } }
+    ok(krea2RecipeAudit(kvOff).some((violation) => violation.includes('kv_cache')), 'the audit catches kv_cache left at the pack default (off) with the Cierpliwy LoRA — the card\'s explicit requirement')
+    const ostrisWrongEncode = { ...ostrisGraph, '47': { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 0], text: 'p' } } }
+    ok(krea2RecipeAudit(ostrisWrongEncode).some((violation) => violation.includes('TextEncodeKrea2OstrisEdit')), 'the audit rejects the ostris LoRA on a plain text encode — the t=0 reference conditioning is the triple\'s encode half')
     const withBothPatchers = { ...instruct, '53': { class_type: 'Krea2AnyPaintModelPatch', inputs: { model: ['11', 0], kv_cache: true } } }
     ok(krea2RecipeAudit(withBothPatchers).some((violation) => violation.includes('do not compose')), 'the audit rejects stacked whole-pipeline patchers (the D3 lesson)')
+    const ostrisPlusAnypaint = { ...ostrisGraph, '53': { class_type: 'Krea2AnyPaintModelPatch', inputs: { model: ['11', 0], kv_cache: true } } }
+    ok(krea2RecipeAudit(ostrisPlusAnypaint).some((violation) => violation.includes('do not compose')), 'the ostris patch joins the whole-pipeline mutual-exclusion set')
     const loraless = { ...instruct }
     delete loraless['10']
     ok(krea2RecipeAudit(loraless).some((violation) => violation.includes('triple must match')), 'edit transport without its trained LoRA fails the triple check')
@@ -678,6 +709,10 @@ maybe('(f7) Krea 2 dial validation — the research limits enforced at the bound
     throwsWith(() => buildKrea2Graph({ ...KREA2_BASE, edit: outpaintRequest({ padding: { left: 0, top: 0, right: 0, bottom: 0 } }) }, KREA2_MODELS), 'at least one side', 'outpaint with zero padding everywhere is rejected')
     throwsWith(() => buildKrea2Graph({ ...KREA2_BASE, edit: outpaintRequest({ padding: { right: 100 } }) }, KREA2_MODELS), 'multiple of 16', 'padding moves on the 16px grid')
     throwsWith(() => buildKrea2Graph({ ...KREA2_BASE, edit: outpaintRequest({ padding: { right: -16 } }) }, KREA2_MODELS), 'integer in 0', 'negative padding is rejected')
+    const ostrisRequest = (extra) => ({ family: 'krea2edit.ostris', prompt: 'p', source: 'masked.png', width: 1024, height: 1024, seed: 1, filenamePrefix: 't', ...extra })
+    throwsWith(() => buildKrea2Graph({ ...KREA2_BASE, edit: ostrisRequest({ mask: false }) }, KREA2_MODELS), 'needs the mask', 'ostris without a mask is rejected — the black region IS the input convention')
+    throwsWith(() => buildKrea2Graph({ ...KREA2_BASE, edit: ostrisRequest({ steps: 12 }) }, KREA2_MODELS), 'Turbo-locked', 'the ostris LoRA rejects sampler overrides (one shipped operating point)')
+    throwsWith(() => buildKrea2Graph({ ...KREA2_BASE, edit: ostrisRequest() }, { ...KREA2_MODELS, ostrisInpaintLora: '' }), 'cannot build', 'an unresolved ostris LoRA refuses to build — never a silent empty filename')
     throwsWith(() => buildKrea2Graph({ ...KREA2_BASE, edit: request({ family: 'krea2edit.nope' }) }, KREA2_MODELS), 'unknown', 'unknown families are rejected')
     throwsWith(() => buildKrea2Graph({ ...KREA2_BASE, edit: request({ family: 'krea2edit.removal' }) }, { ...KREA2_MODELS, raw: '' }), 'cannot build', 'an unresolved RAW checkpoint refuses to build — never a silent empty filename')
     throwsWith(() => buildKrea2Graph({ ...KREA2_BASE, edit: request() }, { ...KREA2_MODELS, identityEditLora: '' }), 'cannot build', 'an unresolved edit LoRA refuses to build')
@@ -695,7 +730,7 @@ maybe('(f8) Krea 2 availability gating per family', () => {
     const detected = detectKrea2EditFamilies(KREA2_FULL_INFO, KREA2_FULL_SCAN)
     const byFamilyId = {}
     for (const { family, detection } of detected) byFamilyId[family.id] = detection
-    ok(detected.length === 5, 'five families detected')
+    ok(detected.length === 6, 'six families detected')
     for (const family of KREA2_EDIT_FAMILIES) {
       ok(byFamilyId[family.id].available === true, `${family.id} available on a full stack`)
       ok(byFamilyId[family.id].missingNodes.length === 0 && byFamilyId[family.id].missingModels.length === 0, `${family.id} reports nothing missing on a full stack`)
@@ -704,6 +739,7 @@ maybe('(f8) Krea 2 availability gating per family', () => {
     ok(byFamilyId['krea2edit.instruct'].resolved.diffusion === 'krea2_turbo_int8_convrot.safetensors', 'instruct resolves the Turbo checkpoint')
     ok(byFamilyId['krea2edit.instruct'].resolved.lora === 'krea2_identity_edit_v1_2.safetensors', 'the full Identity Edit LoRA wins over the reduced cuts')
     ok(byFamilyId['krea2edit.refine'].resolved.lora === 'krea2_anypaint_rank32.safetensors', 'refine resolves the AnyPaint LoRA')
+    ok(byFamilyId['krea2edit.ostris'].resolved.lora === 'krea2_inpaint_edit.safetensors' && byFamilyId['krea2edit.ostris'].resolved.diffusion === 'krea2_turbo_int8_convrot.safetensors', 'ostris resolves the default inpaint-edit variant on the Turbo checkpoint (all three Cierpliwy example workflows run Turbo)')
 
     const bare = detectKrea2EditFamilies(KREA2_BARE_INFO, KREA2_FULL_SCAN)
     const bareById = {}
@@ -711,6 +747,7 @@ maybe('(f8) Krea 2 availability gating per family', () => {
     ok(Object.values(bareById).every((detection) => detection.available === false), 'a bare engine gates every family off')
     ok(bareById['krea2edit.instruct'].missingNodes.join() === 'Krea2EditModelPatch,Krea2EditGroundedEncode', 'identity families name their missing pack nodes')
     ok(bareById['krea2edit.refine'].missingNodes.length === 3, 'AnyPaint families name all three missing nodes')
+    ok(bareById['krea2edit.ostris'].missingNodes.join() === 'TextEncodeKrea2OstrisEdit,Krea2OstrisEditModelPatch', 'the ostris family names its two missing pack nodes')
 
     const noRaw = KREA2_FULL_SCAN.filter((file) => !file.name.startsWith('krea2_raw'))
     const gated = {}
@@ -726,6 +763,14 @@ maybe('(f8) Krea 2 availability gating per family', () => {
     ok(reducedOnly.identityEditLora === 'krea2_identity_edit_v1_2_r128.safetensors', 'low-VRAM fallback order: r128 preferred over r64')
     const r64Only = resolveKrea2EditModels([...KREA2_FULL_SCAN.filter((file) => !file.name.startsWith('krea2_identity')), krea2File('loras', 'krea2_identity_edit_v1_2_r64.safetensors')])
     ok(r64Only.identityEditLora === 'krea2_identity_edit_v1_2_r64.safetensors', 'r64 resolves when it is the only cut present')
+    const variantOnly = resolveKrea2EditModels([
+      ...KREA2_FULL_SCAN.filter((file) => !file.name.startsWith('krea2_inpaint_edit')),
+      krea2File('loras', 'krea2_inpaint_edit_mild.safetensors'),
+      krea2File('loras', 'krea2_inpaint_edit_strong.safetensors'),
+    ])
+    ok(variantOnly.ostrisInpaintLora === 'krea2_inpaint_edit_mild.safetensors', 'ostris variant order without the default: mild preferred over strong (the card\'s focus-point cut)')
+    const strongOnly = resolveKrea2EditModels([...KREA2_FULL_SCAN.filter((file) => !file.name.startsWith('krea2_inpaint_edit')), krea2File('loras', 'krea2_inpaint_edit_strong.safetensors')])
+    ok(strongOnly.ostrisInpaintLora === 'krea2_inpaint_edit_strong.safetensors', 'strong resolves when it is the only variant present')
     ok(resolveKrea2EditModels([...KREA2_FULL_SCAN, krea2File('diffusion_models', 'krea2_turbo_nvfp4_awq.safetensors')]).turbo === 'krea2_turbo_int8_convrot.safetensors', 'excluded quants (NVFP4/MXFP8) never resolve')
     ok(resolveKrea2EditModels([...KREA2_FULL_SCAN.filter((file) => file.name !== 'krea2_turbo_int8_convrot.safetensors'), krea2File('diffusion_models', 'krea2_turbo_fp8_scaled.safetensors')]).turbo === 'krea2_turbo_fp8_scaled.safetensors', 'fp8_scaled is the second choice when int8-convrot is absent')
 
@@ -742,6 +787,7 @@ maybe('(f8) Krea 2 availability gating per family', () => {
     for (const { family, detection } of noLoras) noLorasById[family.id] = detection
     ok(Object.values(noLorasById).every((detection) => detection.available === false), 'no LoRAs → every edit mode gated with install guidance')
     ok(noLorasById['krea2edit.refine'].missingModels.some((label) => label.includes('AnyPaint')), 'the AnyPaint guidance names its LoRA')
+    ok(noLorasById['krea2edit.ostris'].missingModels.some((label) => label.includes('ostris inpaint-edit LoRA')), 'the ostris guidance names its LoRA')
     const instructFamily = findKrea2EditFamily('krea2edit.instruct')
     ok(instructFamily !== undefined && instructFamily.detect(KREA2_FULL_INFO, KREA2_FULL_SCAN).available, 'findKrea2EditFamily resolves for direct calls')
   }
@@ -750,5 +796,5 @@ maybe('(f8) Krea 2 availability gating per family', () => {
 // The suite's tail summary (was inside the removed LTX g6 block; kept as its
 // own final test — Phase 0, 2026-09-20).
 maybe('suite summary', () => {
-  console.log(`PASS: optimization registry (${checks} assertions) — inertness vs pre-registry goldens across the ${GOLDEN_MATRIX.length}-config matrix, transform correctness (plain + dedicated larryvrh pairing swap, LBH/RTX chains, preview override), detection against mock object_info/scans, family pairing contracts (steps/sampler enforced, 8-step keeps res_multistep+simple), family-ranked selection inference (official > lightx2v newest-first, explicit family constraint, Ref2VA 8-step fast tier — larryvrh v4 default per bake-off 2026-09-15), painless expansion (a hypothetical 5-step family registered, detected, transformed, paired and proven inert via registry data alone), and the five Krea 2 edit families (base-t2i inertness, per-family goldens, research-pinned recipes, hand-asserted dual-conditioning/AnyPaint wiring, E-K1 honesty-label + scene-style prompt-contract pins, recipe-triple audit incl. the t=0 carrier trap + the E-K1 index-pairing rule + no-composite rule + patcher mutual exclusion, dial validation at the research limits, and per-family availability gating with low-VRAM LoRA fallback). (The six LTX-2.3 utility sections g1-g6 were removed with LTX — Phase 0, 2026-09-20.)`)
+  console.log(`PASS: optimization registry (${checks} assertions) — inertness vs pre-registry goldens across the ${GOLDEN_MATRIX.length}-config matrix, transform correctness (plain + dedicated larryvrh pairing swap, LBH/RTX chains, preview override), detection against mock object_info/scans, family pairing contracts (steps/sampler enforced, 8-step keeps res_multistep+simple), family-ranked selection inference (official > lightx2v newest-first, explicit family constraint, Ref2VA 8-step fast tier — larryvrh v4 default per bake-off 2026-09-15), painless expansion (a hypothetical 5-step family registered, detected, transformed, paired and proven inert via registry data alone), and the six Krea 2 edit families (base-t2i inertness, per-family goldens, research-pinned recipes, hand-asserted dual-conditioning/AnyPaint/ostris wiring, E-K1 honesty-label + prompt-contract pins, recipe-triple audit incl. the t=0 carrier trap + the E-K1 index-pairing rule + the position-aware no-post-hoc-composite rule + the ostris kv_cache trap + patcher mutual exclusion, dial validation at the research limits, and per-family availability gating with low-VRAM LoRA fallback + ostris variant resolution). (The six LTX-2.3 utility sections g1-g6 were removed with LTX — Phase 0, 2026-09-20.)`)
 })
