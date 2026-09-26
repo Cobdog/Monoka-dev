@@ -173,6 +173,14 @@ export type NodePackDefinition = {
    *  against the vendored payload / canonical install / an upstream read
    *  (see engineNodes.ts rows for per-pack provenance). */
   instanceNodeClasses: string[]
+  /** (R5, central-model audit) The ONE pack-presence rule, as per-row data:
+   *  'any' (default) = the row is detected by a stable hook and its listed
+   *  classes are alternatives or a deliberate detection subset; 'all' = the
+   *  app's graphs for this pack's feature load EVERY listed class, so a
+   *  partial serving is NOT the pack's usable feature set and must read as
+   *  absent everywhere (board chip and feature gates agree). Read through
+   *  packPresence()/resolvePackPresence() — never re-encoded per site. */
+  presenceRule?: 'any' | 'all'
 }
 
 /** Availability of one registry entry against a concrete install target

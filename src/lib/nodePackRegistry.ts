@@ -107,7 +107,10 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
     homepage: 'https://github.com/Larryvrh/ComfyUI-MiniMax-H3-Turbo',
     // NODE_CLASS_MAPPINGS read from the canonical shared install's copy of
     // the pack (2026-09-19); the optimization registry detects this pair.
+    // ALL-match: the dedicated loader/sampler pair is the pack's usable
+    // feature — a checkout serving only one class cannot run it (R5).
     instanceNodeClasses: ['MiniMaxH3TurboLoRA', 'MiniMaxH3TurboSampler'],
+    presenceRule: 'all',
   },
   {
     // H3 Image Workbench (k9vu6t0, spec §4/§10 — decision 10: the hybrid
@@ -256,10 +259,11 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
     homepage: 'https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context',
     // NODE_CLASS_MAPPINGS read from the shared install's nodes.py:1189-1193
     // (2026-09-21). The four listed are exactly what src/lib/workflow.ts
-    // emits for chain continuation (MOTION_CONTEXT_NODES,
-    // canvas/generation.ts); the pack also ships a …Chain node and a
-    // seam-probe node this app never calls. Detection is any-match.
+    // emits for chain continuation; the pack also ships a …Chain node and a
+    // seam-probe node this app never calls. ALL-match: every chain graph
+    // loads all four — a partial serving cannot run a continuation (R5).
     instanceNodeClasses: ['MiniMaxH3MotionContext', 'MiniMaxH3MotionContextTrim', 'MiniMaxH3MotionContextSaveLatent', 'MiniMaxH3MotionContextLoadLatent'],
+    presenceRule: 'all',
   },
   // -- GAP-2 closed (task 06jr4eh): the LBH hires-fix entries
   // (upscale.lbh2d/lbh3d) emitted two upscaler classes with no row, no pin,
@@ -339,11 +343,48 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
     // NODE_CLASS_MAPPINGS read verbatim from __init__.py @ f3252d2 (the
     // whole pack: 2 classes, category Fizgig). Both classes are exactly
     // what the flag-on T=1 branch emits; the engine-contract fixture
-    // carries their schemas source-derived at this pin.
+    // carries their schemas source-derived at this pin. ALL-match: the
+    // lane is useless with only one half (R5 — the row rule now backs
+    // fizgigH3StillPackPresent).
     instanceNodeClasses: ['FizgigH3StillLatent', 'FizgigH3StillDecode'],
+    presenceRule: 'all',
   },
 ]
 
 export function findNodePack(id: string): NodePackDefinition | null {
   return ENGINE_NODE_PACKS.find((pack) => pack.id === id) ?? null
+}
+
+/** (R5, central-model audit) THE pack-presence rule, applied. One function,
+ * one membership definition: a pack is present when its served classes
+ * satisfy the row's own `presenceRule` — 'all' for packs whose graphs load
+ * every listed class (the turbo dedicated pair, the Motion-Context chain,
+ * Fizgig's latent+decode), 'any' for hook-detected rows whose classes are
+ * alternatives or a deliberate subset. Before this, the pack board answered
+ * any-match while the turbo plan, the canvas motion-context gate, and the
+ * Fizgig lane answered all-match — a partial checkout read ACTIVE on the
+ * board and ABSENT at every gate that mattered. Every presence consumer
+ * (board, optimizer, canvas options, lane gates) reads this; none
+ * re-encodes a rule. */
+export function resolvePackPresence(
+  pack: NodePackDefinition,
+  served: (nodeClass: string) => boolean,
+): boolean {
+  if (pack.instanceNodeClasses.length === 0) return false
+  return pack.presenceRule === 'all'
+    ? pack.instanceNodeClasses.every(served)
+    : pack.instanceNodeClasses.some(served)
+}
+
+/** packPresence over an object_info snapshot (or any class→truth record).
+ *  Undefined/null/absent info answers false — callers that need an honest
+ *  "unknown" tri-state (the pack board) keep their own no-snapshot branch
+ *  and call resolvePackPresence with the served-classes adapter. */
+export function packPresence(
+  info: Readonly<Record<string, unknown>> | undefined | null,
+  packId: string,
+): boolean {
+  const pack = findNodePack(packId)
+  if (!pack) return false
+  return resolvePackPresence(pack, (nodeClass) => Boolean(info && (info as Record<string, unknown>)[nodeClass]))
 }

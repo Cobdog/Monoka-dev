@@ -60,6 +60,7 @@
 import type { ObjectInfo } from '../comfyInfo'
 import type { ModelFile } from '../../types'
 import { findRegistryModel, teDimClassRefusal } from '../modelSelection'
+import { packPresence } from '../nodePackRegistry'
 import { dbg } from '../dbg'
 import type { Krea2ModelSelection } from './krea2edit'
 import { buildKrea2Graph, findKrea2EditFamily } from './krea2edit'
@@ -204,9 +205,11 @@ export const FIZGIG_H3_STILL_NODES = ['FizgigH3StillLatent', 'FizgigH3StillDecod
 export const FIZGIG_H3_STILL_PACK_NAME = 'ComfyUI-Fizgig-H3-Still'
 
 /** True when the engine serves BOTH Fizgig classes (all-match — the lane
- *  is useless with only one half). */
+ *  is useless with only one half). R5: the rule is the registry row's
+ *  presenceRule ('fizgig-h3-still'), read through the one packPresence
+ *  helper — the local class-list mirror is gone. */
 export function fizgigH3StillPackPresent(info: ObjectInfo | undefined): boolean {
-  return FIZGIG_H3_STILL_NODES.every((nodeClass) => infoHas(info, nodeClass))
+  return packPresence(info, 'fizgig-h3-still')
 }
 
 // ---------------------------------------------------------------------------
