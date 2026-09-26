@@ -43,6 +43,10 @@ export const STOCK_GRAPH_CLASSES: readonly string[] = [
   // krea2 edit t2i canvas (stock since ComfyUI's SD3 nodes; found missing from
   // this list by the engine-contract fixture's coverage walk, 8dga2dy)
   'EmptySD3LatentImage',
+  // krea2edit.ostris input prep (ruling #1, 2026-09-26): the black-region fill
+  // — the publisher's own pre-encode mechanism (SolidMask → MaskToImage →
+  // ImageCompositeMasked), all stock image/mask classes.
+  'SolidMask', 'MaskToImage', 'ImageCompositeMasked',
   // the music3 audio engine (native ComfyUI music nodes; the acestep classes
   // went with the ACE-Step cut, 2026-09-21 — nn5ld47)
   'EmptyMiniMaxMusic3LatentAudio', 'MiniMaxMusic3TextEncode',

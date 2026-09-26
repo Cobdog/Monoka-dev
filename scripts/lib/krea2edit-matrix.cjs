@@ -35,6 +35,7 @@ const MODELS = {
   vae: 'qwen_image_vae.safetensors',
   identityEditLora: 'krea2_identity_edit_v1_2.safetensors',
   anypaintLora: 'krea2_anypaint_rank32.safetensors',
+  ostrisInpaintLora: 'krea2_inpaint_edit.safetensors',
 }
 
 const edit = (family, extra, editBase = {}) => ({ ...BASE, edit: { family, prompt: 'recolor the car to matte black', source: 'source.png', width: BASE.width, height: BASE.height, seed: BASE.seed, filenamePrefix: BASE.filenamePrefix, ...editBase, ...extra } })
@@ -72,6 +73,16 @@ matrix.push({
   name: 'instruct-lowvram-r64',
   options: edit('krea2edit.instruct'),
   models: { ...MODELS, identityEditLora: 'krea2_identity_edit_v1_2_r64.safetensors' },
+})
+
+// 7. The ostris inpaint-edit family (ruling #1, 2026-09-26): the black-region
+//    masked edit through the ostris t=0 carrier with the Cierpliwy LoRA; the
+//    strong-variant entry proves variant resolution swaps the file only.
+matrix.push({ name: 'ostris-inpaint-default', options: edit('krea2edit.ostris', { source: 'masked_source.png', prompt: 'a bowl of glossy ceramic lemons, hand-thrown, morning light through a window' }), models: MODELS })
+matrix.push({
+  name: 'ostris-inpaint-strong-variant',
+  options: edit('krea2edit.ostris', { source: 'masked_source.png' }),
+  models: { ...MODELS, ostrisInpaintLora: 'krea2_inpaint_edit_strong.safetensors' },
 })
 
 module.exports = { KREA2_MATRIX: matrix, KREA2_BASE: BASE, KREA2_MODELS: MODELS }
