@@ -20,6 +20,7 @@ import type { DetectionResult, OptimizationEntry, TurboLoaderChoice, TurboPlan }
 import { GENERIC_TURBO_ENTRY, TURBO_ENTRIES, classifyTurboFamily as classifyInModule, larryvrhTurboPackPresent, resolveTurboPlan as resolveInModule, turboFetchPlan, turboLoraPatterns as patternsInModule } from './turbo'
 import { UPSCALE_ENTRIES, upscaleEntryFor } from './upscale'
 import { PREVIEW_ENTRY } from './preview'
+import { VDN_ENTRY } from './vdn'
 
 const entries: OptimizationEntry[] = []
 
@@ -32,6 +33,7 @@ for (const entry of TURBO_ENTRIES) register(entry)
 register(GENERIC_TURBO_ENTRY)
 for (const entry of UPSCALE_ENTRIES) register(entry)
 register(PREVIEW_ENTRY)
+register(VDN_ENTRY)
 
 /** Snapshot of the registry at call time (callers that mutate via
  * registerOptimization keep their earlier reference). */

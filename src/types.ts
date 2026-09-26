@@ -585,6 +585,13 @@ export type GenerationOptions = {
   seed: number
   steps: number
   turbo: 'off' | '4' | '8'
+  /** The VDN acceleration rung (task 9up52mj — adopted first-party
+   *  2026-09-26): 'dmd-8' (stage-dmd*, distilled adapter on, er_sde/beta,
+   *  8 steps), 'stage-b-50' (the 50-step stack, user steps, official pair),
+   *  'off' default/inert. XOR with `turbo`: both are acceleration patches
+   *  on the same model slot — the resolver throws on the combination and
+   *  the validation ladder refuses it readably. */
+  vdn?: 'off' | 'dmd-8' | 'stage-b-50'
   /** Turbo loader preference: 'auto' lets a 4-step family use the dedicated
    *  larryvrh loader/sampler pair when that node pack is installed; 'plain'
    *  forces the stock LoraLoaderModelOnly path (community-reported quality

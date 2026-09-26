@@ -364,7 +364,7 @@ function buildCorpus() {
   }
   // The video factory across the mode/tier/chain/stack surface.
   const models = { fl2va: 'fl2va.safetensors', ref2va: 'ref2va.safetensors', textEncoder: 'qwen.safetensors', videoVae: 'video-vae.safetensors', audioVae: 'audio-vae.safetensors', fl2vLora: 'fl-turbo.safetensors', ref2vLora: 'ref-turbo.safetensors' }
-  const wf = (label, options, uploads) => corpus.push([`video:${label}`, workflow.buildMiniMaxWorkflow(options, models, uploads)])
+  const wf = (label, options, uploads, info) => corpus.push([`video:${label}`, workflow.buildMiniMaxWorkflow(options, models, uploads, info)])
   wf('text-base', { mode: 'text', width: 1344, height: 768, prompt: 'p', duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, { images: [], videos: [], audios: [] })
   wf('image-frames-turbo8', { mode: 'image', width: 352, height: 608, prompt: 'p', duration: 3, seed: 2, steps: 20, turbo: '8', sampler: 'heun', scheduler: 'karras', filenamePrefix: 't', refImageSize: 'match' }, { first: { name: 'first.png' }, last: { name: 'last.png' }, images: [], videos: [], audios: [] })
   wf('reference-full', { mode: 'reference', width: 768, height: 768, prompt: 'p', duration: 8, seed: 3, steps: 20, turbo: '4', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'max', sigmaShift: { video: 12, audio: 3 }, timelineGuides: [{ file: { name: 'guide.png' }, seconds: 1.5, frameIndex: 36 }] }, { images: [{ name: 'ref.png' }], videos: [{ name: 'ref.mp4' }], audios: [{ name: 'ref.flac' }], guides: [{ name: 'guide.png' }] })
@@ -372,6 +372,14 @@ function buildCorpus() {
   wf('chain-start', { mode: 'text', width: 1344, height: 768, prompt: 'p', duration: 5, seed: 5, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match', chain: { index: 0, folder: 'chain/a' } }, { images: [], videos: [], audios: [] })
   wf('chain-continuation', { mode: 'reference', width: 1344, height: 768, prompt: 'p', duration: 5, seed: 6, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match', chain: { index: 2, folder: 'chain/a', contextLength: '39', audioContextLength: 24, loadFrom: { folder: 'chain/a', clipIndex: 1 } } }, { images: [{ name: 'ref.png' }], videos: [], audios: [] })
   wf('lora-stack', { mode: 'text', width: 1344, height: 768, prompt: 'p', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match', loraStack: [{ name: 'style.safetensors', strength: 0.7 }, { name: 'motion.safetensors', strength: 1 }] }, { images: [], videos: [], audios: [] })
+  // The VDN acceleration arm (task 9up52mj — adopted first-party): both
+  // rungs against the REAL transcribed schemas. The plan needs a stage the
+  // engine enumerates — REAL_INFO's ApplyVDNH3 carries the EMPTIED combo
+  // (environment-enumerated, membership skipped like a model folder), so a
+  // stage-bearing variant stands in for a fetched engine.
+  const VDN_SERVING = { ...REAL_INFO, ApplyVDNH3: { ...REAL_INFO.ApplyVDNH3, input: { ...REAL_INFO.ApplyVDNH3.input, required: { ...REAL_INFO.ApplyVDNH3.input.required, vdn_checkpoint: [['stage-b-step-2000', 'stage-dmd-step-250']] } } } }
+  wf('vdn-dmd8', { mode: 'text', width: 1344, height: 768, prompt: 'p', duration: 5, seed: 8, steps: 30, turbo: 'off', vdn: 'dmd-8', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, { images: [], videos: [], audios: [] }, VDN_SERVING)
+  wf('vdn-stageb50', { mode: 'text', width: 1344, height: 768, prompt: 'p', duration: 5, seed: 9, steps: 50, turbo: 'off', vdn: 'stage-b-50', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match', loraStack: [{ name: 'style.safetensors', strength: 0.7 }] }, { images: [], videos: [], audios: [] }, VDN_SERVING)
   // The audio cores.
   const music3Models = { diffusion: 'm3.safetensors', textEncoder: 'm3-te.safetensors', vae: 'm3-dav.safetensors' }
   corpus.push(['music3:tiled', music3.buildMusic3Workflow({ caption: 'Global Metadata: lo-fi', lyrics: '', duration: 90, seed: 42, tiledDecode: true, filenamePrefix: 'a' }, music3Models)])

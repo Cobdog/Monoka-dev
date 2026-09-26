@@ -19,6 +19,10 @@ export type RenderManifest = {
   seed: number
   steps: number
   turbo: string
+  /** The VDN acceleration rung this render ran (absent = off) — the
+   *  reproducibility fact that a VDN render's speed/quality came from the
+   *  adopted arm, not the turbo LoRA the tier vocabulary names. */
+  vdn?: string
   sampler: string
   scheduler: string
   resolution: string
@@ -84,6 +88,7 @@ export function buildRenderManifest(options: GenerationOptions, models: ModelSel
     seed: options.seed,
     steps: options.steps,
     turbo: options.turbo,
+    vdn: options.vdn && options.vdn !== 'off' ? options.vdn : undefined,
     sampler: options.experimentalSampling ? options.sampler : 'res_multistep',
     scheduler: options.experimentalSampling ? options.scheduler : 'simple',
     resolution: `${options.width}x${options.height}`,

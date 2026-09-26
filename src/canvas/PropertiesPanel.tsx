@@ -25,7 +25,7 @@ import { Captions, Clock3, Dices, LoaderCircle, Play, Sparkles, Square, Star, Vo
 import { SmartPromptEditor, type SmartPromptEditorHandle } from '../components/SmartPromptEditor'
 import { StructuredPromptEditor } from '../components/StructuredPromptEditor'
 import { PromptLibraryBrowser } from '../components/PromptLibraryBrowser'
-import { detectOptimizations, engineFamilyForChain, turboFetchPlan } from '../lib/graph'
+import { detectOptimizations, engineFamilyForChain, turboFetchPlan, vdnAvailability } from '../lib/graph'
 import { inferredOverrideSlotFile, migrateLegacyModelOverrideSlots, modelFamilyInfo, overrideLayerCounts, overrideLayerSummary, overridePickOutcome, SLOT_LABELS, type ModelFamilyId, type ModelOverrideSlotName } from '../lib/modelOverrides'
 import { guideFrameWarning } from '../lib/workflow'
 import { ASPECT_RATIOS, optimalResolutionFor, parseResolution, ratioKeyOf, resolutionsForRatio, snapResolutionDim } from '../lib/aspectResolutions'
@@ -53,6 +53,16 @@ const TIERS: Array<{ value: CanvasChainSettings['turbo']; label: string; note: s
   { value: 'off', label: 'Quality', note: 'full-step native' },
   { value: '4', label: 'Fast · 4-step', note: 'turbo LoRA' },
   { value: '8', label: 'Fast · 8-step', note: 'turbo LoRA' },
+]
+
+/** The VDN acceleration rungs (task 9up52mj — adopted first-party): XOR
+ *  with the tier — the stage's own distilled adapter IS the turbo
+ *  acceleration, so selecting a rung turns the tier off (and vice versa,
+ *  enforced in the tier chips' onClick). */
+const VDN_RUNGS: Array<{ value: CanvasChainSettings['vdn']; label: string; note: string }> = [
+  { value: 'off', label: 'Off', note: 'no VDN' },
+  { value: 'dmd-8', label: 'VDN · 8-step', note: 'stage-dmd, distilled' },
+  { value: 'stage-b-50', label: 'VDN · 50-step', note: 'stage-b, full steps' },
 ]
 
 /** Debounced persistence for panel edits: typing never hammers the document
@@ -819,12 +829,56 @@ export function PropertiesPanel() {
                   aria-checked={draft.turbo === tier.value}
                   className={`canvas-chip ${draft.turbo === tier.value ? 'active' : ''}`}
                   data-canvas-tier={tier.value}
-                  onClick={() => patch({ turbo: tier.value })}
+                  onClick={() => patch({ turbo: tier.value, ...(tier.value !== 'off' ? { vdn: 'off' as const } : {}) })}
                 >
                   {tier.label} <small>{tier.note}</small>
                 </button>
               ))}
             </div>
+          </div>
+        )}
+        {engineFamily.panel.tier && (
+          <div className="canvas-properties-row">
+            <span>VDN</span>
+            <div className="canvas-properties-tiers" role="radiogroup" aria-label="VDN acceleration">
+              {VDN_RUNGS.map((rung) => (
+                <button
+                  type="button"
+                  key={rung.value}
+                  role="radio"
+                  aria-checked={draft.vdn === rung.value}
+                  className={`canvas-chip ${draft.vdn === rung.value ? 'active' : ''}`}
+                  data-canvas-vdn={rung.value}
+                  onClick={() => patch({ vdn: rung.value, turbo: 'off' })}
+                >
+                  {rung.label} <small>{rung.note}</small>
+                </button>
+              ))}
+            </div>
+            {/* Presence truth, never a dead end: the pack row names the
+                install path; a served pack without stages deep-links the
+                Library at the exact fetch rows (the engine's own
+                vdn_checkpoint enumeration is the stage truth). */}
+            {info && (() => {
+              const availability = vdnAvailability(info)
+              if (!availability.packPresent) {
+                return <p className="canvas-properties-note" data-canvas-vdn-note role="note">VDN pack not served by the engine — install vdn-h3 from the Packs board, then refresh the engine.</p>
+              }
+              const missingStages = [
+                ...(availability.dmd ? [] : ['vdn-stage-dmd-250']),
+                ...(availability.stageB ? [] : ['vdn-stage-b-2000']),
+              ]
+              if (missingStages.length) {
+                return (
+                  <button type="button" className="canvas-chip" data-canvas-vdn-fetch
+                    title="Open the library at the model catalog — the VDN stage rows fetch there with consent"
+                    onClick={() => useCanvasStore.getState().setLibraryDock(true, missingStages)}>
+                    fetch stage{missingStages.length > 1 ? 's' : ''} ({missingStages.length})
+                  </button>
+                )
+              }
+              return null
+            })()}
           </div>
         )}
         {engineFamily.panel.turboFamily && (

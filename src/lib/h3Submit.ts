@@ -15,6 +15,7 @@
  */
 import { createId } from './createId'
 import { buildMiniMaxWorkflow, frameIndexForSeconds, guideFrameWarning } from './workflow'
+import { vdnAvailability } from './graph'
 import { teDimClassRefusal } from './modelSelection'
 import { prepareImage, prepareReferenceImage } from './imageCrop'
 import { buildRenderManifest } from './manifest'
@@ -34,6 +35,10 @@ export type H3RenderRequest = {
   seed: number
   steps: number
   turbo: 'off' | '4' | '8'
+  /** The VDN acceleration rung (task 9up52mj): 'off' default; XOR with
+   *  `turbo` — the ladder refuses the combination, and each absence (pack
+   *  not served, stage not fetched) refuses with install/fetch guidance. */
+  vdn?: 'off' | 'dmd-8' | 'stage-b-50'
   turboLoader: 'auto' | 'plain'
   experimentalSampling: boolean
   loraStrength: number
@@ -157,7 +162,7 @@ export function resolvePreviewOverride(
  * message, or null when the request may proceed. Pure — VM-harness tested
  * without an engine.
  */
-export function validateH3Render(request: H3RenderRequest, facts: Pick<H3SubmitFacts, 'connected' | 'modelReady' | 'selection' | 'h3PreviewOverrideNode' | 'modelOverrides'>): string | null {
+export function validateH3Render(request: H3RenderRequest, facts: Pick<H3SubmitFacts, 'connected' | 'modelReady' | 'selection' | 'h3PreviewOverrideNode' | 'modelOverrides' | 'info'>): string | null {
   const { upscale } = request
   if (upscale.mode === 'rtx' && !request.rtxModel) {
     return 'Choose an AI upscale model installed in ComfyUI first.'
@@ -188,6 +193,29 @@ export function validateH3Render(request: H3RenderRequest, facts: Pick<H3SubmitF
   // real render). Correct picks pass untouched — a guard, not a reroute.
   const teClassRefusal = facts.selection?.textEncoder ? teDimClassRefusal('minimax', facts.selection.textEncoder) : null
   if (teClassRefusal) return `Model resolution refused — textEncoder: ${teClassRefusal}`
+  // The VDN rungs (task 9up52mj): the XOR refusal first (both accelerations
+  // selected is a contradiction, never silently resolved), then the honest
+  // environment absences — the pack, then the rung's stage (the engine's own
+  // vdn_checkpoint enumeration; the fetch rows are named so the refusal is
+  // a path, not a dead end). No snapshot leaves these rungs to the resolver
+  // (the arm stays inert there and the connection rung owns the cause).
+  if (request.vdn && request.vdn !== 'off') {
+    if (request.turbo !== 'off') {
+      return 'VDN and the turbo tier are both selected — they are alternate acceleration patches on the same model slot. The VDN stage carries its own distilled adapter: turn the speed tier off, or set VDN off.'
+    }
+    if (facts.info) {
+      const availability = vdnAvailability(facts.info)
+      if (!availability.packPresent) {
+        return 'VDN is selected but the engine does not serve its ApplyVDNH3 node — install the vdn-h3 pack from the Packs board and refresh the engine.'
+      }
+      if (request.vdn === 'dmd-8' && !availability.dmd) {
+        return 'VDN 8-step needs a stage-dmd directory under ComfyUI/models/vdn — fetch it in the Library (row vdn-stage-dmd-250, ~5.5 GB) and refresh the engine.'
+      }
+      if (request.vdn === 'stage-b-50' && !availability.stageB) {
+        return 'VDN 50-step needs a stage-b directory under ComfyUI/models/vdn — fetch it in the Library (row vdn-stage-b-2000, ~4.6 GB) and refresh the engine.'
+      }
+    }
+  }
   if (request.livePreview.enabled && request.livePreview.mode === 'h3-override' && !facts.h3PreviewOverrideNode) {
     return 'MiniMax H3 animated preview is selected, but its Preview Override node was not detected. Install or enable the custom node, restart ComfyUI, then click the Local engine status to refresh.'
   }
@@ -297,6 +325,7 @@ export async function submitH3Render(
       seed: request.seed,
       steps: request.steps,
       turbo: request.turbo,
+      vdn: request.vdn,
       experimentalSampling: request.experimentalSampling,
       loraStrength: request.loraStrength,
       sampler: request.experimentalSampling ? request.sampler : 'res_multistep',
@@ -324,7 +353,7 @@ export async function submitH3Render(
     if (preflight) throw new Error(preflight)
     const manifest = buildRenderManifest({
       mode: request.mode, prompt: request.prompt, width: request.width, height: request.height, duration: request.duration,
-      seed: request.seed, steps: request.steps, turbo: request.turbo, experimentalSampling: request.experimentalSampling,
+      seed: request.seed, steps: request.steps, turbo: request.turbo, vdn: request.vdn, experimentalSampling: request.experimentalSampling,
       loraStrength: request.loraStrength,
       sampler: request.experimentalSampling ? request.sampler : 'res_multistep', scheduler: request.experimentalSampling ? request.scheduler : 'simple',
       refImageSize: request.refImageSize, sigmaShift: request.sigmaShift,
