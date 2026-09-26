@@ -421,6 +421,21 @@ test('(d) ops bake immutability + identity/control-track upserts + staleness pro
   check(identity.status === 200 && identity.body.identity.refAssetIds.length === 1, 'identity payload upserts (ordered ref set is semantic)')
   const track = await api.post('/api/lan/documents/control-tracks', { chainId, kind: 'depth', source: 'extracted', inputRef: 'canvas-blobs/aa/deadbeef', params: { strength: 1 } })
   check(track.status === 200, 'control track adds')
+  // (§2.2 wiring, 2026-09-26: the chain inspector's delete affordance rides
+  // this route — the row leaves, the doc re-hydrates without it, an unknown
+  // id is an honest zero. The depth track above STAYS: its unregistered ref
+  // is the (g) export fixture's missingBlobs case.)
+  const doomedTrack = await api.post('/api/lan/documents/control-tracks', { chainId, kind: 'pose', source: 'pose-rig', inputRef: 'canvas-blobs/bb/feedface' })
+  check(doomedTrack.status === 200, 'a second control track adds (the delete fixture)')
+  const trackGone = await api.post('/api/lan/documents/control-tracks/delete', { id: doomedTrack.body.controlTrack.id })
+  check(trackGone.status === 200 && trackGone.body.deleted === 1, 'control track delete reports the row count')
+  const docAfterTrackDelete = await api.get(`/api/lan/documents/project?id=${projectId}`)
+  const chainAfterTrackDelete = docAfterTrackDelete.body.chains.find((chain) => chain.id === chainId)
+  check((chainAfterTrackDelete.controlTracks ?? []).every((row) => row.id !== doomedTrack.body.controlTrack.id) && (chainAfterTrackDelete.controlTracks ?? []).length === 1, 'the deleted track no longer hydrates onto its chain; the surviving one does')
+  const trackUnknown = await api.post('/api/lan/documents/control-tracks/delete', { id: 'nope' })
+  check(trackUnknown.status === 200 && trackUnknown.body.deleted === 0, 'deleting an unknown track id is an honest zero, not an error')
+  const trackMissingId = await api.post('/api/lan/documents/control-tracks/delete', {})
+  check(trackMissingId.status === 400, 'deleting without an id is a 400 with the reason')
 
   // staleness: fork chain B off the output, then edit upstream
   const forkChain = await api.post('/api/lan/documents/chains', { projectId, inputSpec: { outputRef: { outputId, substrate: 'decoded' } } })
