@@ -124,6 +124,43 @@ matrix.push({ name: 'compose-refs-3', request: base({ family: 'h3img.compose.ref
   { name: 'lighting.png', role: 'lighting', transport: 'semantic' },
 ] }), models: H3IMG_MODELS, info: 'hybrid' })
 
+// 6r-6rf. THE R2I LANE (the 1F full image stack, 2026-09-26): references
+//    in, ONE still out — compose-shaped at the T=1 profile. On the studio
+//    machinery: H3ReferenceEditPrepare at the one-frame preset; on the
+//    fizgig machinery: the stock REF conditioning kept legal at 5 + the
+//    Fizgig latent/decode — exactly the pack author's edit wiring, with
+//    the settings seam's full author recipe (fl2va base, turbo @0.38, 20
+//    steps, no shift, no detail adapter).
+matrix.push({ name: 'r2i-refs-studio', request: base({ family: 'h3img.r2i.refs', tier: 1, refs: [
+  { name: 'identity.png', role: 'subject', transport: 'native' },
+  { name: 'style.png', role: 'style', transport: 'semantic' },
+] }), models: H3IMG_MODELS, info: 'studio' })
+matrix.push({ name: 'r2i-refs-fizgig', request: base({ family: 'h3img.r2i.refs', tier: 1, refs: [
+  { name: 'identity.png', role: 'subject', transport: 'native' },
+  { name: 'style.png', role: 'style', transport: 'semantic' },
+] }), models: H3IMG_MODELS, info: 'fizgig', options: { t1Latent: 'fizgig', t1Decode: 'fizgig', t1Recipe: 'fizgig', t1Base: 'fl2va' } })
+
+// 7i-7if. THE EDIT LANE (source + instruction → one edited still) on both
+//    machineries: studio = H3ImageToImagePrepare at the one-frame preset
+//    (I2I_SINGLE); fizgig = the stock REF conditioning (Picture 1) + the
+//    author recipe.
+matrix.push({ name: 'edit-instruct-studio', request: base({ family: 'h3img.edit.instruct', tier: 1, source: 'source-anchored.png' }), models: H3IMG_MODELS, info: 'studio' })
+matrix.push({ name: 'edit-instruct-fizgig', request: base({ family: 'h3img.edit.instruct', tier: 1, source: 'source-anchored.png' }), models: H3IMG_MODELS, info: 'fizgig', options: { t1Latent: 'fizgig', t1Decode: 'fizgig', t1Recipe: 'fizgig', t1Base: 'fl2va' } })
+
+// 7m-7mf. THE INPAINT LANE (masked refine): the 50x mask machinery — the
+//    prefill composite INTO the painted region pre-encode (Picture 1 shows
+//    the black-filled region) and the restore composite (original +
+//    generated-in-region) as the publish source. Both machineries; the
+//    canvas equals the masked source's snapped dims (1216x832 — a real
+//    32-grid pair).
+matrix.push({ name: 'edit-inpaint-studio', request: base({ family: 'h3img.edit.inpaint', tier: 1, width: 1216, height: 832, source: 'masked-source.png', sourceMask: true }), models: H3IMG_MODELS, info: 'studio' })
+matrix.push({ name: 'edit-inpaint-fizgig', request: base({ family: 'h3img.edit.inpaint', tier: 1, width: 1216, height: 832, source: 'masked-source.png', sourceMask: true }), models: H3IMG_MODELS, info: 'fizgig', options: { t1Latent: 'fizgig', t1Decode: 'fizgig', t1Recipe: 'fizgig', t1Base: 'fl2va' } })
+
+// 7x. THE SETTINGS 'fizgig-max' POINT (the 8 MP demonstration variant):
+//    the same machinery with the Turbo loader at 0 and 50 steps — the
+//    high-res rung the ladder offers.
+matrix.push({ name: 'edit-instruct-fizgig-max', request: base({ family: 'h3img.edit.instruct', tier: 1, width: 2336, height: 1312, source: 'source-anchored.png' }), models: H3IMG_MODELS, info: 'fizgig', options: { t1Latent: 'fizgig', t1Decode: 'fizgig', t1Recipe: 'fizgig-max', t1Base: 'fl2va' } })
+
 // 7. Edit identity — source anchored as Picture 1 + donor ref (native).
 matrix.push({ name: 'edit-identity', request: base({ family: 'h3img.edit.identity', source: 'source-anchored.png', refs: [{ name: 'donor.png', role: 'subject', transport: 'native' }] }), models: H3IMG_MODELS, info: 'hybrid' })
 

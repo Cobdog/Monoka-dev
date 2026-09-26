@@ -595,7 +595,8 @@ export function createStudioServer(paths: StudioServerPaths) {
       promptContentLevel: 'sfw',
       // The T=1 decode-path experiment flag (E-FS1, 464xfvd): 'image-studio'
       // default = the landed lane, exactly — the flag changes nothing until
-      // it is explicitly set to 'fizgig' (and the bake-off owns that call).
+      // the workbench's machinery row sets a fizgig value (and the bake-off
+      // owns the default).
       experimentalT1Decode: 'image-studio',
       // Managed engine runtime (increment 1): external default = today's
       // behavior, exactly. Nothing spawns, polls, or re-points unless the
@@ -726,9 +727,10 @@ export function createStudioServer(paths: StudioServerPaths) {
       unloadLlmOnGenerate: raw.unloadLlmOnGenerate === undefined ? defaults.unloadLlmOnGenerate : raw.unloadLlmOnGenerate !== false,
       llmThinkingDefault: raw.llmThinkingDefault === 'on' ? 'on' : 'off',
       promptContentLevel: raw.promptContentLevel === 'nsfw' || raw.promptContentLevel === 'suggestive' ? raw.promptContentLevel : 'sfw',
-      // The E-FS1 flag (464xfvd): anything but 'fizgig' — absent, garbage —
-      // resolves the landed lane; the experiment never turns itself on.
-      experimentalT1Decode: raw.experimentalT1Decode === 'fizgig' ? 'fizgig' : 'image-studio',
+      // The E-FS1 flag (464xfvd): anything but the two fizgig values —
+      // absent, garbage — resolves the landed lane; the experiment never
+      // turns itself on.
+      experimentalT1Decode: raw.experimentalT1Decode === 'fizgig' || raw.experimentalT1Decode === 'fizgig-max' ? raw.experimentalT1Decode : 'image-studio',
       engine: {
         mode: sanitized.engine?.mode === 'managed' ? 'managed' : 'external',
         checkoutPath: stringField(sanitized.engine?.checkoutPath, '').trim(),
