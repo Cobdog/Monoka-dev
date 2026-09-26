@@ -42,6 +42,29 @@ export async function prepareImage(file: MediaFile, width: number, height: numbe
   return canvas.toDataURL('image/png')
 }
 
+/** The MASK-PRESERVING prep (the 1F full image stack, 2026-09-26): the
+ *  inpaint lane's source carries its mask in the ALPHA channel (painted =
+ *  transparent, the ComfyUI Mask-Editor convention the engine's LoadImage
+ *  reads as output 1). prepareImage CANNOT serve this lane — its black
+ *  background fill would flatten the alpha and destroy the mask. This
+ *  variant stretches the source onto a TRANSPARENT canvas at the canvas
+ *  dims (the source's own 32-snapped size — never a crop, never a
+ *  letterbox): the RGB and the alpha resample together, so the painted
+ *  region stays exactly aligned with its pixels. */
+export async function prepareMaskedImage(file: MediaFile, width: number, height: number) {
+  if (!file.preview) throw new Error(`No preview available for ${file.name}. Choose the image again.`)
+  const img = new Image()
+  img.src = file.preview
+  await img.decode()
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')!
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, width, height)
+  return canvas.toDataURL('image/png')
+}
+
 /** The reference-prep scale (maintainer ruling 2026-09-26, directive 1e363ec0
  *  item 5): the reference's LONGEST edge scales to the selected resolution's
  *  longest side; the aspect ratio is preserved exactly. Pure — the unit suite

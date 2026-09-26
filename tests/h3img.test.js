@@ -301,7 +301,12 @@ maybe('(c) the Mamad8 factory guard (AC8) — enforced, not documented', () => {
   // the T=1 latent, or ONE decoded slice of the sharp context); klein is a
   // different engine entirely.
   for (const entry of H3IMG_MATRIX) {
-    if (entry.name === 'generate-t1' || entry.name === 'generate-sharp-5' || entry.name === 'refine-klein') continue
+    // The legal carriers of the T=1 VAE: every t1-PROFILE family (Generate
+    // T=1, the R2I lane, the instruct-edit, the inpaint, the canvas inline
+    // plan probe) publishes exactly one frame; fast-sharp decodes ONE
+    // slice; klein is a different engine entirely.
+    const entryFamily = h3image.findH3ImgFamily(entry.request.family)
+    if (entryFamily?.profile === 't1' || entry.name === 'generate-sharp-5' || entry.name === 'refine-klein') continue
     const graph = buildFor(entry)
     const loaders = Object.entries(graph).filter(([, value]) => value.class_type === 'VAELoader').map(([, value]) => value.inputs.vae_name)
     ok(loaders.every((name) => !h3image.T1_IMAGE_VAE_PATTERN.test(name)), `no T=1 VAE in ${entry.name} (video VAE only)`)
@@ -732,14 +737,18 @@ maybe('(k) the E-FS1 Fizgig arm (464xfvd) — the flag, the graph form, the refu
   }
 
   // k.5 The settings-flag resolution (the override seam's read): absent,
-  // null, garbage, and 'image-studio' all resolve the landed lane; only
-  // 'fizgig' selects the challenger.
+  // null, garbage, and 'image-studio' all resolve the landed lane; the
+  // fizgig values select the FULL author path — latent, decode, recipe,
+  // and the plain-FL2VA base (the doc-verified operating points the
+  // workbench's machinery row offers; the swap-isolated arm-B shape stays
+  // experiment-runner-only).
   {
     eq(h3image.t1BuildOptionsFromSettings(undefined), { t1Latent: 'image-studio', t1Decode: 'image-studio' }, 'no settings object → the landed lane')
     eq(h3image.t1BuildOptionsFromSettings(null), { t1Latent: 'image-studio', t1Decode: 'image-studio' }, 'null settings → the landed lane')
     eq(h3image.t1BuildOptionsFromSettings({ experimentalT1Decode: 'image-studio' }), { t1Latent: 'image-studio', t1Decode: 'image-studio' }, "'image-studio' → the landed lane")
     eq(h3image.t1BuildOptionsFromSettings({ experimentalT1Decode: 'nonsense' }), { t1Latent: 'image-studio', t1Decode: 'image-studio' }, 'garbage never selects the experiment')
-    eq(h3image.t1BuildOptionsFromSettings({ experimentalT1Decode: 'fizgig' }), { t1Latent: 'fizgig', t1Decode: 'fizgig' }, "'fizgig' → the challenger, both legs")
+    eq(h3image.t1BuildOptionsFromSettings({ experimentalT1Decode: 'fizgig' }), { t1Latent: 'fizgig', t1Decode: 'fizgig', t1Recipe: 'fizgig', t1Base: 'fl2va' }, "'fizgig' → the full author path (machinery + recipe + base)")
+    eq(h3image.t1BuildOptionsFromSettings({ experimentalT1Decode: 'fizgig-max' }), { t1Latent: 'fizgig', t1Decode: 'fizgig', t1Recipe: 'fizgig-max', t1Base: 'fl2va' }, "'fizgig-max' → the max-quality author path (no-Turbo 50 steps)")
   }
 
   // k.6 The challenger's pinned recipe (their shipped example workflow
@@ -808,6 +817,68 @@ maybe('(k) the E-FS1 Fizgig arm (464xfvd) — the flag, the graph form, the refu
     ok(h3image.h3imgGraphAudit(twoPublishes).some((line) => line.includes('FizgigH3StillLatent')), 'a Fizgig-latent graph publishing two frames is flagged — the T=1 latent is the frame truth')
     const shortConditioning = { ...good, '10': { ...good['10'], inputs: { ...good['10'].inputs, length: 1 } } }
     ok(h3image.h3imgGraphAudit(shortConditioning).some((line) => line.includes('length')), 'a Fizgig-latent graph whose stock conditioning carries length < 5 is flagged — never resubmit the illegal length')
+  }
+
+  // (l) THE 1F FULL IMAGE STACK (maintainer directive 2026-09-26): the
+  // three single-frame lanes (R2I / instruct-edit / inpaint), the
+  // machinery-aware availability, the max-quality pins, and the mask
+  // machinery's audit rules.
+  {
+    // l.1 The registry entries exist and ride the t1 profile.
+    const r2i = h3image.findH3ImgFamily('h3img.r2i.refs')
+    const instruct = h3image.findH3ImgFamily('h3img.edit.instruct')
+    const inpaint = h3image.findH3ImgFamily('h3img.edit.inpaint')
+    ok(r2i && r2i.profile === 't1' && r2i.kind === 'compose', 'r2i.refs: compose-shaped at the T=1 profile (extend, not fork)')
+    ok(instruct && instruct.profile === 't1' && instruct.kind === 'edit', 'edit.instruct: edit-shaped at the T=1 profile')
+    ok(inpaint && inpaint.profile === 't1' && inpaint.kind === 'edit', 'edit.inpaint: edit-shaped at the T=1 profile')
+    eq(h3image.STAGE_ENGINE_OF_FAMILY['h3img.r2i.refs'], 'h3', 'r2i stages on the h3 engine')
+    eq(h3image.STAGE_ENGINE_OF_FAMILY['h3img.edit.inpaint'], 'h3', 'inpaint stages on the h3 engine')
+
+    // l.2 The validation ladder's own rules: refs required (compose), the
+    // source required (edit), the mask machinery inpaint-only.
+    const req = (overrides) => ({ family: 'h3img.generate.packet', prompt: 'contract', width: 1344, height: 768, seed: 1, tier: 5, refs: [], loras: [], filenamePrefix: 'x', ...overrides })
+    assert.throws(() => h3image.buildH3ImageGraph(req({ family: 'h3img.r2i.refs', tier: 1 }), H3IMG_MODELS, STUDIO_INFO), /at least one reference/, 'r2i without refs refuses')
+    assert.throws(() => h3image.buildH3ImageGraph(req({ family: 'h3img.edit.instruct', tier: 1 }), H3IMG_MODELS, STUDIO_INFO), /anchored source/, 'instruct-edit without a source refuses')
+    assert.throws(() => h3image.buildH3ImageGraph(req({ family: 'h3img.edit.inpaint', tier: 1, source: 's.png' }), H3IMG_MODELS, STUDIO_INFO), /masked source/, 'inpaint without the mask flag refuses')
+    assert.throws(() => h3image.buildH3ImageGraph(req({ family: 'h3img.edit.instruct', tier: 1, source: 's.png', sourceMask: true }), H3IMG_MODELS, STUDIO_INFO), /inpaint lane/, 'a masked source on another family refuses')
+
+    // l.3 The machinery-aware detection: a fizgig machinery swaps WHAT the
+    // t1 lane needs — the Fizgig pack (not the Image Studio pack) and no
+    // Mamad8 model row.
+    const detectFor = (family, info, ctx) => family.detect(info, MODEL_FILES, ctx)
+    const t1Family = h3image.findH3ImgFamily('h3img.generate.t1')
+    const studioOnly = detectFor(t1Family, STUDIO_INFO, undefined)
+    ok(studioOnly.available, 't1 on the studio machinery with the studio pack served: available')
+    const fizgigDefault = detectFor(t1Family, STUDIO_INFO, { t1Machinery: 'fizgig' })
+    ok(!fizgigDefault.available, 't1 on the fizgig machinery without the Fizgig pack: unavailable')
+    ok(fizgigDefault.missingNodes.some((line) => line.includes('FizgigH3StillLatent') || line.includes('FizgigH3StillDecode')), 'the missing-nodes row names the Fizgig classes')
+    ok(!fizgigDefault.missingModels.some((line) => line.includes('Mamad8')), 'the fizgig machinery never demands the Mamad8 VAE')
+    const bothPacks = { ...STUDIO_INFO, FizgigH3StillLatent: node({}), FizgigH3StillDecode: node({}) }
+    ok(detectFor(t1Family, bothPacks, { t1Machinery: 'fizgig-max' }).available, 't1 on the fizgig-max machinery with the Fizgig pack served: available')
+    const fizgigOnly = detectFor(t1Family, FIZGIG_INFO, { t1Machinery: 'fizgig' })
+    ok(fizgigOnly.available, 't1 on the fizgig machinery with ONLY the Fizgig pack served: available (no Image Studio dependency)')
+
+    // l.4 The max-quality pins (the README's 8 MP demonstration variant,
+    // doc-verified 2026-09-26): the same loader at strength 0, 50 steps.
+    eq(h3image.H3IMG_RECIPE_PINS.fizgig.maxQuality, { steps: 50, sampler: 'er_sde', scheduler: 'simple', turboStrength: 0, detail: false, sigmaShift: false }, 'the max-quality pins, verbatim from the 8MP-NoTurbo workflow')
+    const maxGraph = h3image.buildH3ImageGraph(req({ family: 'h3img.edit.instruct', tier: 1, source: 's.png', width: 3744, height: 2112 }), H3IMG_MODELS, FIZGIG_INFO, { t1Latent: 'fizgig', t1Decode: 'fizgig', t1Recipe: 'fizgig-max', t1Base: 'fl2va' })
+    eq(maxGraph['14'].inputs.steps, 50, 'max-quality: 50 steps')
+    const maxLoader = Object.values(maxGraph).find((value) => value.class_type === 'LoraLoaderModelOnly' || value.class_type === h3image.FORM_ADAPTER_NODE)
+    const maxStrength = maxLoader.class_type === h3image.FORM_ADAPTER_NODE ? maxLoader.inputs.strength : maxLoader.inputs.strength_model
+    eq(maxStrength, 0, 'max-quality: the Turbo loader stays in the graph AT ZERO (their workflow keeps the node)')
+    ok(!Object.values(maxGraph).some((value) => value.class_type === 'MiniMaxH3SigmaShift'), 'max-quality: no sigma shift node')
+    eq(maxGraph['17'].inputs.width, 3744, 'the 8 MP-class rung reaches the Fizgig latent node (within its 4096 schema max)')
+    eq(h3image.h3imgGraphAudit(maxGraph), [], 'the max-quality graph passes the audit')
+
+    // l.5 The inpaint mask machinery's audit rules: only the 50x pair, keyed
+    // on the masked-source loader, and a rogue composite is flagged.
+    const inpaintGraph = h3image.buildH3ImageGraph(req({ family: 'h3img.edit.inpaint', tier: 1, width: 1216, height: 832, source: 'masked.png', sourceMask: true }), H3IMG_MODELS, STUDIO_INFO)
+    eq(h3image.h3imgGraphAudit(inpaintGraph), [], 'the built inpaint graph passes the audit')
+    const rogue = { ...inpaintGraph, '99': { class_type: 'ImageCompositeMasked', inputs: { destination: ['52', 0], source: ['16', 0], x: 0, y: 0, resize_source: false } } }
+    ok(h3image.h3imgGraphAudit(rogue).some((line) => line.includes('inpaint lane\'s composite pair')), 'a composite outside the 50x pair is flagged')
+    const shifted = JSON.parse(JSON.stringify(inpaintGraph))
+    shifted['53'].inputs.x = 32
+    ok(h3image.h3imgGraphAudit(shifted).some((line) => line.includes('pin x/y 0')), 'a shifted restore composite is flagged — alignment is the contract')
   }
 })
 

@@ -54,8 +54,17 @@
  * a 5-latent temporal group decoded through the VIDEO VAE keeping pixel
  * frame 3 — no Mamad8 loader anywhere on that leg. Classes unserved → the
  * honest refusal naming the pack. The E-FS0/E-FS1 bake-off owns the
- * verdict; until it reports, the Image Studio path is the default and the
- * flag is never set by the app.
+ * verdict; the Image Studio path stays the DEFAULT until it reports.
+ *
+ * THE 1F FULL IMAGE STACK (maintainer directive 2026-09-26): the flag
+ * gained its selection surface (the workbench's T=1 machinery choice —
+ * Image Studio | Fizgig | Fizgig max-quality, doc-verified author
+ * operating points), and three single-frame lanes joined the registry —
+ * h3img.r2i.refs (references in, one still out), h3img.edit.instruct
+ * (source + instruction → edited still), and h3img.edit.inpaint (masked
+ * refine: the prefill/restore composite pair, nodes 50-53, is the pixel
+ * preservation H3 has no native sampling mechanism for). All three ride
+ * the existing t1 builder branches — registry entries, not forks.
  */
 import type { ObjectInfo } from '../comfyInfo'
 import type { ModelFile } from '../../types'
@@ -100,6 +109,18 @@ export const H3IMG = {
    *  10's role, not a decode/publish slot. Only emitted on the flag-on
    *  fizgig T=1 path. */
   fizgigLatent: '17',
+  /** The inpaint lane's mask machinery (the 1F full image stack): 50-53,
+   *  all core ComfyUI classes. 50/51 build the black fill image, 52
+   *  composites it INTO the mask region (the pre-encode visual signal the
+   *  conditioning sees as Picture 1), 53 composites the GENERATED frame
+   *  back over the original inside the mask region (destination=original,
+   *  source=decode, mask=loader — invert-free) — the pixel preservation
+   *  H3 has no native sampling mechanism for. The decode output feeds 53
+   *  and the publish pairs consume 53's output, never the raw decode. */
+  inpaintBlackMask: '50',
+  inpaintBlackImage: '51',
+  inpaintPrefill: '52',
+  inpaintRestore: '53',
   firstFrameLoader: '20',
   refImageLoaderPrefix: '30',
   frameSelectPrefix: '70',
@@ -259,10 +280,17 @@ export const H3IMG_RECIPE_PINS = {
    *  example_workflows/h3_still_text_to_image.json @ f3252d2: er_sde /
    *  simple, 20 steps, the v4-step-600-EMA turbo @0.38, no detail adapter,
    *  no sigma shift, the plain fl2va base. Arm B keeps OUR t1 pins — the
-   *  machinery is the only variable. */
+   *  machinery is the only variable. DOC-VERIFIED 2026-09-26 (README @
+   *  10d5171 + all three example workflows, node-by-node): the recipe rows
+   *  match the README's own words ("v4 step-600 EMA Turbo LoRA … at
+   *  strength 0.38, with 20 steps and the er_sde sampler. That combination
+   *  works best for stills"), and maxQuality is the README's stated
+   *  highest-quality point (the 8MP-NoTurbo workflow: the SAME loader at
+   *  strength 0 — kept in the graph, never removed — 50 steps, er_sde). */
   fizgig: {
     conditioningLength: 5,
     recipe: { steps: 20, sampler: 'er_sde', scheduler: 'simple', turboStrength: 0.38, detail: false, sigmaShift: false },
+    maxQuality: { steps: 50, sampler: 'er_sde', scheduler: 'simple', turboStrength: 0, detail: false, sigmaShift: false },
   },
   /** Packet default operating point on the hybrid profile: the official
    * sampler pair, full steps (turbo is the T=1 lane's acceleration). */
@@ -418,13 +446,21 @@ export type H3ImgFamily = {
   /** Ref roles this family understands (the contract generator's slots). */
   roles: readonly H3ImgRefRole[]
   dials: readonly H3ImgDial[]
-  detect(info: ObjectInfo | undefined, files: ModelFile[]): H3ImgDetection
+  /** The detection context (optional, defaulted everywhere): the T=1
+   *  machinery the session selected — a full-fizgig machinery swaps WHAT
+   *  the lane needs (the Fizgig pack instead of the Image Studio pack; no
+   *  Mamad8 VAE) without touching the family table itself. */
+  detect(info: ObjectInfo | undefined, files: ModelFile[], ctx?: H3ImgDetectContext): H3ImgDetection
   ui: {
     description: string
     warning?: string
     installHint?: string
     promptGuidance?: string
   }
+}
+
+export type H3ImgDetectContext = {
+  t1Machinery?: H3ImgT1Settings
 }
 
 export type H3ImgLoraSlot = { name: string; strength: number }
@@ -445,6 +481,13 @@ export type H3ImgRequest = {
   refs: H3ImgRefSlot[]
   /** Anchored source (packet I2I / edit anchor) — uploaded image name. */
   source?: string
+  /** The source upload carries a Mask-Editor-style mask in its alpha
+   *  channel (LoadImage output 1; transparent = the region to paint).
+   *  REQUIRED by the inpaint lane; refused on every other family — the
+   *  mask machinery (the 50x node block) is that lane's alone. The canvas
+   *  must equal the source's own 32-snapped dimensions so the composites
+   *  align without resampling. */
+  sourceMask?: boolean
   /** Steps override (packet profile only; T=1 is pinned). */
   steps?: number
   /** LoRA slots (<=2; the form adapter wraps slot 1 when its pack is
@@ -499,7 +542,13 @@ export function inferH3ImgSelection(files: ModelFile[], krea2: Krea2ModelSelecti
     videoVae: findModel(files, 'vae', [/^minimax_h3_video_vae_fp16\.safetensors$/i, /^minimax_h3_video_vae.*\.safetensors$/i], 'video_vae'),
     audioVae: findModel(files, 'vae', [/^minimax_h3_audio_vae_fp32\.safetensors$/i, /^minimax_h3_audio_vae.*\.safetensors$/i], 'audio_vae'),
     t1ImageVae: findModel(files, 'vae', [/^minimax_h3_t1_image_vae_step1597\.safetensors$/i, /^minimax_h3_t1_image_vae.*\.safetensors$/i, T1_IMAGE_VAE_PATTERN], 't1_image_vae'),
-    turboLora: findModel(files, 'loras', [/^minimax_h3_fl2v_turbo_8step.*\.safetensors$/i, /^minimax_h3_fl2v_turbo.*\.safetensors$/i, /fl2v.*8.?step|8.?step.*fl2v/i]),
+    // Turbo ladder: OUR t1 pin targets the 8-step family; the Fizgig
+    // author's stills recipe documents the v4-step-600 EMA file (their
+    // README + both example workflows, doc-verified 2026-09-26) — it rides
+    // as the next tier so an engine carrying only the author's file still
+    // resolves a turbo (at OUR 0.75 it is off-their-recipe but runnable;
+    // the fizgig machinery pins its own 0.38 over whatever resolves).
+    turboLora: findModel(files, 'loras', [/^minimax_h3_fl2v_turbo_8step.*\.safetensors$/i, /^minimax_h3_fl2v_turbo.*\.safetensors$/i, /^minimax_h3_turbo_v4_step600_ema\.safetensors$/i, /^minimax_h3_turbo.*step600.*\.safetensors$/i, /fl2v.*8.?step|8.?step.*fl2v/i]),
     detailAdapterLora: findModel(files, 'loras', [/thisisfine/i, /^maximin.*hhh.*r2v/i, /detail.?adapter/i]),
     krea2,
     klein: {
@@ -523,19 +572,36 @@ function infoHas(info: ObjectInfo | undefined, nodeClass: string): boolean {
   return Boolean(info && typeof info === 'object' && (info as Record<string, unknown>)[nodeClass] !== undefined)
 }
 
-function baseDetect(info: ObjectInfo | undefined, files: ModelFile[], needs: { ref2va?: boolean; t1?: boolean; turbo?: boolean; kleinNodes?: boolean; t1StudioPack?: boolean }): H3ImgDetection {
+function baseDetect(info: ObjectInfo | undefined, files: ModelFile[], needs: { ref2va?: boolean; t1?: boolean; turbo?: boolean; kleinNodes?: boolean; t1StudioPack?: boolean }, ctx?: H3ImgDetectContext): H3ImgDetection {
   const selection = inferH3ImgSelection(files)
   const missingNodes: string[] = []
   const missingModels: string[] = []
   const notes: string[] = []
+  // The machinery the session selected for the T=1 leg (the 1F full image
+  // stack): a full-fizgig machinery changes WHAT the lane needs — the
+  // Fizgig pack (both classes, all-match) instead of the Image Studio
+  // pack, and NO Mamad8 image VAE anywhere on that leg.
+  const t1Machinery = ctx?.t1Machinery ?? 'image-studio'
   // THE ENGINE-TRUTH GATE, FLIPPED TO CAPABILITY (d4er4ati → afvlbk4): the
-  // pack's Prepare classes are now this builder's T=1/fast-sharp
+  // pack's Prepare classes are this builder's T=1/fast-sharp
   // conditioning. Pack present → the family RENDERS (no gate, a note);
   // pack absent → the honest refusal naming the fetch affordance — the
   // stock length:1 path is dead and never submitted. See
-  // H3_IMAGE_STUDIO_PREPARE_NODES.
+  // H3_IMAGE_STUDIO_PREPARE_NODES. The full-fizgig machinery is the ONE
+  // exception: its conditioning is the STOCK node kept legal (the #15644
+  // floor sidestepped from the submission side), so the Image Studio pack
+  // is not needed and the Fizgig pack is.
   if (needs.t1StudioPack) {
-    if (!h3ImageStudioPackPresent(info)) {
+    if (t1Machinery !== 'image-studio') {
+      if (!fizgigH3StillPackPresent(info)) {
+        const missing = FIZGIG_H3_STILL_NODES.filter((nodeClass) => !infoHas(info, nodeClass))
+        missingNodes.push(
+          `${missing.join(', ')} — the ${FIZGIG_H3_STILL_PACK_NAME} pack (user-fetch: Settings → Node packs → ${FIZGIG_H3_STILL_PACK_NAME}, Fetch…). The selected T=1 machinery renders through its two classes (the true single-frame latent + the group-replicate video-VAE decode); without both the lane has no legal graph — clear the machinery choice to return to the Image Studio path. Never a silent stock decode.`,
+        )
+      } else {
+        notes.push(`${FIZGIG_H3_STILL_PACK_NAME} detected — this profile renders through the Fizgig machinery (stock conditioning kept legal, video-VAE group decode; no Mamad8 loader on this leg).`)
+      }
+    } else if (!h3ImageStudioPackPresent(info)) {
       missingNodes.push(
         `${H3_IMAGE_STUDIO_PREPARE_NODES[0]} — the MiniMax H3 Image Studio pack (user-fetch: Settings → Node packs → ComfyUI-MiniMax-H3-Image-Studio, Fetch…). Stock engines refuse this profile's single-frame latent at validation (ComfyUI issue #15644: the stock conditioning node enforces length ≥ 5 server-side), so without the pack's conditioning the render would fail on the engine — never a silent submit.`,
       )
@@ -563,7 +629,9 @@ function baseDetect(info: ObjectInfo | undefined, files: ModelFile[], needs: { r
   }
   if (!selection.textEncoder || !selection.videoVae || !selection.audioVae) missingModels.push('the MiniMax H3 text encoder + video/audio VAEs (Settings → Fetchable items, or place them in the model roots)')
   if (needs.ref2va && !selection.ref2va) missingModels.push('the MiniMax H3 Ref2VA checkpoint (reference conditioning)')
-  if (needs.t1 && !selection.t1ImageVae) missingModels.push('the Mamad8 T=1 image VAE (minimax_h3_t1_image_vae_step1597.safetensors) — the Fast profile decodes single frames through it')
+  // The Mamad8 VAE is the Image Studio machinery's decoder — the fizgig
+  // leg decodes through the video VAE (already required) and never loads it.
+  if (needs.t1 && !selection.t1ImageVae && t1Machinery === 'image-studio') missingModels.push('the Mamad8 T=1 image VAE (minimax_h3_t1_image_vae_step1597.safetensors) — the Fast profile decodes single frames through it')
   if (needs.turbo && !selection.turboLora) missingModels.push('an FL2VA turbo LoRA (8-step family) — the T=1 recipe pins it at 0.75')
   if (needs.kleinNodes) {
     for (const nodeClass of ['EmptyFlux2LatentImage', 'Flux2Scheduler']) {
@@ -595,7 +663,7 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     profile: 'packet',
     roles: GENERATE_ROLES,
     dials: ['tier', 'seed', 'resolution', 'lora1', 'lora2'],
-    detect: (info, files) => baseDetect(info, files, {}),
+    detect: (info, files, ctx) => baseDetect(info, files, {}, ctx),
     ui: {
       description: 'Text (or an anchored source) to a 5/9/13-frame packet on the hybrid profile — one take whose artifacts are the packet frames; the first-party scorer picks the best frame and you can override it on the take strip.',
       warning: 'The packet decodes through the video VAE: stills carry video-VAE smoothing (the softness ceiling). Frames vary in quality within a packet — that is expected; picking is part of the pipeline.',
@@ -611,7 +679,7 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     tier: 39,
     roles: COMPOSE_ROLES,
     dials: ['keep', 'seed', 'resolution', 'lora1', 'lora2'],
-    detect: (info, files) => baseDetect(info, files, { ref2va: true }),
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true }, ctx),
     ui: {
       description: 'The directed profile for structural changes (re-pose, character swap, new camera angle): a 39-frame settle where the change completes by ~65% of the sequence and the tail holds still — the scorer prefers frames 34-38.',
       warning: 'Costs a 39-frame generation. Directed edits need the video model\'s temporal context to settle into the change; a 5-frame packet is the cheap tier, not a replacement here.',
@@ -626,7 +694,7 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     profile: 't1',
     roles: GENERATE_ROLES,
     dials: ['seed', 'resolution'],
-    detect: (info, files) => baseDetect(info, files, { ref2va: true, t1: true, turbo: true, t1StudioPack: true }),
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true, t1: true, turbo: true, t1StudioPack: true }, ctx),
     ui: {
       description: 'The Fast profile: one latent frame through the Mamad8 T=1 image VAE on the hybrid b25-49 checkpoint, FL2VA turbo 8-step @0.75 + detail adapter @0.5, er_sde/sgm_uniform, shifts 12/3. Seconds-class drafts; auto-labeled "fast, structurally soft". Renders through the H3 Image Studio pack\'s conditioning (legal single-frame latents — stock nodes refuse them server-side, issue #15644).',
       warning: 'The T=1 VAE reconstructs from a single temporal latent — outputs can stay soft and lose fine text, thin contours, hair, foliage. It is pinned to this profile and can never appear in a video graph (factory-enforced). Refine is always opt-in: a one-tap affordance follows every T=1 output.',
@@ -641,12 +709,81 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     profile: 'sharp',
     roles: GENERATE_ROLES,
     dials: ['tier', 'seed', 'resolution'],
-    detect: (info, files) => baseDetect(info, files, { ref2va: true, t1: true, turbo: true, t1StudioPack: true }),
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true, t1: true, turbo: true, t1StudioPack: true }, ctx),
     ui: {
       description: 'The fast-sharp middle point: the SAME 8-step hybrid recipe samples a multi-frame packet (5/9/13 context — the pack\'s exact ladder) but ONE temporal latent slice decodes through the Mamad8 image VAE — image-VAE sharpness WITH multi-frame sampling context, between the packet\'s video-VAE softness ceiling and T=1\'s context-free latent.',
       warning: 'The output is one still from a packet the sampler treated temporally — motion-adjacent prompts can bleed context into the slice. The T=1 VAE only ever decodes this ONE slice (factory-guarded: it can never decode a multi-frame batch); if the still needs more context, move to the packet profile and let the scorer pick.',
       installHint: 'Needs the H3 Image Studio pack (its Prepare builds the context latent and its single_latent_slice decode is the point of this profile), the Mamad8 T=1 image VAE, an FL2VA turbo LoRA, and ideally the hybrid loader.',
       promptGuidance: 'Scene-style prompt, as Generate: the slice is decoded from the packet\'s settled head, so describe the finished still, not a sequence.',
+    },
+  },
+  {
+    // THE R2I LANE (the 1F full image stack, maintainer directive
+    // 2026-09-26): references in, ONE still out — the ref2va conditioning's
+    // image mode on the single-frame path. A compose-shaped family at the
+    // T=1 profile (extend-not-fork: the registry gains an ENTRY, the
+    // builder branch is the existing t1+refs one — H3ReferenceEditPrepare
+    // at the one-frame preset on the studio lane; the stock
+    // MiniMaxH3ReferenceToVideo kept legal at 5 + FizgigH3StillLatent on
+    // the fizgig lane, exactly the pack author's edit wiring). References
+    // ride the app-side longest-side prep (never cropped) before upload.
+    id: 'h3img.r2i.refs',
+    label: 'Reference → image (single frame)',
+    kind: 'compose',
+    profile: 't1',
+    roles: COMPOSE_ROLES,
+    dials: ['keep', 'seed', 'resolution', 'transport'],
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true, t1: true, turbo: true, t1StudioPack: true }, ctx),
+    ui: {
+      description: 'Reference images in, one still out: up to 9 ordered reference slots on the single-frame path — the ownership contract scopes every picture, the 1F machinery renders exactly one frame. Seconds-class on the fizgig machinery (video-VAE group decode); the Image Studio lane decodes through the Mamad8 image VAE.',
+      warning: 'A single-frame render has no packet neighbors — there is no scorer pick and no burst-fuse; what lands IS the image. Reference quality carries the output: identity-class refs ride native transport, and the reference prep scales longest-side, never cropping.',
+      installHint: 'Reference conditioning (Ref2VA or the hybrid) plus the 1F machinery: the H3 Image Studio pack (default) or the Fizgig-H3-Still pack (the T=1 machinery choice in the workbench), a turbo LoRA, and ideally the hybrid loader.',
+      promptGuidance: 'Ownership contract, generated for you: name what each picture contributes ("Keep the identity from <Picture 1>; use the style from <Picture 2>") and let the Keep dial phrase the preservation of unspecified traits.',
+    },
+  },
+  {
+    // THE EDIT LANE (the 1F full image stack): source image + instruction
+    // → edited still on the single frame — the Fizgig author's own edit
+    // workflow (stock Reference conditioning at <Picture 1>, single-frame
+    // latent + clean decode), available on BOTH machineries. The six
+    // packet edit families stay for multi-frame settles; this is the
+    // seconds-class single-pass edit.
+    id: 'h3img.edit.instruct',
+    label: 'Edit — instruct (single frame)',
+    kind: 'edit',
+    profile: 't1',
+    roles: COMPOSE_ROLES,
+    dials: ['keep', 'seed', 'resolution', 'lora1', 'lora2', 'transport'],
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true, t1: true, turbo: true, t1StudioPack: true }, ctx),
+    ui: {
+      description: 'Source image + instruction → one edited still: the source rides Picture 1 reference conditioning on the single-frame path (a frame-0 keyframe would fill the only output slot), the generated contract names the change and locks the rest. The author-documented edit size is ~2.5 MP (the edit tier\'s optimal on the fizgig machinery).',
+      warning: 'Semantic regeneration of the whole frame, at single-frame economics: identity-class content holds, but untouched regions are regenerated, not pixel-locked — when pixels outside the change must stay EXACT, use the inpaint lane (masked) instead. No packet neighbors: no scorer pick, no burst-fuse.',
+      installHint: 'Reference conditioning (Ref2VA or the hybrid) plus the 1F machinery: the H3 Image Studio pack (default) or the Fizgig-H3-Still pack (the T=1 machinery choice in the workbench), a turbo LoRA, and ideally the hybrid loader.',
+      promptGuidance: 'State the change, then lock the rest: the contract generator emits the Picture-1 definition, your instruction, the Keep dial\'s preservation wording, and the closing change-nothing-else clause.',
+    },
+  },
+  {
+    // THE INPAINT LANE (the 1F full image stack): masked refine on the
+    // single-frame path — H3 has NO native mask conditioning, so this lane
+    // is explicit machinery: the painted region (the source's alpha) is
+    // black-filled INTO Picture 1 pre-encode (the visual signal), the
+    // instruction describes what belongs there, and the generated frame is
+    // composited back INTO the region post-decode — the restore composite
+    // is the pixel preservation H3 lacks a sampling mechanism for. The
+    // canvas pins to the source's own 32-snapped dimensions (the author's
+    // edit-workflow pattern) so every composite aligns without resampling.
+    id: 'h3img.edit.inpaint',
+    label: 'Inpaint (masked, single frame)',
+    kind: 'edit',
+    profile: 't1',
+    roles: [],
+    dials: ['keep', 'seed'],
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true, t1: true, turbo: true, t1StudioPack: true }, ctx),
+    ui: {
+      description: 'Paint a region, describe what belongs there: the masked source rides Picture 1 with the region black-filled, the single-frame render paints it from your instruction, and the original pixels outside the region are restored exactly (the post-decode composite — H3 regenerates the whole frame, so the composite IS the preservation). The canvas follows the source\'s own 32-grid dimensions.',
+      warning: 'Expect a visible transition at the mask edge — the restored pixels and the regenerated region meet on a hard boundary (H3 has no native boundary blend; masked-refine engines like Krea 2 blend, this lane preserves exactly). Genuinely black content inside the painted region can read as the fill signal; keep the mask to the region you want regenerated.',
+      installHint: 'The same stack as the single-frame edit lane: reference conditioning, the 1F machinery (H3 Image Studio pack default or the Fizgig pack), a turbo LoRA. The mask rides the source\'s alpha channel — painted in the workbench or any alpha PNG.',
+      promptGuidance: 'Describe what should appear IN the painted region and how it joins its surroundings ("a copper kettle on the counter, matching the kitchen\'s warm light") — the contract keeps every unpainted trait locked and the restore composite enforces it pixel-exactly.',
     },
   },
   {
@@ -656,7 +793,7 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     profile: 'packet',
     roles: COMPOSE_ROLES,
     dials: ['tier', 'keep', 'seed', 'resolution', 'lora1', 'lora2', 'transport'],
-    detect: (info, files) => baseDetect(info, files, { ref2va: true }),
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true }, ctx),
     ui: {
       description: 'Many images into one: up to 9 ordered reference slots, each with a role (subject / pose / style / lighting / background / freeform) and an auto-per-role transport (native for identity-class, semantic for look-class) with expert per-slot override. The ownership contract is generated from your roles + the Keep dial.',
       warning: 'v1 is honestly hard-9: beyond 9, compose via RefMod bundling (arrives with the RefMod factory) or curate down — the surface says so and helps you pick. Semantic-only overflow stays an expert experimental toggle, off by default. The known failure mode is merging several photos of the SAME subject into one hybrid — split roles across different subjects.',
@@ -671,7 +808,7 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     profile: 'packet',
     roles: ['subject', 'freeform'],
     dials: ['keep', 'seed', 'resolution', 'lora1', 'lora2', 'transport'],
-    detect: (info, files) => baseDetect(info, files, { ref2va: true }),
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true }, ctx),
     ui: {
       description: 'Identity transfer: the source stays Picture 1 with its pose/scene/camera/lighting locked; the donor rides a subject slot on native transport. Large identity moves prefer the directed 39-frame settle.',
       warning: 'Identity bleed across multiple identity refs is the documented failure — one donor, everything else locked, "change nothing else" closes the contract. Faces at distance go soft; a refine pass or a face-crop pass fixes it after.',
@@ -685,7 +822,7 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     profile: 'packet',
     roles: ['background', 'subject', 'style', 'lighting'],
     dials: ['keep', 'seed', 'resolution', 'lora1', 'lora2', 'transport'],
-    detect: (info, files) => baseDetect(info, files, { ref2va: true }),
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true }, ctx),
     ui: {
       description: 'Background/environment swap: source as Picture 1 (subject, pose, framing locked), the environment rides a background slot on semantic transport.',
       warning: 'Under-specification causes full-shot redesigns — the #1 documented edit failure; the generated contract always says what stays. Subject edges are regenerated, not pixel-locked (edits are semantic regeneration, not inpainting).',
@@ -699,7 +836,7 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     profile: 'packet',
     roles: ['subject', 'style', 'lighting'],
     dials: ['keep', 'seed', 'resolution', 'lora1', 'lora2', 'transport'],
-    detect: (info, files) => baseDetect(info, files, { ref2va: true }),
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true }, ctx),
     ui: {
       description: 'Outfit change: identity stays Picture 1, wardrobe refs ride subject slots on NATIVE transport (the packs\' clothing-sheet recipe: front outfit, rear construction), each scoped to "only the garment".',
       warning: 'Outfit identity bleeding into the identity ref is the failure mode — native transport plus explicit "only the jacket" scoping is the mitigation. Fit and geometry are approximated, not tailored.',
@@ -713,7 +850,7 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     profile: 'packet',
     roles: ['lighting', 'subject', 'style'],
     dials: ['keep', 'seed', 'resolution', 'lora1', 'lora2', 'transport'],
-    detect: (info, files) => baseDetect(info, files, { ref2va: true }),
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true }, ctx),
     ui: {
       description: 'Relight: a lighting reference rides a lighting slot on semantic transport; subject/pose/scene lock and the illumination changes.',
       warning: 'Reference grading physics: references graded 16-21 L* too bright underperform — grade the reference toward what the model should render. Global relights can shift skin tone; the tone-lock op after refine caps it.',
@@ -727,7 +864,7 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     profile: 'packet',
     roles: ['pose', 'subject', 'style', 'lighting'],
     dials: ['keep', 'seed', 'resolution', 'lora1', 'lora2', 'transport'],
-    detect: (info, files) => baseDetect(info, files, { ref2va: true }),
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true }, ctx),
     ui: {
       description: 'Pose transfer by semantic pose reference: a photo, or a Poserig render (send it straight from the rig), rides a pose slot — "use the body pose and limb positions from <Picture N>". Structural pose moves prefer the directed profile.',
       warning: 'Pose+identity confusion is the failure mode: identity stays native (Picture 1), the pose ref rides semantic transport. Skeleton renders are read loosely; quadruped (AP-10K) pose refs are unmeasured on stills (E-IW1 deferred) and are labeled experimental.',
@@ -741,7 +878,7 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     profile: 'packet',
     roles: COMPOSE_ROLES,
     dials: ['keep', 'seed', 'resolution', 'lora1', 'lora2', 'transport'],
-    detect: (info, files) => baseDetect(info, files, { ref2va: true }),
+    detect: (info, files, ctx) => baseDetect(info, files, { ref2va: true }, ctx),
     ui: {
       description: 'Any semantic edit: your instruction plus up to 9 role-tagged references; the contract generator scopes every picture and closes with change-nothing-else.',
       warning: 'One change per pass reads more cleanly — chain passes (each re-anchoring the previous output) when a single pass cannot hold everything.',
@@ -870,7 +1007,7 @@ export const H3IMG_FAMILIES: H3ImgFamily[] = [
     profile: 'packet',
     roles: COMPOSE_ROLES,
     dials: ['seed', 'resolution'],
-    detect: (info, files) => baseDetect(info, files, {}),
+    detect: (info, files, ctx) => baseDetect(info, files, {}, ctx),
     ui: {
       description: 'The workbench exit: the picked frame seeds a video chain as the FL2VA frame-latent anchor (first_frame — the measured strongest concrete anchor), consent-gated, created-never-submitted. With references riding too, the hybrid both-at-once profile makes first frame + refs work simultaneously.',
       warning: 'On stock checkpoints a first frame AND references silently drops one — the exit names the limitation and anchors through the frame unless the hybrid profile is available. Frame lands on the 32-px grid at the 768 short edge.',
@@ -886,8 +1023,8 @@ export function findH3ImgFamily(id: string): H3ImgFamily | undefined {
 
 /** Availability of every family against the live engine + scan — the mode
  * rail's gating + install-guidance surface. */
-export function detectH3ImgFamilies(info: ObjectInfo | undefined, files: ModelFile[]): Array<{ family: H3ImgFamily; detection: H3ImgDetection }> {
-  return H3IMG_FAMILIES.map((family) => ({ family, detection: family.detect(info, files) }))
+export function detectH3ImgFamilies(info: ObjectInfo | undefined, files: ModelFile[], ctx?: H3ImgDetectContext): Array<{ family: H3ImgFamily; detection: H3ImgDetection }> {
+  return H3IMG_FAMILIES.map((family) => ({ family, detection: family.detect(info, files, ctx) }))
 }
 
 // ---------------------------------------------------------------------------
@@ -899,10 +1036,16 @@ type Inputs = Record<string, string | number | boolean | [string, number]>
 /** Which machinery a T=1 leg rides (the E-FS1 experiment axis). */
 export type H3ImgT1Machinery = 'image-studio' | 'fizgig'
 
+/** The settings-level machinery choices (AppSettings.experimentalT1Decode):
+ *  'image-studio' (default), 'fizgig' (the author's shipped stills
+ *  recipe), 'fizgig-max' (the author's documented max-quality point: no
+ *  Turbo, 50 steps — the 8 MP demonstration variant). */
+export type H3ImgT1Settings = 'image-studio' | 'fizgig' | 'fizgig-max'
+
 /** Per-build machinery overrides (task 464xfvd). Every field optional and
  *  undefined = the landed behavior, byte-identically — the E-FS1 flag and
- *  the experiment runner are the only callers that set these today; no
- *  surface of the app passes them by default. */
+ *  the experiment runner are the callers that set these today; no surface
+ *  of the app passes them by default. */
 export type H3ImgBuildOptions = {
   /** The T=1 latent source: the Image Studio pack's Prepare latent (the
    *  landed lane) or FizgigH3StillLatent with the stock conditioning node
@@ -914,23 +1057,32 @@ export type H3ImgBuildOptions = {
    *  keeping frame 3 — no Mamad8 loader on that leg). */
   t1Decode?: H3ImgT1Machinery
   /** The challenger's shipped recipe (arm B2): turbo @0.38, no detail
-   *  adapter, 20 steps, the simple scheduler, no sigma shift. */
-  t1Recipe?: 'ours' | 'fizgig'
+   *  adapter, 20 steps, the simple scheduler, no sigma shift.
+   *  'fizgig-max' additionally pins the author's max-quality point:
+   *  Turbo @0 (the loader stays, strength 0 — their 8MP workflow keeps
+   *  the node at zero) and 50 steps. */
+  t1Recipe?: 'ours' | 'fizgig' | 'fizgig-max'
   /** The plain-FL2VA base even under reference conditioning (their
    *  edit-lane wiring — the stock conditioning node does not require
    *  Ref2VA weights; the hybrid/merged lanes are skipped when set). */
   t1Base?: 'auto' | 'fl2va'
 }
 
-/** The settings-level experiment flag (AppSettings.experimentalT1Decode)
- *  resolved into build options — the seam the override-reading surfaces
- *  (the submit ladder, the canvas plan probe) call so the flag reaches the
- *  builder from exactly one place. Anything but 'fizgig' — absent, null,
- *  garbage — resolves the landed Image Studio lane; the default behavior
- *  never moves. */
-export function t1BuildOptionsFromSettings(settings?: { experimentalT1Decode?: 'image-studio' | 'fizgig' } | null): Pick<H3ImgBuildOptions, 't1Latent' | 't1Decode'> {
-  const path: H3ImgT1Machinery = settings?.experimentalT1Decode === 'fizgig' ? 'fizgig' : 'image-studio'
-  return { t1Latent: path, t1Decode: path }
+/** The settings-level experiment flag resolved into build options — the
+ *  ONE seam the override-reading surfaces (the submit ladder, the canvas
+ *  plan probe) call so the flag reaches the builder from exactly one
+ *  place. Anything but the fizgig values — absent, null, garbage —
+ *  resolves the landed Image Studio lane; the default behavior never
+ *  moves. 'fizgig' and 'fizgig-max' select the FULL author path — latent,
+ *  decode, recipe, and the plain-FL2VA base — because those are the
+ *  operating points the pack's own README documents ("That combination
+ *  works best for stills"; the max-quality variant: "no Turbo LoRA … 50
+ *  steps"); the swap-isolated arm-B shape (our recipe on their machinery)
+ *  stays experiment-runner-only, never a settings pick. */
+export function t1BuildOptionsFromSettings(settings?: { experimentalT1Decode?: H3ImgT1Settings } | null): Pick<H3ImgBuildOptions, 't1Latent' | 't1Decode' | 't1Recipe' | 't1Base'> {
+  const choice = settings?.experimentalT1Decode
+  if (choice !== 'fizgig' && choice !== 'fizgig-max') return { t1Latent: 'image-studio' as const, t1Decode: 'image-studio' as const }
+  return { t1Latent: 'fizgig', t1Decode: 'fizgig', t1Recipe: choice, t1Base: 'fl2va' as const }
 }
 
 /** The ids of the per-frame publish pairs (ImageFromBatch + SaveImage). */
@@ -985,6 +1137,15 @@ function validateRequest(family: H3ImgFamily, request: H3ImgRequest): number {
   if ((family.kind === 'edit' || family.kind === 'generate-directed') && !request.source) {
     throw new Error(`${family.label} needs the anchored source image (Picture 1).`)
   }
+  // The mask machinery is the inpaint lane's alone (the 1F full image
+  // stack): a masked source elsewhere would silently composite over a
+  // packet render, and an unmasked inpaint would be a no-op edit.
+  if (request.sourceMask && family.id !== 'h3img.edit.inpaint') {
+    throw new Error('The masked-source machinery belongs to the inpaint lane — every other family takes the source as-is.')
+  }
+  if (family.id === 'h3img.edit.inpaint' && !request.sourceMask) {
+    throw new Error('The inpaint lane needs a masked source (paint the region — the alpha channel is the mask).')
+  }
   if (family.kind === 'refine' && !request.refineInstruction) {
     throw new Error('Refine needs an instruction (name the defect, never re-describe the scene).')
   }
@@ -1032,7 +1193,10 @@ function buildH3StillPipeline(
   // machinery. Undefined everywhere = the landed lane, byte-identically.
   const useFizgigLatent = isT1 && options?.t1Latent === 'fizgig'
   const useFizgigDecode = isT1 && options?.t1Decode === 'fizgig'
-  const useFizgigRecipe = isT1 && options?.t1Recipe === 'fizgig'
+  // 'fizgig' and 'fizgig-max' BOTH leave our recipe (the author's two
+  // documented operating points); max additionally zeroes the Turbo and
+  // raises steps to 50.
+  const useFizgigRecipe = isT1 && (options?.t1Recipe === 'fizgig' || options?.t1Recipe === 'fizgig-max')
   const forceFl2va = isT1 && options?.t1Base === 'fl2va'
   // Arm B/B2 take the fizgig latent (stock conditioning); arm C keeps the
   // studio latent and swaps only the decode — so the studio pack is needed
@@ -1133,9 +1297,13 @@ function buildH3StillPipeline(
   // packet families expose the two slots as dials. Slot 1 rides the
   // first-party form adapter when its pack is installed — always first,
   // cross-form safety (a mismatched-form LoRA through the stock loader is a
-  // shape error). The challenger's recipe (E-FS1 arm B2) swaps the strength
-  // and drops the detail adapter — the pins carry both, verbatim-sourced.
-  const t1Pins = useFizgigRecipe ? H3IMG_RECIPE_PINS.fizgig.recipe : H3IMG_RECIPE_PINS.t1
+  // shape error). The challenger's recipes (E-FS1 arm B2 + the settings
+  // 'fizgig-max' point) swap the strength and drop the detail adapter —
+  // the pins carry all three, verbatim-sourced. maxQuality keeps the
+  // Turbo loader AT ZERO when the file resolves (their 8MP workflow's own
+  // shape) and simply omits it when none does (a strength-0 LoRA is a
+  // mathematical no-op — never a hard requirement).
+  const t1Pins = options?.t1Recipe === 'fizgig-max' ? H3IMG_RECIPE_PINS.fizgig.maxQuality : useFizgigRecipe ? H3IMG_RECIPE_PINS.fizgig.recipe : H3IMG_RECIPE_PINS.t1
   const loras: H3ImgLoraSlot[] = isT1 || isSharp
     ? [
         ...(selection.turboLora ? [{ name: selection.turboLora, strength: t1Pins.turboStrength }] : []),
@@ -1155,7 +1323,7 @@ function buildH3StillPipeline(
     }
     modelLink = [id, 0]
   })
-  if ((isT1 || isSharp) && !selection.turboLora) {
+  if ((isT1 || isSharp) && !selection.turboLora && t1Pins.turboStrength > 0) {
     throw new Error('The T=1 Fast profile pins an FL2VA turbo LoRA at 0.75 — none was found in the model scan.')
   }
 
@@ -1188,8 +1356,32 @@ function buildH3StillPipeline(
     graph[id] = { class_type: 'LoadImage', inputs: { image: name } }
     return [id, 0]
   }
+  // --- the inpaint mask machinery (the 1F full image stack) ---------------
+  // Emitted ONLY on the inpaint lane (sourceMask). Node 20 loads the masked
+  // source; the prefill composite (52) black-fills the painted region so
+  // the conditioning's Picture 1 SHOWS the region to regenerate (the
+  // publisher-precedent node pattern: SolidMask → MaskToImage →
+  // ImageCompositeMasked BEFORE the encode); the restore composite (53,
+  // wired after the decode below) lays the generated frame back into the
+  // region — destination=original, source=decode, the SAME mask polarity,
+  // invert-free. The canvas must equal the source's own 32-snapped
+  // dimensions (validated at the submit seam) so every composite aligns
+  // without resampling.
+  let pictureOneLink: [string, number] | null = null
+  if (request.sourceMask) {
+    if (!request.source) throw new Error('The inpaint lane needs the masked source image.')
+    graph[H3IMG.firstFrameLoader] = { class_type: 'LoadImage', inputs: { image: request.source } }
+    graph[H3IMG.inpaintBlackMask] = { class_type: 'SolidMask', inputs: { value: 0, width: request.width, height: request.height } }
+    graph[H3IMG.inpaintBlackImage] = { class_type: 'MaskToImage', inputs: { mask: [H3IMG.inpaintBlackMask, 0] } }
+    graph[H3IMG.inpaintPrefill] = {
+      class_type: 'ImageCompositeMasked',
+      inputs: { destination: [H3IMG.firstFrameLoader, 0], source: [H3IMG.inpaintBlackImage, 0], x: 0, y: 0, resize_source: false, mask: [H3IMG.firstFrameLoader, 1] },
+    }
+    pictureOneLink = [H3IMG.inpaintPrefill, 0]
+    dbg('family', { verdict: 'inpaint-mask', family: family.id, canvas: `${request.width}x${request.height}`, note: 'black-fill pre-encode; generated-into-region post-decode' })
+  }
   if (studioPath) {
-    buildStudioPrepare(graph, request, tier, pictureNames, loadPicture)
+    buildStudioPrepare(graph, request, tier, pictureNames, loadPicture, pictureOneLink)
   } else {
     // The E-FS1 fizgig T=1 exception: this stock conditioning node is here
     // for its CONDITIONING only — the #15644 length floor is honored
@@ -1210,12 +1402,12 @@ function buildH3StillPipeline(
       conditioningInputs.audio_vae = [H3IMG.audioVae, 0]
       conditioningInputs.ref_image_size = 'max'
       pictureNames.slice(0, H3IMG_RECIPE_PINS.refs.max).forEach((name, index) => {
-        conditioningInputs[`ref_images.ref_image_${index}`] = loadPicture(name, `${H3IMG.refImageLoaderPrefix}${index}`)
+        conditioningInputs[`ref_images.ref_image_${index}`] = index === 0 && pictureOneLink ? pictureOneLink : loadPicture(name, `${H3IMG.refImageLoaderPrefix}${index}`)
       })
       if (pictureNames.length === 0) throw new Error('Reference conditioning needs at least one picture slot.')
       graph[H3IMG.conditioning] = { class_type: 'MiniMaxH3ReferenceToVideo', inputs: conditioningInputs }
     } else {
-      if (request.source) conditioningInputs.first_frame = loadPicture(request.source, H3IMG.firstFrameLoader)
+      if (request.source) conditioningInputs.first_frame = pictureOneLink ?? loadPicture(request.source, H3IMG.firstFrameLoader)
       graph[H3IMG.conditioning] = { class_type: 'MiniMaxH3ImageToVideo', inputs: conditioningInputs }
     }
   }
@@ -1285,9 +1477,22 @@ function buildH3StillPipeline(
   } else {
     graph[H3IMG.decode] = { class_type: 'VAEDecode', inputs: { samples: [H3IMG.sampler, 0], vae: [H3IMG.videoVae, 0] } }
   }
+  // The inpaint restore (post-decode): the generated frame lands INSIDE the
+  // painted region of the ORIGINAL source — the pixel preservation H3 has
+  // no native sampling mechanism for (unlike Krea's masked encodes, H3
+  // regenerates the whole frame; this composite is the preservation, which
+  // is why it is legal here and would be a bug on a Krea graph). The
+  // publish pairs consume the RESTORE output, never the raw decode.
+  if (request.sourceMask) {
+    graph[H3IMG.inpaintRestore] = {
+      class_type: 'ImageCompositeMasked',
+      inputs: { destination: [H3IMG.firstFrameLoader, 0], source: [H3IMG.decode, 0], x: 0, y: 0, resize_source: false, mask: [H3IMG.firstFrameLoader, 1] },
+    }
+  }
+  const publishSource: [string, number] = request.sourceMask ? [H3IMG.inpaintRestore, 0] : [H3IMG.decode, 0]
   for (const { select, save } of framePublishIds(publishFrames)) {
     const index = Number(save.slice(H3IMG.frameSavePrefix.length))
-    graph[select] = { class_type: 'ImageFromBatch', inputs: { image: [H3IMG.decode, 0], batch_index: index, length: 1 } }
+    graph[select] = { class_type: 'ImageFromBatch', inputs: { image: publishSource, batch_index: index, length: 1 } }
     graph[save] = { class_type: 'SaveImage', inputs: { images: [select, 0], filename_prefix: request.filenamePrefix } }
   }
   return graph
@@ -1316,6 +1521,7 @@ function buildStudioPrepare(
   tier: number,
   pictureNames: string[],
   loadPicture: (name: string, id: string) => [string, number],
+  pictureOneLink?: [string, number] | null,
 ): void {
   const preset = H3_IMAGE_STUDIO_FRAME_PRESETS[tier]
   if (preset === undefined) throw new Error(`No H3 Image Studio frame preset for a ${tier}-frame request — the pack's ladder serves 1/5/9/13; 39 stays on the stock grid-native path.`)
@@ -1326,6 +1532,10 @@ function buildStudioPrepare(
   // and the decode); multi-frame packets and the sharp context keep the
   // video VAE there (the sharp profile's slice decode rides node 9).
   const vaeLink: [string, number] = [H3IMG.videoVae, 0]
+  // The inpaint lane's Picture 1 is the PREFILLED composite, not the raw
+  // loader — the conditioning must see the black-filled region. LAZY: the
+  // text-only branch never loads a picture at all.
+  const sourceLink = () => pictureOneLink ?? loadPicture(pictures[0], request.source ? H3IMG.firstFrameLoader : `${H3IMG.refImageLoaderPrefix}0`)
   if (!pictures.length) {
     graph[H3IMG.conditioning] = {
       class_type: 'H3TextToImagePrepare',
@@ -1346,7 +1556,7 @@ function buildStudioPrepare(
       inputs: {
         clip: [H3IMG.clip, 0],
         vae: vaeLink,
-        source_image: loadPicture(pictures[0], request.source ? H3IMG.firstFrameLoader : `${H3IMG.refImageLoaderPrefix}0`),
+        source_image: sourceLink(),
         edit_instruction: request.prompt,
         width: request.width,
         height: request.height,
@@ -1361,7 +1571,7 @@ function buildStudioPrepare(
   const prepareInputs: Inputs = {
     clip: [H3IMG.clip, 0],
     vae: vaeLink,
-    source_image: loadPicture(pictures[0], request.source ? H3IMG.firstFrameLoader : `${H3IMG.refImageLoaderPrefix}0`),
+    source_image: sourceLink(),
     edit_instruction: request.prompt,
     width: request.width,
     height: request.height,
@@ -1537,6 +1747,38 @@ export function h3imgGraphAudit(graph: Record<string, { class_type: string; inpu
       if (Number.isFinite(length) && length < 5) violations.push(`node ${id} (${node.class_type}) carries length ${length} in a Fizgig-latent graph — the stock conditioning node stays at the legal floor (5); the dead length:1 submission must never return.`)
     }
   }
+  // The inpaint composites (the 1F full image stack): the ONLY legal
+  // ImageCompositeMasked shape in a workbench still graph. Both composites
+  // must key on the masked-source loader (node 20): destination = its RGB,
+  // mask = its MASK output, x/y 0, no source resize — anything else is
+  // either a misaligned composite (silent region shift) or an output-
+  // doctoring composite that would bypass the lane's preservation contract.
+  for (const [id, node] of nodes) {
+    if (node.class_type !== 'ImageCompositeMasked') continue
+    const isPrefill = id === H3IMG.inpaintPrefill
+    const isRestore = id === H3IMG.inpaintRestore
+    if (!isPrefill && !isRestore) {
+      violations.push(`node ${id} (ImageCompositeMasked) is not the inpaint lane's composite pair (${H3IMG.inpaintPrefill}/${H3IMG.inpaintRestore}) — masked compositing is the inpaint lane's machinery alone.`)
+      continue
+    }
+    const destination = JSON.stringify(node.inputs.destination)
+    const mask = JSON.stringify(node.inputs.mask)
+    if (destination !== JSON.stringify([H3IMG.firstFrameLoader, 0]) || mask !== JSON.stringify([H3IMG.firstFrameLoader, 1])) {
+      violations.push(`node ${id} (ImageCompositeMasked) must composite over the masked-source loader's RGB with its own MASK (${H3IMG.firstFrameLoader}) — got destination ${destination}, mask ${mask}.`)
+    }
+    if (node.inputs.x !== 0 || node.inputs.y !== 0 || node.inputs.resize_source !== false) {
+      violations.push(`node ${id} (ImageCompositeMasked) must pin x/y 0 and resize_source false — the inpaint canvas equals the source's own dims; any resample here misaligns the region.`)
+    }
+  }
+  const compositeCount = classes.filter((cls) => cls === 'ImageCompositeMasked').length
+  if (compositeCount > 0) {
+    const hasPrefill = Boolean(graph[H3IMG.inpaintPrefill])
+    const hasRestore = Boolean(graph[H3IMG.inpaintRestore])
+    if (compositeCount !== 2 || !hasPrefill || !hasRestore) {
+      violations.push(`an inpaint-style graph carries ${compositeCount} ImageCompositeMasked nodes — the lane is exactly the prefill (${H3IMG.inpaintPrefill}) + restore (${H3IMG.inpaintRestore}) pair.`)
+    }
+    if (frames !== 1) violations.push(`an inpaint graph publishes ${frames} frames — the masked composite machinery is single-frame by construction.`)
+  }
   return violations
 }
 
@@ -1563,6 +1805,9 @@ export const STAGE_ENGINE_OF_FAMILY: Record<string, StageEngine> = {
   'h3img.generate.packet.directed': 'h3',
   'h3img.generate.t1': 'h3',
   'h3img.generate.sharp': 'h3',
+  'h3img.r2i.refs': 'h3',
+  'h3img.edit.instruct': 'h3',
+  'h3img.edit.inpaint': 'h3',
   'h3img.compose.refs': 'h3',
   'h3img.edit.identity': 'h3',
   'h3img.edit.background': 'h3',

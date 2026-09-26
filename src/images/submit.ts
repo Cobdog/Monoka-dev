@@ -9,9 +9,10 @@
  */
 import { createId } from '../lib/createId'
 import { buildH3ImageGraph, detectH3ImgFamilies, findH3ImgFamily, inferH3ImgSelection, H3IMG_RECIPE_PINS, t1BuildOptionsFromSettings } from '../lib/graph/h3image'
+import type { H3ImgT1Settings } from '../lib/graph/h3image'
 import { resolveModelOverrides, resolveModels } from '../lib/modelOverrides'
 import { resolveKrea2EditModels } from '../lib/graph/krea2edit'
-import { prepareImage, prepareReferenceImage } from '../lib/imageCrop'
+import { prepareImage, prepareMaskedImage, prepareReferenceImage } from '../lib/imageCrop'
 import { preflightOrFail } from '../lib/preflight'
 import { dbg } from '../lib/dbg'
 import type { ObjectInfo } from '../lib/comfyInfo'
@@ -49,6 +50,12 @@ export type WorkbenchGenerationRequest = {
   refs: ResolvedRef[]
   /** The anchored source (edit/directed families; the T=1 I2I anchor). */
   source: MediaFile | null
+  /** The inpaint lane: the source carries its mask in the alpha channel
+   *  (painted = transparent, the Mask-Editor convention) and sourceDims
+   *  are its natural dimensions — the canvas must equal their 32-snapped
+   *  values so the graph-side composites align without resampling. */
+  sourceMask?: boolean
+  sourceDims?: { width: number; height: number }
   /** Refine-only: the engine instruction + the frame being refined. */
   refine?: { engine: 'krea2' | 'klein'; instruction: string; frame: MediaFile; parentTakeId: string }
 }
@@ -66,9 +73,19 @@ export function buildH3ImgSelection(facts: Pick<WorkbenchSubmitFacts, 'models' |
   ).selection
 }
 
-/** Family availability for the facts (the mode rail's gating). */
-export function workbenchAvailability(facts: Pick<WorkbenchSubmitFacts, 'info' | 'models'>) {
-  return detectH3ImgFamilies(facts.info, facts.models)
+/** Family availability for the facts (the mode rail's gating). The
+ *  optional t1Machinery threads the session's T=1 machinery through
+ *  detection so the t1-profile families' requirements match the selected
+ *  lane (a fizgig machinery needs the Fizgig pack, not the Image Studio
+ *  pack, and no Mamad8 VAE). */
+export function workbenchAvailability(facts: Pick<WorkbenchSubmitFacts, 'info' | 'models'> & { t1Machinery?: H3ImgT1Settings }) {
+  return detectH3ImgFamilies(facts.info, facts.models, facts.t1Machinery ? { t1Machinery: facts.t1Machinery } : undefined)
+}
+
+/** The session's resolved T=1 machinery (the one flag value, defaulted). */
+export function t1MachineryOf(settings: AppSettings | null | undefined): H3ImgT1Settings {
+  const choice = settings?.experimentalT1Decode
+  return choice === 'fizgig' || choice === 'fizgig-max' ? choice : 'image-studio'
 }
 
 /** The validation ladder: family known + available → intent → engine →
@@ -76,7 +93,7 @@ export function workbenchAvailability(facts: Pick<WorkbenchSubmitFacts, 'info' |
 export function validateWorkbenchRequest(request: WorkbenchGenerationRequest, facts: WorkbenchSubmitFacts): string | null {
   const family = findH3ImgFamily(request.settings.family)
   if (!family) return `Unknown workbench family '${request.settings.family}'.`
-  const detection = family.detect(facts.info, facts.models)
+  const detection = family.detect(facts.info, facts.models, { t1Machinery: t1MachineryOf(facts.settings) })
   if (!detection.available) {
     const missing = [...detection.missingModels, ...detection.missingNodes.map((node) => `node pack: ${node}`)]
     return `${family.label} is not available: ${missing.join('; ')}.`
@@ -91,6 +108,21 @@ export function validateWorkbenchRequest(request: WorkbenchGenerationRequest, fa
   if (request.refs.length > 9) return 'Beyond 9 references is not available in v1 — curate down (the surface states why; RefMod bundling arrives with the RefMod factory).'
   if ((family.kind === 'edit' || family.kind === 'generate-directed') && !request.source) return `${family.label} needs the anchored source image (Picture 1).`
   if (family.kind === 'compose' && request.refs.length === 0) return 'Compose needs at least one reference.'
+  // The inpaint lane's own contract (the 1F full image stack): a masked
+  // source, and a canvas pinned to the source's 32-snapped dimensions —
+  // the graph-side composites (prefill + restore) align without resampling
+  // only when the canvas IS the (snapped) source.
+  if (request.sourceMask && family.id !== 'h3img.edit.inpaint') return 'The masked-source machinery belongs to the inpaint lane — every other family takes the source as-is.'
+  if (family.id === 'h3img.edit.inpaint') {
+    if (!request.sourceMask || !request.source) return 'The inpaint lane needs a masked source (paint the region on the source — the alpha channel is the mask).'
+    if (request.sourceDims) {
+      const snapDim = (value: number) => Math.round(value / 32) * 32
+      const expected = `${snapDim(request.sourceDims.width)}x${snapDim(request.sourceDims.height)}`
+      if (request.settings.resolution !== expected) {
+        return `The inpaint canvas follows the source (32-grid snapped): ${expected} — got ${request.settings.resolution}. Re-add the source to re-pin it.`
+      }
+    }
+  }
   if (request.refine && !request.refine.instruction.trim()) return 'Name the defect to refine (never re-describe the scene).'
   return null
 }
@@ -125,7 +157,7 @@ export async function submitWorkbenchGeneration(
     return { ok: false, message: refusal }
   }
   const family = findH3ImgFamily(request.settings.family)!
-  const detection = family.detect(facts.info, facts.models)
+  const detection = family.detect(facts.info, facts.models, { t1Machinery: t1MachineryOf(facts.settings) })
   const { settings } = facts
   const [width, height] = request.settings.resolution.split('x').map(Number)
   const localId = createId()
@@ -160,7 +192,16 @@ export async function submitWorkbenchGeneration(
       ? window.minimax.uploadImageData(settings.comfyUrl, await prepareReferenceImage(file, Math.max(width, height)))
       : window.minimax.uploadInput(settings.comfyUrl, file.path)
     const refUploads = await Promise.all(request.refs.map((ref) => uploadReference(ref.media)))
-    const sourceUpload = request.source ? await upload(request.source, true) : undefined
+    // The inpaint lane's source uploads through the MASK-PRESERVING prep
+    // (the 1F full image stack): its alpha channel IS the mask, and
+    // prepareImage's black background fill would flatten it. The canvas
+    // already equals the source's snapped dims (validated above), so the
+    // stretch here is sub-grid rounding only.
+    const sourceUpload = request.source
+      ? await (request.sourceMask
+        ? window.minimax.uploadImageData(settings.comfyUrl, await prepareMaskedImage(request.source, width, height))
+        : upload(request.source, true))
+      : undefined
     const refineFrameUpload = request.refine ? await upload(request.refine.frame, true) : undefined
     if (io.cancellationRequests?.current.has(localId)) throw new Error('Generation cancelled before submission.')
 
@@ -183,6 +224,7 @@ export async function submitWorkbenchGeneration(
         tier,
         refs: request.refine ? [] : graphRefSlots(request.refs, refUploads),
         source: request.refine ? refineFrameUpload?.name : sourceUpload?.name,
+        sourceMask: request.refine ? undefined : request.sourceMask,
         steps: undefined,
         loras: request.refine ? [] : request.settings.loras,
         filenamePrefix,
