@@ -142,7 +142,11 @@ export const KNOWN_DIVERGENCES: readonly KnownDivergence[] = [
   // so no acestep entry returns unless a lane does.)
 ] as const
 
-/** Divergence ids as a plain set — the exact-match signature for tests. */
+/** Divergence ids as a plain set — the exact-match signature for tests.
+ *
+ * FIXME(wiring): dead accessor — zero callers; the contract test reads
+ * KNOWN_DIVERGENCES directly. Tracked in
+ * docs/audit/wiring-check-2026-09-26.md §5. */
 export function knownDivergenceIds(): string[] {
   return KNOWN_DIVERGENCES.map((entry) => entry.id)
 }

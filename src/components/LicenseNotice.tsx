@@ -2,7 +2,12 @@
  *  restrictions reported by the community and the commercial-use requirement.
  *  Shown until acknowledged; the acknowledgement is per-browser. Renders in
  *  the first paint (synchronous localStorage read) so downstream one-shot
- *  layout measurements already account for it. */
+ *  layout measurements already account for it.
+ *
+ *  FIXME(wiring): this component is never rendered — zero importers (the
+ *  "LicenseNotice precedent" mention in FirstRunNotice is a comment, not an
+ *  import; the notice it lingers from is gone). Tracked in
+ *  docs/audit/wiring-check-2026-09-26.md §4. */
 import { useState } from 'react'
 import { Scale, X } from 'lucide-react'
 

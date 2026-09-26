@@ -123,6 +123,9 @@ export function createWebApiClient(): DesktopApi {
     async chooseDirectory() {
       // Server-side paths are edited as text in the web UI; there is no
       // native folder picker in a browser.
+      // FIXME(wiring): dead API method — zero callers (an Electron-era
+      // surface; the web UI edits paths as text and never calls this).
+      // Tracked in docs/audit/wiring-check-2026-09-26.md §2.
       return null
     },
     async chooseMedia(kind: MediaKind) {

@@ -54,6 +54,10 @@ export function screenToWorld(sx: number, sy: number, camera: CameraState): { x:
   return { x: (sx - camera.x) / camera.k, y: (sy - camera.y) / camera.k }
 }
 
+// FIXME(wiring): worldToScreen, rectCenterPoint, and visibleTileIds (below)
+// have no live callers (tests-only or dead) — the substrate's culling runs
+// its own signature-gated path over ViewBlobs. Tracked in
+// docs/audit/wiring-check-2026-09-26.md §6.
 export function worldToScreen(wx: number, wy: number, camera: CameraState): { x: number; y: number } {
   return { x: wx * camera.k + camera.x, y: wy * camera.k + camera.y }
 }

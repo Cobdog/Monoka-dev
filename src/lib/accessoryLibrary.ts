@@ -24,6 +24,11 @@ export function loadAccessoryProjects(): AccessoryProject[] {
   } catch { return [] }
 }
 
+// FIXME(wiring): saveAccessoryProjects + accessoryReference below are dead —
+// zero callers (the accessory authoring UI left with the studios; the kept
+// asset spine reads accessories through promptComposer only). The spine
+// itself is ruled KEEP (remediation plan D1/R-14). Tracked in
+// docs/audit/wiring-check-2026-09-26.md §1.
 export function saveAccessoryProjects(projects: AccessoryProject[]) {
   if (!persistToLocalStorage(KEY, projects)) return
   window.dispatchEvent(new CustomEvent(ACCESSORY_LIBRARY_EVENT))

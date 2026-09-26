@@ -98,6 +98,8 @@ export const GAP_LABEL: Record<PlanGapKind, string> = {
   bridge: 'Diegetic bridge',
 }
 
+// FIXME(wiring): gapMenuEntry + formatTimelineDuration (below) have no live
+// callers — tests only. Tracked in docs/audit/wiring-check-2026-09-26.md §6.
 export function gapMenuEntry(kind: PlanGapKind): GapMenuEntry {
   return GAP_MENU.find((entry) => entry.kind === kind) ?? GAP_MENU[0]
 }

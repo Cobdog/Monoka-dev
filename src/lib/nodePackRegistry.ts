@@ -65,6 +65,11 @@ import type { NodePackDefinition } from '../types'
  *    experimentalT1Decode flag until the E-FS0/E-FS1 bake-off reports. */
 export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
   {
+    // FIXME(wiring): no builder emits ApplyVDNH3 — machinery fully wired
+    // (vendored tree, vdn engine profile, LongCache patch consent, stage-weight
+    // fetch rows) but the graph lane never fires. Ruled FINISH 2026-09-26
+    // (adopted as our own; task 9up52mj), sequenced behind the centralization
+    // wave. Tracked in docs/audit/wiring-check-2026-09-26.md §1.
     id: 'vdn-h3',
     name: 'ComfyUI-VDN-H3',
     featureGroup: 'H3 video',
@@ -129,6 +134,10 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
     instanceNodeClasses: ['MiniMaxH3HybridLoader'],
   },
   {
+    // FIXME(wiring): row without emission — no builder emits Krea2Control*
+    // classes. Ruled CUT 2026-09-26 (the node-inventory decision, ruling #4);
+    // the row is dead pending its removal. Tracked in
+    // docs/audit/wiring-check-2026-09-26.md §1.
     id: 'krea2-controlnet',
     name: 'comfyui-krea2-controlnet',
     featureGroup: 'Krea 2 edit',
@@ -143,6 +152,10 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
     instanceNodeClasses: ['Krea2ControlLoRALoader', 'Krea2ControlApply', 'Krea2ControlImageEncode'],
   },
   {
+    // FIXME(wiring): row without emission — no builder emits the T8 audio
+    // classes; the audio-editing lane is parked (silent-inference toggle,
+    // vzpyldn) and only the pattern was adopted. Tracked in
+    // docs/audit/wiring-check-2026-09-26.md §1.
     id: 'h3-audio-t8',
     name: 'comfyui-minimax-h3-audio-T8',
     featureGroup: 'Audio',
@@ -236,6 +249,10 @@ export const ENGINE_NODE_PACKS: NodePackDefinition[] = [
   },
   // -- segmented inference for H3 (task lxmtgss deep-read → task p8oyfy1) --
   {
+    // FIXME(wiring): row without emission — no builder emits AutoContext
+    // classes; the long-form lane decision (TS test vs Motion-Context) is
+    // named but not scheduled. Tracked in
+    // docs/audit/wiring-check-2026-09-26.md §1.
     id: 'autocontext',
     name: 'ComfyUI_MinimaxH3_AutoContext',
     featureGroup: 'H3 video',
