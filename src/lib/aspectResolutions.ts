@@ -18,6 +18,35 @@
  * the area cap — for ultra-wide ratios the cap pulls the short edge down
  * (21:9 → 1504x640), which is the honest pick, not a silent 1792x768 that
  * the model never trained for. 'free' keeps arbitrary on-grid WxH.
+ *
+ * ─── THE IMAGE TIERS (maintainer directive 2026-09-26, the full H3 image
+ * stack): the image lanes get a CATEGORIZED list — video-locked (exact
+ * AR+resolution pairs matching supported video gens), image-focus (a ladder
+ * up to the community/author-tested ceiling), starter-frame (the handoff
+ * picks + prep rules), custom (free WxH, unchanged). Evidence trail (full
+ * version + the settings-exposure matrix in the dated 2026-09-26 addendum
+ * of docs/research/fizgig-h3-still-assessment.md):
+ *   - The H3 1F image path quality-holds FAR above the video envelope.
+ *     The Fizgig README (read at 10d5171, 2026-09-26) demonstrates an 8 MP
+ *     still (3872x2176, no Turbo @0, 50 steps, er_sde — their
+ *     8MP-NoTurboVersion example workflow) and states results are "best
+ *     from 3 MP up; small images come out noticeably weaker" [COMM —
+ *     author-demonstrated, one published sample; NOT our-measured — the
+ *     GPU verification arm stays queued with E-FS0/E-FS1].
+ *   - Counter-evidence for the OTHER 1F decode leg (the Image Studio
+ *     pack's own README): "Four-megapixel generation and editing were also
+ *     tested, but cost more and do not guarantee better composition or
+ *     detail"; "A 2 MP canvas increases memory and runtime and is not a
+ *     general quality upgrade." So the image-focus OPTIMAL is
+ *     machinery-aware: the Image Studio/Mamad8 leg optimal stays the
+ *     native ~1 MP envelope; the Fizgig/video-VAE-group-decode leg optimal
+ *     is the author's shipped 2.5 MP default with the >=3 MP note.
+ *   - Per-dimension schema bound: FizgigH3StillLatent caps width/height at
+ *     4096 (served schema, the engine-contract fixture) — every image-focus
+ *     rung stays <= 4096 per dim so ONE list serves every lane honestly
+ *     (21:9 tops out at its 6 MP rung, 3744x1600 — the 8 MP target's long
+ *     edge exceeds 4096). Custom override remains free beyond; the
+ *     contract layer refuses per-lane there.
  */
 
 /** The stock node's width/height widget grid (step 32, min 32). */
@@ -89,7 +118,9 @@ export function resolutionsForRatio(ratioId: AspectRatioId): ResolutionOption[] 
 
 /** Every supported value across the ratios, deduped, ascending by area —
  *  the flat fallback surfaces (Settings defaults, the workbench) source
- *  their options here so no hand-typed list can drift from the derivation. */
+ *  their options here so no hand-typed list can drift from the derivation.
+ *  VIDEO-envelope only (the cap-honoring derivation above): the image
+ *  lanes' tiered ladder lives below. */
 export function allSupportedResolutions(): string[] {
   const seen = new Set<string>()
   for (const ratio of ASPECT_RATIOS) for (const option of resolutionsForRatio(ratio.id)) seen.add(option.value)
@@ -133,4 +164,189 @@ export function ratioKeyOf(value: string): AspectRatioId {
     if (resolutionsForRatio(ratio.id).some((option) => option.value === value)) return ratio.id
   }
   return 'free'
+}
+
+// ---------------------------------------------------------------------------
+// The image tiers (maintainer directive 2026-09-26 — the full H3 image
+// stack). The video derivation above is UNTOUCHED and remains the
+// video-locked tier; everything below derives the image lanes' categories.
+// The evidence trail and the settings-exposure matrix live in the dated
+// 2026-09-26 addendum of docs/research/fizgig-h3-still-assessment.md.
+// ---------------------------------------------------------------------------
+
+/** The 1F image path's author-demonstrated ceiling (8 MP — the Fizgig
+ *  8MP-NoTurbo example; the maintainer's 2026-09-26 correction of the 5 MP
+ *  community figure). COMMUNITY/AUTHOR-TESTED, not our-measured. */
+export const H3_IMAGE_CEILING_MP = 8
+
+/** Every image-focus rung's per-dimension bound: the FizgigH3StillLatent
+ *  served schema caps width/height at 4096 (the stock conditioning nodes
+ *  accept 16384 — custom override territory). Keeping every offered rung
+ *  within the STRICTER bound means one list serves both 1F machineries. */
+export const H3_IMAGE_DIM_MAX = 4096
+
+/** The image-focus megapixel ladder ABOVE the native envelope (targets,
+ *  snapped to the 32-grid per ratio): the author's 2.5 MP shipped default,
+ *  their "best from 3 MP up" band, and the 4/6/8 MP upper rungs (8 MP =
+ *  the author's no-Turbo demonstration point). The native ~1 MP envelope
+ *  itself seeds the ladder as rung zero (optimalResolutionFor — the video
+ *  derivation), not an MP target: a 1.0 MP target snaps to 1312x736 where
+ *  the trained envelope IS 1344x768. */
+export const H3_IMAGE_LADDER_MP: readonly number[] = [1.5, 2, 2.5, 3, 4, 6, 8]
+
+/** The image-focus optimal per 1F machinery — the decode-leg-aware pick
+ *  (the two pack authors' documented positions DIVERGE exactly along the
+ *  decode leg; see the module header's evidence trail). */
+export type ImageMachinery = 'image-studio' | 'fizgig'
+
+/** Image-focus optimal: the Image Studio leg stays at the NATIVE envelope
+ *  (astropuzzo: a 2 MP canvas "is not a general quality upgrade"); the
+ *  Fizgig leg rides the author's shipped 2.5 MP default (their edit lane's
+ *  documented best size; their t2i example renders 2.5 MP, with "best from
+ *  3 MP up" as the ceiling-side note). */
+export const IMAGE_FOCUS_OPTIMAL_MP: Record<ImageMachinery, number> = {
+  'image-studio': 1,
+  fizgig: 2.5,
+}
+
+export type ResolutionTierId = 'starter-frame' | 'image-focus' | 'video-locked'
+
+export type ResolutionTier = {
+  id: ResolutionTierId
+  label: string
+  /** The one-line story the grouped UI shows with the group. */
+  hint: string
+}
+
+/** The tier metadata (the grouped picker's groups; the custom override is
+ *  the free inputs beside these, not a group). */
+export const RESOLUTION_TIERS: readonly ResolutionTier[] = [
+  {
+    id: 'starter-frame',
+    label: 'Starter frame',
+    hint: 'The exact video-gen resolution for this ratio — generate here and the start-frame exit hands off with no resample. Prep rules: stay on the 32-px grid, match the target chain\'s resolution exactly, keep the subject clear of the frame edge (video motion pulls inward), and let the exit pin the frame as the FL2VA first-frame anchor.',
+  },
+  {
+    id: 'image-focus',
+    label: 'Image focus',
+    hint: 'The stills ladder up to the author-demonstrated 8 MP ceiling (community-tested, not our-measured). The optimal marker follows the T=1 machinery: Image Studio decode keeps the native ~1 MP envelope; Fizgig decode prefers 2.5 MP and up.',
+  },
+  {
+    id: 'video-locked',
+    label: 'Video-locked',
+    hint: 'Every resolution video generation supports at this ratio — for images that must match a video gen exactly when the native pick is not the right size.',
+  },
+]
+
+function resolutionAtMegapixels(ratio: AspectRatio, megapixels: number): string | null {
+  const target = Math.max(ratio.w, ratio.h) / Math.min(ratio.w, ratio.h)
+  const landscape = ratio.w >= ratio.h
+  // long = short x target and long x short = MP ⇒ short = sqrt(MP/target).
+  // Snap BOTH dims to the grid; a rung survives when the snapped area stays
+  // within +6% of the target (snapping two dims can inflate area by a few
+  // percent — the MP targets are themselves approximate: the author's
+  // "2.5 MP" example workflow is 2144x1216 = 2.6 MP), both dims stay
+  // inside the 4096 schema bound, and nothing degenerates below the floor.
+  const shortExact = Math.sqrt((megapixels * 1_000_000) / target)
+  const shortEdge = snapRound(shortExact)
+  const long = snapRound(shortEdge * target)
+  if (long > H3_IMAGE_DIM_MAX || shortEdge > H3_IMAGE_DIM_MAX) return null
+  if (shortEdge < H3_GRID || long < H3_GRID) return null
+  if (long * shortEdge > megapixels * 1_000_000 * 1.06) return null
+  return landscape ? `${long}x${shortEdge}` : `${shortEdge}x${long}`
+}
+
+function areaOf(value: string): number {
+  const parsed = parseResolution(value)
+  return parsed ? parsed.width * parsed.height : 0
+}
+
+/** The ladder's rung nearest the machinery's optimal target (the ladder
+ *  itself only carries the shipped MP targets). */
+function ladderRungNear(target: number): number {
+  return H3_IMAGE_LADDER_MP.reduce((best, mp) => (Math.abs(mp - target) < Math.abs(best - target) ? mp : best), H3_IMAGE_LADDER_MP[0])
+}
+
+/** The image-focus ladder for a ratio: the NATIVE envelope as rung zero
+ *  (the video derivation's optimal — the trained ~1 MP canvas), then every
+ *  MP rung that lands on the 32-grid within the 8 MP ceiling and the 4096
+ *  per-dim schema bound. The OPTIMAL pick is flagged for the given 1F
+ *  machinery (default: the Image Studio leg — the app default machinery):
+ *  image-studio marks rung zero, fizgig marks the 2.5 MP rung. Ascending
+ *  by area. Empty for 'free'. */
+export function imageFocusResolutionsFor(ratioId: AspectRatioId, machinery: ImageMachinery = 'image-studio'): ResolutionOption[] {
+  if (ratioId === 'free') return []
+  const ratio = ASPECT_RATIOS.find((entry) => entry.id === ratioId)!
+  const optimalMp = ladderRungNear(IMAGE_FOCUS_OPTIMAL_MP[machinery])
+  const list: ResolutionOption[] = []
+  const native = optimalResolutionFor(ratioId)
+  if (native) list.push({ value: native, optimal: machinery === 'image-studio' })
+  for (const megapixels of H3_IMAGE_LADDER_MP) {
+    const candidate = resolutionAtMegapixels(ratio, megapixels)
+    if (candidate && !list.some((option) => option.value === candidate)) {
+      list.push({ value: candidate, optimal: machinery === 'fizgig' && megapixels === optimalMp })
+    }
+  }
+  // Exactly one optimal, always: when the fizgig 2.5 MP rung's snap
+  // collided with a neighbor and vanished (cannot happen for the shipped
+  // ratios — the suite asserts one marker per machinery), the nearest
+  // surviving rung takes the marker.
+  if (list.length && !list.some((option) => option.optimal)) {
+    const nearest = list.reduce((best, option) => (
+      Math.abs(areaOf(option.value) - optimalMp * 1_000_000) < Math.abs(areaOf(best.value) - optimalMp * 1_000_000) ? option : best
+    ), list[0])
+    nearest.optimal = true
+  }
+  return list
+}
+
+/** The starter-frame pick for a ratio: the native video-gen resolution —
+ *  what a video chain with this ratio renders at, so the exit's first-frame
+ *  anchor needs no resample. Null for 'free'. */
+export function starterFrameResolutionFor(ratioId: AspectRatioId): ResolutionOption | null {
+  const optimal = optimalResolutionFor(ratioId)
+  return optimal ? { value: optimal, optimal: true } : null
+}
+
+/** The video-locked tier: the cap-honoring supported list (the unchanged
+ *  derivation — exactly what video generation accepts at this ratio). */
+export function videoLockedResolutionsFor(ratioId: AspectRatioId): ResolutionOption[] {
+  return resolutionsForRatio(ratioId)
+}
+
+/** The tiered groups for the image-lane pickers, in display order:
+ *  starter-frame first (the maintainer's "starter-frame tier prominent
+ *  when the output feeds video" — the workbench's signature exit is the
+ *  start-frame handoff, so the handoff pick leads and its group states
+ *  the prep rules), then the image-focus ladder (machinery-aware
+ *  optimal), then the full video-locked list. Rungs already offered by an
+ *  earlier group are omitted from later ones so no value appears twice
+ *  (the starter-frame pick IS the image-focus native rung — the ladder
+ *  simply starts one rung higher). The custom override is the UI's free
+ *  inputs beside these groups, not a group here. */
+export function tieredResolutionGroups(
+  ratioId: AspectRatioId,
+  options: { machinery?: ImageMachinery } = {},
+): Array<{ tier: ResolutionTier; options: ResolutionOption[] }> {
+  const machinery = options.machinery ?? 'image-studio'
+  const starter = starterFrameResolutionFor(ratioId)
+  const groups: Array<{ tier: ResolutionTier; options: ResolutionOption[] }> = []
+  const seen = new Set<string>()
+  const push = (tier: ResolutionTier, list: ResolutionOption[]) => {
+    const fresh = list.filter((option) => !seen.has(option.value))
+    for (const option of fresh) seen.add(option.value)
+    if (fresh.length) groups.push({ tier, options: fresh })
+  }
+  const order: ResolutionTierId[] = ['starter-frame', 'image-focus', 'video-locked']
+  for (const id of order) {
+    const tier = RESOLUTION_TIERS.find((entry) => entry.id === id)!
+    if (id === 'starter-frame') {
+      if (starter) push(tier, [starter])
+    } else if (id === 'image-focus') {
+      push(tier, imageFocusResolutionsFor(ratioId, machinery))
+    } else {
+      push(tier, videoLockedResolutionsFor(ratioId))
+    }
+  }
+  return groups
 }

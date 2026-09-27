@@ -408,12 +408,16 @@ export type AppSettings = {
   modelOverrides?: Record<string, ModelOverrideSlots>
   /** The T=1 decode-path experiment flag (E-FS1, task 464xfvd — the
    *  Fizgig-H3-Still challenge): 'image-studio' (default = the landed lane,
-   *  zero behavior change) or 'fizgig' (stock conditioning kept legal +
-   *  FizgigH3StillLatent + the group-replicate video-VAE decode — no
-   *  Mamad8 loader on that leg). Hand-set until the E-FS0/E-FS1 bake-off
-   *  reports; deliberately no UI yet — the flag is an experiment control,
-   *  not a feature. Read through t1BuildOptionsFromSettings (one seam). */
-  experimentalT1Decode?: 'image-studio' | 'fizgig'
+   *  zero behavior change), 'fizgig' (the author's shipped stills recipe:
+   *  stock conditioning kept legal + FizgigH3StillLatent + the
+   *  group-replicate video-VAE decode, plain-FL2VA base, turbo @0.38, 20
+   *  steps), or 'fizgig-max' (their documented max-quality point: the same
+   *  machinery with the Turbo loader at 0 and 50 steps — the 8 MP
+   *  demonstration variant). Selectable from the workbench's T=1
+   *  machinery row (the 1F full image stack, 2026-09-26); the DEFAULT
+   *  stays 'image-studio' until the E-FS0/E-FS1 bake-off reports. Read
+   *  through t1BuildOptionsFromSettings (one seam). */
+  experimentalT1Decode?: 'image-studio' | 'fizgig' | 'fizgig-max'
   /** ComfyUI version the bundled graphs were last verified against
    *  (self-recorded on first successful connection). */
   testedComfyVersion?: string
