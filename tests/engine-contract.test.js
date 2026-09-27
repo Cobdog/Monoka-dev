@@ -254,6 +254,56 @@ test('(c-affvlbk4) the pack-conditioned lanes: real-capability proofs against th
   console.log('  ok - T=1 without the pack: build refuses (never a stock length:1 submit)')
 })
 
+test('(c-1fstack) the 1F full image stack: the lanes + the resolution bounds against the real schemas', () => {
+  const models = (over = {}) => ({ fl2va: 'fl2va.safetensors', ref2va: 'ref2va.safetensors', textEncoder: 'qwen.safetensors', videoVae: 'video-vae.safetensors', audioVae: 'audio-vae.safetensors', t1ImageVae: 't1-image-vae.safetensors', turboLora: 'turbo.safetensors', detailAdapterLora: 'detail.safetensors', krea2: null, klein: { unet: '', textEncoder: '', vae: '' }, ...over })
+  const authorPath = { t1Latent: 'fizgig', t1Decode: 'fizgig', t1Recipe: 'fizgig', t1Base: 'fl2va' }
+
+  // R2I on the studio machinery: H3ReferenceEditPrepare at the one-frame
+  // preset, refs in — one still out.
+  const r2i = h3image.buildH3ImageGraph(
+    { family: 'h3img.r2i.refs', prompt: 'the merge', width: 2112, height: 1184, seed: 1, tier: 1, refs: [{ name: 'identity.png', role: 'subject', transport: 'native' }], loras: [], filenamePrefix: 'contract/r2i' },
+    models(), REAL_INFO,
+  )
+  ok(contract.validateGraphAgainstSchemas(r2i, REAL_INFO).length === 0, 'R2I (studio machinery, the 2.5 MP rung) validates CLEAN against the real schemas')
+  const r2iPrepare = Object.values(r2i).find((node) => node.class_type === 'H3ReferenceEditPrepare')
+  ok(r2iPrepare !== undefined && r2iPrepare.inputs.quality_profile === 'single image | 1 frame (image VAE)', 'R2I rides the pack reference conditioning at the one-frame preset')
+
+  // The edit lane on the AUTHOR path (the fizgig machinery): the stock REF
+  // conditioning kept legal at 5 + the Fizgig latent — at the 8 MP-class
+  // rung the README demonstrates.
+  const editFizgig = h3image.buildH3ImageGraph(
+    { family: 'h3img.edit.instruct', prompt: 'the edit', width: 3744, height: 2112, seed: 1, tier: 1, refs: [], source: 'source.png', loras: [], filenamePrefix: 'contract/edit-fizgig' },
+    models(), REAL_INFO, authorPath,
+  )
+  ok(contract.validateGraphAgainstSchemas(editFizgig, REAL_INFO).length === 0, 'the instruct-edit on the author path validates CLEAN at the 8 MP-class rung (within the Fizgig latent 4096 schema max)')
+  const editLatent = Object.values(editFizgig).find((node) => node.class_type === 'FizgigH3StillLatent')
+  ok(editLatent.inputs.width === 3744 && editLatent.inputs.height === 2112, 'the latent node carries the canvas dims')
+
+  // THE BOUND, both directions: a dim over the Fizgig node's schema max is
+  // REFUSED by the engine-contract layer (value_bigger_than_max) — the
+  // honest ceiling the image-focus ladder respects (21:9 tops below 8 MP
+  // for exactly this reason); the same dims are LEGAL on the stock
+  // conditioning schema (16384) — the custom override stays free.
+  const overGraph = h3image.buildH3ImageGraph(
+    { family: 'h3img.edit.instruct', prompt: 'the edit', width: 4128, height: 2336, seed: 1, tier: 1, refs: [], source: 'source.png', loras: [], filenamePrefix: 'contract/over' },
+    models(), REAL_INFO, authorPath,
+  )
+  const overViolations = contract.validateGraphAgainstSchemas(overGraph, REAL_INFO)
+  ok(overViolations.some((v) => v.type === 'value_bigger_than_max' && v.classType === 'FizgigH3StillLatent'), 'a >4096 dim on the fizgig lane is refused by the REAL schema (the contract layer catches what the ladder avoids)')
+
+  // The inpaint lane: the mask machinery against the real core classes
+  // (SolidMask / MaskToImage / ImageCompositeMasked — captured schemas).
+  const inpaint = h3image.buildH3ImageGraph(
+    { family: 'h3img.edit.inpaint', prompt: 'a copper kettle on the counter', width: 1216, height: 832, seed: 1, tier: 1, refs: [], source: 'masked-source.png', sourceMask: true, loras: [], filenamePrefix: 'contract/inpaint' },
+    models(), REAL_INFO,
+  )
+  ok(contract.validateGraphAgainstSchemas(inpaint, REAL_INFO).length === 0, 'the inpaint graph (prefill + restore composites on the real core classes) validates CLEAN')
+  const restore = Object.values(inpaint).find((node) => node.class_type === 'ImageCompositeMasked' && node.inputs.destination[0] === '20' && node.inputs.source[0] === '16')
+  ok(restore !== undefined, 'the restore composite keys on the masked-source loader and the decode output')
+  const publish = Object.values(inpaint).find((node) => node.class_type === 'ImageFromBatch')
+  ok(publish.inputs.image[0] === '53', 'the publish pair consumes the RESTORE output, never the raw decode')
+})
+
 // ---------------------------------------------------------------------------
 // (b) validator negative proofs — planted violations against REAL schemas
 // ---------------------------------------------------------------------------
@@ -354,8 +404,15 @@ function buildCorpus() {
   const STOCK_ONLY_INFO = { ...REAL_INFO }
   for (const classType of ['H3ImagePrepare', 'H3TextToImagePrepare', 'H3ImageToImagePrepare', 'H3ReferenceEditPrepare', 'H3ImageDecode']) delete STOCK_ONLY_INFO[classType]
   for (const entry of H3IMG_MATRIX) {
-    if (entry.request.family === 'h3img.generate.t1' || entry.request.family === 'h3img.generate.sharp') continue
-    corpus.push([`h3img-stock:${entry.name}`, h3image.buildH3ImageGraph(entry.request, entry.models, STOCK_ONLY_INFO)])
+    // The studio-conditioned lanes refuse on a pack-absent engine — every
+    // t1-PROFILE family without an explicit fizgig latent (the 1F lanes:
+    // Generate T=1, R2I, instruct-edit, inpaint) plus fast-sharp. The
+    // fizgig-options entries build fine here (stock conditioning kept
+    // legal) and join the corpus below.
+    const entryFamily = h3image.findH3ImgFamily(entry.request.family)
+    const studioConditioned = entryFamily?.profile === 't1' || entryFamily?.profile === 'sharp'
+    if (studioConditioned && entry.options?.t1Latent !== 'fizgig') continue
+    corpus.push([`h3img-stock:${entry.name}`, h3image.buildH3ImageGraph(entry.request, entry.models, STOCK_ONLY_INFO, entry.options)])
   }
   // Krea 2 edit matrix.
   const krea2 = loadTs('src/lib/graph/krea2edit.ts')

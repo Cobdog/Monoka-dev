@@ -433,6 +433,65 @@ test('(l1a) AR-first resolutions — derivation, optimals, cap honesty, sanitize
   eq(aspect.snapResolutionDim(999), 992, 'snap: to the nearest grid multiple')
   eq(aspect.snapResolutionDim(1), 32, 'snap: never below the widget floor')
   eq(aspect.snapResolutionDim(999999), 16384, 'snap: never above the widget ceiling')
+
+  // ─── THE IMAGE TIERS (the 1F full image stack, 2026-09-26): the
+  // categorized list the maintainer specified — video-locked (the
+  // unchanged derivation), image-focus (the ladder to the
+  // author-demonstrated 8 MP ceiling, per-dim <= the Fizgig latent's 4096
+  // schema bound), starter-frame (the native per-ratio pick + prep
+  // rules), custom (free W/H — unchanged). Evidence trail:
+  // docs/research/fizgig-h3-still-assessment.md's 2026-09-26 addendum.
+  eq(aspect.H3_IMAGE_CEILING_MP, 8, 'the documented ceiling is 8 MP (the maintainer-corrected README figure, not the 5 MP scuttlebutt)')
+  eq(aspect.H3_IMAGE_LADDER_MP, [1.5, 2, 2.5, 3, 4, 6, 8], 'the ladder targets above the native rung')
+  for (const ratio of aspect.ASPECT_RATIOS) {
+    for (const machinery of ['image-studio', 'fizgig']) {
+      const list = aspect.imageFocusResolutionsFor(ratio.id, machinery)
+      ok(list.length >= 4, `${ratio.id}/${machinery}: an image-focus ladder exists`)
+      eq(list.filter((option) => option.optimal).length, 1, `${ratio.id}/${machinery}: exactly one optimal pick marked`)
+      for (const option of list) {
+        const dims = aspect.parseResolution(option.value)
+        ok(dims !== null, `${ratio.id} ${option.value}: parses`)
+        ok(dims.width % 32 === 0 && dims.height % 32 === 0, `${ratio.id} ${option.value}: on the 32 grid`)
+        ok(Math.max(dims.width, dims.height) <= aspect.H3_IMAGE_DIM_MAX, `${ratio.id} ${option.value}: within the 4096 per-dim schema bound`)
+        ok(dims.width * dims.height <= aspect.H3_IMAGE_CEILING_MP * 1_000_000 * 1.07, `${ratio.id} ${option.value}: within the 8 MP ceiling (+snap slack)`)
+        ok(Math.abs(dims.width / dims.height - ratio.w / ratio.h) < 0.06, `${ratio.id} ${option.value}: ratio holds within grid drift`)
+      }
+      // Monotone by area (the ladder reads as a ladder).
+      let prevArea = 0
+      for (const option of list) {
+        const dims = aspect.parseResolution(option.value)
+        ok(dims.width * dims.height > prevArea, `${ratio.id}/${machinery} ${option.value}: strictly above the previous rung`)
+        prevArea = dims.width * dims.height
+      }
+    }
+    // The machinery-aware optimal: the Image Studio leg marks its NATIVE
+    // rung; the Fizgig leg marks the 2.5 MP rung (their shipped default —
+    // the decode-leg divergence between the two pack authors).
+    const studio = aspect.imageFocusResolutionsFor(ratio.id, 'image-studio')
+    const fizgig = aspect.imageFocusResolutionsFor(ratio.id, 'fizgig')
+    eq(studio.find((option) => option.optimal).value, aspect.optimalResolutionFor(ratio.id), `${ratio.id}: the Image Studio optimal IS the native envelope (astropuzzo: 2 MP "is not a general quality upgrade")`)
+    const fizgigOptimal = aspect.parseResolution(fizgig.find((option) => option.optimal).value)
+    ok(Math.abs(fizgigOptimal.width * fizgigOptimal.height - 2_500_000) < 260_000, `${ratio.id}: the Fizgig optimal sits at the ~2.5 MP rung (their shipped default)`)
+    // The starter-frame pick: the native video resolution, exactly.
+    const starter = aspect.starterFrameResolutionFor(ratio.id)
+    eq(starter.value, aspect.optimalResolutionFor(ratio.id), `${ratio.id}: the starter-frame pick is the native video resolution (no-resample handoff)`)
+    ok(starter.optimal, `${ratio.id}: the starter-frame pick carries the optimal marker`)
+  }
+  // The ceiling honesty: 16:9 reaches an ~8 MP rung; 21:9 tops below it
+  // (the 8 MP target's long edge exceeds the 4096 schema bound).
+  const wide169 = aspect.imageFocusResolutionsFor('16:9')
+  ok(Math.max(...wide169.map((option) => aspect.parseResolution(option.value).width)) >= 3744, '16:9: the ladder reaches the 8 MP-class rung')
+  const ultra219 = aspect.imageFocusResolutionsFor('21:9')
+  ok(ultra219.every((option) => aspect.parseResolution(option.value).width <= 4096), '21:9: every rung respects the 4096 bound')
+  // The grouped picker: three tiers, no duplicate values, feedsVideo
+  // reorders (starter-frame prominent when the output feeds video).
+  const groups = aspect.tieredResolutionGroups('16:9', { machinery: 'fizgig' })
+  eq(groups.map((group) => group.tier.id), ['starter-frame', 'image-focus', 'video-locked'], 'order: starter-frame leads (the handoff pick is prominent), then the ladder, then the video list')
+  const allValues = groups.flatMap((group) => group.options.map((option) => option.value))
+  eq(new Set(allValues).size, allValues.length, 'no resolution value appears in two groups')
+  eq(aspect.tieredResolutionGroups('free'), [], 'free: no groups (the custom inputs own it)')
+  // The tiers' metadata carries the prep rules (the starter-frame story).
+  ok(aspect.RESOLUTION_TIERS.find((tier) => tier.id === 'starter-frame').hint.includes('32-px grid'), 'the starter-frame hint states the prep rules')
 })
 
 // ---------------------------------------------------------------------------

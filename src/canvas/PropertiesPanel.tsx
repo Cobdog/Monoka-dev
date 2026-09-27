@@ -28,7 +28,8 @@ import { PromptLibraryBrowser } from '../components/PromptLibraryBrowser'
 import { detectOptimizations, engineFamilyForChain, turboFetchPlan, vdnAvailability } from '../lib/graph'
 import { inferredOverrideSlotFile, migrateLegacyModelOverrideSlots, modelFamilyInfo, overrideLayerCounts, overrideLayerSummary, overridePickOutcome, SLOT_LABELS, type ModelFamilyId, type ModelOverrideSlotName } from '../lib/modelOverrides'
 import { guideFrameWarning } from '../lib/workflow'
-import { ASPECT_RATIOS, optimalResolutionFor, parseResolution, ratioKeyOf, resolutionsForRatio, snapResolutionDim } from '../lib/aspectResolutions'
+import { ASPECT_RATIOS, optimalResolutionFor, parseResolution, ratioKeyOf, resolutionsForRatio, snapResolutionDim, tieredResolutionGroups } from '../lib/aspectResolutions'
+import type { ImageMachinery } from '../lib/aspectResolutions'
 import { buildPromptAssistantContext } from '../lib/promptComposer'
 import { composeStructuredPrompt, mergeStructuredDraft, parseFlowRows, parseStructuredPrompt, type StructuredPromptDraft } from '../lib/structuredPrompt'
 import { useLlmStream } from '../lib/useLlmStream'
@@ -385,6 +386,10 @@ export function PropertiesPanel() {
   const models = useSessionStore((state) => state.models)
   const info = useSessionStore((state) => state.info)
   const ollamaModels = useSessionStore((state) => state.ollamaModels)
+  // The image tiers' machinery key (the 1F full image stack): the session's
+  // T=1 machinery decides which rung the optimal marker sits on.
+  const settingsMachinery = useSessionStore((state) => state.settings?.experimentalT1Decode)
+  const imageTierMachinery: ImageMachinery = settingsMachinery === 'fizgig' || settingsMachinery === 'fizgig-max' ? 'fizgig' : 'image-studio'
   // (sweep #8, audit F5 — task 68e9k17) The global override layer is read
   // REACTIVELY: a Settings change (a pick set or cleared elsewhere) must
   // re-render this panel's chip and slot rows with no remount. The old
@@ -964,6 +969,18 @@ export function PropertiesPanel() {
             </>)}
             {engineFamily.panel.resolution && (freeRatio || ratioKeyOf(draft.resolution) === 'free' ? (
               <FreeResolutionInput value={draft.resolution} onCommit={(resolution) => patch({ resolution })} />
+            ) : engineFamily.mediaType === 'image' ? (
+              // The image lanes' CATEGORIZED list (the 1F full image stack,
+              // 2026-09-26): starter-frame / image-focus / video-locked
+              // groups, the optimal marker following the session's T=1
+              // machinery — canvas images most often feed video chains as
+              // starter frames or references, so the starter-frame group
+              // leads here.
+              <select id="canvas-resolution" data-canvas-resolution value={draft.resolution} onChange={(event) => patch({ resolution: event.target.value })}>
+                {tieredResolutionGroups(ratioKeyOf(draft.resolution), { machinery: imageTierMachinery }).flatMap((group) => group.options.map((option) => (
+                  <option key={option.value} value={option.value}>{`${group.tier.label} · ${option.value.replace('x', ' × ')}${option.optimal ? ' — optimal' : ''}`}</option>
+                )))}
+              </select>
             ) : (
               <select id="canvas-resolution" data-canvas-resolution value={draft.resolution} onChange={(event) => patch({ resolution: event.target.value })}>
                 {resolutionsForRatio(ratioKeyOf(draft.resolution)).map((option) => <option key={option.value} value={option.value}>{option.value.replace('x', ' × ')}{option.optimal ? ' — optimal' : ''}</option>)}

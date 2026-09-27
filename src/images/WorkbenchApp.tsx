@@ -14,7 +14,7 @@
  * document-store object, spec §2) — generations land as packet takes
  * through the shared landing loop; nothing here re-implements queueing.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { ImagePlus, Layers, LoaderCircle, Lock, Send, Settings, Sparkles, Wand2 } from 'lucide-react'
 import { useStudioSession } from '../hooks/useStudioSession'
 import { useGenerationQueue } from '../hooks/useGenerationQueue'
@@ -28,18 +28,19 @@ import { CanvasSessionContext } from '../canvas/sessionContext'
 import { useJobsStore } from '../state/jobsStore'
 import { useCanvasStore, engineBridge } from '../canvas/store'
 import { documentsApi } from '../canvas/api'
-import { allSupportedResolutions, ratioKeyOf } from '../lib/aspectResolutions'
+import { ASPECT_RATIOS, ratioKeyOf, snapResolutionDim, tieredResolutionGroups } from '../lib/aspectResolutions'
+import type { ImageMachinery } from '../lib/aspectResolutions'
 import type { DocumentChain, DocumentTake } from '../canvas/derive'
 import type { MediaFile } from '../types'
-import { submitWorkbenchGeneration, workbenchAvailability } from './submit'
+import { submitWorkbenchGeneration, workbenchAvailability, t1MachineryOf } from './submit'
 import type { ResolvedRef } from './submit'
 import { burstFuse } from '../lib/h3imageOps'
 import { createStageExecutor } from '../lib/h3imageStaging'
 import { H3IMG_OP_TONE_LOCK, canonicalFrameIndex, frameUrl, isWorkbenchChain, readSessionSettings, sessionContract, takeFrames, takeProvenance } from './session'
 import type { SessionRefSlot, WorkbenchSessionSettings } from './session'
 import { BEYOND_NINE_GUIDANCE, keepDialHint } from '../lib/h3imageContract'
-import { H3IMG_RECIPE_PINS, STOCK_SAMPLED_FRAMES, TRANSPORT_FOR_ROLE, findH3ImgFamily, h3ImageStudioPackPresent, packetTierLabel } from '../lib/graph/h3image'
-import type { H3ImgRefRole } from '../lib/graph/h3image'
+import { H3IMG_RECIPE_PINS, STOCK_SAMPLED_FRAMES, TRANSPORT_FOR_ROLE, findH3ImgFamily, h3ImageStudioPackPresent, packetTierLabel, FIZGIG_H3_STILL_PACK_NAME, fizgigH3StillPackPresent } from '../lib/graph/h3image'
+import type { H3ImgRefRole, H3ImgT1Settings } from '../lib/graph/h3image'
 import { mediaForOutput, buildOutputIndex } from '../canvas/generation'
 import { chainSettingsDefaults } from '../canvas/generation'
 import { CANVAS_EDIT_HANDOFF_KEY, H3_ONE_FRAME_FAMILY, handoffPreviewUrl, pinRegenerationNotice } from '../canvas/stillIntent'
@@ -95,11 +96,22 @@ function WorkbenchEngineHost({ children }: { children: ReactNode }) {
 
 const MODE_GROUPS: Array<{ mode: string; label: string; families: string[] }> = [
   { mode: 'generate', label: 'Generate', families: ['h3img.generate.packet', 'h3img.generate.packet.directed', 'h3img.generate.t1', 'h3img.generate.sharp'] },
-  { mode: 'compose', label: 'Compose', families: ['h3img.compose.refs'] },
-  { mode: 'edit', label: 'Edit', families: ['h3img.edit.identity', 'h3img.edit.background', 'h3img.edit.outfit', 'h3img.edit.lighting', 'h3img.edit.pose', 'h3img.edit.freeform'] },
+  { mode: 'compose', label: 'Compose', families: ['h3img.r2i.refs', 'h3img.compose.refs'] },
+  { mode: 'edit', label: 'Edit', families: ['h3img.edit.instruct', 'h3img.edit.inpaint', 'h3img.edit.identity', 'h3img.edit.background', 'h3img.edit.outfit', 'h3img.edit.lighting', 'h3img.edit.pose', 'h3img.edit.freeform'] },
   { mode: 'refine', label: 'Refine', families: ['h3img.refine.krea2', 'h3img.refine.klein'] },
   { mode: 'burst', label: 'Burst', families: ['h3img.burst.fuse', 'h3img.burst.seedvr2'] },
   { mode: 'exit', label: 'Exit', families: ['h3img.exit.anchor'] },
+]
+
+/** The T=1 machinery choices (the 1F full image stack, 2026-09-26): the
+ *  honest dev/experimental affordance over the settings flag. Defaults and
+ *  wordings are DOC-VERIFIED against the pack's own README + example
+ *  workflows (docs/research/fizgig-h3-still-assessment.md's settings-
+ *  exposure matrix). */
+const T1_MACHINERY_CHOICES: Array<{ value: H3ImgT1Settings; label: string; title: string }> = [
+  { value: 'image-studio', label: 'Image Studio (default)', title: 'The landed 1F lane: the Image Studio pack\'s conditioning latent + the Mamad8 image-VAE decode (hybrid b25-49, turbo @0.75 + detail @0.5, 8 steps). The native ~1 MP envelope is its documented sweet spot.' },
+  { value: 'fizgig', label: 'Fizgig (experimental)', title: 'The author\'s shipped stills recipe: plain FL2VA, turbo @0.38, 20 steps, er_sde/simple — the Fizgig latent + the group-replicate video-VAE decode keeping frame 3. No Mamad8, no extra weights. Best from 2.5 MP up (their words: "best from 3 MP up").' },
+  { value: 'fizgig-max', label: 'Fizgig max quality (experimental)', title: 'The author\'s highest-quality point (their 8 MP demonstration): the same Fizgig machinery with the Turbo loader at 0 and 50 steps — roughly double the render time, for the top of the image ladder.' },
 ]
 
 export function WorkbenchApp() {
@@ -119,10 +131,12 @@ function WorkbenchSurface() {
   const sessionState = useSessionStore()
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [sourceFile, setSourceFile] = useState<{ path: string; name: string; preview?: string } | null>(null)
+  const [sourceFile, setSourceFile] = useState<{ path: string; name: string; preview?: string; masked?: boolean; width?: number; height?: number } | null>(null)
   const [refineInstruction, setRefineInstruction] = useState('')
   const [exitOpen, setExitOpen] = useState(false)
   const [canvasPickerOpen, setCanvasPickerOpen] = useState(false)
+  const [maskPainterOpen, setMaskPainterOpen] = useState(false)
+  const [freeRatio, setFreeRatio] = useState(false)
   const [experiments, setExperiments] = useState(experimentsEnabled())
   const fileInput = useRef<HTMLInputElement | null>(null)
   const sourceInput = useRef<HTMLInputElement | null>(null)
@@ -169,12 +183,32 @@ function WorkbenchSurface() {
   }, [phase, doc])
 
   const settings = useMemo(() => readSessionSettings(sessionChain?.settings), [sessionChain])
-  const availability = useMemo(() => (sessionState.models.length || sessionState.status.connected ? workbenchAvailability({ info: sessionState.info, models: sessionState.models }) : []), [sessionState.models, sessionState.info, sessionState.status.connected])
+  // The session's T=1 machinery (the 1F full image stack): one source of
+  // truth read from AppSettings — detection, the resolution tiers' optimal
+  // markers, and the submit seam all key on this value.
+  const t1Machinery = t1MachineryOf(sessionState.settings)
+  const setT1Machinery = useCallback(async (value: H3ImgT1Settings) => {
+    const current = sessionState.settings
+    if (!current) {
+      setNotice('Studio settings are still loading.')
+      return
+    }
+    const next = { ...current, experimentalT1Decode: value }
+    try {
+      sessionState.setSettings(next)
+      const saved = await window.minimax.saveSettings(next)
+      sessionState.setSettings(saved.settings)
+    } catch (error) {
+      setNotice(`The T=1 machinery choice could not be saved: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [sessionState])
+  const availability = useMemo(() => (sessionState.models.length || sessionState.status.connected ? workbenchAvailability({ info: sessionState.info, models: sessionState.models, t1Machinery }) : []), [sessionState.models, sessionState.info, sessionState.status.connected, t1Machinery])
   const detectionOf = useCallback((familyId: string) => availability.find((entry) => entry.family.id === familyId)?.detection ?? null, [availability])
   // The pack-present branch (afvlbk4): with the H3 Image Studio pack served,
   // packet tiers ride its EXACT latent ladder (the labels drop the honest
   // "samples 22 on stock nodes" cost note) and T=1/fast-sharp render.
   const studioPackOnEngine = useMemo(() => h3ImageStudioPackPresent(sessionState.info), [sessionState.info])
+  const fizgigPackOnEngine = useMemo(() => fizgigH3StillPackPresent(sessionState.info), [sessionState.info])
 
   const patchSettings = useCallback(async (patch: Partial<WorkbenchSessionSettings>) => {
     if (!sessionChain) return
@@ -321,6 +355,11 @@ function WorkbenchSurface() {
           settings,
           refs: resolveRefs(),
           source: sourceFile ? { path: sourceFile.path, name: sourceFile.name, kind: 'image', ...(sourceFile.preview ? { preview: sourceFile.preview } : {}) } : null,
+          // The inpaint lane's masked source (the 1F full image stack): the
+          // alpha channel is the mask and the canvas pins to its snapped
+          // dims — validated at the submit seam.
+          sourceMask: sourceFile?.masked || undefined,
+          sourceDims: sourceFile?.width && sourceFile?.height ? { width: sourceFile.width, height: sourceFile.height } : undefined,
         },
         {
           settings: sessionState.settings!,
@@ -567,6 +606,9 @@ function WorkbenchSurface() {
   }, [doc, exitPlan, pinFrameToCanvas, sessionState.settings, contract, settings.refs])
 
   const hybridAvailable = detectionOf('h3img.exit.anchor')?.hybrid ?? false
+  // The image tiers' machinery key (the decode-leg-aware optimal markers):
+  // both fizgig values share the Fizgig leg's documented preference.
+  const imageTierMachinery: ImageMachinery = t1Machinery === 'image-studio' ? 'image-studio' : 'fizgig'
 
   // Render ---------------------------------------------------------------------
   if (phase !== 'ready' || !doc) {
@@ -729,15 +771,45 @@ function WorkbenchSurface() {
           )}
 
           {(family?.kind === 'edit' || family?.kind === 'generate-directed') && (
-            <div className="iw-source" data-iw-source>
-              <span>Anchored source (Picture 1)</span>
+            <div className="iw-source" data-iw-source data-iw-source-inpaint={family.id === 'h3img.edit.inpaint' ? 'true' : undefined}>
+              <span>{family.id === 'h3img.edit.inpaint' ? 'Masked source (Picture 1 — painted region regenerates)' : 'Anchored source (Picture 1)'}</span>
               {sourceFile ? (
                 <figure>
                   {sourceFile.preview ? <img src={sourceFile.preview} alt="source" /> : <span>{sourceFile.name}</span>}
-                  <figcaption data-iw-source-name>{sourceFile.name} <button type="button" onClick={() => setSourceFile(null)}>remove</button></figcaption>
+                  <figcaption data-iw-source-name>
+                    {sourceFile.name}
+                    {family.id === 'h3img.edit.inpaint' && !sourceFile.masked && <em className="iw-mask-needed" data-iw-mask-needed> mask needed</em>}
+                    {' '}
+                    <button type="button" onClick={() => setSourceFile(null)}>remove</button>
+                  </figcaption>
+                  {family.id === 'h3img.edit.inpaint' && (
+                    <div className="iw-mask-actions">
+                      <button type="button" data-iw-paint-mask onClick={() => setMaskPainterOpen(true)}>
+                        {sourceFile.masked ? 'repaint the region' : 'paint the region'}
+                      </button>
+                      {sourceFile.masked && sourceFile.width && sourceFile.height && (
+                        <em data-iw-mask-dims>canvas pinned: {snapResolutionDim(sourceFile.width)}x{snapResolutionDim(sourceFile.height)}</em>
+                      )}
+                    </div>
+                  )}
                 </figure>
               ) : <button type="button" onClick={() => sourceInput.current?.click()} data-iw-source-pick>Choose the source image</button>}
             </div>
+          )}
+
+          {maskPainterOpen && sourceFile && (
+            <MaskPainterDialog
+              file={sourceFile}
+              onCancel={() => setMaskPainterOpen(false)}
+              onUse={async (masked) => {
+                setSourceFile(masked)
+                setMaskPainterOpen(false)
+                // The canvas pins to the masked source's 32-snapped dims
+                // (the author's edit-workflow pattern): the graph-side
+                // prefill/restore composites align without resampling.
+                await patchSettings({ resolution: `${snapResolutionDim(masked.width ?? 0)}x${snapResolutionDim(masked.height ?? 0)}` })
+              }}
+            />
           )}
 
           <div className="iw-refs" data-iw-refs>
@@ -823,15 +895,58 @@ function WorkbenchSurface() {
             )}
             <label className="iw-resolution" data-iw-resolution>
               <span>Resolution</span>
-              <select value={settings.resolution} onChange={(event) => void patchSettings({ resolution: event.target.value })}>
-                {[...new Set([settings.resolution, ...allSupportedResolutions()])].map((value) => <option key={value} value={value}>{`${ratioKeyOf(value)} · ${value}`}</option>)}
-              </select>
+              {family?.id === 'h3img.edit.inpaint' && sourceFile?.masked ? (
+                <select value={settings.resolution} disabled data-iw-resolution-locked title="The inpaint canvas follows the masked source's own 32-grid dimensions — the prefill/restore composites align without resampling. Re-add or repaint the source to change it.">
+                  <option value={settings.resolution}>{settings.resolution} · pinned to the masked source</option>
+                </select>
+              ) : freeRatio || ratioKeyOf(settings.resolution) === 'free' ? (
+                <span className="iw-free-resolution" data-iw-free-resolution>
+                  <FreeResolutionFields key={settings.resolution} value={settings.resolution} onCommit={(resolution) => void patchSettings({ resolution })} />
+                </span>
+              ) : (
+                <TieredResolutionPicker
+                  resolution={settings.resolution}
+                  machinery={imageTierMachinery}
+                  onRatio={(ratio) => {
+                    if (ratio === 'free') {
+                      setFreeRatio(true)
+                      return
+                    }
+                    const groups = tieredResolutionGroups(ratio as (typeof ASPECT_RATIOS)[number]['id'], { machinery: imageTierMachinery })
+                    const imageFocus = groups.find((group) => group.tier.id === 'image-focus')
+                    const land = imageFocus?.options.find((option) => option.optimal) ?? groups[0]?.options[0]
+                    if (land) void patchSettings({ resolution: land.value })
+                  }}
+                  onPick={(resolution) => void patchSettings({ resolution })}
+                />
+              )}
             </label>
             <label className="iw-seed" data-iw-seed>
               <span>Seed</span>
               <input type="number" min={0} value={settings.seed} onChange={(event) => void patchSettings({ seed: Number(event.target.value) })} />
             </label>
           </div>
+
+          {family?.profile === 't1' && (
+            <div className="iw-machinery" data-iw-machinery>
+              <label className="iw-machinery-select" title="Which machinery renders this single frame — the E-FS1 experiment axis, now a real choice (the default stays Image Studio until the bake-off reports)">
+                <span>T=1 machinery <em>experimental</em></span>
+                <select value={t1Machinery} data-iw-machinery-value onChange={(event) => void setT1Machinery(event.target.value as H3ImgT1Settings)}>
+                  {T1_MACHINERY_CHOICES.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+                </select>
+              </label>
+              <p className="iw-machinery-note" data-iw-machinery-note>
+                {t1Machinery === 'image-studio'
+                  ? 'The landed 1F lane (Image Studio conditioning + the Mamad8 image-VAE decode). Its documented sweet spot is the native ~1 MP envelope.'
+                  : `${FIZGIG_H3_STILL_PACK_NAME} ${t1Machinery === 'fizgig-max' ? 'max-quality point (no Turbo, 50 steps)' : 'author recipe (plain FL2VA, turbo @0.38, 20 steps)'} — the video-VAE group decode; best from 2.5 MP up.`}
+                {!fizgigPackOnEngine && t1Machinery !== 'image-studio' && (
+                  <>
+                    {' '}The pack is not served by this engine — <button type="button" className="canvas-chip" data-iw-machinery-fetch onClick={() => useCanvasStore.getState().setLibraryDock(true)}>fetch it from the Library…</button> (the lane refuses honestly until then, never a silent stock decode).
+                  </>
+                )}
+              </p>
+            </div>
+          )}
 
           <label className="iw-overflow" data-iw-overflow title="Semantic-only overflow beyond 9 — expert-experimental, off by default (demoted per decision 4)">
             <input type="checkbox" checked={settings.semanticOverflow} onChange={(event) => void patchSettings({ semanticOverflow: event.target.checked })} />
@@ -998,6 +1113,185 @@ function CanvasRefPicker({ doc, onClose, onPick }: { doc: { chains: DocumentChai
         </div>
         <footer>
           <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+        </footer>
+      </div>
+    </div>
+  )
+}
+
+/** The tier-grouped resolution picker (the 1F full image stack): the ratio
+ *  select + the categorized resolution select — starter-frame / image-focus
+ *  / video-locked groups, the optimal marker machinery-aware, custom free
+ *  W/H beside them. */
+function TieredResolutionPicker({ resolution, machinery, onRatio, onPick }: {
+  resolution: string
+  machinery: ImageMachinery
+  onRatio(ratio: string): void
+  onPick(resolution: string): void
+}) {
+  const ratio = ratioKeyOf(resolution)
+  const groups = tieredResolutionGroups(ratio, { machinery })
+  const offered = new Set(groups.flatMap((group) => group.options.map((option) => option.value)))
+  return (
+    <span className="iw-tiered-resolution" data-iw-tiered-resolution>
+      <select value={ratio} aria-label="Aspect ratio" data-iw-ratio onChange={(event) => onRatio(event.target.value)}>
+        {ASPECT_RATIOS.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
+        <option value="free">free</option>
+      </select>
+      <select value={resolution} aria-label="Resolution" data-iw-resolution-select title={groups.map((group) => `${group.tier.label}: ${group.tier.hint}`).join('\n\n')} onChange={(event) => onPick(event.target.value)}>
+        {!offered.has(resolution) && <option value={resolution}>{resolution} · custom</option>}
+        {groups.map((group) => (
+          <optgroup key={group.tier.id} label={group.tier.label}>
+            {group.options.map((option) => (
+              <option key={option.value} value={option.value}>{option.value}{option.optimal ? ' — optimal' : ''}</option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </span>
+  )
+}
+
+/** The custom-override fields: free grid-snapped W/H (kept from the AR
+ *  picker's free mode, now inside the categorized UI). */
+function FreeResolutionFields({ value, onCommit }: { value: string; onCommit(resolution: string): void }) {
+  const [width, height] = value.split('x').map(Number)
+  const [rawWidth, setRawWidth] = useState(String(Number.isFinite(width) ? width : 1344))
+  const [rawHeight, setRawHeight] = useState(String(Number.isFinite(height) ? height : 768))
+  const commit = () => onCommit(`${snapResolutionDim(Number(rawWidth) || 32)}x${snapResolutionDim(Number(rawHeight) || 32)}`)
+  return (
+    <span className="iw-free-fields" data-iw-free-fields>
+      <input type="number" min={32} max={16384} step={32} value={rawWidth} aria-label="Width" data-iw-free-width onChange={(event) => setRawWidth(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter') commit() }} />
+      <span>x</span>
+      <input type="number" min={32} max={16384} step={32} value={rawHeight} aria-label="Height" data-iw-free-height onChange={(event) => setRawHeight(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === 'Enter') commit() }} />
+    </span>
+  )
+}
+
+/** The inpaint mask painter (the 1F full image stack): paint the region to
+ *  regenerate on the chosen source; "use mask" knocks the painted region's
+ *  alpha out (transparent = painted, the ComfyUI Mask-Editor convention the
+ *  engine's LoadImage reads as output 1) and lands the masked file through
+ *  the blob ingest. The canvas pins to the source's own snapped dims. */
+function MaskPainterDialog({ file, onCancel, onUse }: {
+  file: { path: string; name: string; preview?: string }
+  onCancel(): void
+  onUse(masked: { path: string; name: string; preview: string; masked: true; width: number; height: number }): Promise<void> | void
+}) {
+  const [brush, setBrush] = useState(48)
+  const [erase, setErase] = useState(false)
+  const [painted, setPainted] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const imgRef = useRef<HTMLImageElement | null>(null)
+  const paintRef = useRef<HTMLCanvasElement | null>(null)
+  const drawing = useRef(false)
+
+  // Draw-loop bookkeeping: the paint canvas keeps the source's NATURAL
+  // pixel geometry so the mask aligns exactly; the displayed bitmap is a
+  // CSS-scaled view of it.
+  useEffect(() => {
+    const paint = paintRef.current
+    const img = imgRef.current
+    if (!paint || !img) return
+    const redraw = () => {
+      paint.width = img.naturalWidth
+      paint.height = img.naturalHeight
+      setPainted(false)
+    }
+    if (img.complete) redraw()
+    else img.addEventListener('load', redraw, { once: true })
+  }, [])
+
+  const paintAt = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const paint = paintRef.current
+    if (!paint || !drawing.current) return
+    const rect = paint.getBoundingClientRect()
+    const x = ((event.clientX - rect.left) / rect.width) * paint.width
+    const y = ((event.clientY - rect.top) / rect.height) * paint.height
+    const ctx = paint.getContext('2d')!
+    if (erase) ctx.globalCompositeOperation = 'destination-out'
+    else ctx.globalCompositeOperation = 'source-over'
+    ctx.fillStyle = 'rgba(255, 60, 60, 0.55)'
+    ctx.beginPath()
+    ctx.arc(x, y, (brush / 2) * (paint.width / rect.width), 0, Math.PI * 2)
+    ctx.fill()
+    ctx.globalCompositeOperation = 'source-over'
+    setPainted(true)
+  }
+
+  const applyMask = async () => {
+    const paint = paintRef.current
+    const img = imgRef.current
+    if (!paint || !img) return
+    if (!painted) {
+      setError('Paint the region to regenerate first — an empty mask makes the lane a no-op edit.')
+      return
+    }
+    setBusy(true)
+    try {
+      // The masked file: the source with the painted region's alpha knocked
+      // out (destination-out), stretched to its own 32-snapped dims — the
+      // sub-grid stretch prepareMaskedImage also applies at submit, so the
+      // mask and pixels resample together.
+      const out = document.createElement('canvas')
+      const snap = (value: number) => Math.round(value / 32) * 32
+      out.width = snap(img.naturalWidth)
+      out.height = snap(img.naturalHeight)
+      const ctx = out.getContext('2d')!
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight, 0, 0, out.width, out.height)
+      const scaledPaint = document.createElement('canvas')
+      scaledPaint.width = out.width
+      scaledPaint.height = out.height
+      const sctx = scaledPaint.getContext('2d')!
+      sctx.imageSmoothingQuality = 'high'
+      sctx.drawImage(paint, 0, 0, paint.width, paint.height, 0, 0, out.width, out.height)
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.drawImage(scaledPaint, 0, 0)
+      ctx.globalCompositeOperation = 'source-over'
+      const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'))
+      if (!blob) throw new Error('the masked source could not be encoded')
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      let binary = ''
+      const chunk = 0x8000
+      for (let index = 0; index < bytes.length; index += chunk) binary += String.fromCharCode(...bytes.subarray(index, index + chunk))
+      const ingested = await documentsApi.ingestBlob({ dataBase64: btoa(binary), name: `inpainted-source-${Date.now()}.png`, kind: 'image' })
+      const preview = `/api/lan/documents/blobs/file?path=${encodeURIComponent(ingested.blob.relPath)}`
+      await onUse({ path: ingested.path, name: file.name, preview, masked: true, width: img.naturalWidth, height: img.naturalHeight })
+    } catch (paintError) {
+      setError(paintError instanceof Error ? paintError.message : String(paintError))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="iw-dialog-backdrop" data-iw-mask-painter>
+      <div className="iw-dialog iw-mask-dialog">
+        <h3>Paint the region to regenerate</h3>
+        <p>Everything you paint regenerates from the instruction; the rest of the image is restored pixel-exactly after the render. Transparent pixels ARE the mask (the Mask-Editor convention).</p>
+        <div className="iw-mask-stage">
+          {file.preview ? <img ref={imgRef} src={file.preview} alt="source" className="iw-mask-under" /> : <span className="iw-frame-evicted">no preview</span>}
+          <canvas
+            ref={paintRef}
+            className="iw-mask-paint"
+            data-iw-mask-canvas
+            onPointerDown={(event) => { drawing.current = true; event.currentTarget.setPointerCapture(event.pointerId); paintAt(event) }}
+            onPointerMove={paintAt}
+            onPointerUp={() => { drawing.current = false }}
+            onPointerLeave={() => { drawing.current = false }}
+          />
+        </div>
+        <div className="iw-mask-tools">
+          <label>brush <input type="range" min={4} max={200} value={brush} data-iw-mask-brush onChange={(event) => setBrush(Number(event.target.value))} /> {brush}px</label>
+          <button type="button" data-iw-mask-erase className={erase ? 'active' : ''} onClick={() => setErase(!erase)}>{erase ? 'erasing' : 'erase mode'}</button>
+          <button type="button" data-iw-mask-clear onClick={() => { const paint = paintRef.current; if (paint) paint.getContext('2d')!.clearRect(0, 0, paint.width, paint.height); setPainted(false) }}>clear</button>
+        </div>
+        {error && <p className="iw-mask-error" role="alert">{error}</p>}
+        <footer>
+          <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
+          <button type="button" className="primary" data-iw-mask-use disabled={busy} onClick={() => void applyMask()}>Use the masked source</button>
         </footer>
       </div>
     </div>
