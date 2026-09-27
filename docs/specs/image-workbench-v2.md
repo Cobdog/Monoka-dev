@@ -1,10 +1,10 @@
-# Image workbench v2 — the layered canvas (spec DRAFT r2)
+# Image workbench v2 — the layered canvas (spec r2 — BLESSED 2026-09-27)
 
-**Status:** DRAFT r2 — r1 passed the blind adversarial audit (2026-09-27, task
-5rmqvk4, appended in full below) and this **dated fix pass (2026-09-27, task
-wzm5vv8)** applies its eight FIX dispositions to the body, rewords Q8, and
-records the Q2 material update; next stop is the maintainer's blessing (the
-house method, directive `c965023f`). **BLESSED 2026-09-27** — the maintainer's
+**Status:** r1 passed the blind adversarial audit (2026-09-27, task
+5rmqvk4, appended in full below) and the **dated fix pass (2026-09-27, task
+wzm5vv8)** applied its eight FIX dispositions to the body, reworded Q8, and
+recorded the Q2 material update (the house method, directive `c965023f`).
+**BLESSED 2026-09-27** — the maintainer's
 rulings on all eight open questions are recorded in §12 (naming: Workbench with
 sub-modules — Infinite Canvas / Image Editor / Video Editor; Invoke:
 selective-for-surfaces; refs: strip for v2; v1: lane-parity retirement; top-level
@@ -33,7 +33,7 @@ docs/audit/remediation-plan.md (**[remediation]**),
 docs/research/fizgig-h3-still-assessment.md (**[fizgig]** — the 8MP evidence),
 docs/research/agentic-captioning-harness-tech.md + video-dataset-prep-tools.md
 (**[caption]** — the llama.cpp VLM mechanics). Directives quoted verbatim where
-load-bearing; file anchors to our tree are at HEAD `e9b1dd3`.
+load-bearing; file anchors to our tree are pinned at `e9b1dd3`.
 
 **Format:** decision record, not marketing. Where this spec chooses, the rejected
 alternative and the reason are recorded inline and consolidated in §0. Where it cannot
@@ -146,14 +146,17 @@ canvas's job/radar machinery keeps owning execution visibility.
 
 ### 2.3 The STANDALONE-EXIT section (the modularity contract's proof)
 
-Extraction as a standalone product = re-implementing five ports + shipping three
-shared assets. Nothing inside the module reaches outward except through §2.1.
+Extraction as a standalone product = providing the five §2.1 ports (four
+adapters/loaders + the camera copy) + shipping the two shared assets (the camera
+module, the design system); the global asset store degrades to import-from-file.
+Nothing inside the module reaches outward except through §2.1.
 
 | To extract | Swap with | Effort class |
 |---|---|---|
 | EnginePort | any ComfyUI-endpoint client (the port is honestly ComfyUI-shaped today — prompt/graph submission, WS progress; recorded, not hidden) | one adapter |
 | DocumentStorePort | a local SQLite (or even IndexedDB) store implementing the same schema + migrations (the schema ships in §3) | one adapter |
 | FamilyPort | a config file of family declarations (the declaration schema is data) | one loader |
+| CaptionPort | the same llama.cpp VLM route on the standalone's own endpoint — or the caption hook degrades off (§10 is a nicety, not a dependency) | one adapter, or degrade-off |
 | CameraPort | the camera module travels with it (it is small, ours, dependency-light: d3-zoom) | copy |
 | Design system | the token file + the thin `Studio*` wrappers travel (they are hand-CSS + base-ui bindings, no app coupling [ui-systems §5.1]) | copy |
 | Shared assets/takes (read-only imports) | the standalone product ships without the global asset store; import-from-file covers it | graceful degradation |
@@ -661,7 +664,7 @@ The prior-art survey started this table (§7 there); this finishes it:
 | Lane (source) | v2 canvas home |
 |---|---|
 | Generate-packet / Generate-T=1 [iw-v1] §1 | reticle generation, two-plane resolution; the packet/T=1 path profiles ride the family declaration + region preset; takes = result layers |
-| Compose (≤9 refs, roles, transports) [iw-v1] §3 | **stays the reference-strip surface in v2's first cut** — refs bind to the region through the v1 reference model. **OPEN (§12 Q3):** spatially-placed refs as canvas conditioning objects (no prior art anywhere [prior-art §7]) — a later, deliberate design round if wanted |
+| Compose (≤9 refs, roles, transports) [iw-v1] §3 | **stays the reference-strip — a workbench PANEL, not the v1 surface (§12 ruling 3)** — refs bind to the Region entity (§3.1) through the v1 reference model, FamilyPort declaring the slots (`refSlots`, §7). Spatially-placed refs as canvas conditioning objects are deferred until a concrete workflow need names one (no prior art anywhere [prior-art §7]) |
 | Edit-* families [iw-v1] §1 | region routing: a saved Region binds family + Keep dial + refs; the derived mask + per-family preservation contracts (generated, never hand-written [iw-v1] §5) |
 | Refine-Krea2/klein [iw-v1] §8 | an op on a layer (or a re-run of the source region at the refine family); always opt-in, availability-gated, engine pairing surfaced at the affordance — unchanged semantics, new home |
 | Candidates / burst [iw-v1] §7 | takes-as-layers (§9) replaces the take strip as the pick surface; the first-party scorer's verdict rides result-layer provenance; burst-fuse = an op across selected sibling layers (never-worse fallback intact) |
@@ -671,7 +674,8 @@ The prior-art survey started this table (§7 there); this finishes it:
 | Inpaint w/ pre-fill/restore + mask painter (new, shipped) | the derived mask + composite-pair complement (§5.3); the in-app mask painter becomes the brushed-mask input over document truth |
 
 **The v1 surface's fate:** superseded when parity lands — the mapping above is the
-coverage proof; the retirement timing is the maintainer's call (§12 Q4). Nothing
+coverage proof; **retirement is RULED at lane parity (§12 ruling 4)**, the
+assessment flows maturing on the canvas (§9) not a retirement blocker. Nothing
 orphaned: at retirement every lane above has a walked home (§13.7).
 
 ---
@@ -753,8 +757,12 @@ halves of the agreed synthesis hold — neither is sacrificed to the other.
   captured.
 - **Phase B — the document model proper.** Tables, migrations, command history,
   persistence, versioning (§3); the slice re-mounts onto real documents.
-- **Phase C — the raster engine.** The konva module tree, compositor, LOD/culling,
-  caches (§4.2); the DOM-canvas host retires.
+  **Qwen Image enters here-or-at-C (§12 ruling 8):** a registry row +
+  declaration block, never a workbench patch — the second family that proves
+  the §13.2 declarative gate two-family from the start of testing.
+- **Phase C — the raster engine.** *Entry gate: the Krita-AI-Diffusion
+  interaction-model capture (bg0815k) has landed (§5.1).* The konva module
+  tree, compositor, LOD/culling, caches (§4.2); the DOM-canvas host retires.
 - **Phase D — tools accrete.** Brush/eraser (perfect-freehand), selection,
   move/transform, stamp/import, shapes/text; background extraction; the color-match
   op; region save/promote.
@@ -1145,4 +1153,108 @@ applied to the body (per-item r2 notes above); Q8 reworded and Q2 materially
 updated in §12; the four NOTE dispositions stand as acknowledged here, with no
 body change beyond the SPEC-CHOICE one-liners the audit itself assigned to r2
 (§3.2's sRGB posture line; §13.5's DOM-host retirement check) and the five
-minor nits. The spec stands as DRAFT r2, awaiting the maintainer's blessing.
+minor nits. The spec stood as DRAFT r2, awaiting the maintainer's blessing —
+which landed the same day (§12; commit 7e3d9dd).
+
+---
+
+## Post-blessing verification — 2026-09-27
+
+The maintainer's final gate on the blessed artifact ("ensure everything is
+verified as designed"; task i77gwtp, epic 4lphxv8). Distinct from the blind
+audit (5rmqvk4 — adversarial, against the r1 draft): this pass verifies the
+FINISHED spec at 7e3d9dd against its three obligations — (1) every audit
+disposition actually in the body, (2) every ruling reflected everywhere it
+touches, (3) internal consistency — plus the completeness spot-checks (§8 vs
+[iw-v1]; §6 vs [blend-survey]). Verdicts: VERIFIED / FAIL (fixed in-pass
+below) / DEVIATION. No structural FAIL was found.
+
+### The twelve audit defects
+
+| # | Verdict | Evidence at HEAD |
+|---|---|---|
+| 1 | VERIFIED | §3.2 "Blobs & GC" bullet: the sweep gains an image-document mark pass; liveness = live layers ∪ log-reachable (redo tail included) ∪ tombstoned-until-emptied; §13.3's GC/undo interplay test restates the same mark set |
+| 2 | VERIFIED | §5.2 "Arrival semantics vs the undo cursor" (append-as-new-edit, ephemeral in-flight chrome, cancel-until-return, diverged-document marking, dispatch documentId); §3.3 redo-until-new-edit; §13.4 race clause; Phase A de-risk + exit evidence |
+| 3 | VERIFIED | §11 "exactly ONE family, wired through its FamilyPort declaration from day one"; §13.2 fixture test as Phase A exit evidence; Q8 reworded off the dead premise |
+| 4 | VERIFIED | §3.1 `transform` field + the transform-as-data paragraph (one effective resample; bake only on flatten); §3.2 `transform json` column; consumed at §5.2 RETURN and §6 stage 3 |
+| 5 | VERIFIED | §5.1 AR-preserving pad-into-grid (world rect grows to the padded aspect; pure isotropic scales; pad cropped at return; per-axis ratio display); §13.4 clause |
+| 6 | VERIFIED | §5.2 batch dial N (N jobs, N sibling layers, per-arrival commands, one takes set); dedupe re-keyed on family + recipe + geometry + batch slot; §9 grouping; §13.4 clause |
+| 7 | FAIL → fixed | Region ref-bindings (§3.1) and FamilyPort `refSlots` (§2.1/§7) were in the body; the disposition's third element — "the strip is a workbench PANEL, not the v1 surface" — was not (deferred to the build round by the r2 acknowledgment). Ruling 3 now settles the reading; written into §8's Compose row this pass |
+| 8 | VERIFIED | §6 stage 6 = [blend-survey §4.1]'s ranked stack in order and parameters; the opencv-js color-match attribution corrected; the `toneLockBlend` generalization (survey §4.2) imported; mask-grow at the submit seam (§5.2 step 4 / §5.3) |
+| 9 | VERIFIED (NOTE) | Acknowledged, deliberately unset — rides the Phase B store seam with its §13.3 check; no Q9 was pulled forward at blessing (consistent with the r2 record) |
+| 10 | VERIFIED | §5.1 opens with the verbatim `f75885c8` Krita-AI-Diffusion feel reference; the capture exists as Flux bg0815k (verified live, epic 4lphxv8). Its hard gate was stated only in §5.1 — the §11 Phase C entry line was missing; added this pass |
+| 11 | VERIFIED (NOTE) | Acknowledged — §13.5's measured-budget discipline extends to the pipeline ops at Phase A; no r2 body edit was the disposition's own choice |
+| 12 | VERIFIED (NOTE) | Acknowledged — the ml-matrix/transformation-matrix placement enters with the §5.1/Phase D math cut; §13.9's lockstep fires on adoption regardless |
+
+The five minor nits and three SPEC-CHOICE one-liners: all VERIFIED (53.5k-LOC
+unified at D2/D7/Q2; §10's numeric token cap; §5.3's α<8/255; the §5.2 dedupe
+key; §3.1's background field named; §13.5's DOM-host dead-code retirement
+check; Q2's three-way line; §3.2's sRGB-only posture).
+
+### The eight rulings
+
+R1 naming VERIFIED (status block + §12 ruling 1; no contradicting usage
+anywhere — §1's "not video" already matches the Video Editor sub-module split;
+the sub-module vocabulary becomes the build's surfaces-registry vocabulary).
+R2 Invoke-selective VERIFIED (D7, §4.2's ADOPT-as-code framing, and ruling 2's
+stateApi-as-option; no vendoring assumption survives outside preserved question
+text). R3 VERIFIED after the §8 in-pass fix. R4 FAIL → fixed: §8 still said
+"the retirement timing is the maintainer's call (§12 Q4)" — stale pre-ruling
+language; it now states the lane-parity ruling (the status line, §11 Phase E,
+and §12 ruling 4 were already correct). R5 VERIFIED (§3.2's top-level
+`image_document` + tombstone/restore). R6 VERIFIED (§9's local-only +
+exportable store; §13.8; ruling 6). R7 VERIFIED (§2.3 + ruling 7). R8
+FAIL → fixed: the ruling and the registry-row discipline were recorded (§12,
+§7) but the PHASE PLAN carried no Qwen slot; §11 Phase B now names it
+(here-or-at-C per the ruling's "earliest sensible: alongside Phase B/C").
+
+### Internal consistency
+
+Cross-references resolve: every §-pointer lands; task ids mnz1ood / wzm5vv8 /
+5rmqvk4 / bg0815k all exist (bg0815k verified live in Flux); shas 7151a66 /
+919a790 / e6691fc / aaf3196 / e9b1dd3 all in history; the four file anchors
+exist at HEAD. §13's gates match the r2 body — no gate references pre-fix
+semantics (§13.3 restates the r2 mark set exactly; §13.4 carries the
+race/batch/grid-snap clauses; §13.5 the retirement check; §13.6 the swappable
+slot). D1–D9 stand unamended and consistent (D7's "(§12 Q2)" pointer resolves
+to the now-ruled section). The swap table FAILED against the five-port
+architecture — §2.1 declares five ports but §2.3's table had no CaptionPort
+row and its lead's "five ports + three shared assets" arithmetic did not match
+its own rows — fixed in-pass (CaptionPort row added; lead corrected to four
+adapters + camera copy + two shipped assets + asset-store degradation). Title
+and closing-record staleness FAILED (the title read "spec DRAFT r2", the r2
+record "awaiting the maintainer's blessing") — both now read blessed. One nit
+fixed: the anchors line's "at HEAD `e9b1dd3`" → pinned at `e9b1dd3`.
+
+### Completeness spot-checks
+
+§8 vs [iw-v1]: six lanes checked, all faithful — Generate-packet/T=1 (§1: the
+packet/T=1 profiles exist as pinned graph families), Compose (§3: 9 ordered
+REF2VA slots with roles + transports), Edit-* (§1's six families +
+§5's generated-never-hand-written contracts), Refine-Krea2/klein (§8: always
+opt-in, klein-fast/Krea-2-quality pairing, availability-gated), Candidates/
+burst (§7: first-party deterministic scorer, never-worse fallback), Exit
+(§9: FL2VA frame-latent, consent-gated). §6 vs [blend-survey]: stage 6 matches
+§4.1's ranked stack in order, tiers, and parameters (grow-at-generation →
+annulus Reinhard-on-ring/MKL → masked multi-band → grain dial; SDEdit band
+σ≈20–35% as the opt-in engine tier; latent-ramp preventer behind the #15981
+gate; Poisson deferred; B1–B3 own the verdicts), and §4.2's one-module-
+two-entries consequence is imported intact.
+
+### In-pass fixes (this pass, one pathspec commit)
+
+§8 Compose row (defect 7's panel reading + ruling 3); §8 v1-fate (ruling 4);
+§2.3 CaptionPort row + corrected lead (swap-table vs five ports); §11 Phase B
+Qwen second-family slot (ruling 8); §11 Phase C Krita-capture entry gate
+(defect 10's hard gate, now in the plan); title/status/closing-record blessed
+state; the anchors pin. All mechanical — no structural change, no gate added
+or removed.
+
+### Observations for the maintainer (no action taken)
+
+The §12 parenthetical "original question texts are preserved in git history"
+sits directly above the retained r2 question texts — true of the r1 originals,
+slightly odd to read. Defect 11's pipeline-op budgets are not named in §13.5's
+text (the NOTE disposition's own choice; Phase A's budget harness will surface
+them). The sub-module naming (ruling 1) lives at the status block and §12 —
+its first body-level appearance will be the build's surfaces-registry entry.
