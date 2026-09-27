@@ -60,9 +60,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Resolve the diff against the base branch
+      - name: Resolve the diff (PR base, or the previous commit on a main dispatch)
         id: diff
-        run: git diff --name-only "origin/${{ github.base_ref }}...HEAD" > changed-files.txt
+        run: |
+          # On a workflow_dispatch against main there is no PR base ref — diff
+          # against the previous commit so the plan covers the just-merged work.
+          # (A dispatch on any other branch diffs against main as the base.)
+          if [ -n "${{ github.base_ref }}" ]; then
+            git diff --name-only "origin/${{ github.base_ref }}...HEAD" > changed-files.txt
+          else
+            git diff --name-only "HEAD~1...HEAD" > changed-files.txt
+          fi
       - name: Run the CI manifest (scripts/ci-map.cjs)
         id: plan
         run: |
