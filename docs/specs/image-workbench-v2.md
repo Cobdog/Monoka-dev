@@ -4,9 +4,14 @@
 5rmqvk4, appended in full below) and this **dated fix pass (2026-09-27, task
 wzm5vv8)** applies its eight FIX dispositions to the body, rewords Q8, and
 records the Q2 material update; next stop is the maintainer's blessing (the
-house method, directive `c965023f`). **From scratch by mandate** — this
-is not an amendment of `docs/specs/image-workbench-v1.md`; that spec is BLESSED+BUILT
-reference material whose lanes are **mapped in** (§8), not inherited. Flux: mnz1ood
+house method, directive `c965023f`). **BLESSED 2026-09-27** — the maintainer's
+rulings on all eight open questions are recorded in §12 (naming: Workbench with
+sub-modules — Infinite Canvas / Image Editor / Video Editor; Invoke:
+selective-for-surfaces; refs: strip for v2; v1: lane-parity retirement; top-level
+documents; RLHF local-only; technically-separable; Qwen inside v2). **From scratch by
+mandate** — this is not an amendment of `docs/specs/image-workbench-v1.md`; that spec
+is BLESSED+BUILT reference material whose lanes are **mapped in** (§8), not
+inherited; v1 retires at lane parity. Flux: mnz1ood
 (epic 4lphxv8); the r2 pass: wzm5vv8 (same epic). Directive lineage: `c965023f`
 (the commencement) on `b90ce8f6` (the
 founding vision), `8dce5967` (the marquee-composite workflow), `f75885c8` (the
@@ -769,10 +774,41 @@ document-editing depth; it does not accrete the app.
 
 ---
 
-## 12. Open questions for the maintainer
+## 12. Open questions — RESOLVED AT BLESSING (2026-09-27, the maintainer's rulings)
 
-The decisions this spec cannot make (everything else is decided above or in the
-directives):
+The decisions this spec could not make — all ruled in the blessing conversation:
+
+1. **Naming — RULED:** **"Workbench"** is the creation surface, structured as
+   multiple sub-modules: **Infinite Canvas, Image Editor, Video Editor, etc.**
+   (the maintainer's explicit model). v1's surface answers to "workbench" until
+   phase-out; the sub-module names become the surface's internal vocabulary —
+   the image workbench = the Image Editor sub-module on the Infinite Canvas.
+2. **The Invoke cut line — RULED: selective-for-surfaces.** Adopt patterns and
+   specific clean/tested pieces (skeleton pattern, bbox math, staging) as OUR
+   code; no RTK/redux-undo idioms, no vendored subtree, the 53.5k-LOC whole
+   remains the rejected pole. The stateApi door stays open if Phase C ever
+   needs the escalation — as an option, not a plan.
+3. **Compose-lane spatial refs — RULED: the reference-strip for v2.**
+   Canvas-placeable conditioning objects deferred until a concrete workflow
+   need names one.
+4. **v1 phase-out — RULED: lane parity.** When every v1 lane has its canvas
+   home, v1 retires (the assessment flows continue maturing on the canvas —
+   §9 is not a retirement blocker).
+5. **Image-document lifetime — RULED: top-level documents** (own
+   trash/export/archive) per §3.2.
+6. **The RLHF grade store — RULED: local-only + exportable.** No collection
+   tee beyond local, ever (the local-first doctrine).
+7. **Standalone-exit depth — RULED: technically separable** (ports + swap
+   table). A maintained extractable product remains an if/when commitment
+   only.
+8. **Qwen Image arrival — RULED: inside v2's build phases**, doubling as the
+   second-family proof of the §13.2 declarative gate. Qwen enters as a
+   registry row + declaration block (never a workbench patch), scheduled
+   where the phase plan has room — earliest sensible: alongside Phase B/C so
+   the negotiation layer proves two-family from the start of testing.
+
+*(The original question texts are preserved in git history at e6691fc/aaf3196;
+this section records the rulings.)*
 
 1. **Naming.** The module's user-facing name and directory (the three-surface
    doctrine calls CREATION "the workbench"; v1's surface already answers to
