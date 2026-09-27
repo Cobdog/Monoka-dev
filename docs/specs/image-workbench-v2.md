@@ -675,5 +675,167 @@ findings applied + maintainer blessing). House pattern per [iw-v1] §11 /
 
 ---
 
-*Corrections and audit findings land as dated addenda or r2, never silent rewrites
-(the house protocol). This draft asserts no upstream adoption and touches no code.*
+## Blind audit — 2026-09-27
+
+The house method's pre-blessing pass (task 5rmqvk4, directive `c965023f`'s
+spec-draft → blind-adversarial-audit → blessing sequence). Method: the spec was
+read COLD first, as a skeptical reviewer who has built editors; the cited
+sources (the four directives verbatim from epic 4lphxv8, [oO-core], [prior-art],
+the blending survey, [iw-v1], [doc-model], [canvas-ui], [ui-systems],
+[remediation], [fizzig], [caption], and the file anchors `src/images/submit.ts`
+/ `src/canvas/camera.ts` / `src/lib/h3imageOps.ts` / `src/lib/graph/h3image.ts`)
+were verified SECOND. Every verbatim directive quote checks out; every checked
+number is grounded in its cited source (43 fps / 2000 objects is the measured
+L33 floor; 3872×2176 / 50 steps / `er_sde` / ≤4096 step 32 / the 8MP correction
+are [fizgig]-verbatim; konva 57 KB gz and "raw Konva, no react-konva at
+v6.14.1" are [prior-art §1.2/§3] code-read facts). The defects below are what
+did NOT survive. Dispositions: **FIX** = change the text before blessing
+(r2 or addendum); **NOTE** = record and proceed.
+
+### CONFIRMED-DEFECT list (ranked by damage-if-shipped)
+
+1. **[FIX] Blob GC vs the command log — the silent-undo hole.** §3.2 says blobs
+   are "the shared blob table, content-hashed, no new machinery," but [doc-model
+   §3]'s GC is mark-and-sweep over fork edges + canonical/locked takes + un-emptied
+   trash — a mark set that knows nothing of image-document layer content,
+   command-log `inverse_ref` blobs, or generation provenance. As written, either
+   the sweeper reclaims blobs the history needs (undo of a stroke/layer-delete
+   silently breaks — exactly the silent-data-loss class the house bans) or "no
+   new machinery" is false. r2 must define blob liveness = live layers ∪
+   command-log-reachable inverses ∪ tombstoned-documents-until-trash-emptied,
+   and §13.3 gains a GC/undo interplay test.
+2. **[FIX] Async generation return vs the undo cursor.** §5.2's GENERATE is
+   async through EnginePort; RETURN appends a command. If the user undoes or
+   edits while a job is in flight, the returning command meets a moved cursor —
+   with §3.2's "truncation at undo-cursor" semantics the result either clobbers
+   divergent history or lands orphaned. Redo is also unspecified (truncation-at-
+   undo reads as destructive undo; "clicks any entry to time-travel" is
+   consistent with either). This race is guaranteed to fire in Phase A. r2 must
+   define arrival semantics (append-at-end with cursor guard, or cancel-on-
+   undo-past-dispatch) and redo retention (standard: redo lives until the next
+   NEW edit).
+3. **[FIX] Phase A contradicts its own exit criterion.** §11 Phase A: "one
+   family hardcoded"; §12 Q8: "the registry-fixture test is a Phase A exit
+   criterion"; §2.2: the negotiation consumer "contains zero family names in
+   code." An implementer following §11 verbatim welds a family name in and fails
+   gate §13.2. The readable intent — one family, wired THROUGH the FamilyPort
+   declaration — must be the written text.
+4. **[FIX] The Layer schema has no transform/placement, but §5.2/§6/Phase D all
+   require one.** §3.1's Layer entity and §3.2's `image_layer` table carry no
+   transform; yet RETURN places a result at rotated source geometry, §6 stage 3
+   has free transforms as placement ops, and Phase D ships move/transform tools.
+   Either transforms are layer state (schema gap) or they bake into pixels on
+   apply (then every non-90° rotation double-resamples the generated content —
+   a fidelity loss the two-plane display does not show — and baked move/scale
+   contradicts the D8 deform-ops-as-parameters philosophy). r2 must add the
+   transform to the entity/table and state the resample budget: lift samples
+   once, the layer transform applies at composite, rotation-in = rotation-out
+   with ONE effective resample.
+5. **[FIX] "Nothing silently rescales" vs grid-snap AR drift.** §5.1 composes
+   the family grid (32-px multiples per axis) with area-preserving
+   scale-to-optimal; per-axis snapping perturbs AR (bounded, but real), so the
+   returned raster's AR ≠ the reticle's world AR and returning it to the exact
+   footprint requires a small anisotropic stretch — which IS a silent rescale,
+   and which the scalar orange/blue ratio display cannot express. Footprint
+   exactness (±0 px) survives; content-mapping exactness does not, undefined.
+   r2 must pick the policy (snap-within-tolerance + display the per-axis
+   effective ratio; or AR-preserving pad-into-grid with the pad masked).
+6. **[FIX] "10 generations in a single area" has no mechanism, and same-area
+   dedupe blocks the naive path.** The directive's headline semantics
+   [`f75885c8`] and §3.1/§9's takes-as-layers presume N siblings from one area;
+   §5.2 imports upstream's "re-clicking a pending area is ignored" and defers
+   generate-ahead "later." Upstream produced multiples via the candidate
+   browser's `+` — this spec has no batch/N-times affordance anywhere. r2 must
+   define it (an N dial queueing N round-trips as N pending siblings; dedupe
+   keys on the unique request, not the area).
+7. **[NOTE→one sentence] The Compose lane's home is ambiguous and the v1
+   reference model is unported.** §8's "stays the reference-strip surface in
+   v2's first cut — refs bind to the region through the v1 reference model"
+   reads as either a strip panel INSIDE the workbench (fine) or the v1 app
+   surface (which §8 itself schedules for phase-out — gate §13.7 then never
+   closes for Compose). The reference-binding schema is neither one of the five
+   ports nor listed inside (§2.2), and the standalone-exit table has no row for
+   it. Fix at r2: the strip is a workbench panel; the binding schema rides the
+   Region entity; FamilyPort declares refSlots.
+8. **[FIX] §6 is stale against the landed blending survey, and one attribution
+   is wrong.** §6 leaves the algorithm "to that survey when it lands" — it
+   landed (commit 919a790, after this spec's 7151a66). Worse, "color match =
+   histogram/Reinhard-class transfer as an app-side op (opencv-js)" is
+   contradicted by the survey's §1.5/§5: no maintained JS color-transfer exists
+   (the npm name is a HEX format utility); Reinhard is ~60 lines ours-to-own;
+   the candidate opencv-js build hosts no such op (and lacks `seamlessClone`
+   outright). The survey also supplies a mechanic §5.3/§7 lack:
+   grow-at-generation is a SUBMIT-seam parameter (mask-grow on the lane graphs)
+   with blend-back at the original mask. r2 must ingest: point §6 at the ranked
+   stack (grow-at-generation → annulus color match → masked multi-band → grain
+   match; SDEdit band as the opt-in engine tier), correct the opencv-js
+   attribution, and add the mask-grow parameter to the round-trip spec.
+9. **[NOTE→policy line] No concurrency policy for server-hosted documents.**
+   The store is a server store; two tabs on one image document is one
+   middle-click away, and the command log is ordinal-append — WAL serializes
+   writes but two editors interleave ordinals and diverge silently (camera json
+   is last-writer-wins). r2 needs one policy line (per-document session lock or
+   last-writer-wins + reload prompt) and a §13.3 check — or an explicit open
+   question if the maintainer wants to choose.
+10. **[FIX] The f75885c8 reference anchor is dropped.** The directive names the
+    Krita-AI-Diffusion workflow FEEL as the UX north star ("A lot like how the
+    workflow feels inside of Krita when using Acly's Krita Diffusion plugin")
+    and says its interaction-model study "now also feeds the design round."
+    This spec never mentions it, and no such interaction-model capture exists
+    in the repo (only the transport study, node-pack-registry §4.3). Fidelity
+    gap, not a contradiction: r2 adds it to §5.1's inputs and queues the
+    capture before the reticle UX hardens.
+11. **[NOTE] The 8MP perf analysis covers the renderer, not the pipeline ops.**
+    §4.3 analyzes live deformer preview only; consolidate (full-stack composite
+    through deform evaluation), lift (rotation resample), mask derivation (alpha
+    scan + dilation morphology), and blend-back (the survey's multi-band,
+    ~5–15 ms/MP class) are all 8MP-tier CPU costs unaddressed, and "CPU
+    compositing of a handful of layers is fine" is asserted without the
+    damage-region caveat. Extend §13.5 with pipeline-op budgets, measured at
+    Phase A per the budget-harness discipline.
+12. **[NOTE] §13.9 lists ml-matrix and transformation-matrix, which the body
+    never places.** The gate forward-references [prior-art §3]'s candidate
+    floor; the body should say where they land (marquee two-plane math →
+    transformation-matrix; MLS/homography solves → ml-matrix) or drop them.
+
+### SPEC-CHOICE calls that survive audit (risk recorded, not counted)
+
+- **Phase A on a DOM-canvas stack while §4.2 rejects DOM substrates** —
+  deliberate and labeled temporary; the known risk is the slice-that-never-dies,
+  mitigated only if Phase C's "the DOM-canvas host retires" is enforced as a
+  gate. Make retirement explicit in §13.
+- **D7's narrow default vs both the directive and the survey's lean.**
+  `b90ce8f6` says "take a lot of their tooling, canvas infrastructure";
+  [prior-art §0.B]'s "realistic mode" is vendor-the-core + own-the-surfaces.
+  D7 chooses selective-with-tests and frames vendor-core as the rejected pole —
+  honest (Q2 ratifies it), but the audit stresses what Q2 asks: the answer is
+  selective-for-surfaces, vendor-candidate-for-the-skeleton-subtree
+  (`CanvasManager`/`CanvasModuleBase`/compositor/worker WITH their tests, per
+  §1.6's "vendoring the engine without its tests would be malpractice"), never
+  the 53.5k-LOC whole. The `stateApi` indirection makes a partial vendor
+  tractable; the RTK-idiom cost is real but concentrated in the store slice.
+- **EnginePort honestly ComfyUI-shaped** — recorded, not hidden; the swap-table
+  "one adapter" is optimistic for a non-ComfyUI engine but the shape is
+  declared. Unchanged color-management posture is NOT recorded though: the spec
+  is silent on sRGB-only vs ICC; add the one-line sRGB assumption at r2.
+
+### The verdicts elsewhere
+
+- **The mask-authority split is clean** (D5/§5.3/§7): complements route through
+  FamilyPort declarations; the one leak was Phase A's hardcode (defect 3).
+- **The standalone-exit table is honest** — the harness gate (§2.3/§13.1) and
+  the swap-table-vs-import-graph automated check are real proofs; the one gap is
+  the reference-model row (defect 7).
+- **The eight open questions all survive** — none is answered wrongly or
+  orphaned by audit. Q8 needs REWORDING (its premise contains defect 3's
+  contradiction); Q2's answer is materially informed by the D7 note above;
+  recommend a Q9 only if the maintainer prefers choosing the concurrency policy
+  (defect 9) over the spec setting it.
+- Minor text nits for r2: "53k-LOC" (D2) vs "53.5k-LOC" (D7/Q2); the §10
+  template's "≤ N tokens" placeholder; §5.3's blank-check alpha threshold; the
+  "same area" dedupe key; §3.1's "background state" field is vague.
+
+*Audit posted in full as the Flux comment on task 5rmqvk4 (epic 4lphxv8);
+findings land here as this dated addendum per the house protocol — never silent
+rewrites. The r2 pass applies the FIX items; the NOTE items may ride the build
+gates.*
