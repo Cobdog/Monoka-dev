@@ -331,7 +331,11 @@ test('(g) output resolve contract (audit D4): the route must answer BOTH a local
   assert.ok(fs.existsSync(resolved.body.path), 'the answered path must exist on disk')
   assert.ok(resolved.body.url.startsWith('/api/lan/media?'), `the answered url must be the media route (got ${resolved.body.url})`)
   const missing = await get('/api/lan/outputs/resolve?filename=absent.mp4&type=output')
-  assert.equal(missing.status, 404, 'a file outside the output directory must 404')
+  // (W15, perfect-state sweep 2026-09-27) "No local copy" is the probe's
+  // normal answer on an external engine — data, not an error. 404 here read
+  // as a console error per render; the miss answers 200 + null.
+  assert.equal(missing.status, 200, 'a missing output must answer 200 (the miss is data, not an error)')
+  assert.equal(missing.body.path, null, 'a missing output answers path null (the poll completes from the remote descriptor)')
 })
 
 test('(g2) honest /free: an upstream engine failure must NEVER surface as {freed:true}', async () => {
