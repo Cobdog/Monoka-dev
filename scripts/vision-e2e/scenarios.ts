@@ -342,7 +342,17 @@ export const SCENARIOS: VisionScenario[] = [
       // toBeAttached-style checks never scroll, and a minimal scrollIntoView
       // can leave the contracted content straddling the fold (the first judged
       // capture overshot past the minimax family — judge fail 2026-09-19).
-      await page.evaluate(() => { document.querySelector('.model-overrides-section')?.scrollIntoView({ block: 'start' }) })
+      await page.evaluate(() => {
+        // (F-GATE-3 second round, 2026-09-28) block:'start' parks the card
+        // title exactly UNDER the sticky settings rail — back off by the
+        // rail's height so the title clears it (the matrix scenario's
+        // lesson, applied here after the judge read the title as out of
+        // frame).
+        document.querySelector('.model-overrides-section')?.scrollIntoView({ block: 'start' })
+        const scroller = document.querySelector('.model-overrides-section')?.closest('.canvas-settings-body') as HTMLElement | null
+        const rail = scroller?.querySelector('[data-settings-nav]') as HTMLElement | null
+        if (scroller && rail) scroller.scrollTop = Math.max(0, scroller.scrollTop - rail.offsetHeight - 8)
+      })
       await page.waitForTimeout(400)
     },
     after: async (page) => {
@@ -556,7 +566,9 @@ export const SCENARIOS: VisionScenario[] = [
           await page.evaluate(() => {
             const rows = Array.from(document.querySelectorAll<HTMLElement>('.node-packs-section .node-pack-row'))
             const target = rows.find((row) => row.textContent?.includes('ComfyUI-MiniMax-H3-Turbo'))
-            target?.scrollIntoView({ block: 'start' })
+            // (F-GATE-3 second round) 'center' keeps the SUBJECT row in
+            // frame; the hybrid-loader row pins 'nearest' beside it.
+            target?.scrollIntoView({ block: 'center' })
             const hybridLoader = rows.find((row) => row.textContent?.includes('ComfyUI_MinimaxH3HybridLoader'))
             hybridLoader?.scrollIntoView({ block: 'nearest' })
           })
@@ -746,8 +758,11 @@ export const SCENARIOS: VisionScenario[] = [
       if (await section.locator('[data-canvas-lora-block]').count() !== 2) throw new Error('lora-timeline capture: expected 2 painted blocks in the DOM')
       if (await section.locator('[data-canvas-lora-seg]').count() !== 2) throw new Error('lora-timeline capture: expected 2 compiled segments in the DOM')
       await expect(section.locator('[data-canvas-lora-compile]')).toContainText('2 segments')
-      // The panel scrolls the section into a comfortable view for the shot.
-      await section.locator('[data-canvas-lora-rail]').scrollIntoViewIfNeeded()
+      // The panel scrolls the section into a comfortable view for the shot —
+      // anchored at the APPLY pill (the section's foot): anchoring on the
+      // rail left the compile pill below the fold (judge fail, F-GATE-3
+      // second round 2026-09-28).
+      await section.locator('[data-canvas-lora-apply]').scrollIntoViewIfNeeded()
       await page.waitForTimeout(400)
     },
     after: async (page) => {
