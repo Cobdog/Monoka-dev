@@ -1387,6 +1387,11 @@ export const SCENARIOS: VisionScenario[] = [
       await exec('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=duration=3:size=480x832:rate=24', '-f', 'lavfi', '-i', 'sine=frequency=220:duration=3', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', clip])
       const response = await page.request.post('/api/lan/datasets/ingest/reference', { data: { path: clip } })
       const body = await response.json()
+      // (2026-09-28) Stash the seeded source id: the after() trashes it —
+      // every capture run otherwise ACCUMULATES vision-clip sources in the
+      // shared home until the e2e caption spec's aspect chip reads
+      // already-active (the documented datasets accumulation class).
+      ;(page as unknown as { __visionDatasetSource?: string }).__visionDatasetSource = body.source.id
       await expect
         .poll(async () => {
           const library = await (await page.request.get('/api/lan/datasets/library')).json()
@@ -1406,6 +1411,15 @@ export const SCENARIOS: VisionScenario[] = [
       await expect(page.locator('[data-ds-layer]').first()).toBeVisible({ timeout: 10_000 })
     },
     after: async (page) => {
+      // (2026-09-28) Clean the seeded source through the app's OWN API (the
+      // e2e beforeAll discipline, applied at the source): a trashed +
+      // emptied vision-clip leaves the shared home's dataset list exactly as
+      // the capture found it.
+      const seeded = (page as unknown as { __visionDatasetSource?: string }).__visionDatasetSource
+      if (seeded) {
+        await page.request.post('/api/lan/datasets/sources/trash', { data: { sourceId: seeded } }).catch(() => undefined)
+        await page.request.post('/api/lan/datasets/trash/empty', { data: {} }).catch(() => undefined)
+      }
       await page.request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } }).catch(() => undefined)
     },
     checkpoints: [
