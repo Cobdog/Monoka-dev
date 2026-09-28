@@ -32,7 +32,12 @@ docs/specs/canvas-ui-v1.md (**[canvas-ui]**), docs/specs/canvas-document-model.m
 docs/audit/remediation-plan.md (**[remediation]**),
 docs/research/fizgig-h3-still-assessment.md (**[fizgig]** — the 8MP evidence),
 docs/research/agentic-captioning-harness-tech.md + video-dataset-prep-tools.md
-(**[caption]** — the llama.cpp VLM mechanics). Directives quoted verbatim where
+(**[caption]** — the llama.cpp VLM mechanics),
+docs/research/fooocus-qwen-assessment.md (**[fooocus]** — the measured
+Qwen-Image-2.1 operating doctrine: the mask protocol, the reference-scale
+ladder, the turbo rules, the `<imageN>` addressing; landed at 426f76c and
+folded into §5.3/§6/§7 at the 2026-09-27 doctrine fold-in, recorded at this
+file's end). Directives quoted verbatim where
 load-bearing; file anchors to our tree are pinned at `e9b1dd3`.
 
 **Format:** decision record, not marketing. Where this spec chooses, the rejected
@@ -553,6 +558,24 @@ generation are distinguished ONLY by what the canvas-derived mask computes
   Telea/Navier-Stokes inpaint as pre-fill (opencv-js, Apache-2.0 [prior-art §3]).
   **A family that lacks the mask port receives the composite instead** — the
   modularity test applied to model families.
+- **Mask-consumption guidance, measured (2026-09-27 fold-in, [fooocus] §3 — the
+  Qwen-Image-2.1 evidence; their RTX-3090/diffusers measurements, 8189
+  re-measure pending before graph factories harden them).** The `composite-pair`
+  mode now has a measured reference implementation: **the model receives a
+  BINARISED mask** (pure white = edit, pure black = keep, sharp edges — the
+  official recommendation) **and the composite receives the feathered one** —
+  one mask, two representations, two consumers. The hazards it exists to dodge,
+  measured: a grey/feathered mask handed to the MODEL is read as an alpha
+  matting (the decoder's nothing-here fill is purple — the native-transparency
+  signature); naming the mask in the prompt DOUBLES out-of-mask spread (99.2%
+  vs 46.9% of pixels touched) — the bare user prompt is the protocol,
+  "explain the mask in words" is closed; **hole-in-alpha** (the source as one
+  RGBA image, the edit area transparent) is the strongest INTERIOR encoding
+  (outside-Δ 3.43, 1.8% stray) and **harmful at the outpaint border** (a
+  transparent border is the training-data sticker signature). This guidance
+  rides the `maskMode` declaration (§7), never workbench code; its
+  prompt-side companion fence (no transparency vocabulary, even negated) is
+  §7's `promptContract` row.
 
 **The marquee-as-region promotion:** any reticle state saves as a named **Region**
 (§3.1) — the persistent, addressable context window, re-runnable, carrying its
@@ -600,6 +623,16 @@ is a document command (provenance-bearing, undoable) unless marked otherwise:
    grid-artifact check; Poisson DEFERRED (absent from the candidate opencv-js
    build — below). The falsifier-first battery B1–B3 [blend-survey §4.3]
    owns every verdict before any step is load-bearing.
+   **The seam WARNING signal (2026-09-27 fold-in, [fooocus] §1/§4):**
+   `clipped_share` — the share of out-of-mask change the composite discards
+   (per-pixel Δ>16 against the source, aggregated over the keep region) —
+   joins the stack as the measured seam signal, an MIT port from the
+   Fooocus-style shell (on the Qwen-first wave's port list, r546bab): when
+   the share runs high, the blend-back surfaces WHY there is a seam and names
+   the escape hatch at the moment it happens (grow the mask at the submit
+   seam, or accept the model's full-frame output) — measured, surfaced,
+   actionable, the same shape as the two-plane ratio display, "not from the
+   documentation after the fact."
    **The JS-availability truth, corrected:** r1's "histogram/Reinhard-class
    transfer as an app-side op (opencv-js)" was wrong — no maintained JS
    color-transfer package exists (the npm name is a HEX format utility), the
@@ -632,14 +665,18 @@ no consumer surface maintains its own interpretation of a shared domain).
 
 **The declaration schema (per family, data in the registry entry):**
 
-| Question | Field | Example (H3-still today) |
+| Question | Field | Example (H3-still today; Qwen-2.1 [fooocus] where tagged) |
 |---|---|---|
 | Resolution ceiling + grid | `maxDimension`, `gridStep`, `demonstratedCeiling` | 4096/dim, 32-px multiples, 8MP demonstrated [fizgig] |
 | Aspect policy | `aspectPolicy` | AR-preserving area-preserving scale-to-grid (Invoke pattern) composing the tier system |
-| Mask semantics | `maskMode: native | instruct | composite-pair` + the complement's name | composite-pair (prefill/restore) today; instruct-edit lanes declare `instruct` |
+| Mask semantics | `maskMode: native | instruct | composite-pair` + the complement's name | composite-pair (prefill/restore) today; instruct-edit lanes declare `instruct` — measured reference implementation on Qwen-2.1 at §5.3's dated note [fooocus] |
 | Ref support | `refSlots` (count, roles, transports) | the v1 reference model's 9 ordered slots [iw-v1] §3 |
 | Edit taxonomy | `editFamilies[]` | identity/background/outfit/lighting/pose/freeform [iw-v1] §1 |
 | Denoise range | `denoiseRange` | the harmonize pass needs the low end declared |
+| Condition-image scaling | `conditionScalePolicy` (2026-09-27 fold-in) | Qwen-2.1 [fooocus §2]: the measured ladder — condition-image count (source + mask + refs) ≥4 → 512 px, 2–3 → 768, 1 → 1024; the FRAME stays at preset resolution (without it: edit at 1536 source scale OOMs a 24 GB card; 5 refs at preset scale = 13 min/frame vs 38 s at 512) |
+| Ceiling granularity + presets | `maxDimension` may key on condition count; `presetLadder[]` (2026-09-27 fold-in) | Qwen-2.1 [fooocus §2/§4]: the 10-ref card ceiling is NOT a 24 GB operating point (1 ref @1536 = 21 GiB; 5 refs = paging) — the ceiling is declared condition-count-keyed, with the quality presets 1024/16 · 1536/28 · 2048/40 |
+| Recipe pins | `recipePins[]` (2026-09-27 fold-in) | pinned per-lane operating parameters recipes carry verbatim — first user, the Qwen turbo lane [fooocus §2]: Viggle DMD adapter, 6 steps, sigmas `[1.0, 0.9375, 0.875, 0.75, 0.5, 0.25]` verbatim (change steps only at the high-noise end), the SHIPPED scheduler (base `shift_terminal: 0.02` "wrecks the last step"), cfg 1, no negative, adapter runtime-loaded and NEVER merged (a bf16 merge irreversibly damages precision), scoped to 1024² (above it the distill emits an 8 px latent-token grid — one token = 8×8 px, latents un-patchified; measured in the author's own pipeline too) |
+| Prompt contract | `promptContract` (2026-09-27 fold-in) | per-family prompt rules the negotiation surfaces — Qwen-2.1 [fooocus §3]: `<imageN>` tag addressing (the OFFICIAL protocol, correcting the family record's day-one inference: mandatory at N≥2, forbidden at N=1, each image's role stated explicitly — canvas vs material); no words about the mask; NO transparency/alpha/background-cutting vocabulary even negated ("must be fully opaque" collapses opacity to 13–51%; the working negative-prompt lever costs true_cfg>1 = doubled passes — an emergency lever, not a default); outpaint prompts describe the finished SCENE, not the operation ("continue the scene" → 0% opacity — the sticker cut-out) |
 
 - **Wired via the registry NOW:** the declarations land as data on the family
   entries (the insert-only `OptimizationEntry` pattern [remediation] A-3). The
@@ -651,6 +688,14 @@ no consumer surface maintains its own interpretation of a shared domain).
   implementation redirects to it — the declarations become part of its rich API
   surface. The workbench's consumer code does not change; that is the port's whole
   point.
+- **Fold-in note (2026-09-27, [fooocus]):** the four rows above enter as
+  declaration DATA from the measured Qwen-Image-2.1 doctrine — the schema grows
+  fields, the workbench grows no family interpretation (the §13.2 gate is
+  unchanged). Every number there is an RTX-3090/Windows/diffusers measurement
+  (**[DOC-m]** in the assessment — theirs, not ours); the 8189 testbed
+  re-measures the load-bearing ones (mask-protocol deltas, turbo grid, ladder
+  thresholds) before any graph factory hardens them — carried as an acceptance
+  criterion on the Qwen-first wave (r546bab).
 
 ---
 
@@ -1258,3 +1303,60 @@ slightly odd to read. Defect 11's pipeline-op budgets are not named in §13.5's
 text (the NOTE disposition's own choice; Phase A's budget harness will surface
 them). The sub-module naming (ruling 1) lives at the status block and §12 —
 its first body-level appearance will be the build's surfaces-registry entry.
+
+---
+
+## Doctrine fold-in — 2026-09-27 (the fooocus-qwen assessment; no ruled change)
+
+The blessed spec absorbs the measured Qwen-Image-2.1 operating doctrine from
+[fooocus-qwen-assessment.md](../research/fooocus-qwen-assessment.md)
+(**[fooocus]** — the ogoun Fooocus-style shell pass, read at main `6621cd0`;
+Flux 3un4s9h, epic 4lphxv8) as dated, targeted enrichments. **Declarations
+and recipes only: no decision (D1–D9), no port (§2.1), no ruling (§12), no
+gate (§13) is touched** — the fold-in adds data the negotiation layer
+consumes, not architecture.
+
+1. **§7's declaration schema gains four data fields:** `conditionScalePolicy`
+   (the measured reference-scale ladder — condition count ≥4 → 512 px,
+   2–3 → 768, 1 → 1024, frame at preset resolution; the community-validated
+   setting for the exact dial ComfyUI's `TextEncodeQwenImage21` `resolution`
+   knob exposes), condition-count-keyed ceiling granularity +
+   `presetLadder[]` (1024/16 · 1536/28 · 2048/40; the 10-ref card ceiling is
+   not a 24 GB operating point — 1 ref @1536 = 21 GiB), `recipePins[]`
+   (first user: the Viggle DMD turbo lane under the author's rules — 6-step
+   sigmas verbatim, the shipped scheduler, cfg 1, adapter never merged,
+   scoped to 1024² above which the distill emits an 8 px latent-token grid),
+   and `promptContract` (the official `<imageN>` N≥2 tag protocol with
+   explicit role sentences; no words about the mask; the
+   transparency-vocabulary fence — even negated mentions trigger
+   transparency; scene-description outpaint prompts).
+2. **§5.3 gains the mask-consumption guidance as a dated note:** binarised
+   mask to the model / feathered mask to the composite — the measured
+   reference implementation of the `composite-pair` maskMode — with the
+   mask-read-as-alpha hazard (the purple decoder fill), the
+   words-about-the-mask doubling (99.2% vs 46.9% stray), and
+   hole-in-alpha's interior-yes / outpaint-border-no split.
+3. **§6 stage 6 gains `clipped_share` (MIT port) as the measured seam
+   WARNING signal** alongside the survey's ranked stack — the share of
+   out-of-mask change the composite discards, surfaced with its escape
+   hatch at the moment the seam happens.
+4. **The `<imageN>` correction is carried everywhere this spec's Qwen
+   example touches prompt contracts:** §7's `promptContract` row and the
+   §5.3 note. The family record's own corrections landed as its 2026-09-27
+   dated addendum (qwen-image-2.1-assessment.md — verified present at
+   426f76c; no change needed there this pass).
+
+Provenance beyond the spec, same pass: the Qwen-first wave task (r546bab)
+now carries the doctrine as acceptance criteria (the mask-protocol split as
+the lane's default contract, the ladder as negotiation data, the
+transparency fence, the turbo recipe arm, the 8189 re-measure of the
+load-bearing numbers before graph factories harden them, and the MIT port
+list — masking math, `clipped_share`, the PNG dual-chunk params schema);
+the node-inventory decision view's Qwen-Image-2.1-viggle-turbo row records
+the FIRED revisit trigger with the operating rules attached, still
+VG-3-gated. License posture unchanged: the **Qwen Research License** gates
+weights, turbo adapter, and the official prompt files (link/derive, never
+vendor); the 277-style catalogue is GPL-3.0-repo data, not vendorable under
+the permissive-only gate. Every performance number this fold-in carries is
+**[DOC-m]** — their RTX-3090/Windows/diffusers measurements; the 8189
+testbed owns them before anything hardens into a graph factory.
