@@ -71,27 +71,31 @@ export function Radar() {
       ))}
     </div>
 
-    <button
-      type="button"
-      className={`canvas-radar ${counts.needsAttention ? 'attention' : ''}`}
-      data-canvas-radar
-      data-running={counts.running}
-      data-queued={counts.queued}
-      data-attention={counts.needsAttention}
-      onClick={zoomToAttention}
-      title="Zoom to the worst item needing attention"
-    >
-      <Activity size={13} />
-      <span className="canvas-radar-text" data-canvas-radar-text>
-        {counts.running === 0 && counts.queued === 0 && counts.needsAttention === 0
-          ? 'calm'
-          : [
+    {/* (W17, perfect-state sweep 2026-09-27) The attention radar appears
+        when there is something to report — an at-rest "calm" button that
+        toasts "Nothing needs attention" when clicked was a puzzle, not
+        information. */}
+    {(counts.running > 0 || counts.queued > 0 || counts.needsAttention > 0) && (
+      <button
+        type="button"
+        className={`canvas-radar ${counts.needsAttention ? 'attention' : ''}`}
+        data-canvas-radar
+        data-running={counts.running}
+        data-queued={counts.queued}
+        data-attention={counts.needsAttention}
+        onClick={zoomToAttention}
+        title="Zoom to the worst item needing attention"
+      >
+        <Activity size={13} />
+        <span className="canvas-radar-text" data-canvas-radar-text>
+          {[
             counts.running ? `${counts.running} running` : '',
             counts.queued ? `${counts.queued} queued` : '',
             counts.needsAttention ? `${counts.needsAttention} needs attention` : '',
           ].filter(Boolean).join(' · ')}
-      </span>
-    </button>
+        </span>
+      </button>
+    )}
 
     <button
       type="button"

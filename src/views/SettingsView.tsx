@@ -7,7 +7,7 @@ import { Activity, AlertCircle, Check, ChevronDown, Cpu, Eye, Folder, FolderOpen
 import type { AppSettings, ComfyStatus, LlmModelsResult, ManagerAvailability, ModelFile, ModelKind, NodePackActionResult, NodePackStatus, OllamaModel, UpscaleMode } from '../types'
 import { choices, type ObjectInfo } from '../lib/comfyInfo'
 import { subscribe } from '../lib/useRealtime'
-import { inferredOverrideSlotFile, MODEL_FAMILIES, overridePickOutcome, SLOT_LABELS, type ModelOverrideSlotName } from '../lib/modelOverrides'
+import { inferredOverrideSlotFile, modelClassHint, MODEL_FAMILIES, overridePickOutcome, SLOT_LABELS, type ModelOverrideSlotName } from '../lib/modelOverrides'
 import { detectKrea2EditFamilies, detectOptimizations, KREA2_RECIPE_PINS } from '../lib/graph'
 import type { h3StackReport } from '../lib/h3Stack'
 import { SelectField, NumberField } from '../components/form'
@@ -490,7 +490,13 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
                 <div className="select-wrap">
                   <select aria-label={`${family.label} — ${SLOT_LABELS[slot]}`} value={value} onChange={(event) => setModelOverride(family.id, slot, event.target.value)}>
                     <option value="">auto (inferred){autoFile ? ` — ${autoFile}` : ' — nothing detected'}</option>
-                    {candidates.map((model) => <option key={model.name} value={model.name}>{model.name}</option>)}
+                    {/* (M3) Every option carries its CLASS at the choice point —
+                        the same heuristics the validate-time guards use, shown
+                        before the pick instead of refusing after it. */}
+                    {candidates.map((model) => {
+                      const hint = modelClassHint(kind, model.name)
+                      return <option key={model.name} value={model.name}>{hint ? `${model.name} · ${hint}` : model.name}</option>
+                    })}
                   </select>
                   <ChevronDown size={15} />
                 </div>

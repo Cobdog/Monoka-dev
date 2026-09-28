@@ -26,7 +26,7 @@ import { SmartPromptEditor, type SmartPromptEditorHandle } from '../components/S
 import { StructuredPromptEditor } from '../components/StructuredPromptEditor'
 import { PromptLibraryBrowser } from '../components/PromptLibraryBrowser'
 import { detectOptimizations, engineFamilyForChain, turboFetchPlan, vdnAvailability } from '../lib/graph'
-import { inferredOverrideSlotFile, migrateLegacyModelOverrideSlots, modelFamilyInfo, overrideLayerCounts, overrideLayerSummary, overridePickOutcome, SLOT_LABELS, type ModelFamilyId, type ModelOverrideSlotName } from '../lib/modelOverrides'
+import { inferredOverrideSlotFile, migrateLegacyModelOverrideSlots, modelClassHint, modelFamilyInfo, overrideLayerCounts, overrideLayerSummary, overridePickOutcome, SLOT_LABELS, type ModelFamilyId, type ModelOverrideSlotName } from '../lib/modelOverrides'
 import { guideFrameWarning } from '../lib/workflow'
 import { ASPECT_RATIOS, optimalResolutionFor, parseResolution, ratioKeyOf, resolutionsForRatio, snapResolutionDim, tieredResolutionGroups } from '../lib/aspectResolutions'
 import type { ImageMachinery } from '../lib/aspectResolutions'
@@ -37,6 +37,7 @@ import type { ModelOverrideSlots } from '../types'
 import { useSessionStore } from '../state/sessionStore'
 import { STATUS_LABEL } from './derive'
 import { effectiveMode, modeLabelFor, readChainSettings, type CanvasChainSettings } from './generation'
+import { AUDIO_LANE_PAUSED, AUDIO_LANE_PAUSED_REASON } from './options'
 import {
   compileLoraTimeline, DEFAULT_TRANSITION_WINDOW, LORA_COMBINED_COLLAPSE_RISK, LORA_COMBINED_HEALTHY_MAX, LORA_SLOTS,
   newLoraRange, newLoraTimelineDoc, snapRangeBoundary,
@@ -215,7 +216,7 @@ function LoraTimelineSection(props: {
   const loraOptions = [''].concat(loraNames)
 
   return <section className="canvas-properties-section canvas-lora-timeline" data-canvas-section="lora-timeline">
-    <label>LoRA timeline <span className="canvas-properties-hint">paint ranges · 17n+5 grid</span></label>
+    <label>LoRA timeline <span className="canvas-properties-hint">paint ranges · engine frame grid (5/22/39…)</span></label>
 
     {/* The rail: painted ranges above, the compiled segment layout + transition
         windows below — the projection IS the review gate. */}
@@ -356,7 +357,7 @@ function LoraTimelineSection(props: {
       ? <p className="canvas-properties-note" data-canvas-lora-compile>{compile.segments.length} segment{compile.segments.length === 1 ? '' : 's'} · {compile.totalSeconds.toFixed(2)}s planned (grid-conformed){compile.warnings.length ? ` · ${compile.warnings.length} note${compile.warnings.length === 1 ? '' : 's'}` : ''}</p>
       : doc
         ? <ul className="canvas-properties-warning" data-canvas-lora-errors role="alert">{compile.reasons.map((reason, index) => <li key={index} data-canvas-lora-error={index}>{reason}</li>)}</ul>
-        : <p className="canvas-properties-note">Paint LoRA ranges over this clip — the compiler generates one chain per range, grid-conformed (17n+5) and joined by measured transitions. Nothing submits until you generate.</p>}
+        : <p className="canvas-properties-note">Paint LoRA ranges over this clip — the compiler generates one chain per range, grid-conformed (the engine’s 5/22/39… frame ladder) and joined by measured transitions. Nothing submits until you generate.</p>}
     {compile.ok && compile.warnings.length > 0 && <ul className="canvas-lora-warnings" data-canvas-lora-warnings>{compile.warnings.map((warning, index) => <li key={index} data-canvas-lora-warning={index}>{warning}</li>)}</ul>}
     {failure.length > 0 && <ul className="canvas-properties-warning" role="alert">{failure.map((reason, index) => <li key={index}>{reason}</li>)}</ul>}
     <div className="canvas-lora-actions">
@@ -817,9 +818,13 @@ export function PropertiesPanel() {
         )}
         {engineFamily.panel.audioDock && draft.audio.engine === 'music3' && (
           <div className="canvas-properties-row">
-            <button type="button" className="canvas-chip" data-canvas-open-audio-dock onClick={() => useCanvasStore.getState().setAudioDock({ engine: 'music3', chainId: chain.id })}>
+            {/* (2026-09-28 audio-lane pause) The dock link gates with the
+                pause reason — an existing audio chain keeps its identity and
+                settings; only new authoring is paused. */}
+            <button type="button" className="canvas-chip" data-canvas-open-audio-dock disabled={AUDIO_LANE_PAUSED} title={AUDIO_LANE_PAUSED ? AUDIO_LANE_PAUSED_REASON : undefined} onClick={() => useCanvasStore.getState().setAudioDock({ engine: 'music3', chainId: chain.id })}>
               edit in the audio dock…
             </button>
+            {AUDIO_LANE_PAUSED && <span className="canvas-properties-hint" data-canvas-audio-paused-hint>{AUDIO_LANE_PAUSED_REASON}</span>}
           </div>
         )}
         {engineFamily.panel.tier && (
@@ -834,9 +839,13 @@ export function PropertiesPanel() {
                   aria-checked={draft.turbo === tier.value}
                   className={`canvas-chip ${draft.turbo === tier.value ? 'active' : ''}`}
                   data-canvas-tier={tier.value}
+                  /* (V1, perfect-state sweep 2026-09-27) The note rides the
+                     tooltip: on the chip it made the third tier wrap alone
+                     under the row and read as a stray duplicate. */
+                  title={tier.note}
                   onClick={() => patch({ turbo: tier.value, ...(tier.value !== 'off' ? { vdn: 'off' as const } : {}) })}
                 >
-                  {tier.label} <small>{tier.note}</small>
+                  {tier.label}
                 </button>
               ))}
             </div>
@@ -936,7 +945,13 @@ export function PropertiesPanel() {
               <label htmlFor={`canvas-model-${slot}`}>{SLOT_LABELS[slot]}</label>
               <select id={`canvas-model-${slot}`} data-canvas-model-override-select={slot} value={value} onChange={(event) => setChainModelOverride(slot, event.target.value)}>
                 <option value="">{globalPick ? `auto — global: ${globalPick}` : autoFile ? `auto — ${autoFile}` : 'auto — nothing detected'}</option>
-                {candidates.map((model) => <option key={model.name} value={model.name}>{model.name}</option>)}
+                {/* (M3, perfect-state sweep 2026-09-27) Options carry their
+                    CLASS at the choice point — same heuristics the
+                    validate-time guards use, before the pick. */}
+                {candidates.map((model) => {
+                  const hint = modelClassHint(kind, model.name)
+                  return <option key={model.name} value={model.name}>{hint ? `${model.name} · ${hint}` : model.name}</option>
+                })}
               </select>
               {outcome?.state === 'refused' && <p className="canvas-properties-warning" data-canvas-model-override-problem role="alert">Refused {layer === 'global' ? '(the global Settings pick — clear it in Settings → Model overrides)' : '(this chain\'s pick — clear it to render on auto)'} — {outcome.reason}</p>}
               {outcome?.state === 'degraded' && <p className="canvas-properties-warning" data-canvas-model-override-problem role="status">{layer === 'global' ? 'The global Settings pick ' : 'This chain\'s pick '}{outcome.warning}</p>}
@@ -991,7 +1006,7 @@ export function PropertiesPanel() {
         {engineFamily.panel.seed && (
           <div className="canvas-properties-row">
             <label htmlFor="canvas-seed">seed</label>
-            <input id="canvas-seed" data-canvas-seed type="number" min={0} value={draft.seed} onChange={(event) => patch({ seed: Math.max(0, Math.floor(Number(event.target.value) || 0)) })} />
+            <input id="canvas-seed" data-canvas-seed type="number" min={0} max={999_999_999} value={draft.seed} aria-label="Seed" title="Seed (0 to 999,999,999 — the dice rolls this range)" onChange={(event) => patch({ seed: Math.max(0, Math.floor(Number(event.target.value) || 0)) })} />
             <button type="button" className="canvas-chip" aria-label="Randomize seed" onClick={() => patch({ seed: Math.floor(Math.random() * 1_000_000_000) })}><Dices size={12} /></button>
           </div>
         )}
