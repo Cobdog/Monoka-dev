@@ -197,7 +197,8 @@ textarea::placeholder, input::placeholder { color: #58615c; }
 .smart-insert-empty { padding:var(--space-5); color: var(--muted); font-size:var(--text-sm); text-align: center; }
 .smart-insert-menu > footer { justify-content: space-between; border-top: 1px solid var(--line); }
 .select-wrap { position: relative; }
-.select-wrap select { appearance: none; height: 38px; padding: 0 34px 0 10px; }
+.select-wrap select { appearance: none; height: 38px; padding: 0 34px 0 10px; text-overflow: ellipsis; }
+select { text-overflow: ellipsis; }
 .select-wrap svg { position: absolute; top: 50%; right: 10px; pointer-events: none; transform: translateY(-50%); color: var(--muted); }
 
 .frame-grid { display: grid; grid-template-columns: 1fr 1fr; gap:var(--space-3); margin-top: 15px; }
@@ -296,7 +297,8 @@ textarea::placeholder, input::placeholder { color: #58615c; }
 .settings-subsection > summary small { color: var(--muted-2); font-size: var(--text-sm); }
 .settings-section { margin-bottom: 18px; overflow: hidden; }
 .settings-heading { display: flex; align-items: center; justify-content: space-between; gap:var(--space-5); min-height: 68px; padding: 14px 17px; border-bottom: 1px solid var(--line); }
-.settings-heading > div { display: flex; align-items: center; gap: 11px; }
+.settings-heading > div { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.settings-heading .secondary-button { white-space: nowrap; flex: 0 0 auto; }
 .settings-heading > div > svg { color: var(--accent); }
 .settings-heading span { display: grid; }
 .settings-heading strong { font-size:var(--text-lg); }
@@ -340,7 +342,7 @@ textarea::placeholder, input::placeholder { color: #58615c; }
 .preset-row button:hover { border-color: var(--line-strong); background: var(--surface-3); }
 .preset-row button:focus-visible { outline: var(--focus-ring-width) solid var(--focus-ring-color); outline-offset: 2px; }
 .preset-row strong { font-size:var(--text-md); }
-.preset-row small { overflow: hidden; color: var(--muted-2); font-size:var(--text-base); text-overflow: ellipsis; white-space: nowrap; }
+.preset-row small { overflow: hidden; color: var(--muted-2); font-size:var(--text-base); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .generation-defaults-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:var(--space-3); padding: 14px 17px; }
 .settings-check { display: flex; align-items: center; gap: 9px; min-height: 38px; align-self: end; color: var(--text); cursor: pointer; }
 .settings-check input { width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--accent); }

@@ -57,7 +57,9 @@ test('boots to the canvas app by default — no param, no old shell (§8 Phase 5
   await page.goto('/')
   await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
   await expect(page.locator('[data-canvas-launcher]')).toBeVisible()
-  await expect(page.locator('[data-canvas-radar]')).toBeVisible()
+  // (W17) The attention radar is hidden at rest — it appears when work or
+  // attention exists, never as a "calm" button.
+  await expect(page.locator('[data-canvas-radar]')).toBeHidden()
 
   // The old shell is DEAD: no app shell, no sidebar nav, no retired markers.
   await expect(page.locator('.app-shell')).toHaveCount(0)
@@ -338,7 +340,7 @@ test('a crashing docked surface is contained by its error boundary without leaki
   // The per-surface boundary shows the sanitized fallback — the canvas
   // survives (radar + root stay alive).
   await expect(page.getByText('This view hit an error')).toBeVisible()
-  await expect(page.locator('[data-canvas-radar]')).toBeVisible()
+  await expect(page.locator('[data-canvas-radar]')).toBeHidden()
   await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
   // The rendered summary is sanitized: sentinel words never reach the DOM.
   const summary = page.locator('.error-boundary-summary')
