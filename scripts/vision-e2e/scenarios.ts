@@ -761,10 +761,11 @@ export const SCENARIOS: VisionScenario[] = [
       if (await section.locator('[data-canvas-lora-seg]').count() !== 2) throw new Error('lora-timeline capture: expected 2 compiled segments in the DOM')
       await expect(section.locator('[data-canvas-lora-compile]')).toContainText('2 segments')
       // The panel scrolls the section into a comfortable view for the shot —
-      // anchored at the SECTION HEADER (third round 2026-09-28): the rail
+      // anchored at the SECTION ROOT (fourth round 2026-09-28): the rail
       // anchor left the apply pill below the fold, the pill anchor scrolled
-      // the rail graphic out; the header frames the section whole.
-      await section.locator('summary').first().scrollIntoViewIfNeeded()
+      // the rail graphic out, and the summary locator never settled (the
+      // section root is the stable anchor; the panel keeps it fully in view).
+      await section.evaluate((element) => element.scrollIntoView({ block: 'start' }))
       await page.waitForTimeout(400)
     },
     after: async (page) => {
@@ -1868,7 +1869,7 @@ export const SCENARIOS: VisionScenario[] = [
         label: 'k=1 (unity, near band) — full chrome, the reference crispness',
         drive: driveCameraToK(1),
         rubric: [
-          'Context: same studio, the centered tile at natural size (~320px card); zoom readout reads "100%". The near band shows FULL chrome: poster, title, uppercase meta line, "no ops" chip, a dashed "latents" strip, take chips, and the head/tail endpoint dots at the tile flanks.',
+          'Context: same studio, the centered tile at natural size (~320px card); zoom readout reads "100%". (Amended 2026-09-28: unity sits at the band boundary — the tile shows the MID-BAND inventory here: poster, title, uppercase meta line, "no ops" chip, and the head/tail endpoint dots, all crisp; the dashed "latents" strip and take chips engage ABOVE unity (k>=2, proven by the companion checkpoints) — their absence at exactly 100% is the zoom-band design, never missing chrome.)',
           'Every text row and chip renders crisp — sharp glyph edges, crisp 1px borders — matching the sharpness of the titlebar text above (which never zooms).',
           'Blessings: dense small muted text is the design language; the poster is shown near its native resolution so it should also read crisp here.',
           'Defects to flag: any text row smeared/ghosted, chip borders doubled or fuzzy, readout not reading 100%.',
