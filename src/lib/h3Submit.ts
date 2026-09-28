@@ -19,7 +19,7 @@ import { vdnAvailability } from './graph'
 import { teDimClassRefusal } from './modelSelection'
 import { prepareImage, prepareReferenceImage } from './imageCrop'
 import { buildRenderManifest } from './manifest'
-import { preflightOrFail } from './preflight'
+import { missingCoreNodeClasses, preflightOrFail } from './preflight'
 import { dbg } from './dbg'
 import type { OverrideResolution } from './modelOverrides'
 import type { ObjectInfo } from './comfyInfo'
@@ -183,22 +183,17 @@ export function validateH3Render(request: H3RenderRequest, facts: Pick<H3SubmitF
     const origin = overrideRefusal.layer === 'chain' ? "this chain's pick — clear it in the properties panel" : 'the global Settings pick — clear it in Settings → Model overrides'
     return `Model override refused — ${overrideRefusal.slot} (${origin}): ${overrideRefusal.reason}`
   }
-  if (!facts.modelReady) return 'One or more required MiniMax H3 model components are missing.'
-  // (eyzcev5) The TE dimension-class rung: the crash class the readiness
-  // chip CANNOT see — a wrong-family TE resolves NON-EMPTY (the loosened
-  // 'qwen3vl' anchor takes best-available), so modelReady stays true and
-  // the doomed graph would submit. The family-registry expectation refuses
-  // it here with the named reason (the maintainer's 2026-09-22 session:
-  // mat1 171x2560 × mat2 5120x5376 at preprocess_text_embeds, 27 s into a
-  // real render). Correct picks pass untouched — a guard, not a reroute.
-  const teClassRefusal = facts.selection?.textEncoder ? teDimClassRefusal('minimax', facts.selection.textEncoder) : null
-  if (teClassRefusal) return `Model resolution refused — textEncoder: ${teClassRefusal}`
-  // The VDN rungs (task 9up52mj): the XOR refusal first (both accelerations
-  // selected is a contradiction, never silently resolved), then the honest
-  // environment absences — the pack, then the rung's stage (the engine's own
-  // vdn_checkpoint enumeration; the fetch rows are named so the refusal is
-  // a path, not a dead end). No snapshot leaves these rungs to the resolver
-  // (the arm stays inert there and the connection rung owns the cause).
+  // The VDN rungs (task 9up52mj) run BEFORE the stack-membership rung
+  // (perfect-state sweep 2026-09-27, W3): modelReady folds the VDN stage in
+  // through h3StackReady, so a missing STAGE used to trip the generic
+  // membership line below first and this rung's named, fetchable guidance —
+  // the pack row, the Library fetch row — never reached the user. The XOR
+  // refusal leads (both accelerations selected is a contradiction, never
+  // silently resolved), then the honest environment absences — the pack,
+  // then the rung's stage (the engine's own vdn_checkpoint enumeration; the
+  // fetch rows are named so the refusal is a path, not a dead end). No
+  // snapshot leaves these rungs to the resolver (the arm stays inert there
+  // and the connection rung owns the cause).
   if (request.vdn && request.vdn !== 'off') {
     if (request.turbo !== 'off') {
       return 'VDN and the turbo tier are both selected — they are alternate acceleration patches on the same model slot. The VDN stage carries its own distilled adapter: turn the speed tier off, or set VDN off.'
@@ -216,6 +211,36 @@ export function validateH3Render(request: H3RenderRequest, facts: Pick<H3SubmitF
       }
     }
   }
+  if (!facts.modelReady) {
+    // (W3, same sweep) The membership refusal COMPOSES from the resolved
+    // rows — the same membership h3StackReady gates on, narrated per row —
+    // instead of the old blanket "components are missing" that named
+    // nothing. Weights rows name what to make visible; the engine-side
+    // check names the node classes weights cannot fix.
+    const missing: string[] = []
+    const lane = request.mode === 'reference' ? facts.selection?.ref2va : facts.selection?.fl2va
+    if (!lane) missing.push(request.mode === 'reference' ? 'the Ref2VA checkpoint (the reference lane)' : 'the FL2VA checkpoint (a diffusion model whose name contains "fl2va")')
+    if (!facts.selection?.textEncoder) missing.push('the 32B-class text encoder (qwen3vl_32b…)')
+    if (!facts.selection?.videoVae) missing.push('the video VAE (a VAE whose name contains "video_vae")')
+    if (!facts.selection?.audioVae) missing.push('the audio VAE (a VAE whose name contains "audio_vae")')
+    if (request.turbo !== 'off' && !(request.mode === 'reference' ? facts.selection?.ref2vLora : facts.selection?.fl2vLora)) missing.push('the turbo LoRA for the selected speed tier')
+    const missingNodes = missingCoreNodeClasses(facts.info, 'h3-video')
+    if (missingNodes.length) missing.push(`the engine's H3 node classes (${missingNodes.map((entry) => entry.className).join(', ')}) — weights cannot fix this; update ComfyUI or install the missing packs`)
+    if (missing.length) {
+      const list = missing.length === 1 ? missing[0]! : `${missing.slice(0, -1).join(', ')}, and ${missing[missing.length - 1]!}`
+      return `The H3 stack is incomplete — the render is missing ${list}. Fetch them in Settings → Fetchable items (or make them visible to the engine), then rescan.`
+    }
+    return 'One or more required MiniMax H3 model components are missing.'
+  }
+  // (eyzcev5) The TE dimension-class rung: the crash class the readiness
+  // chip CANNOT see — a wrong-family TE resolves NON-EMPTY (the loosened
+  // 'qwen3vl' anchor takes best-available), so modelReady stays true and
+  // the doomed graph would submit. The family-registry expectation refuses
+  // it here with the named reason (the maintainer's 2026-09-22 session:
+  // mat1 171x2560 × mat2 5120x5376 at preprocess_text_embeds, 27 s into a
+  // real render). Correct picks pass untouched — a guard, not a reroute.
+  const teClassRefusal = facts.selection?.textEncoder ? teDimClassRefusal('minimax', facts.selection.textEncoder) : null
+  if (teClassRefusal) return `Model resolution refused — textEncoder: ${teClassRefusal}`
   if (request.livePreview.enabled && request.livePreview.mode === 'h3-override' && !facts.h3PreviewOverrideNode) {
     return 'MiniMax H3 animated preview is selected, but its Preview Override node was not detected. Install or enable the custom node, restart ComfyUI, then click the Local engine status to refresh.'
   }

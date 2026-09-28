@@ -6,7 +6,7 @@
  * workspace keeps its facades over this core.
  */
 import { createId } from './createId'
-import { buildMusic3Workflow, type Music3GenerationOptions, type Music3ModelSelection } from './music3Workflow'
+import { buildMusic3Workflow, MUSIC3_DAV_FILENAME, type Music3GenerationOptions, type Music3ModelSelection } from './music3Workflow'
 import { preflightOrFail } from './preflight'
 import { dbg } from './dbg'
 import type { ObjectInfo } from './comfyInfo'
@@ -29,13 +29,24 @@ export type Music3SubmitIo = {
   onJobCreated?(jobId: string): void
 }
 
-/** The availability ladder (same order + messages as the pre-extraction
- *  hook): connection → caption → models. Node availability is surfaced by the
- *  callers' pipeline gating, not the submit ladder. Pure. */
+/** The availability ladder (same order as the pre-extraction hook):
+ *  connection → caption → models. Node availability is surfaced by the
+ *  callers' pipeline gating, not the submit ladder. The models rung
+ *  composes its refusal from the RESOLVED ROWS (perfect-state sweep
+ *  2026-09-27, W2): the engine that serves the diffusion model and the text
+ *  encoder but not the DAV is told the DAV alone is missing — never the old
+ *  blanket three-file claim that over-reported the inventory. Pure. */
 export function validateMusic3(options: Music3GenerationOptions, facts: Pick<Music3SubmitFacts, 'connected' | 'selection'>): string | null {
   if (!facts.connected) return 'Start ComfyUI and verify the server connection in Settings.'
   if (!options.caption.trim()) return 'Write at least one caption section before generating.'
-  if (!facts.selection.diffusion || !facts.selection.textEncoder || !facts.selection.vae) return 'The Music 3 diffusion model, text encoder, and DAV VAE are required. Install them, then rescan in Settings.'
+  const missing: string[] = []
+  if (!facts.selection.diffusion) missing.push('the Music 3 diffusion model (a checkpoint whose name contains "music3")')
+  if (!facts.selection.textEncoder) missing.push('the Music 3 text encoder (a music3 text-encoder file)')
+  if (!facts.selection.vae) missing.push(`the Music 3 DAV VAE (${MUSIC3_DAV_FILENAME})`)
+  if (missing.length) {
+    const list = missing.length === 1 ? missing[0]! : `${missing.slice(0, -1).join(', ')}, and ${missing[missing.length - 1]!}`
+    return `Music 3 cannot render yet — the engine's registry is missing ${list}. Install ${missing.length === 1 ? 'it' : 'them'}, then rescan in Settings.`
+  }
   return null
 }
 
