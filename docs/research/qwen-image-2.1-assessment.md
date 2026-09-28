@@ -279,3 +279,27 @@ Recorded by the assumption register (`docs/audit/assumption-register-2026-09-21.
 - **§3's "requires master/nightly or the next tagged release" is now resolved: ComfyUI v0.37.0 (tagged 2026-09-21) carries the `QwenImage21` classes** (6 references in that tag's `comfy_extras/nodes_qwen.py`; zero at v0.35.x and v0.36.0 — the day-one finding held). Operationally: an instance at **≥ v0.37.0** runs this family natively; master/nightly is no longer required.
 - License re-verified unchanged via HF API 2026-09-21: `Qwen/Qwen-Image-2.1` = `license: other` (the qwen-research full text read at capture), ungated; `Comfy-Org/Qwen-Image-2.1` still lists the bf16/int8-convrot DiT, the qwen3vl_8b int8-convrot + W4A8 TEs, and the bf16 VAE. Nothing else in this document changed.
 - Companion fact (same pass): **YuE2's native nodes first ship in v0.36.0, not the v0.35.0 docs.comfy.org states** — see the devdocs capture's 2026-09-21 addendum. One instance bump to v0.37.0+ unblocks BOTH families; version gates are sourced at tag level from here on, never from docs-site strings.
+
+## ADDENDUM (2026-09-27) — two corrections from the Fooocus-style shell pass
+
+Recorded during the [fooocus-qwen-assessment.md](fooocus-qwen-assessment.md)
+pass (ogoun/fooocus-qwen-image-2.1, a six-day-old MIT diffusers shell built
+on this exact model); evidence lives there, tagged and sourced.
+
+1. **§4's "no user-facing placeholder syntax" is wrong in mechanism
+   [CORRECT].** The `<imageN>` tags ARE the official multi-image protocol:
+   the official edit/PE system prompt mandates them for N≥2 ("This tagging
+   format is mandatory and non-negotiable"), forbids them at N=1, requires
+   explicit per-image role statements (canvas vs material), and the official
+   README's own `ratio_follow: "<image1>"` output field uses the same
+   syntax. What was true on day one: the ComfyUI node exposes no tag UX —
+   the workbench must add it app-side. Ref-role steering is tags + role
+   sentences, not prose guesswork.
+2. **§7's revisit trigger "a Lightning/turbo distill" has fired
+   [CORRECT].** `Viggle/Qwen-Image-2.1-viggle-turbo` exists: a DMD-distilled
+   LoRA adapter (r256, ~1.3 GB, Qwen Research license), 6 steps / no CFG,
+   t2i + instruction edit with 1–3 references; clean only near its 1024²
+   training area (8 px-period latent grid above it, measured by the shell
+   and confirmed in the author's own reference pipeline). Refine-lane
+   viability note in §6 is now conditionally resolved — a fast Qwen lane
+   exists; its operating rules are recorded in the fooocus assessment §2.
