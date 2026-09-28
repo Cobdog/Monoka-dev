@@ -31,7 +31,14 @@ export type WorkbenchLandingInput = {
   ensureOutput: (chainId: string) => Promise<string>
 }
 
-export type WorkbenchLandingResult = { landed: boolean; error?: string }
+export type WorkbenchLandingResult = {
+  landed: boolean
+  error?: string
+  /** (W7, perfect-state sweep 2026-09-27) What landed, so the landing toast
+   *  speaks the LANE's language: a single-frame T=1/refine/R2I take never
+   *  hears packet copy, and a pool of one is never called a pool. */
+  landing?: { frames: number; profile: string; op?: string }
+}
 
 async function decodeImage(url: string): Promise<FramePixels | null> {
   try {
@@ -108,6 +115,9 @@ export async function landWorkbenchTake(input: WorkbenchLandingInput): Promise<W
   // First-party scoring (deterministic): decode the frames, prefer the
   // directed tail when the profile says so, subject-reference affinity when
   // the session's refs are servable. Scoring failure never blocks landing.
+  // (W7, perfect-state sweep 2026-09-27) A pool of ONE has nothing to pick —
+  // single-frame lanes (T=1 fast, refine, R2I stills) land unscored instead
+  // of awarding themselves "sharpest of the pool".
   let verdict: ScorerVerdict | null = null
   try {
     const pixels: FramePixels[] = []
@@ -117,7 +127,7 @@ export async function landWorkbenchTake(input: WorkbenchLandingInput): Promise<W
       if (!decoded) throw new Error(`frame ${pixels.length + 1} did not decode`)
       pixels.push(decoded)
     }
-    if (pixels.length) {
+    if (pixels.length > 1) {
       const session = readSessionSettings(chain.settings)
       const referenceUrls: string[] = []
       for (const slot of session.refs) {
@@ -169,5 +179,12 @@ export async function landWorkbenchTake(input: WorkbenchLandingInput): Promise<W
     artifacts: artifactPaths,
     metrics,
   })
-  return { landed: true }
+  return {
+    landed: true,
+    landing: {
+      frames: artifactPaths.length,
+      profile: typeof provenance.profile === 'string' ? provenance.profile : 'packet',
+      ...(typeof provenance.op === 'string' ? { op: provenance.op } : {}),
+    },
+  }
 }

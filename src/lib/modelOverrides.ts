@@ -68,7 +68,7 @@
 import type { ModelFile, ModelOverrideSlots } from '../types'
 import { dbg } from './dbg'
 import { inferH3ImgSelection, T1_IMAGE_VAE_PATTERN } from './graph/h3image'
-import { inferSelections, teDimClassRefusal } from './modelSelection'
+import { inferSelections, teDimClassOf, teDimClassRefusal } from './modelSelection'
 import { inferMusic3Selection, MUSIC3_DAV_FILENAME } from './music3Workflow'
 
 export type ModelOverrideSlotName = 'checkpoint' | 'fl2va' | 'ref2va' | 'merged' | 'textEncoder' | 'vae' | 'videoVae' | 'audioVae' | 'imageVae'
@@ -393,8 +393,30 @@ type SlotRefusal = { check: 'slot' | 'kind' | 'te-class' | 'vae'; reason: string
 const VIDEO_VAE_MARKER = /video/i
 const AUDIO_VAE_MARKER = /audio|dav/i
 
-function slotRefusal(family: ModelFamilyInfo, slot: ModelOverrideSlotName, file: ModelFile): SlotRefusal | null {
-  if (!family.slots.includes(slot)) {
+/** (M3, perfect-state sweep 2026-09-27) The CHOICE-POINT class signal: the
+ *  validate-time guards refuse a wrong-class pick after the fact — this
+ *  labels every option AT the pick, reusing the same name heuristics the
+ *  guards use (the VAE decoder markers + the TE dimension-class classifier),
+ *  so the 4B TE in an H3 slot and the image VAE in a video slot carry their
+ *  class BEFORE they are picked. Empty string = nothing to say. */
+export function modelClassHint(kind: ModelFile['kind'], name: string): string {
+  if (kind === 'vae') {
+    if (T1_IMAGE_VAE_PATTERN.test(name)) return 'T=1 image decoder'
+    if (AUDIO_VAE_MARKER.test(name)) return 'audio decoder'
+    if (VIDEO_VAE_MARKER.test(name)) return 'video decoder'
+    return 'VAE (unclassified)'
+  }
+  if (kind === 'text_encoders') {
+    const dimClass = teDimClassOf(name)
+    if (dimClass === '32b') return '32B-class · H3'
+    if (dimClass === '8b') return '8B-class companion'
+    if (dimClass === '4b') return '4B-class companion'
+    if (/music3/i.test(name)) return 'Music 3 encoder'
+  }
+  return ''
+}
+
+function slotRefusal(family: ModelFamilyInfo, slot: ModelOverrideSlotName, file: ModelFile): SlotRefusal | null {  if (!family.slots.includes(slot)) {
     return { check: 'slot', reason: `the ${family.label} family does not take a ${SLOT_LABELS[slot].toLowerCase()} pick — it resolves engine-side or stays inferred.` }
   }
   const expectedKind = family.slotKinds[slot]

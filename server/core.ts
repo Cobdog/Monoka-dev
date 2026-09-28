@@ -3405,7 +3405,13 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
         if (url.pathname === '/api/lan/outputs/resolve' && request.method === 'GET') {
           const file = { filename: url.searchParams.get('filename') ?? '', subfolder: url.searchParams.get('subfolder') || undefined, type: url.searchParams.get('type') || undefined }
           const path = resolveOutputFile(settings.outputDirectory, file)
-          if (!path) return sendJson(response, 404, { error: 'The output file was not found in the output directory.' })
+          // (W15 / F-GATE-2, perfect-state sweep 2026-09-27) "No local copy"
+          // is the probe's NORMAL answer on an external engine — answering it
+          // 404 logged a console error per render on the maintainer's exact
+          // setup, reading as breakage. The miss is data, not an error:
+          // 200 + path null (the poll kernel completes from the remote
+          // descriptor either way).
+          if (!path) return sendJson(response, 200, { path: null, url: null })
           return sendJson(response, 200, { path, url: `/api/lan/media?source=output&path=${encodeURIComponent(path)}` })
         }
         if (url.pathname === '/api/lan/outputs/save-image' && request.method === 'POST') {

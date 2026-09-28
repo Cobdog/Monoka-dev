@@ -108,7 +108,7 @@ All 🆕 routes now exist in the LAN server (runtime-verified compile + contract
 | `/api/lan/comfy-status?url=` | GET | SSRF-guarded (loopback/private-LAN only; defaults to configured URL) → `{ connected, latencyMs, stats?, error? }` |
 | `/api/lan/ollama/structured` | POST | `{ prompt ≤50k, schema }` → JSON-schema chat → `{ result }` or 502 with parse error |
 | `/api/lan/telemetry` | GET | `GpuTelemetry` (nvidia-smi, 1.8 s timeout) |
-| `/api/lan/outputs/resolve` | GET | `filename`/`subfolder`/`type` query → `{ path, url }` or 404; containment-checked |
+| `/api/lan/outputs/resolve` | GET | `filename`/`subfolder`/`type` query → `{ path, url }` or `{ path: null, url: null }` (no local copy is data, not an error — 2026-09-27); containment-checked |
 | `/api/lan/outputs/save-image` | POST | `{ filename, subfolder?, type? }` → saves into `outputDirectory/MiniMax Character References/` → `{ path, name }` |
 | `/api/lan/video/frame` | POST | `{ source, position }` (`'last'` or seconds ≥0) → `{ path, name, url }` |
 | `/api/lan/video/frames` | POST | `{ source, positions[1..100] }` → `{ frames: [{path,name,url}] }` |

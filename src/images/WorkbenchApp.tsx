@@ -30,6 +30,7 @@ import { useCanvasStore, engineBridge } from '../canvas/store'
 import { documentsApi } from '../canvas/api'
 import { ASPECT_RATIOS, ratioKeyOf, snapResolutionDim, tieredResolutionGroups } from '../lib/aspectResolutions'
 import type { ImageMachinery } from '../lib/aspectResolutions'
+import { chainTitle } from '../canvas/derive'
 import type { DocumentChain, DocumentTake } from '../canvas/derive'
 import type { MediaFile } from '../types'
 import { submitWorkbenchGeneration, workbenchAvailability, t1MachineryOf } from './submit'
@@ -103,6 +104,21 @@ const MODE_GROUPS: Array<{ mode: string; label: string; families: string[] }> = 
   { mode: 'exit', label: 'Exit', families: ['h3img.exit.anchor'] },
 ]
 
+/** (W5) The sub-lane row's own vocabulary — short, unambiguous lane names.
+ *  The video-settle lane says "video" (it lives under Generate, but its old
+ *  "Directed edit" label made the word "Edit" span a video lane AND the
+ *  still Edit lanes — the walk's own tooling twice landed on the wrong
+ *  one); the still lanes keep their "Edit — …" shape. Tooltips carry the
+ *  full family labels + descriptions. */
+const MODE_LANE_LABELS: Record<string, string> = {
+  'h3img.generate.packet': 'Frame packet',
+  'h3img.generate.packet.directed': 'Directed video edit (39-frame settle)',
+  'h3img.generate.t1': 'T=1 Fast',
+  'h3img.generate.sharp': 'Fast-sharp slice',
+  'h3img.r2i.refs': 'Reference → image (single frame)',
+  'h3img.compose.refs': 'Compose (9 references)',
+}
+
 /** The T=1 machinery choices (the 1F full image stack, 2026-09-26): the
  *  honest dev/experimental affordance over the settings flag. Defaults and
  *  wordings are DOC-VERIFIED against the pack's own README + example
@@ -113,6 +129,13 @@ const T1_MACHINERY_CHOICES: Array<{ value: H3ImgT1Settings; label: string; title
   { value: 'fizgig', label: 'Fizgig (experimental)', title: 'The author\'s shipped stills recipe: plain FL2VA, turbo @0.38, 20 steps, er_sde/simple — the Fizgig latent + the group-replicate video-VAE decode keeping frame 3. No Mamad8, no extra weights. Best from 2.5 MP up (their words: "best from 3 MP up").' },
   { value: 'fizgig-max', label: 'Fizgig max quality (experimental)', title: 'The author\'s highest-quality point (their 8 MP demonstration): the same Fizgig machinery with the Turbo loader at 0 and 50 steps — roughly double the render time, for the top of the image ladder.' },
 ]
+
+/** (W6, perfect-state sweep 2026-09-27) The machinery set behind the T=1
+ *  badge: when the SELECTED machinery is unavailable the badge names how
+ *  many machineries DO render the lane — "unavailable" only when none can.
+ *  A user who never opens the tab must still learn a working path exists. */
+const T1_MACHINERIES: H3ImgT1Settings[] = ['image-studio', 'fizgig', 'fizgig-max']
+const T1_MACHINERY_SHORT: Record<H3ImgT1Settings, string> = { 'image-studio': 'Image Studio', fizgig: 'Fizgig', 'fizgig-max': 'Fizgig max quality' }
 
 export function WorkbenchApp() {
   return (
@@ -135,6 +158,9 @@ function WorkbenchSurface() {
   const [refineInstruction, setRefineInstruction] = useState('')
   const [exitOpen, setExitOpen] = useState(false)
   const [canvasPickerOpen, setCanvasPickerOpen] = useState(false)
+  // (W8) The picker's consumer: a reference slot (the original) or the
+  // anchored/masked SOURCE — the lane that needs a canvas take most.
+  const [canvasPickerMode, setCanvasPickerMode] = useState<'ref' | 'source'>('ref')
   const [maskPainterOpen, setMaskPainterOpen] = useState(false)
   const [freeRatio, setFreeRatio] = useState(false)
   const [experiments, setExperiments] = useState(experimentsEnabled())
@@ -233,6 +259,22 @@ function WorkbenchSurface() {
   const effectivePick = canonicalFrameIndex(selectedTake, settings.framePicks)
   const family = findH3ImgFamily(settings.family)
 
+  // (W6) T=1-profile readiness across ALL machineries (badge + note data):
+  // the selected machinery gates Generate as before, but the lane's own
+  // state reflects the best-available machinery — and the unavailable note
+  // points at the working switch instead of dead-ending.
+  const t1ReadyMachineries = useMemo(() => {
+    if (!family || family.profile !== 't1') return [] as H3ImgT1Settings[]
+    return T1_MACHINERIES.filter((machinery) => family.detect(sessionState.info, sessionState.models, { t1Machinery: machinery }).available)
+  }, [family, sessionState.info, sessionState.models])
+  const t1BadgeText = useCallback((familyId: string, detection: { available: boolean } | null | undefined): string => {
+    if (detection?.available) return ''
+    const target = findH3ImgFamily(familyId)
+    if (!target || target.profile !== 't1') return 'unavailable'
+    const ready = T1_MACHINERIES.filter((machinery) => target.detect(sessionState.info, sessionState.models, { t1Machinery: machinery }).available)
+    return ready.length ? `${ready.length} of ${T1_MACHINERIES.length} machineries ready` : 'unavailable'
+  }, [sessionState.info, sessionState.models])
+
   // The composer preview (generated, read-only — never hand-written).
   const contract = useMemo(() => sessionContract(settings, { sourceAnchored: Boolean(sourceFile) && (family?.kind === 'edit' || family?.kind === 'generate-directed') }), [settings, sourceFile, family])
 
@@ -281,6 +323,20 @@ function WorkbenchSurface() {
       setNotice(`The source image could not be added: ${error instanceof Error ? error.message : String(error)}`)
     }
   }, [])
+
+  // The canvas → source pick (W8): resolve the picked take through the same
+  // output index the reference slots use — the source gets the same in-app
+  // affordance the references always had (the OS dialog was the only path).
+  const pickCanvasSource = useCallback(async (outputId: string, takeId: string | null, previewUrl: string | null) => {
+    if (!doc) return
+    const entry = buildOutputIndex(doc).get(outputId)
+    const resolved = mediaForOutput(entry, takeId)
+    if (!resolved) {
+      setNotice('That canvas take could not be resolved to a media file — its artifacts may have been evicted.')
+      return
+    }
+    setSourceFile({ path: resolved.media.path, name: resolved.media.name, preview: previewUrl ?? resolved.media.preview })
+  }, [doc])
 
   // Poserig handoff inbox (the rig surface stashes a render for the workbench).
   useEffect(() => {
@@ -646,32 +702,42 @@ function WorkbenchSurface() {
         {MODE_GROUPS.map((group) => (
           <div key={group.mode} className={`iw-mode ${group.families.includes(settings.family) ? 'active' : ''}`} data-iw-mode={group.mode}>
             <button type="button" onClick={() => void patchSettings({ family: group.families[0] })}>{group.label}</button>
-            {group.families.length > 1 && group.families.includes(settings.family) && (
-              <div className="iw-mode-families">
-                {group.families.map((familyId) => {
-                  const entry = findH3ImgFamily(familyId)
-                  const detection = detectionOf(familyId)
-                  const gated = familyId === 'h3img.burst.seedvr2' || familyId === 'h3img.burst.fuse'
-                  return (
-                    <button
-                      key={familyId}
-                      type="button"
-                      className={`iw-family ${settings.family === familyId ? 'active' : ''} ${detection?.available ? '' : 'unavailable'}`}
-                      data-iw-family-button={familyId}
-                      title={detection?.available ? entry?.ui.description : [detection?.missingModels.join('; '), detection?.missingNodes.join('; '), entry?.ui.installHint].filter(Boolean).join(' — ')}
-                      onClick={() => void patchSettings({ family: familyId })}
-                    >
-                      {entry?.label ?? familyId}
-                      {gated && <em className="iw-gated">E-IW2</em>}
-                      {!detection?.available && <em className="iw-unavailable">unavailable</em>}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
           </div>
         ))}
       </nav>
+      {/* (W5, perfect-state sweep 2026-09-27) ONE stable sub-lane row: the
+          active group's families always render HERE — never a per-group
+          dropdown that churns the rail's shape between three layouts in one
+          session. Lane labels use the nav's own short vocabulary (the video
+          settle lane says "video" so the still "Edit" lanes never collide
+          with it); the buttons' tooltips keep the full family descriptions. */}
+      {(() => {
+        const group = MODE_GROUPS.find((entry) => entry.families.includes(settings.family))
+        if (!group || group.families.length < 2) return null
+        return (
+          <nav className="iw-mode-subrail" aria-label={`${group.label} lanes`} data-iw-mode-subrail>
+            {group.families.map((familyId) => {
+              const entry = findH3ImgFamily(familyId)
+              const detection = detectionOf(familyId)
+              const gated = familyId === 'h3img.burst.seedvr2' || familyId === 'h3img.burst.fuse'
+              return (
+                <button
+                  key={familyId}
+                  type="button"
+                  className={`iw-family ${settings.family === familyId ? 'active' : ''} ${detection?.available ? '' : 'unavailable'}`}
+                  data-iw-family-button={familyId}
+                  title={detection?.available ? entry?.ui.description : [detection?.missingModels.join('; '), detection?.missingNodes.join('; '), entry?.ui.installHint].filter(Boolean).join(' — ')}
+                  onClick={() => void patchSettings({ family: familyId })}
+                >
+                  {MODE_LANE_LABELS[familyId] ?? entry?.label ?? familyId}
+                  {gated && <em className="iw-gated">E-IW2</em>}
+                  {!detection?.available && <em className="iw-unavailable" data-iw-unavailable-badge>{t1BadgeText(familyId, detection) || 'unavailable'}</em>}
+                </button>
+              )
+            })}
+          </nav>
+        )
+      })()}
 
       <main className="iw-main">
         <section className="iw-preview" data-iw-preview>
@@ -683,7 +749,11 @@ function WorkbenchSurface() {
                   return url ? <img src={url} alt={`Picked frame ${effectivePick + 1}`} data-iw-preview-image /> : <span className="iw-empty-frame">The picked frame is not resident (evicted or not yet landed).</span>
                 })()}
                 <figcaption data-iw-preview-caption>
-                  {selectedProvenance ? `${selectedProvenance.family} · ${selectedProvenance.profile === 't1' ? 'T=1 fast' : `${selectedProvenance.tier}-frame packet`} · frame ${effectivePick + 1}/${selectedProvenance.frames}${selectedProvenance.hybrid ? ' · hybrid' : ''}` : 'take'}
+                  {/* (W7) Lane-aware caption vocabulary: single-frame lanes
+                      never read as packets, refine/fuse takes say so. */}
+                  {selectedProvenance
+                    ? `${selectedProvenance.family} · ${selectedProvenance.profile === 't1' ? 'T=1 fast' : selectedProvenance.frames === 1 ? 'single frame' : `${selectedProvenance.tier}-frame packet`}${selectedProvenance.op === 'refine' ? ' · refine' : selectedProvenance.op === 'burst-fuse' ? ' · burst-fused' : ''} · frame ${effectivePick + 1}/${selectedProvenance.frames}${selectedProvenance.hybrid ? ' · hybrid' : ''}`
+                    : 'take'}
                   {selectedProvenance?.scorer && <em className="iw-scorer" data-iw-scorer title={selectedProvenance.scorer.reason}>scorer pick: {selectedProvenance.scorer.bestIndex + 1} — {selectedProvenance.scorer.reason}</em>}
                   {selectedProvenance?.scorer === null && selectedProvenance.frames > 1 && <em className="iw-scorer none" data-iw-scorer-none title="The scorer could not run at landing">unscored — pick by eye</em>}
                 </figcaption>
@@ -755,10 +825,24 @@ function WorkbenchSurface() {
           {family?.ui.warning && <p className="iw-warning" data-iw-family-warning>{family.ui.warning}</p>}
           {!detectionOf(settings.family)?.available && (
             <div className="iw-unavailable-note" data-iw-unavailable>
-              <p>
-                {detectionOf(settings.family)?.missingModels.join('; ') || detectionOf(settings.family)?.missingNodes.join('; ') || 'unavailable'}
-                {family?.ui.installHint ? ` — ${family.ui.installHint}` : ''}
+              {/* (W10, perfect-state sweep 2026-09-27) The missing pieces are
+                  named ONCE: models AND nodes both list (the old `||` dropped
+                  the node rows whenever a model was missing), and the install
+                  hint rides only when the rows list nothing — it repeats the
+                  same filenames the rows already name. */}
+              <p data-iw-unavailable-rows>
+                {[...(detectionOf(settings.family)?.missingModels ?? []), ...(detectionOf(settings.family)?.missingNodes ?? [])].join('; ') || 'unavailable'}
               </p>
+              {/* (W6) A ready ALTERNATIVE machinery is the lane's own remedy —
+                  named here, one scroll from the switch that unlocks it. */}
+              {family?.profile === 't1' && t1ReadyMachineries.length > 0 && (
+                <p data-iw-unavailable-alternative>
+                  A working machinery {t1ReadyMachineries.length === 1 ? 'is' : 'may be'} installed — {t1ReadyMachineries.length === 1
+                    ? `${T1_MACHINERY_SHORT[t1ReadyMachineries[0]!]} renders this lane`
+                    : `${t1ReadyMachineries.slice(0, -1).map((machinery) => T1_MACHINERY_SHORT[machinery]).join(' and ')} and ${T1_MACHINERY_SHORT[t1ReadyMachineries[t1ReadyMachineries.length - 1]!]} render this lane`}. Pick it under “T=1 machinery” below.
+                </p>
+              )}
+              {!(detectionOf(settings.family)?.missingModels ?? []).length && !(detectionOf(settings.family)?.missingNodes ?? []).length && family?.ui.installHint && <p>{family.ui.installHint}</p>}
               {/* (R-19) The unavailable family is never a dead end at the
                   choice point: the Library is one click away (weights and
                   node packs, license verdicts on every row). */}
@@ -793,7 +877,15 @@ function WorkbenchSurface() {
                     </div>
                   )}
                 </figure>
-              ) : <button type="button" onClick={() => sourceInput.current?.click()} data-iw-source-pick>Choose the source image</button>}
+              ) : (
+                <div className="iw-source-actions">
+                  {/* (W8) The source gets the same in-app affordance the
+                      references always had — the OS dialog is one of two
+                      paths now, not the only one. */}
+                  <button type="button" onClick={() => sourceInput.current?.click()} data-iw-source-pick>Choose a file…</button>
+                  <button type="button" onClick={() => { setCanvasPickerMode('source'); setCanvasPickerOpen(true) }} data-iw-source-pick-canvas title="Pick a canvas take as the source — the pinned frame from minutes ago is one click away">from canvas…</button>
+                </div>
+              )}
             </div>
           )}
 
@@ -850,7 +942,7 @@ function WorkbenchSurface() {
               {settings.refs.length < 9 && (
                 <div className="iw-ref-add">
                   <button type="button" onClick={() => fileInput.current?.click()} data-iw-ref-add-file>add image</button>
-                  <button type="button" onClick={() => setCanvasPickerOpen(true)} data-iw-ref-add-canvas>from canvas</button>
+                  <button type="button" onClick={() => { setCanvasPickerMode('ref'); setCanvasPickerOpen(true) }} data-iw-ref-add-canvas>from canvas</button>
                   <a href="?poserig=1&send=iw" data-iw-ref-add-poserig title="Open the pose rig; its export sends the render back here as a pose reference">from pose rig</a>
                 </div>
               )}
@@ -887,7 +979,7 @@ function WorkbenchSurface() {
                   : (STOCK_SAMPLED_FRAMES[settings.tier] !== undefined && STOCK_SAMPLED_FRAMES[settings.tier] !== settings.tier
                     ? (studioPackOnEngine
                       ? `The H3 Image Studio pack's latent ladder samples this tier exactly.`
-                      : `Stock nodes snap this tier to a ${STOCK_SAMPLED_FRAMES[settings.tier]}-frame sample (17n+5 grid) — only 5 and 39 are native grid points. Exact 9/13 needs the H3 Image Studio pack's latent ladder.`)
+                      : `Stock nodes snap this tier to a ${STOCK_SAMPLED_FRAMES[settings.tier]}-frame sample (the engine’s 5/22/39… frame grid) — only 5 and 39 are native grid points. Exact 9/13 needs the H3 Image Studio pack's latent ladder.`)
                     : undefined)} onChange={(event) => void patchSettings({ tier: Number(event.target.value) as 5 | 9 | 13 | 39 })}>
                   {[5, 9, 13].map((tier) => <option key={tier} value={tier}>{packetTierLabel(tier, studioPackOnEngine)}</option>)}
                 </select>
@@ -923,7 +1015,9 @@ function WorkbenchSurface() {
             </label>
             <label className="iw-seed" data-iw-seed>
               <span>Seed</span>
-              <input type="number" min={0} value={settings.seed} onChange={(event) => void patchSettings({ seed: Number(event.target.value) })} />
+              {/* (seed a11y, perfect-state sweep 2026-09-27) The spinbutton
+                  exposes its real range — 0 to the dice roll's 999,999,999. */}
+              <input type="number" min={0} max={999_999_999} value={settings.seed} onChange={(event) => void patchSettings({ seed: Number(event.target.value) })} />
             </label>
           </div>
 
@@ -1019,8 +1113,18 @@ function WorkbenchSurface() {
       {canvasPickerOpen && (
         <CanvasRefPicker
           doc={doc}
+          title={canvasPickerMode === 'source' ? 'Use a canvas image as the source' : 'Use a canvas image as a reference'}
+          body={canvasPickerMode === 'source'
+            ? 'The pick is the consent: the take becomes this lane\'s anchored source (its bytes never move).'
+            : 'The pick is the consent: the take becomes a reference slot (its bytes never move).'}
+          backdropData={{ 'data-iw-canvas-picker': canvasPickerMode }}
           onClose={() => setCanvasPickerOpen(false)}
-          onPick={async (outputId, takeId) => {
+          onPick={async (outputId, takeId, preview) => {
+            if (canvasPickerMode === 'source') {
+              await pickCanvasSource(outputId, takeId, preview)
+              setCanvasPickerOpen(false)
+              return
+            }
             const current = readSessionSettings(sessionChain.settings)
             if (current.refs.length >= 9) {
               setNotice(BEYOND_NINE_GUIDANCE)
@@ -1033,25 +1137,23 @@ function WorkbenchSurface() {
       )}
 
       {exitOpen && (
-        <div className="iw-dialog-backdrop" data-iw-exit-dialog>
-          <div className="iw-dialog">
-            <h3>Start-frame exit</h3>
-            <p>Seed a video chain from the picked frame — <strong>created and selected, never submitted</strong>. The frame rides the FL2VA first-frame anchor (the measured strongest concrete anchor).</p>
-            <div className="iw-exit-choices">
-              <button type="button" data-iw-exit-choice="anchor" onClick={() => setExitPlan('anchor')} disabled={busy}>Anchor only (first frame)</button>
-              <button type="button" data-iw-exit-choice="anchor-plus-refs" onClick={() => setExitPlan('anchor-plus-refs')} disabled={busy}>Anchor + canvas references</button>
-            </div>
-            <p className={`iw-exit-note ${hybridAvailable ? '' : 'warn'}`} data-iw-exit-hybrid>
-              {hybridAvailable
-                ? 'The hybrid profile is available: first frame AND references ride one model (both-at-once).'
-                : 'Stock checkpoints silently drop one of (first frame | references) — the exit anchors the FRAME and names the limitation; install the hybrid loader (Settings → Fetchable items) for both-at-once.'}
-            </p>
-            <footer>
-              <button type="button" className="secondary" onClick={() => setExitOpen(false)}>Cancel</button>
-              <button type="button" className="primary" data-iw-exit-confirm disabled={!exitPlan || busy} onClick={() => void runExit()}><Send size={12} /> Seed the chain</button>
-            </footer>
+        <IwDialog label="Start-frame exit" backdropData={{ 'data-iw-exit-dialog': 'true' }} onClose={() => { setExitOpen(false); setExitPlan(null) }}>
+          <h3>Start-frame exit</h3>
+          <p>Seed a video chain from the picked frame — <strong>created and selected, never submitted</strong>. The frame rides the FL2VA first-frame anchor (the measured strongest concrete anchor).</p>
+          <div className="iw-exit-choices">
+            <button type="button" data-iw-exit-choice="anchor" onClick={() => setExitPlan('anchor')} disabled={busy}>Anchor only (first frame)</button>
+            <button type="button" data-iw-exit-choice="anchor-plus-refs" onClick={() => setExitPlan('anchor-plus-refs')} disabled={busy}>Anchor + canvas references</button>
           </div>
-        </div>
+          <p className={`iw-exit-note ${hybridAvailable ? '' : 'warn'}`} data-iw-exit-hybrid>
+            {hybridAvailable
+              ? 'The hybrid profile is available: first frame AND references ride one model (both-at-once).'
+              : 'Stock checkpoints silently drop one of (first frame | references) — the exit anchors the FRAME and names the limitation; install the hybrid loader (Settings → Fetchable items) for both-at-once.'}
+          </p>
+          <footer>
+            <button type="button" className="secondary" onClick={() => { setExitOpen(false); setExitPlan(null) }}>Cancel</button>
+            <button type="button" className="primary" data-iw-exit-confirm disabled={!exitPlan || busy} onClick={() => void runExit()}><Send size={12} /> Seed the chain</button>
+          </footer>
+        </IwDialog>
       )}
 
       {notice && (
@@ -1085,8 +1187,20 @@ async function addToneLockOp(chain: DocumentChain): Promise<void> {
   }
 }
 
-/** The canvas → workbench reference picker (consent = the explicit pick). */
-function CanvasRefPicker({ doc, onClose, onPick }: { doc: { chains: DocumentChain[] }; onClose: () => void; onPick: (outputId: string, takeId: string | null, previewUrl: string | null) => void }) {
+/** The canvas → workbench picker (consent = the explicit pick). One picker,
+ *  two consumers (W8): reference slots AND the anchored source. Labels use
+ *  the canvas's own naming convention — kind + ordinal (W9/W11) — with the
+ *  filename and prompt riding as the tooltip (the hash only on demand);
+ *  the old raw-filename captions were 64-char hashes that collided across
+ *  cards. */
+function CanvasRefPicker({ doc, onClose, onPick, title, body, backdropData }: {
+  doc: { chains: DocumentChain[] }
+  onClose: () => void
+  onPick: (outputId: string, takeId: string | null, previewUrl: string | null) => void
+  title: string
+  body: string
+  backdropData?: Record<string, string>
+}) {
   const entries = useMemo(() => {
     const index = buildOutputIndex(doc)
     return Array.from(index.entries()).flatMap(([outputId, entry]) => {
@@ -1094,28 +1208,26 @@ function CanvasRefPicker({ doc, onClose, onPick }: { doc: { chains: DocumentChai
       if (!resolved || resolved.media.kind !== 'image') return []
       const blob = entry.take?.artifacts.find((artifact) => artifact.startsWith('canvas-blobs/')) ?? null
       const preview = blob ? `/api/lan/documents/blobs/file?path=${encodeURIComponent(blob)}` : resolved.media.preview ?? null
-      return [{ outputId, takeId: entry.take?.id ?? null, label: resolved.media.name, preview, chainTitle: chainPromptOf(entry.chain) }]
+      return [{ outputId, takeId: entry.take?.id ?? null, label: chainTitle(doc, entry.chain), fileName: resolved.media.name, preview, chainPrompt: chainPromptOf(entry.chain) }]
     })
   }, [doc])
   return (
-    <div className="iw-dialog-backdrop" data-iw-canvas-picker>
-      <div className="iw-dialog">
-        <h3>Use a canvas image as a reference</h3>
-        <p>The pick is the consent: the take becomes a reference slot (its bytes never move).</p>
-        <div className="iw-canvas-refs">
-          {entries.length === 0 && <span className="iw-takes-empty">No image takes on this canvas yet.</span>}
-          {entries.map((entry) => (
-            <button key={entry.outputId} type="button" className="iw-canvas-ref" data-iw-canvas-ref={entry.outputId} onClick={() => onPick(entry.outputId, entry.takeId, entry.preview)}>
-              {entry.preview ? <img src={entry.preview} alt={entry.label} /> : <span className="iw-frame-evicted">no preview</span>}
-              <span>{entry.label}</span>
-            </button>
-          ))}
-        </div>
-        <footer>
-          <button type="button" className="secondary" onClick={onClose}>Cancel</button>
-        </footer>
+    <IwDialog label={title} onClose={onClose} backdropData={backdropData}>
+      <h3>{title}</h3>
+      <p>{body}</p>
+      <div className="iw-canvas-refs">
+        {entries.length === 0 && <span className="iw-takes-empty">No image takes on this canvas yet.</span>}
+        {entries.map((entry) => (
+          <button key={entry.outputId} type="button" className="iw-canvas-ref" data-iw-canvas-ref={entry.outputId} title={`${entry.fileName} — ${entry.chainPrompt}`} onClick={() => onPick(entry.outputId, entry.takeId, entry.preview)}>
+            {entry.preview ? <img src={entry.preview} alt={entry.label} /> : <span className="iw-frame-evicted">no preview</span>}
+            <span>{entry.label}</span>
+          </button>
+        ))}
       </div>
-    </div>
+      <footer>
+        <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+      </footer>
+    </IwDialog>
   )
 }
 
@@ -1267,34 +1379,32 @@ function MaskPainterDialog({ file, onCancel, onUse }: {
   }
 
   return (
-    <div className="iw-dialog-backdrop" data-iw-mask-painter>
-      <div className="iw-dialog iw-mask-dialog">
-        <h3>Paint the region to regenerate</h3>
-        <p>Everything you paint regenerates from the instruction; the rest of the image is restored pixel-exactly after the render. Transparent pixels ARE the mask (the Mask-Editor convention).</p>
-        <div className="iw-mask-stage">
-          {file.preview ? <img ref={imgRef} src={file.preview} alt="source" className="iw-mask-under" /> : <span className="iw-frame-evicted">no preview</span>}
-          <canvas
-            ref={paintRef}
-            className="iw-mask-paint"
-            data-iw-mask-canvas
-            onPointerDown={(event) => { drawing.current = true; event.currentTarget.setPointerCapture(event.pointerId); paintAt(event) }}
-            onPointerMove={paintAt}
-            onPointerUp={() => { drawing.current = false }}
-            onPointerLeave={() => { drawing.current = false }}
-          />
-        </div>
-        <div className="iw-mask-tools">
-          <label>brush <input type="range" min={4} max={200} value={brush} data-iw-mask-brush onChange={(event) => setBrush(Number(event.target.value))} /> {brush}px</label>
-          <button type="button" data-iw-mask-erase className={erase ? 'active' : ''} onClick={() => setErase(!erase)}>{erase ? 'erasing' : 'erase mode'}</button>
-          <button type="button" data-iw-mask-clear onClick={() => { const paint = paintRef.current; if (paint) paint.getContext('2d')!.clearRect(0, 0, paint.width, paint.height); setPainted(false) }}>clear</button>
-        </div>
-        {error && <p className="iw-mask-error" role="alert">{error}</p>}
-        <footer>
-          <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
-          <button type="button" className="primary" data-iw-mask-use disabled={busy} onClick={() => void applyMask()}>Use the masked source</button>
-        </footer>
+    <IwDialog label="Paint the region to regenerate" dialogClassName="iw-mask-dialog" backdropData={{ 'data-iw-mask-painter': 'true' }} onClose={onCancel}>
+      <h3>Paint the region to regenerate</h3>
+      <p>Everything you paint regenerates from the instruction; the rest of the image is restored pixel-exactly after the render. Transparent pixels ARE the mask (the Mask-Editor convention).</p>
+      <div className="iw-mask-stage">
+        {file.preview ? <img ref={imgRef} src={file.preview} alt="source" className="iw-mask-under" /> : <span className="iw-frame-evicted">no preview</span>}
+        <canvas
+          ref={paintRef}
+          className="iw-mask-paint"
+          data-iw-mask-canvas
+          onPointerDown={(event) => { drawing.current = true; event.currentTarget.setPointerCapture(event.pointerId); paintAt(event) }}
+          onPointerMove={paintAt}
+          onPointerUp={() => { drawing.current = false }}
+          onPointerLeave={() => { drawing.current = false }}
+        />
       </div>
-    </div>
+      <div className="iw-mask-tools">
+        <label>brush <input type="range" min={4} max={200} value={brush} data-iw-mask-brush onChange={(event) => setBrush(Number(event.target.value))} /> {brush}px</label>
+        <button type="button" data-iw-mask-erase className={erase ? 'active' : ''} onClick={() => setErase(!erase)}>{erase ? 'erasing' : 'erase mode'}</button>
+        <button type="button" data-iw-mask-clear onClick={() => { const paint = paintRef.current; if (paint) paint.getContext('2d')!.clearRect(0, 0, paint.width, paint.height); setPainted(false) }}>clear</button>
+      </div>
+      {error && <p className="iw-mask-error" role="alert">{error}</p>}
+      <footer>
+        <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
+        <button type="button" className="primary" data-iw-mask-use disabled={busy} onClick={() => void applyMask()}>Use the masked source</button>
+      </footer>
+    </IwDialog>
   )
 }
 
@@ -1303,4 +1413,59 @@ function chainPromptOf(chain: { inputSpec: Record<string, unknown>; settings: Re
   if (fresh && typeof fresh.prompt === 'string' && fresh.prompt) return fresh.prompt
   if (typeof chain.settings.prompt === 'string') return chain.settings.prompt
   return 'canvas take'
+}
+
+/** (W1, perfect-state sweep 2026-09-27) The workbench's dialogs carry dialog
+ *  semantics: role=dialog + aria-modal + an accessible name, Escape and
+ *  backdrop-click dismissal, a Tab focus trap, and focus restore on close —
+ *  the wizard's pattern backported onto the iw-dialog markup. Before this,
+ *  the canvas-ref picker and the start-frame exit were semantic voids absent
+ *  from the accessibility tree entirely. */
+function IwDialog({ label, onClose, dialogClassName = '', backdropData, children }: {
+  label: string
+  onClose(): void
+  dialogClassName?: string
+  backdropData?: Record<string, string>
+  children: ReactNode
+}) {
+  const popup = useRef<HTMLDivElement | null>(null)
+  const restoreFocus = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    restoreFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const node = popup.current
+    if (!node) return
+    const focusables = () => Array.from(node.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter((element) => !element.hasAttribute('disabled'))
+    ;(focusables()[0] ?? node).focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        onClose()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusables()
+      if (!items.length) return
+      const first = items[0]!
+      const last = items[items.length - 1]!
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    node.addEventListener('keydown', onKeyDown)
+    return () => {
+      node.removeEventListener('keydown', onKeyDown)
+      restoreFocus.current?.focus()
+    }
+  }, [onClose])
+  return (
+    <div className="iw-dialog-backdrop" {...backdropData} onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <div className={`iw-dialog ${dialogClassName}`.trim()} role="dialog" aria-modal="true" aria-label={label} ref={popup}>
+        {children}
+      </div>
+    </div>
+  )
 }

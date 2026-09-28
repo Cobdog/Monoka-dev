@@ -710,7 +710,17 @@ test('(p) the shared validation ladder (lib/h3Submit)', () => {
   const facts = { connected: true, modelReady: true, selection: { previewVae: '' }, h3PreviewOverrideNode: undefined }
   eq(h3Submit.validateH3Render(request(), facts), null, 'ladder: a healthy t2v request passes')
   eq(h3Submit.validateH3Render(request(), { ...facts, connected: false }), 'Start ComfyUI and verify the server connection in Settings.', 'ladder: offline refuses with the honest message')
-  eq(h3Submit.validateH3Render(request(), { ...facts, modelReady: false }), 'One or more required MiniMax H3 model components are missing.', 'ladder: missing models refuses')
+  // (W3, perfect-state sweep 2026-09-27) The membership rung COMPOSES from
+  // the resolved rows — it names what is missing, never the blanket
+  // "components are missing" that named nothing.
+  eq(h3Submit.validateH3Render(request(), { ...facts, modelReady: false }), 'The H3 stack is incomplete — the render is missing the FL2VA checkpoint (a diffusion model whose name contains "fl2va"), the 32B-class text encoder (qwen3vl_32b…), the video VAE (a VAE whose name contains "video_vae"), and the audio VAE (a VAE whose name contains "audio_vae"). Fetch them in Settings → Fetchable items (or make them visible to the engine), then rescan.', 'ladder: missing models refuses naming the missing rows')
+  const fullSelection = { previewVae: '', fl2va: 'f.safetensors', ref2va: 'r.safetensors', textEncoder: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', videoVae: 'v.safetensors', audioVae: 'a.safetensors', fl2vLora: 'l.safetensors', ref2vLora: 'rl.safetensors' }
+  eq(h3Submit.validateH3Render(request(), { ...facts, modelReady: false, selection: fullSelection }), 'One or more required MiniMax H3 model components are missing.', 'ladder: a full selection keeps the honest generic fallback')
+  // (W3) The VDN environment rungs run BEFORE membership: a missing VDN
+  // stage used to trip the generic membership line first (modelReady folds
+  // the stage in) — the named fetch-row guidance must win.
+  const vdnStageAbsent = h3Submit.validateH3Render(request({ vdn: 'dmd-8' }), { ...facts, modelReady: false, info: { ApplyVDNH3: { input: { required: { vdn_checkpoint: [['<place a VDN stage-... directory under models/vdn>']] } } } } })
+  ok(vdnStageAbsent && /vdn-stage-dmd-250/.test(vdnStageAbsent), `ladder: the missing VDN stage refusal names the fetch row, not the generic membership line (got: ${vdnStageAbsent})`)
   // (eyzcev5) The TE dimension-class rung: a wrong-class resolved TE is
   // non-empty (so modelReady stays true) — the ladder itself must refuse it
   // with the named reason; the 32B-class passes the same rung.
@@ -877,7 +887,7 @@ test('(s) typed-hole surface — the pose rig row (§5.2)', () => {
   const poseRig = consume.find((row) => row.id === 'consume:pose-rig')
   ok(poseRig && poseRig.available, 'options: the pose rig row is offered on the consume side (engine-free)')
   eq(poseRig.group, 'control', 'options: the pose rig row sits in the control-inputs group')
-  ok(poseRig.hint.includes('17n+5'), 'options: the pose rig row carries the keyframe-grid hint')
+  ok(poseRig.hint.includes('engine frame grid'), 'options: the pose rig row carries the humanized keyframe-grid hint (C11: no 17n+5 jargon)')
   const produce = options.endpointOptions('produce', ['image'], facts)
   ok(!produce.some((row) => row.id === 'consume:pose-rig'), 'options: the pose rig row never leaks to the produce side')
 })
@@ -1060,7 +1070,12 @@ test('(u) global asset bindings (§2 asset, F3 — consent-gated)', () => {
 test('(w) the extracted engine cores — ladders stay verbatim (one code path, both surfaces)', () => {
   const music3 = loadTs('src/lib/music3Submit.ts')
   eq(music3.validateMusic3({ caption: '', lyrics: '', duration: 60, seed: 1, tiledDecode: true, filenamePrefix: 'a' }, { connected: true, selection: {} }), 'Write at least one caption section before generating.', 'music3 ladder: empty caption refuses')
-  eq(music3.validateMusic3({ caption: 'warm jazz', lyrics: '', duration: 60, seed: 1, tiledDecode: true, filenamePrefix: 'a' }, { connected: true, selection: { diffusion: '', textEncoder: '', vae: '' } }), 'The Music 3 diffusion model, text encoder, and DAV VAE are required. Install them, then rescan in Settings.', 'music3 ladder: missing models refuse with the install hint')
+  // (W2, perfect-state sweep 2026-09-27) The models rung composes from the
+  // resolved rows — the DAV-only engine is told the DAV alone is missing,
+  // never the old blanket three-file claim.
+  eq(music3.validateMusic3({ caption: 'warm jazz', lyrics: '', duration: 60, seed: 1, tiledDecode: true, filenamePrefix: 'a' }, { connected: true, selection: { diffusion: '', textEncoder: '', vae: '' } }), 'Music 3 cannot render yet — the engine\'s registry is missing the Music 3 diffusion model (a checkpoint whose name contains "music3"), the Music 3 text encoder (a music3 text-encoder file), and the Music 3 DAV VAE (minimax_music3_dav.safetensors). Install them, then rescan in Settings.', 'music3 ladder: all three missing names all three rows')
+  const davAlone = music3.validateMusic3({ caption: 'warm jazz', lyrics: '', duration: 60, seed: 1, tiledDecode: true, filenamePrefix: 'a' }, { connected: true, selection: { diffusion: 'music3_dit_int8.safetensors', textEncoder: 'music3_text_encoder.safetensors', vae: '' } })
+  ok(davAlone === 'Music 3 cannot render yet — the engine\'s registry is missing the Music 3 DAV VAE (minimax_music3_dav.safetensors). Install it, then rescan in Settings.', `music3 ladder: the DAV-only gap names the DAV alone (got: ${davAlone})`)
 
   // (The acestep ladder arms were removed with the engine, 2026-09-21 —
   // nn5ld47; lib/aceStepSubmit.ts deleted, git history is the archive.)

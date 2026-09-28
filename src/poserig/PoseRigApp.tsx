@@ -215,7 +215,7 @@ export default function PoseRigApp({ dock }: { dock?: PoseRigDock } = {}) {
   const setDuration = useCallback((seconds: number) => {
     const total = Math.min(frameCount(seconds), MAX_TOTAL_FRAMES)
     setTimeline((prev) => ({ ...prev, totalFrames: total }))
-    setStatus(`duration ${seconds}s → ${total} frames (17n+5 grid, ≤${MAX_TOTAL_FRAMES})`)
+    setStatus(`duration ${seconds}s → ${total} frames (engine frame grid, ≤${MAX_TOTAL_FRAMES})`)
   }, [])
 
   const setCanvas = useCallback((width: number, height: number) => {
@@ -624,7 +624,7 @@ export default function PoseRigApp({ dock }: { dock?: PoseRigDock } = {}) {
             )
           })}
         </div>
-        <div className="poserig-timeline-note">{timeline.keyframes.length} keyframe(s) · grid 17n+5 · {timeline.totalFrames} frames @ 24 fps · hold-last beyond keys</div>
+        <div className="poserig-timeline-note">{timeline.keyframes.length} keyframe(s) · engine frame grid · {timeline.totalFrames} frames @ 24 fps · hold-last beyond keys</div>
       </footer>
     </div>
   )

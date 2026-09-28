@@ -101,8 +101,9 @@ test('canvas boots to the launcher (§4) with radar + chips + resume cards', asy
   for (const chip of ['image', 'video', 'noDialogue', 'drop']) {
     await expect(page.locator(`[data-canvas-chip="${chip}"]`)).toBeVisible()
   }
-  await expect(page.locator('[data-canvas-radar]')).toBeVisible()
-  await expect(page.locator('[data-canvas-radar-text]')).toHaveText('calm')
+  // (W17) The radar hides at rest (nothing running, queued, or needing
+  // attention — no "calm" button puzzling at boot).
+  await expect(page.locator('[data-canvas-radar]')).toBeHidden()
   // Phase 2: the engine chip reports the honest state (offline in tests).
   await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'false')
   // The contextual bar shows the generation surface for nothing-selected.
@@ -133,7 +134,8 @@ test('prompt submit spawns the seed tile; a refused engine parks NOTHING (honest
   await expect(tile).toBeVisible({ timeout: 10_000 })
   await expect(tile).toHaveAttribute('data-tile-kind', 'seed')
   await expect(tile).toHaveAttribute('data-tile-status', 'idle', { timeout: 5_000 })
-  await expect(page.locator('[data-canvas-radar]')).toHaveAttribute('data-queued', '0')
+  // (W17) Nothing parked in the queue → the radar stays hidden.
+  await expect(page.locator('[data-canvas-radar]')).toBeHidden()
   await expect(page.locator('[data-canvas-toast="error"]').first()).toContainText('ComfyUI')
   // A canvas was created for it (tab + persisted project).
   await expect(page.locator('[data-canvas-tab]').first()).toBeVisible()
@@ -642,7 +644,8 @@ test('multi-select batch gestures: lock all + honest generate-all refusal (§4)'
   // in the queue, the bar says so, the objects stay idle.
   await page.locator('[data-canvas-bar-generate-all]').click()
   await expect(page.locator('[data-canvas-toast="error"]').first()).toContainText('ComfyUI')
-  await expect(page.locator('[data-canvas-radar]')).toHaveAttribute('data-queued', '0')
+  // (W17) Nothing parked → the radar stays hidden.
+  await expect(page.locator('[data-canvas-radar]')).toBeHidden()
   await page.screenshot({ path: 'test-results/shots/19-canvas-multi-batch.png' })
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
@@ -794,7 +797,8 @@ test('radar zooms to attention on failure (contract a: durable on the object)', 
   // only the on-object banner goes).
   await tile.locator('.canvas-tile-failure button').click()
   await expect(tile).not.toHaveAttribute('data-tile-status', 'failed')
-  await expect(page.locator('[data-canvas-radar]')).toHaveAttribute('data-attention', '0')
+  // (W17) Attention dismissed → the radar hides again (no at-rest chrome).
+  await expect(page.locator('[data-canvas-radar]')).toBeHidden()
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
@@ -885,12 +889,15 @@ test('scene deletion reaches the UI: trash, restore, and the one explicit empty'
   await expect(page.locator('[data-canvas-index-row="object"]')).toHaveCount(2)
   const deletes = page.locator('[data-canvas-index-delete]')
   await expect(deletes).toHaveCount(2)
-  // The delete states its blast radius and tombstones (undo-able).
-  page.once('dialog', (dialog) => {
-    expect(dialog.message()).toContain('Trash this scene')
-    void dialog.accept()
-  })
+  // (W13) The delete states its blast radius in the app's OWN confirm
+  // (role=alertdialog inside the index panel — the native window.confirm is
+  // gone) and tombstones (undo-able).
   await deletes.last().click()
+  const confirm = page.locator('[data-canvas-index-confirm="trash-scene"]')
+  await expect(confirm).toBeVisible()
+  await expect(confirm).toContainText('Trash this scene')
+  await expect(confirm).toContainText('restorable until the trash is emptied')
+  await confirm.locator('[data-canvas-index-confirm-accept]').click()
   await expect(page.locator('[data-canvas-index-row="object"]')).toHaveCount(1, { timeout: 10_000 })
 
   // It left the live document (tombstoned server-side, not hard-deleted).
@@ -913,16 +920,16 @@ test('scene deletion reaches the UI: trash, restore, and the one explicit empty'
 
   // The one explicit destructive act: trash again, then empty (double-gated
   // — the UI confirm, then the server's own confirm token).
-  page.once('dialog', (dialog) => { void dialog.accept() })
   await page.locator('[data-canvas-index-delete]').last().click()
+  await page.locator('[data-canvas-index-confirm="trash-scene"] [data-canvas-index-confirm-accept]').click()
   await expect(page.locator('[data-canvas-index-row="object"]')).toHaveCount(1, { timeout: 10_000 })
   await page.locator('[data-canvas-index-trash]').click()
   await expect(page.locator('[data-canvas-index-trash-row]')).toHaveCount(1, { timeout: 10_000 })
-  page.once('dialog', (dialog) => {
-    expect(dialog.message()).toContain('one real delete')
-    void dialog.accept()
-  })
   await page.locator('[data-canvas-index-empty]').click()
+  const emptyConfirm = page.locator('[data-canvas-index-confirm="empty-trash"]')
+  await expect(emptyConfirm).toBeVisible()
+  await expect(emptyConfirm).toContainText('one real delete')
+  await emptyConfirm.locator('[data-canvas-index-confirm-accept]').click()
   await expect(page.locator('[data-canvas-index-trash-row]')).toHaveCount(0, { timeout: 10_000 })
   await expect(page.locator('[data-canvas-index-empty]')).toBeDisabled()
   const emptied = await (await page.request.get('/api/lan/documents/chains?trash=1')).json() as { chains: Array<{ id: string }> }
@@ -1307,7 +1314,8 @@ test('H3-1F as the image op: the stills intent routes the T=1 family; image+cont
   const tile = page.locator('[data-canvas-tile]').first()
   await expect(tile).toBeVisible({ timeout: 10_000 })
   await expect(page.locator('[data-canvas-toast="error"]').first()).toContainText('T=1')
-  await expect(page.locator('[data-canvas-radar]')).toHaveAttribute('data-queued', '0')
+  // (W17) Refused at validate — nothing queued, the radar stays hidden.
+  await expect(page.locator('[data-canvas-radar]')).toBeHidden()
   let document = await activeDocument(page)
   expect(document.chains[0]!.settings.mediaType).toBe('image')
   expect(document.chains[0]!.settings.imageEngine).toBe('h3-1f')
@@ -1432,7 +1440,8 @@ test('the H3-1F stills intent: honest refusal pack-absent, the pack-form submit 
     await expect(refusal).toContainText(/Fetch|Node packs/)
     // Nothing was submitted — the honest gate, not a submit-then-server-400.
     await expect.poll(() => submitted.length, { timeout: 2_000 }).toBe(0)
-    await expect(page.locator('[data-canvas-radar]')).toHaveAttribute('data-queued', '0')
+    // (W17) Refused honestly — nothing queued, the radar stays hidden.
+    await expect(page.locator('[data-canvas-radar]')).toBeHidden()
     const document = await activeDocument(page)
     expect(document.chains[0]!.settings.mediaType).toBe('image')
     expect(document.chains[0]!.settings.imageEngine).toBe('h3-1f')
@@ -1771,21 +1780,21 @@ test('engines-as-ops complete: the audio docks (probe seams + honest gating)', a
   expect(music3.graph.saveAudio).toBe(true)
 
   // The audio dock: (R-20) the engine's ONE canonical home is the typed-hole
-  // produce menu — the bar's chips are retired. Open the first object's
-  // tail menu and pick the Music 3 row.
+  // produce menu — the bar's chips are retired. (2026-09-28 audio-lane
+  // pause) The Music 3 row is DISABLED with the pause reason at every entry
+  // point — flag-not-removal: the plan seam above still proves the lane's
+  // code whole, the UI never reaches it.
   await page.keyboard.press('Escape')
   await expect(page.locator('.canvas-tile.selected')).toHaveCount(0)
   const audioSourceTile = page.locator('[data-canvas-tile]').first()
   await audioSourceTile.locator('[data-canvas-endpoint="tail"]').click()
-  await page.locator('[data-canvas-menu-row="produce:music3"]').click()
-  const dock = page.locator('[data-canvas-audio-dock]')
-  await expect(dock).toBeVisible()
-  await expect(dock).toHaveAttribute('data-canvas-audio-engine', 'music3')
-  await dock.locator('[data-canvas-audio-caption]').fill('warm ambient piano with tape hiss')
-  await expect(dock.locator('[data-canvas-audio-validation]')).toContainText('Start ComfyUI')
-  await expect(dock.locator('[data-canvas-audio-submit]')).toBeDisabled()
-  await dock.locator('[data-canvas-audio-close]').click()
-  await expect(dock).toHaveCount(0)
+  const music3Row = page.locator('[data-canvas-menu-row="produce:music3"]')
+  await expect(music3Row).toBeVisible()
+  await expect(music3Row).toBeDisabled()
+  await expect(music3Row).toContainText('paused pending the YuE2 decision')
+  await music3Row.click({ force: true }).catch(() => undefined)
+  await page.waitForTimeout(300)
+  await expect(page.locator('[data-canvas-audio-dock]')).toHaveCount(0)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
@@ -3569,20 +3578,23 @@ test('the floating docks keep their grid containment against react-rnd inline di
   await page.goto('/?canvas=1')
   await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
 
-  // (R-20) The audio engines' one canonical home is the typed-hole produce
-  // menu — the launcher chip is retired. Spawn the seed first (it is the
-  // produce source), then its tail menu opens the dock.
+  // (2026-09-28 audio-lane pause) The Music 3 dock has no UI entry while
+  // the lane is paused (its produce row gates with the reason — asserted in
+  // the typed-hole test above; the paused-notice panel carries the same
+  // containment class for whenever the flag flips back). This containment
+  // walk covers the reachable docks: settings, then properties.
+  await page.locator('[data-canvas-settings-button]').click()
+  const settingsDock = page.locator('[data-canvas-settings-dock]')
+  await expect(settingsDock).toBeVisible()
+  await expect.poll(() => settingsDock.evaluate((element) => getComputedStyle(element).display)).toBe('grid')
+  await page.locator('[data-canvas-settings-close]').click()
+  await expect(settingsDock).toHaveCount(0)
+
+  // The seed to open the properties panel on.
   await page.locator('[data-canvas-prompt]').fill('dock containment probe')
   await page.locator('[data-canvas-submit]').click()
   const seedTile = page.locator('[data-canvas-tile]').first()
   await expect(seedTile).toBeVisible({ timeout: 10_000 })
-  await seedTile.locator('[data-canvas-endpoint="tail"]').click()
-  await page.locator('[data-canvas-menu-row="produce:music3"]').click()
-  const audioDock = page.locator('[data-canvas-audio-dock]')
-  await expect(audioDock).toBeVisible()
-  await expect.poll(() => audioDock.evaluate((element) => getComputedStyle(element).display)).toBe('grid')
-  await page.locator('[data-canvas-audio-close]').click()
-  await expect(audioDock).toHaveCount(0)
 
   // The properties panel (the node sidebar) opens on the spawned seed.
   await seedTile.click()

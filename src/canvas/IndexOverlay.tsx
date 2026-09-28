@@ -22,6 +22,7 @@ import { documentsApi, type SearchHit } from './api'
 import { useCanvasStore } from './store'
 import { useJobsStore } from '../state/jobsStore'
 import { dbg } from '../lib/dbg'
+import { chainTitle } from './derive'
 import type { DocumentChain } from './derive'
 
 type Row = {
@@ -38,10 +39,12 @@ type Row = {
 }
 
 /** The title a trashed/scene row shows — the chain's prompt head, the same
- *  derivation the live rows use. */
-function sceneTitle(chain: DocumentChain): string {
+ *  derivation the live rows use. The no-prompt fallback follows the ONE
+ *  naming convention (W9: kind + ordinal via chainTitle — the old
+ *  kind + hash8 fallback put a third vocabulary on this screen). */
+function sceneTitle(document: { chains: DocumentChain[] }, chain: DocumentChain): string {
   const prompt = typeof chain.settings.prompt === 'string' ? chain.settings.prompt : ''
-  return prompt.split(/[.\n]/).map((part) => part.trim()).find(Boolean) ?? `${chain.kind} ${chain.id.slice(0, 8)}`
+  return prompt.split(/[.\n]/).map((part) => part.trim()).find(Boolean) ?? chainTitle(document, chain)
 }
 
 export function IndexOverlay() {
@@ -68,6 +71,10 @@ export function IndexOverlay() {
   const [trashed, setTrashed] = useState<DocumentChain[] | null>(null)
   // The in-flight project-archive download (one at a time, keyed by project).
   const [exporting, setExporting] = useState<string | null>(null)
+  // (W13) The in-app trash confirm's pending state — declared with the
+  //  other hooks (never after the !open early return: hook order is a
+  //  component-lifetime invariant).
+  const [confirming, setConfirming] = useState<{ kind: 'trash-scene'; row: Row } | { kind: 'empty-trash' } | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -130,7 +137,7 @@ export function IndexOverlay() {
     for (const document of Object.values(documents)) {
       for (const chain of document.chains) {
         const prompt = typeof chain.settings.prompt === 'string' ? chain.settings.prompt : ''
-        const title = sceneTitle(chain)
+        const title = sceneTitle(document, chain)
         if (!needle || title.toLowerCase().includes(needle) || prompt.toLowerCase().includes(needle)) {
           list.push({
             key: `chain:${chain.id}`,
@@ -194,13 +201,35 @@ export function IndexOverlay() {
     }
   }
 
+  // (W13, perfect-state sweep 2026-09-27) The trash gates ride the app's own
+  // styled-confirm language — the same blast-radius copy as before, in an
+  // in-panel alertdialog instead of the one native window.confirm in the
+  // app (and with the singular/plural grammar fixed: "Its 1 take rides it
+  // and comes back with the restore").
+  const confirmCopy = confirming?.kind === 'trash-scene'
+    ? (() => {
+      const row = confirming.row
+      const takes = row.takeCount ?? 0
+      const projectName = projects.find((project) => project.id === row.projectId)?.name ?? 'its canvas'
+      return {
+        title: 'Trash this scene?',
+        body: `“${row.label}” leaves ${projectName} and moves to the trash — restorable until the trash is emptied.${takes ? ` Its ${takes} take${takes === 1 ? ' rides' : 's ride'} it and ${takes === 1 ? 'comes' : 'come'} back with the restore.` : ''}`,
+        confirm: 'Trash it (restorable)',
+      }
+    })()
+    : confirming?.kind === 'empty-trash'
+      ? {
+        title: 'Empty the trash?',
+        body: 'THIS is the one real delete: every tombstoned canvas, scene and asset goes for good, with their takes. Entries restore no longer.',
+        confirm: 'Empty for good',
+      }
+      : null
+
   // The trash action: tombstone (restorable until the trash is emptied),
   // with the blast radius stated up front — the datasets pattern.
   const trashScene = async (row: Row) => {
     if (!row.chainId || !row.projectId) return
-    const takes = row.takeCount ?? 0
-    const projectName = projects.find((project) => project.id === row.projectId)?.name ?? 'its canvas'
-    if (!window.confirm(`Trash this scene?\n\n“${row.label}” leaves ${projectName} and moves to the trash — restorable until the trash is emptied.${takes ? `\n\nIts ${takes} take${takes === 1 ? '' : 's'} ride it and come back with the restore.` : ''}`)) return
+    setConfirming(null)
     const deleted = await useCanvasStore.getState().deleteScene(row.chainId)
     if (deleted) toast('success', `Scene trashed — restorable from the trash view until the trash is emptied.`)
     else toast('error', 'Nothing was trashed — the scene was already gone (the list refreshes).')
@@ -215,7 +244,7 @@ export function IndexOverlay() {
   }
 
   const emptyTrash = async () => {
-    if (!window.confirm('Empty the trash?\n\nTHIS is the one real delete: every tombstoned canvas, scene and asset goes for good, with their takes. Entries restore no longer.')) return
+    setConfirming(null)
     const counts = await useCanvasStore.getState().emptyTrash()
     if (counts) {
       const total = Object.values(counts).reduce((sum, count) => sum + count, 0)
@@ -246,7 +275,7 @@ export function IndexOverlay() {
     const needle = query.trim().toLowerCase()
     if (!needle) return true
     const prompt = typeof chain.settings.prompt === 'string' ? chain.settings.prompt : ''
-    return sceneTitle(chain).toLowerCase().includes(needle) || prompt.toLowerCase().includes(needle)
+    return sceneTitle({ chains: trashed ?? [] }, chain).toLowerCase().includes(needle) || prompt.toLowerCase().includes(needle)
   })
 
   return <div className="canvas-index-overlay" data-canvas-index role="dialog" aria-label="Canvas index" onClick={() => setIndexOpen(false)}>
@@ -283,7 +312,7 @@ export function IndexOverlay() {
         <div className="canvas-index-trash" data-canvas-index-trash-view>
           <div className="canvas-index-trash-head">
             <strong>Trash — soft-deleted scenes (restorable)</strong>
-            <button type="button" className="canvas-chip danger" data-canvas-index-empty onClick={() => void emptyTrash()} disabled={!trashed?.length}>
+            <button type="button" className="canvas-chip danger" data-canvas-index-empty onClick={() => setConfirming({ kind: 'empty-trash' })} disabled={!trashed?.length}>
               Empty trash (the one real delete)
             </button>
           </div>
@@ -292,7 +321,7 @@ export function IndexOverlay() {
               <li key={chain.id} className="canvas-index-li" data-canvas-index-trash-row={chain.id}>
                 <span className="canvas-index-row disabled">
                   <Trash2 size={13} />
-                  <span className="canvas-index-row-label">{sceneTitle(chain)}</span>
+                  <span className="canvas-index-row-label">{sceneTitle({ chains: trashed ?? [] }, chain)}</span>
                   <span className="canvas-index-row-note">{`trashed ${new Date(chain.deletedAt ?? chain.createdAt).toLocaleString()}`}</span>
                 </span>
                 <button type="button" className="canvas-index-row-cancel" data-canvas-index-restore onClick={() => void restoreScene(chain)}>
@@ -337,7 +366,7 @@ export function IndexOverlay() {
                   aria-label="Trash this scene (restorable until the trash is emptied)"
                   data-canvas-index-delete
                   title="Trash this scene — restorable from the trash view until the trash is emptied"
-                  onClick={() => void trashScene(row)}
+                  onClick={() => setConfirming({ kind: 'trash-scene', row })}
                 >
                   <Trash2 size={11} />
                 </button>
@@ -359,6 +388,21 @@ export function IndexOverlay() {
           ))}
           {!rows.length && <li className="canvas-index-empty">{query ? 'Nothing matches — yet.' : 'Type to search across the session.'}</li>}
         </ul>
+      )}
+      {/* (W13) The in-app confirm: the same blast-radius copy, the house
+          styled-dialog language, inside the index panel — never the native
+          browser confirm. */}
+      {confirmCopy && confirming && (
+        <div className="canvas-index-confirm" role="alertdialog" aria-label={confirmCopy.title} data-canvas-index-confirm={confirming.kind}>
+          <div>
+            <strong>{confirmCopy.title}</strong>
+            <p>{confirmCopy.body}</p>
+          </div>
+          <div className="canvas-index-confirm-actions">
+            <button type="button" data-canvas-index-confirm-cancel onClick={() => setConfirming(null)}>Keep it</button>
+            <button type="button" className="danger" data-canvas-index-confirm-accept onClick={() => { if (confirming.kind === 'empty-trash') void emptyTrash(); else void trashScene(confirming.row) }}>{confirmCopy.confirm}</button>
+          </div>
+        </div>
       )}
     </div>
   </div>

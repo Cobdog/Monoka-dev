@@ -52,6 +52,19 @@ test.beforeAll(() => {
   fs.mkdirSync(bundleDir, { recursive: true })
 })
 
+// (Perfect-state sweep 2026-09-28) Capture never leaks into the next run:
+// scenarios that spawn renders against fake engines (killed in their after)
+// leave non-terminal jobs in the SHARED home — the next e2e boot rehydrates
+// them and the at-rest surfaces lie (the W17 radar surfaced exactly this:
+// first test of the next run pinned a phantom "1 running"). The datasets
+// beforeAll pattern, applied at the source: cancel through the app's own
+// API when the bundle is done.
+test.afterAll(async ({ request }) => {
+  const listed = await request.get('/api/lan/jobs').then((response) => response.json()).catch(() => ({ jobs: [] })) as { jobs?: Array<Record<string, unknown>> }
+  const stale = (listed.jobs ?? []).filter((job) => job.status === 'queued' || job.status === 'running').map((job) => ({ ...job, status: 'cancelled' }))
+  if (stale.length) await request.post('/api/lan/jobs', { data: { jobs: stale } }).catch(() => undefined)
+})
+
 test.afterAll(() => {
   if (captured.length === 0) return
   const manifest = {

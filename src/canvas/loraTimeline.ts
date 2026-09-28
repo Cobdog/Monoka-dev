@@ -261,7 +261,7 @@ export function compileLoraTimeline(doc: LoraTimelineDoc, clipDurationSeconds: n
     const label = `Range ${index + 1}${rangeTitle(range.loras) !== 'base look' ? ` (${rangeTitle(range.loras)})` : ''}`
     if (!(range.end > range.start)) reasons.push(`${label} ends at or before its start (${range.start.toFixed(2)}s–${range.end.toFixed(2)}s) — paint a span, not a point.`)
     const painted = range.end - range.start
-    if (range.end > range.start && painted < MIN_PAINTED_SECONDS) reasons.push(`${label} paints ${painted.toFixed(2)}s — segments run ${MIN_PAINTED_SECONDS}–${MAX_PAINTED_SECONDS}s and the 17n+5 grid conforms the shortest legal segment to ${(MIN_SEGMENT_FRAMES / TIMELINE_FPS).toFixed(2)}s. Paint it at least ${MIN_PAINTED_SECONDS}s.`)
+    if (range.end > range.start && painted < MIN_PAINTED_SECONDS) reasons.push(`${label} paints ${painted.toFixed(2)}s — segments run ${MIN_PAINTED_SECONDS}–${MAX_PAINTED_SECONDS}s and the engine’s frame grid (5/22/39…) conforms the shortest legal segment to ${(MIN_SEGMENT_FRAMES / TIMELINE_FPS).toFixed(2)}s. Paint it at least ${MIN_PAINTED_SECONDS}s.`)
     if (painted > MAX_PAINTED_SECONDS + 1e-9) reasons.push(`${label} paints ${painted.toFixed(2)}s — the clip ceiling is ${MAX_PAINTED_SECONDS}s per segment.`)
     if (range.start < -1e-9 || range.end > clip + 1e-9) reasons.push(`${label} extends past the clip's 0–${clip.toFixed(2)}s.`)
     if (range.loras.length > LORA_SLOTS) reasons.push(`${label} carries ${range.loras.length} LoRAs — the timeline supports ${LORA_SLOTS} slots per range (the workbench's combined-strength band).`)
@@ -321,7 +321,7 @@ export function compileLoraTimeline(doc: LoraTimelineDoc, clipDurationSeconds: n
     const frames = conformFrames((span.end - span.start) * TIMELINE_FPS)
     const durationSeconds = frames / TIMELINE_FPS
     if (!near(durationSeconds, span.end - span.start)) {
-      warnings.push(`${rangeTitle(span.loras)} at ${span.start.toFixed(2)}s: painted ${(span.end - span.start).toFixed(2)}s conforms to ${durationSeconds.toFixed(3)}s (${frames} frames, 17n+5).`)
+      warnings.push(`${rangeTitle(span.loras)} at ${span.start.toFixed(2)}s: painted ${(span.end - span.start).toFixed(2)}s conforms to ${durationSeconds.toFixed(3)}s (${frames} frames, engine frame grid).`)
     }
     const id = span.painted ? `seg-lora-${span.rangeId}` : `seg-${span.rangeId}`
     segments.push({
@@ -397,5 +397,5 @@ export function loraTimelineToPlanDocument(
   const gaps = compile.segments
     .filter((segment) => segment.gapAfter && segment.gapAfter.kind !== 'cut')
     .map((segment) => ({ afterSegmentId: segment.id, kind: segment.gapAfter!.kind }))
-  return { brief: `LoRA timeline — ${compile.segments.length} segment${compile.segments.length === 1 ? '' : 's'} (${compile.totalSeconds.toFixed(2)}s planned, 17n+5 grid)`, segments, gaps }
+  return { brief: `LoRA timeline — ${compile.segments.length} segment${compile.segments.length === 1 ? '' : 's'} (${compile.totalSeconds.toFixed(2)}s planned, engine frame grid)`, segments, gaps }
 }
