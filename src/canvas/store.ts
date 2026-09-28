@@ -602,8 +602,18 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
               comfyUrl: useSessionStore.getState().settings?.comfyUrl ?? '',
               ensureOutput: async (targetChainId) => (await documentsApi.createOutput({ chainId: targetChainId, substrates: ['decoded'] })).id,
             })
-            if (result.landed) get().toast('success', 'The image packet landed — the take strip holds its frames; the scorer\'s pick is marked.')
-            else if (result.error) get().toast('error', `The workbench render could not land: ${result.error}`)
+            // (W7, perfect-state sweep 2026-09-27) The landing toast speaks
+            // the LANE's language: single-frame lanes (T=1 fast, refine,
+            // R2I stills) never hear packet copy — and no pool-of-one
+            // superlatives (the landing lands those unscored).
+            if (result.landed) {
+              const single = result.landing?.frames === 1
+              get().toast('success', single
+                ? (result.landing?.op === 'refine'
+                  ? 'The refine landed as a new take — provenance-linked to the frame it refined.'
+                  : 'The frame landed on the take strip.')
+                : 'The image packet landed — the take strip holds its frames; the scorer\'s pick is marked.')
+            } else if (result.error) get().toast('error', `The workbench render could not land: ${result.error}`)
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
             if (attempt === MAX_LANDING_ATTEMPTS || attempt % LANDING_HEARTBEAT === 0) {
@@ -1279,7 +1289,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
           }))
         }
         set({ timelinePlanId: plan.id, timelineOpen: true })
-        get().toast('success', `Compiled ${compile.segments.length} LoRA segment${compile.segments.length === 1 ? '' : 's'} (${compile.totalSeconds.toFixed(1)}s planned, 17n+5 grid) — seeded as objects. Generate from the timeline.`)
+        get().toast('success', `Compiled ${compile.segments.length} LoRA segment${compile.segments.length === 1 ? '' : 's'} (${compile.totalSeconds.toFixed(1)}s planned, engine frame grid) — seeded as objects. Generate from the timeline.`)
         return { ok: true, planId: plan.id }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -2260,7 +2270,11 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     toast: (tone, text) => {
       const id = toastSeq++
       set((state) => ({ toasts: [...state.toasts.slice(-3), { id, tone, text }] }))
-      window.setTimeout(() => get().dismissToast(id), tone === 'error' ? 6500 : 4200)
+      // (W14, perfect-state sweep 2026-09-27) Duration scales by severity: a
+      // failure the user must ACT on (graph validation, landing failures)
+      // outlives a success toast — 6.5 s was gone before the reason could be
+      // read. The dismiss button stays on every toast either way.
+      window.setTimeout(() => get().dismissToast(id), tone === 'error' ? 15000 : 4200)
     },
     dismissToast: (id) => set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) })),
 

@@ -251,6 +251,19 @@ function titleFor(document: CanvasDocument, chain: DocumentChain, index: number)
   return `${chain.kind} ${index + 1}`
 }
 
+/** (W9, perfect-state sweep 2026-09-27) The ONE chain-naming convention —
+ *  kind + ordinal, the canvas tile contract — exported for every surface
+ *  that names a chain: the tiles (this projection), the canvas index, and
+ *  the outputs library. Before this the index and library fell back to
+ *  kind + hash8, putting three vocabularies for one object on one screen;
+ *  the hash now rides only where it is asked for (tooltils, detail rows). */
+export function chainTitle(document: Pick<CanvasDocument, 'chains'>, chain: DocumentChain): string {
+  const index = document.chains.findIndex((entry) => entry.id === chain.id)
+  // titleFor's own document parameter is structural (it reads only the
+  // chain + the caller's ordinal) — the Pick is enough here.
+  return titleFor(document as CanvasDocument, chain, index)
+}
+
 // ---- chain→job links (R-25, audit B P2-1) -------------------------------------
 
 /** The job facts the link rebuild needs — GenerationJob is structural here so

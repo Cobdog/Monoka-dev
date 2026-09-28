@@ -15,13 +15,14 @@
 .iw-engine.warn { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
 .iw-mode-note { font-size: var(--text-2xs, 10px); color: var(--muted); }
 
-.iw-mode-rail { display: flex; gap: 2px; align-items: flex-end; padding: 6px 14px 0; border-bottom: 1px solid color-mix(in srgb, var(--muted) 18%, transparent); flex: 0 0 auto; }
+.iw-mode-rail { display: flex; gap: 2px; align-items: flex-end; padding: 6px 14px 0; flex: 0 0 auto; }
 .iw-mode > button { background: none; border: none; color: var(--muted); padding: 6px 12px; cursor: pointer; font-size: var(--text-2xs, 11px); border-radius: 8px 8px 0 0; }
 .iw-mode.active > button { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.iw-mode-families { position: absolute; display: none; }
-.iw-mode { position: relative; }
-.iw-mode.active .iw-mode-families { display: flex; gap: 6px; position: absolute; top: 100%; left: 0; padding: 8px; background: color-mix(in srgb, var(--color-surface-deep, #080b09) 92%, white); border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 0 10px 10px; z-index: 5; flex-direction: column; min-width: 240px; }
-.iw-family { display: flex; align-items: center; gap: 6px; background: none; border: 1px solid transparent; color: var(--muted); padding: 5px 9px; border-radius: 8px; cursor: pointer; text-align: left; font-size: var(--text-2xs, 11px); }
+/* (W5) The stable sub-lane row: the active group's families render in ONE
+   fixed row under the mode rail — never a per-group dropdown, so the nav's
+   shape never churns between sessions states. */
+.iw-mode-subrail { display: flex; gap: 6px; padding: 7px 14px; border-bottom: 1px solid color-mix(in srgb, var(--muted) 18%, transparent); flex: 0 0 auto; flex-wrap: wrap; }
+.iw-family { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); color: var(--muted); padding: 5px 9px; border-radius: 8px; cursor: pointer; text-align: left; font-size: var(--text-2xs, 11px); }
 .iw-family.active { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .iw-family.unavailable { opacity: 0.55; }
 .iw-family em, .iw-gated { font-style: normal; font-size: 9px; padding: 1px 5px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--muted) 40%, transparent); color: var(--muted); margin-left: auto; }
@@ -60,9 +61,18 @@
 .iw-intent textarea:focus { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .iw-contract summary { cursor: pointer; font-size: var(--text-2xs, 11px); color: var(--muted); }
 .iw-contract pre { max-height: 200px; overflow: auto; white-space: pre-wrap; font-size: 10px; color: var(--muted); border: 1px dashed color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 8px; padding: 8px; }
-.iw-warning { margin: 0; font-size: 10px; color: var(--danger); opacity: 0.85; }
-.iw-unavailable-note { margin: 0; font-size: 10px; color: var(--danger); }
+/* (V3, perfect-state sweep 2026-09-27) Legibility floors on the explanatory
+   paragraphs: the red reason text (warnings, unavailable notes) and the
+   machinery/staging notes carry the reader's decision — 9–10px was below
+   the readable floor. Badges and chips stay at their compact sizes. */
+.iw-warning { margin: 0; font-size: var(--text-2xs, 11px); color: var(--danger); opacity: 0.9; }
+.iw-unavailable-note { margin: 0; font-size: var(--text-2xs, 11px); color: var(--danger); display: flex; flex-direction: column; gap: 6px; }
+.iw-unavailable-note p { margin: 0; }
 .iw-source span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+/* (W12) The source affordances never butt flush against the wrapped heading
+   above them, and the two paths (file / canvas) sit as one row. */
+.iw-source { display: flex; flex-direction: column; gap: 7px; }
+.iw-source-actions { display: flex; gap: 7px; flex-wrap: wrap; }
 .iw-source figure { margin: 6px 0 0; display: flex; align-items: center; gap: 8px; }
 .iw-source figure img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); }
 .iw-source figcaption { font-size: 10px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
@@ -102,7 +112,7 @@
 .iw-generate { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-weight: 700; cursor: pointer; font-size: var(--text-sm, 12px); }
 .iw-generate:disabled { opacity: 0.55; cursor: default; }
 .iw-generate .spin { animation: iw-spin 1s linear infinite; }
-.iw-staging-note { margin: 0; font-size: 10px; color: var(--muted); }
+.iw-staging-note { margin: 0; font-size: var(--text-2xs, 11px); color: var(--muted); }
 
 .iw-handoffs { display: flex; gap: 8px; }
 .iw-pin, .iw-exit { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 9px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); background: none; color: inherit; cursor: pointer; font-size: var(--text-2xs, 11px); }
@@ -152,7 +162,7 @@
 .iw-machinery-select { display: flex; flex-direction: column; gap: 3px; font-size: var(--text-2xs, 11px); }
 .iw-machinery-select span em { font-style: normal; font-size: 9px; color: var(--warning, #d0a030); }
 .iw-machinery-select select { padding: 4px 6px; border-radius: 7px; border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); background: none; color: inherit; font-size: var(--text-2xs, 11px); }
-.iw-machinery-note { margin: 0; font-size: 10px; color: var(--muted); }
+.iw-machinery-note { margin: 0; font-size: var(--text-2xs, 11px); color: var(--muted); }
 .iw-machinery-note .canvas-chip { padding: 1px 7px; font-size: 9px; }
 
 .iw-tiered-resolution { display: inline-flex; gap: 6px; align-items: center; }

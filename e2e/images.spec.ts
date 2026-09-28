@@ -353,3 +353,137 @@ test('a generation lands as ONE take whose artifacts are the packet frames (fake
     await new Promise<void>((resolve) => engine.close(() => resolve()))
   }
 })
+
+// ---------------------------------------------------------------------------
+// (Perfect-state sweep 2026-09-27) Four findings on the T=1 lane, one fake
+// engine: W6 the badge names the READY machinery instead of "unavailable";
+// W7 a single-frame landing speaks lane copy (no packet language, no
+// pool-of-one scorer); W1 the dialogs carry role=dialog semantics; W8 the
+// anchored source picks from the canvas like the references always could.
+// The engine serves the FULL base stack + the Fizgig still pack but NOT the
+// Mamad8 T=1 VAE — the Image Studio machinery is unusable, Fizgig is not.
+test('T=1 lane: the badge names the ready machinery; single frames land with lane copy; dialogs carry semantics; sources pick from canvas', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const http = await import('node:http')
+
+  const frameBytes = Buffer.from(FRAME_PNGS[0], 'base64')
+  const PROMPT_ID = 'iw-e2e-t1-1'
+  const engine = http.createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://engine.local')
+    if (url.pathname === '/system_stats') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ system: {}, devices: [] }))
+      return
+    }
+    // The Fizgig still pack's two classes (no Image Studio pack classes, no
+    // Mamad8 file in the listing — the machinery asymmetry the badge must
+    // narrate).
+    if (serveObjectInfo(url, stockObjectInfo({ FizgigH3StillLatent: {}, FizgigH3StillDecode: {}, MiniMaxH3HybridLoader: {} }), res)) return
+    if (serveModelRegistry(url, H3_REGISTRY_LISTINGS, res)) return
+    if (url.pathname === '/prompt') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ prompt_id: PROMPT_ID, number: 1, node_errors: {} }))
+      return
+    }
+    if (url.pathname === `/history/${PROMPT_ID}`) {
+      // ONE image output — the single-frame T=1 landing.
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ [PROMPT_ID]: { prompt: [], outputs: { '70': { images: [{ filename: 'iw-t1-00001_.png', subfolder: '', type: 'output' }] } }, status: { completed: true } } }))
+      return
+    }
+    if (url.pathname === '/view') {
+      res.writeHead(200, { 'content-type': 'image/png' })
+      res.end(frameBytes)
+      return
+    }
+    res.writeHead(404)
+    res.end()
+  })
+  const enginePort = await new Promise<number>((resolve) => engine.listen(0, '127.0.0.1', () => resolve((engine.address() as { port: number }).port)))
+
+  const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    const listed = await (await request.get('/api/lan/jobs')).json() as { jobs?: Array<Record<string, unknown>> }
+    const stale = (listed.jobs ?? []).filter((job) => job.status === 'queued' || job.status === 'running').map((job) => ({ ...job, status: 'cancelled' }))
+    if (stale.length) await request.post('/api/lan/jobs', { data: { jobs: stale } })
+    await seedSession(request)
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${enginePort}`,
+      // Reset any leftover machinery pick: the DEFAULT (Image Studio) must
+      // be the selected machinery when the badge is asserted.
+      experimentalT1Decode: 'image-studio',
+    } } })
+    await page.goto('/?images=1')
+    await expect(page.locator('[data-iw-root]')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('[data-iw-engine="on"]')).toBeVisible({ timeout: 15_000 })
+
+    // (W6) The T=1 lane's badge: the SELECTED machinery (Image Studio) is
+    // unusable without the Mamad8 VAE, but the badge names the ready
+    // machinery set — never a bare "unavailable" that hides the working
+    // path.
+    const t1Lane = page.locator('[data-iw-family-button="h3img.generate.t1"]')
+    await expect(t1Lane).toBeVisible({ timeout: 15_000 })
+    // Both Fizgig machineries ride the same pack classes — 2 of 3 ready.
+    await expect(t1Lane.locator('[data-iw-unavailable-badge]')).toHaveText('2 of 3 machineries ready')
+    await t1Lane.click()
+    // …and the unavailable note points AT the switch that unlocks the lane.
+    const note = page.locator('[data-iw-unavailable]')
+    await expect(note).toBeVisible()
+    await expect(note).toContainText('Fizgig')
+    await expect(note).toContainText('T=1 machinery')
+
+    // Switch the machinery: the lane unlocks and generates.
+    await page.locator('[data-iw-machinery-value]').selectOption('fizgig')
+    await expect(page.locator('[data-iw-unavailable]')).toHaveCount(0, { timeout: 15_000 })
+    await page.locator('[data-iw-intent]').fill('a single brass compass on chart paper, top light')
+    await page.locator('[data-iw-generate]').click()
+
+    // (W7) The single frame lands as ONE unscored take, the caption reads
+    // lane copy, and the toast never speaks packet language.
+    const take = page.locator('[data-iw-take-kind="t1"]').first()
+    await expect(take).toBeVisible({ timeout: 30_000 })
+    await expect(take.locator('[data-iw-frame]')).toHaveCount(1, { timeout: 15_000 })
+    await expect(page.locator('[data-iw-scorer]')).toHaveCount(0)
+    // The caption speaks the lane's vocabulary (T=1 fast — the 'single
+    // frame' wording is the non-t1 single-frame lanes').
+    await expect(page.locator('[data-iw-preview-caption]')).toContainText('T=1 fast')
+    await expect(page.locator('.iw-toasts [data-canvas-toast="success"]', { hasText: 'frame landed' }).first()).toBeVisible({ timeout: 15_000 })
+
+    // (W1) The start-frame exit dialog carries dialog semantics and answers
+    // Escape.
+    await page.locator('[data-iw-exit]').click()
+    const exitDialog = page.locator('[data-iw-exit-dialog]')
+    await expect(exitDialog).toBeVisible()
+    await expect(exitDialog.locator('[role="dialog"]')).toHaveAttribute('aria-modal', 'true')
+    await expect(exitDialog.locator('[role="dialog"]')).toHaveAttribute('aria-label', 'Start-frame exit')
+    await page.keyboard.press('Escape')
+    await expect(exitDialog).toHaveCount(0)
+
+    // (W8 + W11) The Edit lane's SOURCE picks from the canvas (the OS dialog
+    // was the only path), and the picker's visible label follows the canvas
+    // naming convention (kind + ordinal), not the raw hash filename.
+    // The sub-lane row shows the ACTIVE group's lanes — switch the top-level
+    // Edit tab first (W5's stable sub-rail).
+    await page.locator('[data-iw-mode="edit"] > button').click()
+    await page.locator('[data-iw-family-button="h3img.edit.instruct"]').click()
+    await expect(page.locator('[data-iw-source-pick-canvas]')).toBeVisible()
+    await page.locator('[data-iw-source-pick-canvas]').click()
+    const picker = page.locator('[data-iw-canvas-picker="source"]')
+    await expect(picker).toBeVisible()
+    await expect(picker.locator('[role="dialog"]')).toHaveAttribute('aria-modal', 'true')
+    const refCard = picker.locator('[data-iw-canvas-ref]').first()
+    // kind + ordinal — the canvas tile's own convention for this object.
+    await expect(refCard).toContainText(/^h3img 1$/)
+    await refCard.click()
+    await expect(picker).toHaveCount(0)
+    // The pick anchored the source (the figure with its name shows).
+    await expect(page.locator('[data-iw-source-name]')).toBeVisible()
+
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    await request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } }).catch(() => undefined)
+    await new Promise<void>((resolve) => engine.close(() => resolve()))
+  }
+})
