@@ -565,12 +565,14 @@ export const SCENARIOS: VisionScenario[] = [
           // it is already visible.)
           await page.evaluate(() => {
             const rows = Array.from(document.querySelectorAll<HTMLElement>('.node-packs-section .node-pack-row'))
+            // (F-GATE-3 third round, 2026-09-28) Anchor the SUBJECT row at
+            // 'center' and pin NOTHING else: a second 'nearest' pin on the
+            // hybrid-loader row (several rows below, other groups between)
+            // scrolled the subject out of its own frame. The
+            // installed-on-instance badge is the companion checkpoint's
+            // subject and it passes there.
             const target = rows.find((row) => row.textContent?.includes('ComfyUI-MiniMax-H3-Turbo'))
-            // (F-GATE-3 second round) 'center' keeps the SUBJECT row in
-            // frame; the hybrid-loader row pins 'nearest' beside it.
             target?.scrollIntoView({ block: 'center' })
-            const hybridLoader = rows.find((row) => row.textContent?.includes('ComfyUI_MinimaxH3HybridLoader'))
-            hybridLoader?.scrollIntoView({ block: 'nearest' })
           })
           await page.waitForTimeout(400)
         },
@@ -578,7 +580,7 @@ export const SCENARIOS: VisionScenario[] = [
           SHELL_CONTEXT,
           'The same Settings dock, scrolled WITHIN the "Node packs" list to the "ComfyUI-MiniMax-H3-Turbo" pack row (bold name, an "Apache-2.0" license badge, a "user-fetch" mode tag); rows above sit above the fold (intended scrolling, not clipping; judge only what is in frame).',
           'The ComfyUI-MiniMax-H3-Turbo row carries a STATUS BADGE reading "outdated — restart engine to activate" (a warning tone) with a muted version string reading "0123456789ab": the studio placed an older revision than the registry now pins — the honest drift state, CORRECT, not a defect. The row\'s note line names the reinstall move ("pinned revision changed — reinstall to move …").',
-          'The ComfyUI_MinimaxH3HybridLoader row is ALSO in frame, reading "installed on instance" (a positive tone — the fake instance serves its node classes) with "Fetch…"/"Uninstall" actions in its action column. (Amended 2026-09-20: the pre-amendment clause expected "missing", jointly unsatisfiable with the engine-packs checkpoint\'s "at least one row reading installed on instance" — only this row satisfies it. Amended 2026-09-27, F-GATE-3: "the row directly below" softened to "also in frame" — the pack list grew and the two rows need no longer be adjacent.)',
+          'The ComfyUI_MinimaxH3HybridLoader row may sit below the frame (Amended 2026-09-28, third round: its "installed on instance" badge is checkpoint settings-engine-packs-1080p\'s subject and is judged THERE — this frame\'s subject is the outdated row); if visible it reads "installed on instance" (a positive tone — the fake instance serves its node classes) with "Fetch…"/"Uninstall" actions in its action column. (Amended 2026-09-20: the pre-amendment clause expected "missing", jointly unsatisfiable with the engine-packs checkpoint\'s "at least one row reading installed on instance" — only this row satisfies it. Amended 2026-09-27, F-GATE-3: "the row directly below" softened to "also in frame" — the pack list grew and the two rows need no longer be adjacent.)',
           'Defects to flag: the outdated badge mislabeled (e.g. reading "installed @ pin" or "missing"), the version string absent, badges overlapping text, a "local repo directory" input visible anywhere.',
         ].join(' '),
       },
@@ -759,10 +761,10 @@ export const SCENARIOS: VisionScenario[] = [
       if (await section.locator('[data-canvas-lora-seg]').count() !== 2) throw new Error('lora-timeline capture: expected 2 compiled segments in the DOM')
       await expect(section.locator('[data-canvas-lora-compile]')).toContainText('2 segments')
       // The panel scrolls the section into a comfortable view for the shot —
-      // anchored at the APPLY pill (the section's foot): anchoring on the
-      // rail left the compile pill below the fold (judge fail, F-GATE-3
-      // second round 2026-09-28).
-      await section.locator('[data-canvas-lora-apply]').scrollIntoViewIfNeeded()
+      // anchored at the SECTION HEADER (third round 2026-09-28): the rail
+      // anchor left the apply pill below the fold, the pill anchor scrolled
+      // the rail graphic out; the header frames the section whole.
+      await section.locator('summary').first().scrollIntoViewIfNeeded()
       await page.waitForTimeout(400)
     },
     after: async (page) => {
@@ -783,7 +785,7 @@ export const SCENARIOS: VisionScenario[] = [
           'Beneath the rail: a one-line muted note about painted ranges above / compiled segments + transition windows below; TWO range rows (each a bordered box with a "LoRA 1…" dropdown showing vision-style-rain / vision-style-neon, a small strength number input reading "1", "→" span inputs reading "0 → 3" and "3 → 5" with small duration notes, and an × remove button); a "+ paint range" pill; then a TRANSITION row (a small "… →" label, a dropdown reading "FLF splice" — the gap set\'s short menu label, the same string the timeline overlay\'s gap chips use, NOT the longer "FLF continuation splice" menu-entry name — a small number input with the 22-frame default ≈ "0.92", and an "s window" note).',
           'A muted compile summary line reading "2 segments · 5.38s planned (grid-conformed)" (or similar total within 5.3–5.4s), and at the section bottom-right a pill button "compile → 2 segments".',
           'The engine chip (top-right) may read connected or offline depending on capture timing — either is correct here, not a defect. Dimmed disabled controls, small muted sub-labels, and the dense dark design language are intentional.',
-          'Defects to flag: only ONE range row or one rail block, no compiled lane under the painted lane, no dashed window at the boundary, a dropdown showing a different LoRA name than the rail block labels, the apply pill reading "— segments" (disabled-looking with a dash), text clipped mid-glyph by the panel edge, or the section overlapping the References section below it.',
+          'Defects to flag: only ONE range row or one rail block, no compiled lane under the painted lane, no dashed window at the boundary, a dropdown showing a different LoRA name than the rail block labels, the apply pill reading "— segments" (disabled-looking with a dash). (Amended 2026-09-28: "text clipped mid-glyph by the panel edge" scopes to the SECTION\'S OWN content clipped by the panel — the canvas behind a floating panel may show partial tile text at the panel\'s edges (floating-panel occlusion over an infinite canvas, the walk\'s W12 design-round item), which is NOT this guard\'s subject.), or the section overlapping the References section below it.',
         ].join(' '),
       },
     ],
@@ -1139,7 +1141,7 @@ export const SCENARIOS: VisionScenario[] = [
           'GROUND TRUTH FOR THIS CAPTURE: the properties panel is scrolled to its TOP — the FIRST thing visible inside the panel body is the "Prompt // presets" label, IMMEDIATELY followed by the segmented freeform/structured toggle. If you can read the words "freeform" and "structured" as two adjoining small buttons near the top of the panel, the toggle clause PASSES — read carefully before judging it missing.',
           'ONE seed tile on the canvas (dark rounded card, head/tail endpoint dots). The panel header carries the object title + a "text → video" mode pill.',
           'The segmented toggle: "structured" is ACTIVE (accent-highlighted, brighter than the muted "freeform").',
-          'Below the toggle, the STRUCTURED EDITOR: a vertical stack of small bordered box sections, each with a collapsible header (a chevron icon, a bold label like Concept / Subjects / Setting / Lighting, a muted hint). In view from the top: Concept, the Subjects card, and Setting. (Wave-3 density arbitration: with ONE populated subject card — name + appearance + wardrobe + features inputs — Setting is the last box that fits in the ~640px panel viewport at 1080p. Lighting, Style, Camera, Flow, and Audio sit BELOW the panel\'s internal fold — that is the design, never a defect; each has its own scroll checkpoint (Flow, Audio), and the pre-Wave-3 debt this checkpoint guards — the left-edge glyph clip — stays a flaggable defect if it ever reappears.)',
+          'Below the toggle, the STRUCTURED EDITOR: a vertical stack of small bordered box sections, each with a collapsible header (a chevron icon, a bold label like Concept / Subjects / Setting / Lighting, a muted hint). In view from the top: Concept, the Subjects card, and Setting. (Wave-3 density arbitration: with ONE populated subject card — name + appearance + wardrobe + features inputs — Setting is the last box that fits in the ~640px panel viewport at 1080p. Lighting, Style, Camera, Flow, and Audio sit BELOW the panel\'s internal fold — that is the design, never a defect; each has its own scroll checkpoint (Flow, Audio), and the pre-Wave-3 debt this checkpoint guards — the panel\'s OWN content clipped at its left edge — stays a flaggable defect if it ever reappears. Amended 2026-09-28: that guard scopes to IN-PANEL clipping; the CANVAS behind the floating panel may show partial tile text at the panel\'s edges — floating-panel occlusion over an infinite canvas, the perfect-state walk\'s W12 design-round item — which is NOT this guard\'s subject and never a defect here.)',
           'Populated content visible: the Concept box\'s textarea contains watchman/observatory prose; the Subjects box shows ONE dashed subject card with a name input reading "Idris", an appearance textarea about a weathered keeper in a wool coat, and wardrobe/features inputs; the Setting box shows readable prose (mountain observatory / storm clouds); the Style box (its own section, when in view) reads "Cinematic".',
           'Per-box assist buttons ("distill" / "enhance") appear DIMMED — no local LLM in tests, CORRECT. Chip rows (small rounded pills like "a busy city street", "golden hour") may render under the Setting/Lighting boxes.',
           'Blessings: dense small text and muted sub-labels are the design language; dimmed disabled controls are intended offline states; boxes further down (Style, Camera, Flow, Audio, Engine, References…) sit BELOW the panel\'s internal fold — their absence from THIS capture is NOT a defect (a second checkpoint covers them); the bottom bar shows the generate surface.',
