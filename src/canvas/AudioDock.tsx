@@ -14,6 +14,7 @@ import { useState } from 'react'
 import { Rnd } from 'react-rnd'
 import { AudioLines, Play, X } from 'lucide-react'
 import { useCanvasStore } from './store'
+import { AUDIO_LANE_PAUSED, AUDIO_LANE_PAUSED_REASON } from './options'
 
 export function AudioDock() {
   const dock = useCanvasStore((state) => state.audioDock)
@@ -67,6 +68,37 @@ export function AudioDock() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  // (Maintainer ruling 2026-09-28 — the audio-lane pause, nn5ld47's
+  // extension) While the lane is paused the dock is a NOTICE, not an
+  // authoring surface: every entry point is gated with the same reason, and
+  // the dock itself renders the notice for any path that still reaches it
+  // (a stale chain link, a re-enabled flag catching a mounted panel). The
+  // form below stays compiled — one flag flip restores the lane whole.
+  if (AUDIO_LANE_PAUSED) {
+    return <Rnd
+      className="canvas-audio-dock"
+      data-canvas-audio-dock
+      data-canvas-audio-engine={engine}
+      data-canvas-audio-paused="true"
+      default={{ x: 96, y: 120, width: 400, height: 560 }}
+      minWidth={320}
+      minHeight={300}
+      bounds="parent"
+      dragHandleClassName="canvas-inspector-header"
+      enableResizing={{ bottom: true, bottomRight: true, right: true, bottomLeft: false, topLeft: false, topRight: false, left: false, top: false }}
+    >
+      <header className="canvas-inspector-header">
+        <AudioLines size={13} />
+        <strong>Music 3 — complete song</strong>
+        <button type="button" aria-label="Close audio dock" data-canvas-audio-close onClick={() => setAudioDock(null)}><X size={13} /></button>
+      </header>
+      <div className="canvas-inspector-body">
+        <p className="canvas-properties-note" data-canvas-audio-paused-note role="status">{AUDIO_LANE_PAUSED_REASON}</p>
+        <p className="canvas-properties-note">Existing audio chains stay on their objects and keep playing — only new authoring is paused.</p>
+      </div>
+    </Rnd>
   }
 
   return <Rnd

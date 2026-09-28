@@ -762,7 +762,7 @@ function ExportWizard(props: {
         <input value={folder} onChange={(event) => setFolder(event.target.value)} placeholder={`dataset-export-${new Date().toISOString().slice(0, 10)} (relative names land inside the studio output directory; every destination must stay inside it)`} />
       </div>
       <div className="ds-field">
-        <label>Grid target (optional — default: the largest 17n+5 that fits each trim with +2 headroom)</label>
+        <label>Grid target (optional — default: the largest engine-legal frame count (5/22/39…) that fits each trim with +2 headroom)</label>
         <input value={gridTarget} onChange={(event) => setGridTarget(event.target.value)} placeholder="22 / 39 / 56 / 73 / 90 / 107 / 124 …" inputMode="numeric" />
       </div>
       <label className="ds-check">

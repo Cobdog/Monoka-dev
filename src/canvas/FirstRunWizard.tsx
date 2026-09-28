@@ -223,7 +223,7 @@ function EngineStep(props: {
         {reachable.map(({ port, latencyMs }) => (
           <li key={port}>
             <button type="button" className="canvas-chip" data-wizard-port={port} onClick={() => { const url = `http://127.0.0.1:${port}`; setSettings({ ...settings, comfyUrl: url }); setCheckedUrl(url); void checkConnection(url) }}>
-              <Check size={12} /> :{port} <small>{latencyMs} ms</small>
+              <Check size={12} /> :{port} <small>{latencyMs} ms{port === 8188 ? ' · ComfyUI’s default port — adopt it only if it is your own instance' : ''}</small>
             </button>
           </li>
         ))}

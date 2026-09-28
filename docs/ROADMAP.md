@@ -1,8 +1,8 @@
 # Roadmap — state of play
 
-> **Derived from Flux (project `r2lnrfw`); refreshed 2026-09-20 by the doc-hygiene
-> fork at the maintainer's pre-compaction request, then again post-merge by the
-> session-closing cohesion check (881p9ik).** Flux is the source of truth;
+> **Derived from Flux (project `r2lnrfw`); refreshed 2026-09-20, then 2026-09-28
+> at the maintainer's PERFECT-state directive (the frontier sections below; the
+> historical sections keep their original wording).** Flux is the source of truth;
 > this file is the human-readable state of play — if it disagrees with the board,
 > the board wins. Task ids are Flux ids.
 
@@ -13,25 +13,49 @@ of small-friction fixes never got them past "enter a prompt, pick video, execute
 fail." The response is a full audit + remediation program, with the maintainer's
 stated stakes: remediate, or the project gets scrapped and restarted fresh.
 
-**Where it stands**: three section-assigned audits complete (UX/IA, generation
-pipeline + realtime, external-instance + node friction) plus the adversarial
-direction audit (cygbkeq, report on its task record); the consolidated remediation
-plan landed (PR #31, `docs/audit/remediation-plan.md` — 36 deduplicated findings,
-four waves, six `[REC]` decision points awaiting the maintainer). **The critical-path
-fixes and Phase 0 removals have MERGED**: PR #32 (tmz8vh7 — the T=1 wedge fixed at
-both seams) and PR #33 (z8bc21p — LTX + Z-Image + original-build cruft out, −12,953
-lines, manifest at `docs/audit/removals-phase0.md`). Main is at `665ed96`; 33 PRs
-merged lifetime. **The maintainer is reading the direction-audit report and ruling
-on the plan's decision points — no wave dispatches until that approval lands.**
+> **FRONTIER UPDATE (2026-09-28) — the PERFECT-state pass.** The maintainer's
+> 2026-09-27 directive — *"Mainline — let's get what we have currently working in
+> a PERFECT state before we move on to adding more features."* — is the active
+> frame. The perfect-state walk (`docs/audit/perfect-state-walk-2026-09-27.md`,
+> c85bd48) found the spine real and every 09-25 punch-list fix HELD (zero hard
+> regressions); its 31 findings concentrate on the NEW surfaces (workbench dialog
+> semantics, refusal truth, mode vocabulary) plus the standing tail. The sweep
+> zeroing that punch list is landing as the current PR (task 6rmxbzf). Before it:
+>
+> - **The four waves are DONE** (W1–W4 all merged; the 09-21 note below is
+>   history). The numbered PR series ran to **#63**; main is green through the
+>   full local gate (8/8 legs, twice, on the clean tree at the walk).
+> - **The image stack shipped end-to-end**: the H3 Image Workbench (packet/T=1/
+>   directed, R2I, the six edit families, inpaint with the mask painter, tiered
+>   resolutions to 8MP, refine pairing, burst lane) + the full 1F machinery row
+>   (Image Studio | Fizgig author recipe | Fizgig max quality, PR #63/#54).
+> - **The truth-surface program** (PRs #52–#55, 68e9k17/tsw02y1): the stack
+>   report derives from the resolution the graphs use; inventory refresh on
+>   engine recovery; override attribution; the TE-dimension guard (PR #53);
+>   scene trash as a real cycle (PR #56).
+> - **VDN adopted first-party** (PR #62): ApplyVDNH3 as the vdn.apply
+>   acceleration rung; the wire-or-remove passes A/B (PRs #60/#61) cut 20 dead
+>   wires and wired control-track delete + documents export.
+> - **The image-workbench v2 spec is BLESSED** (7e3d9dd, eight maintainer
+>   rulings; post-blessing verification 20d7ea4): the layered-canvas Workbench
+>   with sub-modules Infinite Canvas / Image Editor / Video Editor, Invoke
+>   selective, refs strip, top-level documents, RLHF local-only, Qwen inside v2.
+>   **Phase A is cleared to dispatch** (the Qwen-first wave r546bab carries the
+>   doctrine as six new acceptance criteria).
+> - **The research library kept pace**: the Fizgig assessments, the seamless-
+>   blending survey, Invoke/openOutpaint prior art, the fooocus-qwen doctrine
+>   (426f76c/0cc4550), the drift-envelope arms (R1/R2-Viggle/R3), the custom-node
+>   inventory rulings (ostris kept+wired, VDN adopted, Viggle custody recorded).
+>
+> **Next after the sweep**: the blessed workbench-v2 Phase A dispatch (the
+> creation-surface build-out), then the design-system (shibui) visual round —
+> which owns every contrast/taste item the perfect-state sweep deliberately left
+> alone.
 
-> **FRONTIER UPDATE (2026-09-21): the approval landed — all six [REC]s as
-> recommended, with the direction-audit addendum folded (plan §6). The sprint is
-> RUNNING: Wave 1 (PR #37), Wave 2 (PR #38), the CI redesign (PR #35), devdocs
-> round 1 (PR #34), Qwen fetch rows (PR #36), and engine-contract testing (PR #39)
-> all MERGED; Wave 3 in flight (PR #40 + the surfaces rung). The engagement queue
-> after the waves: the maintainer's first-generation session, the design-system
-> blessing, and the testing-harness brainstorm. This note supersedes the
-> approval-gate sentences above — kept for the record.**
+> **FRONTIER UPDATE (2026-09-21) — kept for the record**: the approval landed —
+> all six [REC]s as recommended, with the direction-audit addendum folded
+> (plan §6). Waves 1–4, the CI redesign, devdocs round 1, Qwen fetch rows, and
+> engine-contract testing all merged across 2026-09-21/22.
 
 **The rename, locked (2026-09-20)**: the app is **MONOKA** and the aesthetic is
 **shibui** (sumi base, washi neutrals, vermillion seal-accent, wood-warm chrome;
@@ -136,17 +160,49 @@ realtime core, landing machinery) with the debt concentrated at the seams.*
   inventory + refresh); manifest with restore paths at
   `docs/audit/removals-phase0.md`; e2e 101 passed on the merged tree.
 
-## Queued (the plan's waves carry the real order)
+## Shipped since the waves (2026-09-22 → 2026-09-27)
 
-- **Wave 1 dispatch** — after the maintainer approves the plan (the fixes and
-  removals it waited on have landed).
-- **Control Center + Workbench spec rounds** — post-foundation, full design
-  treatment (brainstorm → spec → blind audit → blessing).
-- Pre-program queue (re-scoped by the plan where relevant): the training sidecar
-  (ehzagoc), drift-envelope suite (5nfy24y), camera editor, control-input tools,
-  engine integrations (start-frame factory, RefMod factory, VDN chain option,
-  FaceRefine, Krea 2 stills, spectrum, SplitUpscale), derive-curve-form utility,
-  graph visual verification, licensing statement.
+- **High-zoom canvas fidelity + the PreviewOverride pack** (PRs #49/#48): the
+  composited-layer blur diagnosed and fixed (gesture-scoped world promotion);
+  the pack owns preview decoding whenever it + a taeh3 decoder are present.
+- **The reality audit + journey + truth sweeps** (96c1242, PRs #50–#52): the
+  environment mirror (`e2e/mirror/`); the wizard survives connection; the image
+  lane reachable; `[redacted]` exiled from user surfaces; basename-true stack
+  reporting; subpath'd models resolve.
+- **The TE-dimension guard** (PR #53): wrong-family encoders refuse at validate
+  (the 2026-09-22 crash class), with the family-registry expectation data.
+- **Fizgig behind a flag → the full 1F machinery row** (PR #54 → #63): the
+  E-FS1 arm contract-validated, then the T=1 machinery row selectable end-to-end.
+- **The hands-on review trio** (PR #56): scene trash/restore/empty as a real
+  cycle; AR-first resolution picking; reference prep never cropped (the
+  maintainer's 2026-09-26 ruling, proven on the mirror at wiring truth).
+- **The stack-report rework** (PR #55): derived from the SAME resolution the
+  graphs use — the central-model law's reference implementation.
+- **The custom-node inventory rulings executed** (PR #57 + custody commits):
+  ostris inpaint-edit wired with the Cierpliwy weights; VDN adopted as our own;
+  Viggle lineage corrected and weights mirrored hash-pinned.
+- **Wire-or-remove A/B** (PRs #60/#61) + **VDN finished** (PR #62, zero-emission
+  lane emitting) + **the centralization wave** (PR #59, R1–R5: the frame-grid
+  ledger, one stack-ready predicate, basename truth, one pack-presence rule).
+- **The image-workbench v2 spec round** (7151a66 → 20d7ea4): draft → blind audit
+  → r2 fix pass → BLESSED (eight rulings) → post-blessing verification.
+- **CI on demand** (fad53a4, the 2026-09-26 standing rule): runs only on
+  workflow_dispatch or the `run-ci` PR label.
+- **The perfect-state walk** (c85bd48): the mainline audit at the PERFECT-state
+  directive — 31 findings, zero hard regressions, the gate twice-green.
+
+## Queued (frontier order)
+
+- **The perfect-state sweep** (6rmxbzf, in flight): the 31 findings zeroed in
+  the walk's six-wave order (truth surfaces → dialogs → workbench coherence →
+  CSS floors → standing tail → gate tooling).
+- **Workbench v2 Phase A** — the blessed creation-surface build-out (the
+  Qwen-first wave r546bab carries the fooocus doctrine).
+- **The shibui design round** — owns every contrast/visual-taste item (the
+  perfect-state program deliberately scoped those OUT).
+- Pre-program queue (re-scoped): the training sidecar (ehzagoc, re-scoped
+  post-removal), drift-envelope suite (5nfy24y), camera editor, control-input
+  tools, licensing statement.
 - **Nits backlog** (5vu57ue) — deliberately deferred; many will dissolve in the
   redesigns.
 - **GPU-window batch** (maintainer-timed): first real training run, E-IW2 (burst
@@ -154,8 +210,7 @@ realtime core, landing machinery) with the debt concentrated at the seams.*
 
 ## Awaiting maintainer
 
-- **The remediation plan's six `[REC]` decision points** (the plan's executive
-  summary) — the approval gate for wave 2+ dispatch.
+- The workbench-v2 phase gates beyond A (per the blessed spec's §11 phases).
 - **Batch 4 keep/kill list** (dgrkp2e): fl2va-pruned, ref2va-pruned, 32B TE
   variant, GLM-in-tmp relocation.
 - MATLOWAI default-vs-labeled; Intern bakeoff soak; Qwen3.8-Flash-Next

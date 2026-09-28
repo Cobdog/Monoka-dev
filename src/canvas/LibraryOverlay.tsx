@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Film, Image as ImageIcon, Music2, Search, X } from 'lucide-react'
 import { documentsApi } from './api'
 import { mediaForOutput, buildOutputIndex } from './generation'
+import { chainTitle } from './derive'
 import { useCanvasStore } from './store'
 import { useWindowedList } from './useWindowedList'
 
@@ -59,7 +60,7 @@ export function LibraryOverlay() {
               key: take.id,
               createdAt: take.createdAt,
               kind: resolved.media.kind,
-              label: prompt ? prompt.slice(0, 70) : `${chain.kind} ${chain.id.slice(0, 8)}`,
+              label: prompt ? prompt.slice(0, 70) : chainTitle(document, chain),
               note: `${document.project.name} · ${take.supersededBy ? 'prior' : 'canonical'} · ${new Date(take.createdAt).toLocaleDateString()}`,
               projectId: document.project.id,
               chainId: chain.id,

@@ -234,6 +234,116 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
   expect(mirrorLog).not.toContain('EADDRINUSE')
 })
 
+/** (W18, perfect-state sweep 2026-09-27) The START-FRAME lane's
+ *  preview-override wiring: the walk's one sampled image→video graph
+ *  (LoadImage + MiniMaxH3ImageToVideo + PreviewImage) carried NO
+ *  MiniMaxH3PreviewOverrideCS node, while the resolver claims it wires
+ *  whenever livePreview (always on for canvas renders) + the pack class +
+ *  the taeh3 decoder resolve. The builder is mode-independent by
+ *  construction — this pin proves it at WIRING truth on the mirror: bind a
+ *  dropped image as the chain's FIRST FRAME (mode 'image'), generate, and
+ *  read the graph the engine actually received. */
+test('the start-frame (image→video) lane wires the PreviewOverride pack node', async ({ page, request }) => {
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const holder = http.createServer(() => undefined)
+  const mirrorPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', MIRROR_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+    const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${mirrorPort}`,
+      engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
+    } } })
+    await resetSession(page)
+
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'true', { timeout: 20_000 })
+    // The video chain the start frame anchors into.
+    await page.locator('[data-canvas-prompt]').fill('a lighthouse over a black sea, start-frame anchored')
+    await page.locator('[data-canvas-submit]').click()
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 15_000 })
+    // Drop the anchor image (a real media chain object).
+    await page.evaluate(() => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 640
+      canvas.height = 360
+      const context = canvas.getContext('2d')!
+      context.fillStyle = '#1d2b1f'
+      context.fillRect(0, 0, 640, 360)
+      context.fillStyle = '#e8d04b'
+      context.fillRect(280, 90, 80, 200)
+      const dataUrl = canvas.toDataURL('image/png')
+      const binary = atob(dataUrl.split(',')[1])
+      const bytes = new Uint8Array(binary.length)
+      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([bytes], 'start-frame.png', { type: 'image/png' }))
+      document.querySelector('[data-canvas-root]')!.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }))
+    })
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 15_000 })
+    // Bind it as the render chain's FIRST FRAME — the lane whose sampled
+    // graph lacked the override node (the workbench exit writes exactly
+    // this field).
+    const document = await (await page.evaluate(async () => {
+      const session = await (await fetch('/api/lan/documents/session')).json() as { session: { activeProject: string | null } }
+      const response = await fetch(`/api/lan/documents/project?id=${encodeURIComponent(session.session.activeProject!)}`)
+      return (await response.json()) as {
+        chains: Array<{ id: string; kind: string; settings: Record<string, unknown>; outputs: Array<{ id: string }> }>
+      }
+    }))
+    const renderChain = document.chains.find((chain) => chain.kind === 'generation')!
+    const mediaChain = document.chains.find((chain) => chain.kind === 'media')!
+    await page.request.post('/api/lan/documents/chains/update', { data: { id: renderChain.id, settings: { ...renderChain.settings, firstFrameOutputId: mediaChain.outputs[0]!.id } } })
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await page.locator(`[data-canvas-tile="${renderChain.id}"]`).click()
+    await expect(page.locator('[data-canvas-properties]')).toBeVisible({ timeout: 10_000 })
+    await page.locator('[data-canvas-generate]').click()
+
+    type GraphNode = { class_type?: string; inputs?: Record<string, unknown> }
+    const findStartFrameGraph = async () => {
+      const history = (await mirrorJson(mirrorPort, '/history')) as Record<string, MirrorHistoryEntry>
+      for (const entry of Object.values(history)) {
+        const graph = (entry.prompt?.[0] ?? {}) as Record<string, GraphNode>
+        if (Object.values(graph).some((node) => node.class_type === 'MiniMaxH3ImageToVideo')) return graph
+      }
+      return null
+    }
+    await expect.poll(() => findStartFrameGraph().then((graph) => graph !== null), { timeout: 30_000 }).toBe(true)
+    const i2vGraph = (await findStartFrameGraph())!
+    // THE SWEEP CHECK: the same graph carries the pack's preview node — the
+    // override owns preview decoding on EVERY lane, this one included.
+    const overrideNode = Object.values(i2vGraph).find((node) => typeof node?.class_type === 'string' && /MiniMaxH3PreviewOverride/.test(node.class_type!))
+    expect(overrideNode, 'the start-frame lane\'s graph carries the PreviewOverride pack node').toBeDefined()
+    expect(overrideNode?.inputs?.vae_name).toBe('taeh3_alpha.safetensors')
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } })
+    await resetSession(page)
+  } finally {
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+})
+
 async function resetSession(page: Page) {
   await page.request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } })
   const listed = await page.request.get('/api/lan/jobs')

@@ -223,7 +223,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 
 /* ---- summonable index (§4) -------------------------------------------------- */
 .canvas-index-overlay { position: absolute; inset: 0; z-index: 50; display: grid; place-items: start center; padding-top: 16vh; background: rgba(0,0,0,.7); }
-.canvas-index-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(640px, 88vw); max-height: 56vh; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); box-shadow: 0 18px 60px rgba(0,0,0,.58); overflow: hidden; }
+.canvas-index-panel { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(640px, 88vw); max-height: 56vh; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); box-shadow: 0 18px 60px rgba(0,0,0,.58); overflow: hidden; }
 .canvas-index-input { display: flex; align-items: center; gap: 9px; padding: 11px 13px; border-bottom: 1px solid var(--line); color: var(--muted); }
 .canvas-index-input input { flex: 1; border: 0; background: transparent; color: var(--text); font: inherit; }
 .canvas-index-input input:focus-visible { outline: none; }
@@ -317,7 +317,13 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-properties-models[open] > summary { color: var(--text); }
 .canvas-properties-models .canvas-properties-row { flex-direction: column; align-items: stretch; gap: 3px; }
 .canvas-properties-models .canvas-properties-row select { width: 100%; }
-.canvas-properties-tiers { display: flex; flex-wrap: wrap; gap: 4px; }
+/* (V1, perfect-state sweep 2026-09-27) The tier/VDN rows lay out as ONE
+   three-column grid on the row's own full line — the old flex-wrap let the
+   third radio wrap alone under the row and read as a stray duplicate chip.
+   (flex-basis 100% defeats the shrink-to-fit trap: an auto-fit grid inside
+   an unbounded flex item resolves to a single column.) */
+.canvas-properties-tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; flex: 1 1 100%; }
+.canvas-properties-tiers .canvas-chip { justify-content: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .canvas-properties-refs { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
 .canvas-properties-refs li { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); }
 .canvas-properties-ref-tag { padding: 0 5px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--accent); font-family: ui-monospace, Consolas, monospace; font-size: var(--text-2xs); white-space: nowrap; }
@@ -491,6 +497,14 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-index-trash { display: flex; flex-direction: column; min-height: 0; }
 .canvas-index-trash-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
 .canvas-index-trash-head strong { color: var(--muted); font-size: var(--text-sm); font-weight: 500; }
+/* (W13, perfect-state sweep 2026-09-27) The in-app trash confirm — the
+   native window.confirm's replacement, in the house styled-dialog language. */
+.canvas-index-confirm { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 13px; border-top: 1px solid var(--line-strong); background: var(--surface-2); }
+.canvas-index-confirm strong { font-size: var(--text-sm); }
+.canvas-index-confirm p { margin: 3px 0 0; color: var(--muted-2); font-size: var(--text-2xs); }
+.canvas-index-confirm-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.canvas-index-confirm-actions button { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line-strong); background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+.canvas-index-confirm-actions button.danger { border-color: var(--danger, #e5484d); color: var(--danger, #e5484d); }
 .canvas-index-trash .canvas-index-row { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 7px 10px; background: transparent; }
 .canvas-index-trash .canvas-index-row .canvas-index-row-note { margin-left: auto; }
 .canvas-properties-free-res { display: inline-flex; align-items: center; gap: 4px; }
@@ -595,7 +609,12 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-settings-dock { z-index: 60; display: grid !important; grid-template-rows: auto minmax(0, 1fr); border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); box-shadow: 0 18px 48px rgba(0,0,0,.5); overflow: hidden; }
 .canvas-settings-dock .canvas-inspector-header svg { color: var(--accent); flex: none; }
 .canvas-settings-body { min-height: 0; overflow: auto; }
-.canvas-settings-body .standard-page { min-height: auto; padding: 14px 16px 22px; }
+/* (W4, perfect-state sweep 2026-09-27) The footer is IN FLOW below the
+   scrollable body (it can never overlay content) — the walk's "sliced
+   mid-sentence" was the last line sitting flush against the scroll edge,
+   reading as a cut under the footer. The bottom padding guarantees the
+   paragraph's last line always clears the visible edge. */
+.canvas-settings-body .standard-page { min-height: auto; padding: 14px 16px 44px; }
 
 /* ---- Phase 4: the library projection (§7 V) -------------------------------------- */
 .canvas-library-panel { width: min(720px, 90vw); }

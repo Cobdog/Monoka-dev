@@ -15,6 +15,15 @@ import type { GenerationMode } from '../types'
 export type EndpointDirection = 'consume' | 'produce'
 export type SourceKind = 'image' | 'video' | 'audio'
 
+/** (Maintainer ruling 2026-09-28, extending the audio-lane pause of
+ *  nn5ld47) The Music 3 lane is DISABLED at the UI surface — flag-not-
+ *  removal per the modularity contract: the lane's code, graph builder,
+ *  submit ladder, and suites all STAY (one flag flip restores the lane);
+ *  the authoring surface itself is gated with the honest reason, never a
+ *  silent disappearance. H3's native video audio is untouched. */
+export const AUDIO_LANE_PAUSED = true
+export const AUDIO_LANE_PAUSED_REASON = 'The audio lane is paused pending the YuE2 decision — Music 3 authoring returns with it.'
+
 /** Availability facts — computed by the canvas store from the shared
  *  registries and passed in as data so this module stays engine-free. */
 export type OptionAvailability = {
@@ -109,7 +118,7 @@ export function endpointOptions(direction: EndpointDirection, sourceKinds: Reado
     rows.push({
       id: 'consume:pose-rig', group: 'control', label: 'Pose rig', description: 'Author a pose control track for this chain — the IK rig docks as a panel; export lands as a control input.',
       action: { kind: 'pose-rig' }, available: true,
-      hint: 'palette-exact DWPose · 17n+5 keyframe grid',
+      hint: 'palette-exact DWPose · keyframes on the engine frame grid (5/22/39…)',
     })
     return rows
   }
@@ -163,9 +172,14 @@ export function endpointOptions(direction: EndpointDirection, sourceKinds: Reado
   // honest gate (its submit carries the refusal with the missing list, the
   // established offline pattern); disabling here would kill the authoring
   // surface instead of gating the render. The needs ride the hint.
+  // (2026-09-28 ruling) The lane pause is the one exception: the row itself
+  // gates with the pause reason — there is no authoring surface to reach
+  // while the YuE2 decision is pending.
   rows.push({
     id: 'produce:music3', group: 'generate', label: 'Music 3 — a complete song', description: 'The audio dock opens on this chain — caption, lyrics, seconds; the track lands as its own object.',
-    action: { kind: 'audio-dock', engine: 'music3' }, available: true,
+    action: { kind: 'audio-dock', engine: 'music3' },
+    available: !AUDIO_LANE_PAUSED,
+    reason: AUDIO_LANE_PAUSED ? AUDIO_LANE_PAUSED_REASON : undefined,
     hint: availability.music3.available ? 'complete songs · own object' : `author now · render needs ${availability.music3.missing.join('; ')}`,
   })
   return rows
