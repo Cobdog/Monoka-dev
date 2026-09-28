@@ -482,7 +482,16 @@ test('T=1 lane: the badge names the ready machinery; single frames land with lan
 
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
-    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    // (testing.md's shared-home discipline) This test FLIPS a persisted
+    // setting (the machinery select saves experimentalT1Decode) and leaves a
+    // running job against an engine that is about to die — both must be
+    // cleaned HERE or every later boot in the shared home rehydrates them:
+    // the flag wedges the H3-1F specs onto the Fizgig ladder, the stuck job
+    // pins the radar visible for the at-rest assertions.
+    await request.post('/api/lan/settings', { data: { settings: { ...originalSettings, experimentalT1Decode: originalSettings.experimentalT1Decode ?? 'image-studio' } } }).catch(() => undefined)
+    const listed = await (await request.get('/api/lan/jobs')).json().catch(() => ({ jobs: [] })) as { jobs?: Array<Record<string, unknown>> }
+    const stale = (listed.jobs ?? []).filter((job) => job.status === 'queued' || job.status === 'running').map((job) => ({ ...job, status: 'cancelled' }))
+    if (stale.length) await request.post('/api/lan/jobs', { data: { jobs: stale } }).catch(() => undefined)
     await request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } }).catch(() => undefined)
     await new Promise<void>((resolve) => engine.close(() => resolve()))
   }
