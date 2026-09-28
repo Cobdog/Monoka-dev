@@ -170,3 +170,79 @@ Fix shapes name the seam; CPU-only = the mirror + unit/e2e verify it without a G
 - Driver: HTTP-controlled headless Chromium (1920×1080) on 7370, screenshots + aria snapshots to `test-results/perfect-state/shots/` (55 PNGs + 52 tree dumps); torn down. The driver script itself now lives OUTSIDE the repo (`/home/agent/tmp-gpu/perfect-state-tools/driver.mjs`) after F-GATE-1.
 - Ports 7360/7361/7370 probe-verified closed at the end; zero `minimax-` scratch strays from this walk (the studio home is the audit's own evidence dir).
 - Never touched: `127.0.0.1:8188`, the GPU, any real engine. The wizard's "Probe common ports" was never clicked.
+
+---
+
+## 6. The sweep resolution record (2026-09-28, task 6rmxbzf)
+
+The perfect-state sweep landed the same week as the walk. Per-finding
+dispositions — **ZEROED** (the fix landed, mirror-verified), **SUPERSEDED**
+(a ruling replaced the finding), or **RULED** (design-round territory with
+the reason). Every ZEROED item carries its seam.
+
+| Finding | Disposition | Resolution |
+|---|---|---|
+| W1 dialog semantics | **ZEROED** | `IwDialog` wrapper (WorkbenchApp.tsx): role=dialog + aria-modal + accessible name + Escape + backdrop dismissal + Tab focus trap + focus restore on all three workbench dialogs (exit, canvas picker incl. the new source mode, mask painter). Mirror-verified: the picker and exit dialog now answer ATs (`dialog/true/Start-frame exit`). |
+| W2 Music 3 refusal | **SUPERSEDED** | The composed-refusal fix LANDED (validateMusic3 now names only the actually-missing rows, singular/plural correct — unit-proven incl. the DAV-only case) — then the maintainer's 2026-09-28 ruling disabled the lane at the UI surface (nn5ld47 extension): the produce row gates with "The audio lane is paused pending the YuE2 decision…", the dock renders the notice, the panel link is disabled. A disabled surface's honest notice replaces the miscounted complaint; the ladder stays correct for the re-enable. |
+| W3 VDN refusal | **ZEROED** | The VDN environment rungs moved BEFORE the stack-membership rung (a missing STAGE used to trip the generic line first via h3StackReady's vdn arm); the membership rung itself now COMPOSES from the resolved rows (lane-aware checkpoint/TE/VAE/turbo names + the engine's node classes). Unit-proven: the stage refusal names the fetch row; the membership refusal names the missing rows. |
+| W4 footer slice | **ZEROED (RCA corrected)** | Measured on the mirror: the footer is IN FLOW below the scrollable body (`footerTop == bodyBottom`, overlap impossible). The walk's slice was the paragraph's last line sitting flush against the scroll edge, reading as a cut under the footer. The body's bottom padding now guarantees clearance (22→44px). |
+| W5 mode-nav churn | **ZEROED (the code slice)** | ONE stable sub-lane row (`[data-iw-mode-subrail]`) under the top-level rail — the active group's lanes render in a fixed row, never a per-group dropdown; the lane vocabulary is unambiguous at the nav ("Directed video edit (39-frame settle)" — the word "Edit" no longer spans a video lane and the still lanes). The deeper IA stays with the blessed workbench-v2 spec (its lane-parity ruling retires this rail's churn class entirely). |
+| W6 "unavailable" hiding Fizgig | **ZEROED** | The badge reflects best-available machinery — "N of 3 machineries ready" (mirror reads "2 of 3": Fizgig + Fizgig max quality) — and the note names the working machinery + the switch that unlocks the lane. e2e-pinned (images.spec.ts). |
+| W7 packet language on single-frame lanes | **ZEROED** | Landing toast is lane-aware (single frame: "The frame landed on the take strip." / refine: provenance-linked copy); a pool of one lands UNSCORED (no "sharpest of the pool"); the caption vocabulary says "single frame". e2e-pinned. |
+| W8 OS-only source picker | **ZEROED** | The anchored/masked source gains "from canvas…" — the same CanvasRefPicker the references use (mode-aware), resolving through the same output index. Mirror-verified end-to-end (pick → source anchored). |
+| W9 naming ×3 | **ZEROED (the interim)** | `chainTitle` exported from derive.ts — the ONE kind+ordinal convention — now feeds the canvas tiles, the index, and the outputs library (both left the kind+hash8 fallback); hashes ride tooltips/detail rows only. The display-name FIELD stays design-round (the v2 spec's documents ruling owns it). |
+| W10 filename echo | **ZEROED** | The unavailable note lists models AND nodes once (the old `||` dropped node rows whenever a model was missing); the installHint rides only when the rows list nothing (it repeats the same filenames). |
+| W11 hash-caption picker | **ZEROED** | Picker labels are kind+ordinal ("h3img 1" on the mirror — the same label the canvas tile carries); filename + prompt ride the tooltip. |
+| W12 spacing tail | **ZEROED** | Source affordances never butt the heading (dedicated actions row + gap); the settings heading buttons never wrap 3 lines (nowrap); selects ellipsize (the "detecte▌" cut); engine-mode card descriptions clamp at 2 lines WITH ellipsis. The "occluded canvas sliver behind the inspector" is the panel's default position over the first tile's label — normal floating-panel occlusion, tile-position territory (design-round). |
+| W13 native trash confirm | **ZEROED** | In-panel `role="alertdialog"` confirm (both gates: trash-scene, empty-trash) in the house styled language; singular/plural grammar fixed ("Its 1 take rides it and comes back with the restore."). e2e drives the in-app confirm now. The OTHER native confirms (datasets ×3, settings reset, tile send, control-track) are the datasets-pattern idiom, outside this finding — noted for any future house-dialog sweep. |
+| W14 fast-dismissing failure toasts | **ZEROED** | Severity-scaled duration: errors 15s (was 6.5s), successes 4.2s; the dismiss button stays. |
+| W15 per-render 404 noise | **ZEROED** | `/api/lan/outputs/resolve` answers "no local copy" as 200 + `{path:null}` (the miss is data, not an error); client, storage test, and migration.md updated in lockstep. The 404-catch stays as an older-server backstop. |
+| W16 graphs-verified at boot | **ZEROED** | The record-once effect re-homed from the dead shell into useStudioSession (nothing had written `testedComfyVersion` since App.tsx died in Phase 5). Mirror-verified: fresh home + boot connect → "Graphs last verified against: v0.34.0". |
+| W17 calm at rest | **ZEROED** | The radar renders only when work/attention exists — no "calm" button that toasts "nothing needs attention." Five e2e at-rest assertions updated to the hidden contract. |
+| W18 start-frame preview wiring | **ZEROED (the check)** | New journey e2e binds a dropped image as a chain's FIRST FRAME, generates on the mirror, and asserts the received graph carries the PreviewOverride node with the taeh3 decoder — the lane is pinned at wiring truth (the builder is mode-independent; the walk's sample rode the stale-registry window the resolver's RCA already names). |
+| F12 raw JSON in Manager note | **ZEROED** | The probe failure text parses the engine's JSON body and renders its `error` field (mirror-verified: "fake engine has no /features", no `{"error":…}`); non-JSON bodies pass through. |
+| M3 cross-class pickers | **ZEROED (the minimum)** | `modelClassHint` labels every option AT the choice point (both pickers: Settings overrides + chain properties) with the same heuristics the guards use — VAEs by decoder class, TEs by dimension class ("32B-class · H3", "4B-class companion"). Grouping-by-optgroup stays with the pickers' visual rework. |
+| C11 17n+5 jargon | **ZEROED** | All eleven user-visible occurrences humanized to the R-22 vocabulary ("engine frame grid (5/22/39…)" / "grid-conformed"); the formula stays in code docs and test names where it is the precise truth. |
+| V1 third-tier wrap | **ZEROED** | The tier/VDN rows are one 3-column grid on the row's own full line (the shrink-to-fit trap fixed); the duplicate "turbo LoRA" note moved to the tooltip. Mirror-measured: all three chips share one top. |
+| V3 helper-text floors | **ZEROED (floors only)** | The workbench's decision-bearing paragraphs (warnings, unavailable notes, machinery/staging notes) sit at the 11px floor — the unreadable 9-10px red explanations gone. Contrast/tint stay with shibui. |
+| Card dead padding | **RULED (measured)** | The media tile's floor is LOAD-BEARING: measured content 294px vs floor 296 at near zoom (the take strip fills it); the 55-90px band appears only at far zoom where chips hide. Shrinking the floor clips the strip; resizing tiles per zoom band is churn. The dead band is the price of zoom-stable tiles — shibui's territory. |
+| Mid-word truncations | **ZEROED** | Titles ellipsize (nav rows already did; selects + preset cards now do too — no more hard mid-glyph cuts). |
+| F14 probe list / seed a11y | **ZEROED (the honest slice)** | The 8188 probe result names what it is ("ComfyUI's default port — adopt it only if it is your own instance"); R-24's decision to keep 8188 first-class stands (documented, consent-gated). Seed spinbuttons expose their real range (0…999,999,999) on both surfaces. |
+| F-GATE-1 eslint/test-results | **ZEROED** | `test-results` joined the eslint ignores — agents' drivers and the gate's own vision bundles never redden the lint leg. |
+| F-GATE-3 vision anchors | **ZEROED** | Both drifted anchors retargeted at the HybridLoader ROW (section-top pin + row-centered; Turbo-top + row `nearest`), rubrics amended (dated). Recaptured + re-judged with the sweep's own bundle — see the run record in the PR. |
+| P15 ROADMAP | **ZEROED** | The 2026-09-28 frontier update: the waves done, the PR series through #63, the image stack + truth program + VDN + wire-or-remove shipped, the workbench-v2 spec blessed with Phase A cleared, the perfect-state frame active; the 09-21 note kept as history. |
+
+**Mid-sweep rulings folded (both 2026-09-28):** the Music 3 UI disable
+(nn5ld47's extension, recorded on its task) and the standing surface-fitness
+verdict (below).
+
+## 7. THE SURFACE FITNESS VERDICT (standing directive 62357632, 2026-09-28)
+
+Per surface: KEEP-AS-IS / REWORK / REFACTOR / REMOVE / SERIOUS-ATTENTION,
+measured against the three-surface destination (WIRING canvas / CONTROL
+center / CREATION workbench), the conductor direction (the Director Suite:
+timeline, plans, gaps), and the blessed image-workbench v2 spec — surfaces
+whose days are numbered by v2's lane-parity retirement are named as such.
+
+| Surface | Verdict | Reasoning |
+|---|---|---|
+| Canvas + substrate (the wiring surface) | **KEEP-AS-IS → v2-ABSORBED** | The spine the walk verified twice (boot → render → recovery → trash, zero hard regressions). Its destination is the v2 Workbench's Infinite Canvas sub-module (the blessed naming ruling) — the shell role ends when v2 Phase B lands; nothing here warrants rework before then. |
+| Launcher (spawn bar + resume cards) | **KEEP-AS-IS** | Walked clean (lane toggle, honest gates); no findings. The image lane's honest refusal (the Mamad8 gate) is the pattern working. |
+| Radar (titlebar) | **KEEP-AS-IS** | Post-W17 it appears exactly when it has something to say; the aggregate is one store-derivation, no drift. |
+| Settings dock (SettingsView) | **KEEP-AS-IS (interim) → REWORK SCHEDULED** | R-15's three-group IA was A-4's "minimum survives" scope by design; the sweep zeroed its findings (footer clearance, picker classes, manager note). The full IA belongs to the Control Center spec round — this surface is the placeholder with a job, and it does the job. |
+| Properties panel (chain inspector) | **REFACTOR** | The DESIGN is the settled directive (node-level dials, chain > global > auto layering — proven by the override work); the CODE is a 1,300-line per-family monolith whose special cases leaked half this walk's W-findings (tier row, seed a11y, the audio link). v2 moves model dials onto nodes/workbench; until then it needs decomposition, not redesign. |
+| Images workbench (v1) | **REWORK — v2 IS THE REWORK** | Five of the eighteen walk findings lived here (W1/W5/W6/W8/W11 — all zeroed as stopgaps). The blessed v2 spec replaces this surface wholesale (layered canvas, lane-parity retirement, sub-modules); its Phase A is cleared to dispatch. Building anything new on v1's rail now would be waste. |
+| Datasets surface | **KEEP-AS-IS** | Blessed spec end-to-end, stable through three audits; its trash UX is the pattern the canvas index adopted (W13). Only C11 copy touched it. |
+| Setup wizard | **KEEP-AS-IS** | Walked whole (4/4 steps, survives connection, reopens on demand); the probe-list honesty slice landed. First-run is done until the design-system round. |
+| Pose rig | **KEEP-AS-IS** | Stable, palette-disciplined, feeds the workbench's pose references through the handoff inbox; no findings. |
+| Surface switcher | **KEEP-AS-IS** | Registry-driven (a surface registers and appears), Alt+N, zero findings — the exact modularity shape the contract asks for everywhere else. |
+| Trash/export management (index overlay) | **KEEP-AS-IS** | A real cycle post-W13 (tombstone → restore → the one gated empty) + archive export; the project-home design round may rehome it, but the semantics are right and proven. |
+| Structured-prompt editor | **KEEP-AS-IS** | Blessed composer, no walk findings; the contract preview + parse round-trips are unit-pinned. |
+| Camera editor (camera path) | **KEEP-AS-IS (unexercised this pass)** | The compiler port is proven by its suite and the benchmark; the walk did not exercise it and neither did the sweep — no evidence for a stronger call, and none needed. |
+| Music 3 / audio dock | **PAUSED pending YuE2 (flag-not-removal)** | The 2026-09-28 ruling: disabled at the UI with the honest reason; code + suites stay compiled and green. YuE2 wins → REMOVE along the ACE-Step discipline; music3 stays → one flag flip restores the lane. H3 joint AV audio is untouched and live. |
+
+**The one SERIOUS-ATTENTION call:** none of the surfaces is deeper-troubled
+than polish — the walk's own headline (zero hard regressions) holds after
+the sweep. The honest risk concentrates in the v1 workbench's remaining
+lifetime (anything built on it now is scheduled demolition) and the
+properties panel's code structure.
