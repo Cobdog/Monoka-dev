@@ -171,7 +171,15 @@ test('the caption editor: live trigger validation and the stale badge flow', asy
   // Editing the crop afterwards flags the caption stale (§4).
   await page.locator('[data-ds-caption] .ds-btn.ghost', { hasText: 'Close' }).click()
   await page.locator('[data-ds-layer]').first().getByRole('button', { name: 'crop/trim' }).click()
-  await page.locator('[data-ds-aspect-strip]').getByRole('button', { name: '4:3', exact: true }).click()
+  // (2026-09-28) The aspect change must pick a chip that is NOT the layer's
+  // current aspect — an already-active chip renders disabled and the click
+  // hangs (the documented `.first()` fragility when a sibling layer from an
+  // earlier seed already carries that aspect). 16:9 is never the 9:16
+  // source's default nor the 4:3 flake case's active chip.
+  const aspectStrip = page.locator('[data-ds-aspect-strip]')
+  const preferred = aspectStrip.getByRole('button', { name: '16:9', exact: true })
+  if (await preferred.isEnabled()) await preferred.click()
+  else await aspectStrip.getByRole('button', { name: '4:3', exact: true }).click()
   await page.locator('[data-ds-save-layer]').click()
   await expect(page.locator('[data-ds-layer] .ds-stale-badge').first()).toBeVisible({ timeout: 10_000 })
 })
