@@ -7,8 +7,11 @@ import tseslint from 'typescript-eslint'
 export default tseslint.config(
   // .claude/worktrees holds OTHER agents' in-flight linked worktrees (the
   // shared-tree discipline: foreign edits are never touched, never linted —
-  // each worktree's owner runs its own gate).
-  { ignores: ['dist', 'dist-electron', 'dist-server', 'release', 'node_modules', '.claude/worktrees'] },
+  // each worktree's owner runs its own gate). test-results is the gate's own
+  // gitignored scratch (vision bundles, agents' driver scripts — F-GATE-1:
+  // the perfect-state walk's own driver turned the lint leg red on an
+  // otherwise-clean tree).
+  { ignores: ['dist', 'dist-electron', 'dist-server', 'release', 'node_modules', '.claude/worktrees', 'test-results'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files: ['scripts/**/*.cjs', 'tests/lib/**/*.cjs'], languageOptions: { globals: { ...globals.node, WebSocket: 'readonly', fetch: 'readonly' } }, rules: { '@typescript-eslint/no-require-imports': 'off' } },
