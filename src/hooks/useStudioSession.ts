@@ -166,6 +166,22 @@ export function useStudioSession() {
     })
   }, [refreshLlm, refreshOllama, scanModels, setSettings])
 
+  // (W16, perfect-state sweep 2026-09-27) Graph-compatibility self-record —
+  // re-homed from the old shell (the effect died with src/App.tsx in the
+  // Phase-5 deletion wave, and nothing has written testedComfyVersion
+  // since, so Settings read "No verification recorded yet" forever on a
+  // connected engine). Record-once-when-unset on a successful connection —
+  // exactly what the Settings copy promises ("captured on the next
+  // successful connection"); later engine updates keep the old record so
+  // the drift warning stays meaningful.
+  const connectedComfyVersion = status.connected ? status.stats?.system?.comfyui_version : undefined
+  useEffect(() => {
+    if (!settings || !connectedComfyVersion || settings.testedComfyVersion) return
+    const next = { ...settings, testedComfyVersion: connectedComfyVersion }
+    setSettings(next)
+    void window.minimax.saveSettings(next).catch(() => undefined)
+  }, [settings, connectedComfyVersion, setSettings])
+
   // GPU telemetry rides the realtime fabric (wave 1): the server pushes each
   // sample while this client is subscribed, so the 4 s HTTP poll is gone. A
   // degraded-mode poll runs ONLY while the fabric is disconnected — same

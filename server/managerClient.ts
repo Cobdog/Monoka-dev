@@ -63,6 +63,23 @@ export type ManagerFetcher = (url: string, path: string, init?: RequestInit) => 
 
 const PROBE_TTL_MS = 10_000
 
+/** (F12) A probe failure's readable text: the raw message is the engine's
+ *  response body, which for JSON bodies is `{"error":"…"}` — render the
+ *  error FIELD, never the raw JSON, in user-facing reasons. */
+function probeFailureText(failure: unknown): string {
+  const message = failure instanceof Error ? failure.message : String(failure)
+  try {
+    const parsed = JSON.parse(message) as { error?: unknown; message?: unknown }
+    if (parsed && typeof parsed === 'object') {
+      if (typeof parsed.error === 'string' && parsed.error) return parsed.error
+      if (typeof parsed.message === 'string' && parsed.message) return parsed.message
+    }
+  } catch {
+    /* not JSON — the text stands as-is */
+  }
+  return message
+}
+
 export type ManagerClient = ReturnType<typeof createManagerClient>
 
 export function createManagerClient(fetcher: ManagerFetcher) {
@@ -93,7 +110,12 @@ export function createManagerClient(fetcher: ManagerFetcher) {
       return {
         present: false,
         version: null,
-        reason: `the engine could not be asked (${failure instanceof Error ? failure.message : String(failure)}) — Manager presence is unknown and installs use the studio's own paths.`,
+        // (F12, perfect-state sweep 2026-09-27) The failure message rides the
+        // engine's RESPONSE BODY verbatim — a JSON error body therefore
+        // landed raw in the Settings prose ({"error":"…"}). Surface the
+        // body's message field when there is one; only a non-JSON body
+        // passes through as text.
+        reason: `the engine could not be asked (${probeFailureText(failure)}) — Manager presence is unknown and installs use the studio's own paths.`,
       }
     }
   }

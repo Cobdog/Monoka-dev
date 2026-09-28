@@ -257,12 +257,12 @@ export function createWebApiClient(): DesktopApi {
       // job.localOutputPath; take landing registers it as the blob source).
       // Returning the /api/lan/media URL here left every completed render
       // without a canvas-blobs artifact — no durable poster after reload.
-      const body = await apiFetch<{ path: string; url: string } | { error: string }>(`/api/lan/outputs/resolve?${query}`).catch((error: unknown) => {
-        // Not-found is the route's "no local copy" answer, not a failure —
-        // the poll kernel completes the job from the remote descriptor
-        // (streamed via the media proxy; the landing's remote-fetch path
-        // ingests the bytes). Re-throwing here used to stall the whole poll
-        // observation silently (the sweep's catch drops the chain).
+      const body = await apiFetch<{ path: string | null; url: string | null } | { error: string }>(`/api/lan/outputs/resolve?${query}`).catch((error: unknown) => {
+        // (W15) Since the sweep, the route answers "no local copy" as
+        // 200 + path null — the miss is data, not an error, and the devtools
+        // 404-per-render noise on external engines is gone. The 404 match
+        // stays for an older server: re-throwing here used to stall the
+        // whole poll observation silently.
         if (error instanceof Error && /not found/i.test(error.message)) return null
         throw error
       })
