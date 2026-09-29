@@ -37,7 +37,12 @@ docs/research/fooocus-qwen-assessment.md (**[fooocus]** — the measured
 Qwen-Image-2.1 operating doctrine: the mask protocol, the reference-scale
 ladder, the turbo rules, the `<imageN>` addressing; landed at 426f76c and
 folded into §5.3/§6/§7 at the 2026-09-27 doctrine fold-in, recorded at this
-file's end). Directives quoted verbatim where
+file's end),
+docs/research/scumble-assessment.md (**[scumble]** — the 2026-09-28 sibling
+fold-in, with [vlo-assessment.md](../research/vlo-assessment.md): the
+blend-back slot's available implementations (§6), the agent-undo note (§3.3),
+the consent-engine vocabulary (§9); enrichments only, recorded at this file's
+end). Directives quoted verbatim where
 load-bearing; file anchors to our tree are pinned at `e9b1dd3`.
 
 **Format:** decision record, not marketing. Where this spec chooses, the rejected
@@ -316,6 +321,25 @@ lives until the next NEW edit** — a new edit lands at the cursor and truncates
 the redo tail with it (the [doc-model] `op`-table discipline, stated for image
 documents). An async generation arrival is a new edit like any other and
 clears redo; the full arrival semantics are §5.2's.
+
+**Agent-undo note (2026-09-28 fold-in, [scumble] §2d/§3 — dated note, no
+architecture change):** scumble is the most engineered agent-undo we have
+read, and its two lessons land here. **(1) Confirmation of D4's shape:** their
+history is step-based, and it *cannot* undo agent actions by construction —
+external agents' layers land with no undo steps at all, and even their
+in-app assistant needs the shell to synthesize the editor's own undo-step
+kind per command (`policy.undoStep()`), a workaround our typed command log
+with inverses does not need: agent-issued commands are commands, invertible
+uniformly with manual edits, internal or external callers alike. **(2) A
+Phase B budget line:** their turn-spanning undo ("undo this turn" restores
+every touched document to pre-turn state) was affordable **only on
+copy-on-write storage** — the snapshot outside the history stack is cheap
+purely because tiles/history are CoW; they ship it on the tile backend and
+not the canvas one. When Phase B's store seam lands (§3.2), the cost of any
+future agent-spanning undo is a *storage* property (content-addressed CoW
+blobs make snapshots cheap), not just a history-log property — budget the
+store's snapshot cost accordingly at that phase, before any agent surface
+promises turn-undo.
 
 **The bridge to the chain/video world (one-way in v2):** export-to-canvas (a result
 as a canvas media object), the start-frame exit (consent-gated, unchanged [iw-v1]
@@ -649,6 +673,20 @@ is a document command (provenance-bearing, undoable) unless marked otherwise:
    surrounding consolidated context, the derived mask, the reticle geometry),
    deterministic, pure, vitest-covered, never-worse fallback; a better
    algorithm lands into the slot without pipeline changes.
+   **Available implementations in the slot (2026-09-28 fold-in,
+   [scumble]):** two reimplemented patterns join the slot's candidate set —
+   the **band-limited multigrid Poisson**, promoted the same day from the
+   survey's DEFER to a testable v2 arm ([blend-survey Addendum 1]: their
+   production refutations of the solver-cost and whole-patch-bleeding grounds;
+   the band application confines bleeding by construction) as a quality tier
+   between the masked multi-band blend and the SDEdit band, and
+   **colour-match-as-compositor-constants** — annulus statistics precomputed
+   to ten compositor floats, evaluated at composite time under a user strength
+   slider — as the cheap tier below Reinhard/MKL in the annulus-match step.
+   Both patterns-not-code (their GPL-3.0); both land behind the falsifier
+   battery (B1–B3, plus B4 for the Poisson arm) before any step is
+   load-bearing. Enrichment only — the ranked stack above is unchanged until
+   a battery verdict moves it.
 
 The stance that governs all six [`8dce5967`]: "we find novel solutions to the
 limitations models might present" — seams, color drift, and resolution mismatch are
@@ -747,6 +785,22 @@ supplies the interaction vocabulary (Invoke's staging area next/prev/commit
   exportable**. Surfaces that consume it (a Control Center view, a trainer feedback
   loop) come later and elsewhere; the workbench's obligation is only that the events
   are complete and stable.
+
+**Consent-engine vocabulary for agent actions (2026-09-28 fold-in, [scumble] §3 —
+a dated note, not an architecture change).** If agents ever drive workbench
+actions — the conductor client through EnginePort (D9), or external agent
+callers — the most engineered agent-control-of-a-creative-surface pattern we
+have read supplies the vocabulary for the conductor's policy layer:
+**host-decides, never prompt-side** ("anything the model reads can talk it
+into anything" — policy is a per-command table in the host, not a rule the
+model is asked to follow); **consent on the canonical call** (doc filled,
+layer references resolved to ids, arguments clamped, so the preview card
+shows exactly what will be sent — no TOCTOU between consent and send);
+**ownership tracking** (agent-created layers edit freely, user-made layers
+ask); **queue-depth disclosure** on render-class consent cards; and **undo
+synthesis** so every agent action is Ctrl+Z-able (§3.3's note records the
+storage coupling that makes it cheap). Recorded as vocabulary for the
+conductor build; no workbench surface, port, or gate changes here.
 
 ---
 
@@ -1360,3 +1414,38 @@ vendor); the 277-style catalogue is GPL-3.0-repo data, not vendorable under
 the permissive-only gate. Every performance number this fold-in carries is
 **[DOC-m]** — their RTX-3090/Windows/diffusers measurements; the 8189
 testbed owns them before anything hardens into a graph factory.
+
+---
+
+## Sibling fold-in — 2026-09-28 (vlo + scumble; enrichments only, no ruled change)
+
+The blessed spec absorbs the two sibling assessments —
+[vlo-assessment.md](../research/vlo-assessment.md) (AGPL video NLE, read at
+`fc4d241`) and [scumble-assessment.md](../research/scumble-assessment.md)
+(GPL-3.0 inpainting editor, read at `76fbae1`) — as dated, targeted
+enrichments, per the maintainer's "fold it in with vlo." **No decision
+(D1–D9), no port (§2.1), no ruling (§12), no gate (§13) is touched**; the
+sibling products are not integration targets (you do not embed one workshop
+in another), their code stays out of our tree per the license policy, and
+their techniques are ours to reimplement.
+
+1. **§6 stage 6 gains the available-implementations note:** the band-limited
+   multigrid Poisson (promoted from the survey's DEFER to a testable v2 arm —
+   [blend-survey Addendum 1]) and the ten-compositor-floats colour match as
+   the cheap tier below Reinhard/MKL — both candidates in the swappable slot,
+   behind the falsifier battery.
+2. **§3.3 gains the agent-undo note:** scumble's step-based history cannot
+   undo agent actions (external agents get no undo at all) — confirmation of
+   the D4 command-log choice — and their coupling lesson (agent-spanning undo
+   affordable only on copy-on-write storage) becomes a Phase B budget line.
+3. **§9 gains the consent-engine vocabulary note** for conductor-facing agent
+   actions: host-decides / consent-on-canonical-call / ownership tracking /
+   queue disclosure / undo synthesis — vocabulary for the conductor's policy
+   layer, not a workbench surface change.
+4. **The reimplementation ledger itself lives with the assessments** —
+   [vlo-assessment §6](../research/vlo-assessment.md), the consolidated
+   sibling reimplement ledger (both assessments' ADOPT-reimplement items,
+   each with its slot and effort class), cross-referenced from the scumble
+   assessment; the multi-source correctness confirmations (`<imageN>` third
+   sighting; the 17k+5 production corroboration) landed as the dated line in
+   the assumption register.

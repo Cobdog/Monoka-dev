@@ -214,3 +214,18 @@ Amending pass 1's §4 recurrence (append-only, the original text stands above): 
 - 15 rows: 13 VERIFIED, 0 CORRECTED, 1 UNVERIFIABLE-BY-NATURE (restated), 1 framing gap (addendum landed).
 - Structural output: the ecosystem-scan rule — landed in two homes (this register, node-pack-registry §10), proposed as an addendum to directive `6a857386` for the maintainer to ratify.
 - Flux task: tx0omjr.
+
+---
+
+## Dated confirmation line (2026-09-28 — the vlo + scumble fold-in; interim to pass 3, not a pass)
+
+Two multi-source confirmations from the 09-28 sibling assessments
+([vlo-assessment.md](../research/vlo-assessment.md) read at `fc4d241`,
+[scumble-assessment.md](../research/scumble-assessment.md) read at
+`76fbae1`) join the register's discipline between passes — recorded here so
+pass 3 inherits them as rows:
+
+| ID | The confirmed fact | The multi-source trail |
+|---|---|---|
+| IC-1 | **Qwen-Image-2.1 `<imageN>` tag addressing is the official multi-image protocol** — now three independent sources deep, up from the single measured sighting | (1) **Measured:** [fooocus-qwen-assessment.md](../research/fooocus-qwen-assessment.md) §3 (the ogoun shell — the operating doctrine our spec's `promptContract` row rides); (2) **Official:** the family record's 2026-09-27 [CORRECT] in [qwen-image-2.1-assessment.md](../research/qwen-image-2.1-assessment.md); (3) **Production:** scumble's `qwen_image_edit_2_1_local` recipe routes the crop as `<image1>` and reference pictures as `<image2>`/`<image3>` with `ImageFromBatch` splitting — a third shop shipping the scheme [DOC]. The spec's promptContract provenance is multi-source; no load-bearing claim moves. |
+| IC-2 | **The H3 visible-frame grid is 17k+5 (5, 22, 39 … 719)** — independent production corroboration of our one grid authority (`h3AlignFrameCount`, `src/lib/workflow.ts`) | Line-exact from ComfyUI core (pass 2, P2-5: `while n % 17 != 5: n -= 1` at v0.34.0) **+** vlo's shipped H3 sidecars encode the grid as min 5 / max 719 / step 17 / default 124, with the timeline frame-picker snapping selections to `frame_step * n + frame_offset` so users cannot request an invalid count — third-party production use including the picker-snapping UX we lack [DOC]. |

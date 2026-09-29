@@ -275,3 +275,29 @@ tree per the license policy; its techniques are ours to reimplement.
 - In-repo: [licenses/policy.md](../licenses/policy.md) · `src/lib/workflow.ts` ·
   `src/lib/engineSemantics.ts` · house-format precedents
   ([viggle-assessment.md](viggle-assessment.md), [hyperflow-assessment.md](hyperflow-assessment.md)).
+
+---
+
+## 6. The consolidated sibling reimplement ledger (2026-09-28 fold-in)
+
+The two sibling assessments' **ADOPT-reimplement** items land in ONE ledger —
+this section — so the reimplementation queue has a single home
+([scumble-assessment.md](scumble-assessment.md) cross-references here). It
+lives with the assessments rather than the node-inventory decision view
+because these are *techniques*, not packs: nothing here adds a registry row
+or a fetch. All six are patterns-not-code (their trees are AGPL/GPL-3.0 —
+never vendored, never ported, per the license policy); effort classes are
+ours-to-own estimates, the constants/recipes are cited knowledge from the
+reads.
+
+| # | Pattern (source §) | Slot — where it lands for us | Effort class |
+|---|---|---|---|
+| 1 | **Audio-latent binary masking + per-step denoising feathering** for H3 inpainting (vlo §2b/§3 ADOPT-2: ~25 ms/step temporal noise masks for H3, 40 ms LTX; `outer`/`centered`/`inner` seam ramps; `original_audio_latent` for centered) | The H3 inpaint family's graphs — the generation-time seam preventer for the *audio* half of the joint AV latent; the capability fact is recorded on the audio-lane ruling record (nn5ld47) for the pending YuE2 song-lane decision | Technique port into our graph factory — small (mask math + feather schedule over `denoise_mask`); or fetch-consent their GPL node pack into the user's engine instead of porting |
+| 2 | **TTM dual-clock denoising** (lock-in step + release step around an authored motion path) (vlo §2b/§3 ADOPT-3) | The video workbench's tool surface — generation-as-effect primitive; the two-knob exposure (vs raw sampler plumbing) is the UX lesson | Graph recipe + tool UI — small–medium; technique, not machinery |
+| 3 | **Memory-load feeding** (media by in-memory registry id, zero throwaway writes into `ComfyUI/input`) (vlo §2b/§3 ADOPT-1) | The conductor's asset-feeding seam to the engine | Own registry nodes — small; the pattern is not copyrightable |
+| 4 | **Band-limited multigrid Poisson** (the convergence recipe — UNKNOWN-first coarsening, FREE-cell quarantine, energy-scaled interpolation, α≥8 boundary rule — + the band-not-patch application geometry) (scumble §2h/§3) | The workbench blend-back's swappable slot, as a testable v2 quality tier — promoted from the survey's DEFER the same day ([seamless-blending-survey Addendum 1](seamless-blending-survey.md)) | ~300–500 lines + the 8 MP perf column; **B4 owns the verdict** before any step is load-bearing |
+| 5 | **Colour-match-as-compositor-constants** (weighted mean/std over the region window, std-ratio clamped 0.5..2, carried as ten compositor floats under a strength slider, default 40%) (scumble §2h/§3) | The blend-back stack's annulus colour-match step — the cheap tier below Reinhard/MKL; a parameterized layer property evaluated at composite time, never a bake pass | Small — tens of lines over the annulus statistics the stack already computes |
+| 6 | **Host-side consent engine** (canonical-call auto/ask/refuse policy, ownership tracking, queue-depth disclosure, undo-step synthesis, no-default-buttons) (scumble §2c/§3) | The conductor's policy layer for agent actions — the vocabulary is recorded in the workbench v2 spec §9's dated note (2026-09-28) | Design-pattern adoption at conductor-build time — no near-term code |
+
+Ledger discipline: a row leaves this table only by landing (a slot reference
+replaces it) or by a dated falsifier verdict against it — never silently.
