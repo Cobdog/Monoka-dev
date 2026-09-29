@@ -438,3 +438,81 @@ line depends on it.*
 16. `docs/research/h3-transitions-and-latent-continuity.md` — seam metric definitions, dB anchors, blind-read conventions; `docs/research/h3-sampler-shaping-and-motion-control.md` — #15981 grid artifact; `docs/research/ecosystem-2026-09.md` — native H3 noise masks; `docs/research/pan-stitch-extension.md` — overlap-agreement
 17. `docs/research/image-workbench-prior-art.md` — opencv-js/library candidates, Invoke paste-back, MLS precedent, toolbox bar; `docs/research/openoutpaint-core-vision.md` — overmask mechanism
 18. `docs/specs/image-workbench-v1.md` — the op-stack doctrine and refine-always-opt-in amendment (jvcrud2)
+
+---
+
+## Addendum 1 — the tier-order ADJUST: band-limited Poisson promoted from DEFERRED to a testable v2 arm (2026-09-28, the scumble assessment)
+
+[Scumble](scumble-assessment.md) (GPL-3.0 Electron AI-inpainting editor, read
+at `76fbae1` — patterns-not-code per the license policy) production-refutes
+**both** grounds verdict D and §1.1/§1.5 deferred Poisson on:
+
+1. **The solver-cost ground, refuted.** They ship a full geometric-multigrid
+   Poisson in a WASM worker at retouch-interaction cost: full-multigrid start;
+   V-cycles of red-black Gauss-Seidel (2 pre + 2 post sweeps, 40 on the
+   coarsest); residual restriction by child-sum; bilinear 9-3-3-1
+   interpolation; a per-channel energy-minimizing step α = r·c / c·A c clamped
+   to 0..4; tolerance 1/32 level, ≤ 30 cycles, **measured 4–8 cycles against
+   an f64 reference** [DOC — their `crates/px/src/poisson.rs`, read in full].
+   The §1.5 port estimate (~300–500 lines + 8 MP perf) still holds for owning
+   the solver — but the risk collapses from "own an unproven solver" to
+   "reimplement a proven recipe."
+2. **The whole-patch-bleeding ground, refuted by the application geometry.**
+   Their content-aware move does **not** blend the whole patch: the moved
+   piece's core "lands byte for byte" and only *a band inside its edge* is
+   Poisson-blended into the new place. The §1.1 failure mode (destination
+   gradients leaking across the patch interior) is structurally confined to
+   the band — the same "ring not whole-patch" thinking as §4.1 step 8's
+   graph-cut-in-the-grown-ring idea, but with a shipped solver behind it.
+3. **The engineered constants are the port-cost collapse.** Coarsening is
+   UNKNOWN-first so the Dirichlet boundary survives coarsening (the naive
+   order diverged 18× the error); a FREE cell class quarantines singular
+   regions (unknowns walled off from any boundary keep the start instead of
+   poisoning the solve); boundary pixels require α ≥ 8 in both images or they
+   are Neumann, not Dirichlet; and the determinism discipline (f32 store /
+   f64 compute, fixed op order, no FMA, a byte-identical JS twin tested
+   against an f64 reference) is exactly our kind of test contract.
+
+**The ADJUST.** §4.1's ranked stack gains a fifth candidate: **band-limited
+gradient-domain** as a quality tier **between masked multi-band (step 3) and
+the SDEdit seam-band re-denoise (step 5)** — lighting adaptation without an
+engine pass, bleeding confined by construction (and the Poisson row in the
+verdict table above moves from DEFER to **testable v2 arm, promoted
+2026-09-28**). The ranking logic is unchanged; one entry moves. §2.4's split
+still governs: this is post-process approximating what only model-side truly
+fixes — the arm competes on quality-per-cost with the SDEdit band, not on the
+lighting axis itself.
+
+**Falsifier-first test design for our adoption (the B-battery extended):**
+
+- **B4 — band-limited Poisson arm.** Arms: {the B1-winning classical incumbent
+  (masked multi-band + annulus match), band-limited multigrid Poisson in the
+  grown ring, best-classical + SDEdit band}. **Blind forced-choice pairs** vs
+  the masked multi-band incumbent on B1's real round-trip stimuli (the null-arm
+  noise floor and golden domains unchanged: portrait/skin, texture-dense,
+  flat-gradient, hard-edge text), plus the three objective seam metrics
+  (boundary-band gradient-energy step; overlap-agreement PSNR/SSIM on the grown
+  ring; annulus-in vs annulus-out dE) and cost columns (ms/MP at 2 and 8 MP —
+  the §1.5 perf worry becomes a measured column, not a blocker; engine passes).
+  **Falsifiers:** if band-Poisson does not beat multi-band blind *and* on the
+  gradient-step metric in the lighting-shifted domain, the solver is not
+  earning its lines — demote back to deferred with the negative ledgered; if
+  its 8 MP cost exceeds the SDEdit band's one short engine pass at equal blind
+  quality, the placement below the engine tier was wrong (demote below SDEdit,
+  ledger the cost row).
+- **Determinism gate before any blind read:** the reimplemented solver ships
+  the scumble-style f64 reference twin in vitest (fixed op order, no FMA) and
+  passes it before B4 stimuli are generated — the same discipline the survey's
+  module consequence (§4.2) demands of the band core.
+
+**The colour-match complement (§3/§4.1 step 2, same date).** Scumble ships the
+annulus match as a weighted per-channel mean/std transfer (std-ratio clamped
+0.5..2) computed over a window around the region and carried as **ten
+compositor floats** evaluated inside the composite — non-destructive, live
+under a user **strength slider** (0–100%, default 40% — "the model's own tone
+is worth keeping"), costing nothing at paint time. That slots as the **cheap
+tier below Reinhard/MKL**: the annulus statistics precomputed to compositor
+constants, applied at composite time as a parameterized layer property rather
+than a bake pass on the returned patch — with the strength slider, not a
+boolean, as the user-facing form. Pattern-not-code (GPL); tens of lines
+ours-to-own on top of the annulus statistics step 2 already computes.

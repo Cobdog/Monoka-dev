@@ -346,3 +346,21 @@ integration target.**
   doctrine) · [vlo-assessment.md](vlo-assessment.md) (house format, DNA
   baseline) · `docs/architecture.md` (our proxy seam) ·
   [licenses/policy.md](../licenses/policy.md).
+
+---
+
+## Fold-in record (2026-09-28 — the findings rolled into the governing docs)
+
+This assessment's findings landed the same day, folded in with vlo's per the
+maintainer's direction: the **ADOPT-reimplement items** (the Poisson recipe +
+band geometry, the compositor-floats colour match, the consent engine) are
+consolidated with vlo's three into the **sibling reimplement ledger** —
+[vlo-assessment.md §6](vlo-assessment.md), the one home for the
+reimplementation queue — and the **ADJUST** (band-limited Poisson promoted
+from DEFER to a testable v2 arm, with the B4 falsifier design) landed as
+[seamless-blending-survey.md Addendum 1](seamless-blending-survey.md). The
+workbench v2 spec gained three dated enrichments (§6 stage 6
+available-implementations note; §3.3 agent-undo note; §9 consent-engine
+vocabulary — no ruled change); the correctness trail (`<imageN>` third
+sighting, 17k+5 corroboration, D2/D3/D4 confirmation) is the dated line in
+the assumption register (2026-09-28).
