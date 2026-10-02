@@ -16,7 +16,9 @@
 - **Stage explicitly by path** (`git add docs/… src/…`) — other agents may
   have in-flight edits in the same tree; never `git add -A`, never stash.
 - Push to `origin main` after both CI legs are queued; verify green before
-  declaring done.
+  declaring done. **Docs-only changes do not require CI** (maintainer
+  directive, 2026-10-02) — push and close; queue legs only when code,
+  lockstep-audited content, or CI config itself changes.
 
 ## Verification (what "landed" means)
 
