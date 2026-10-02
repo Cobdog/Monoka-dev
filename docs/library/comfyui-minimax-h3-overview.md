@@ -104,3 +104,36 @@ Notes:
 
 * Sage Attention requires float16 or bfloat16 tensors. MiniMax H3 runs some layers in other dtypes, so you may see "Input tensors must be in dtype of torch.float16 or torch.bfloat16, using pytorch attention instead" messages in the console. These are expected; the affected layers fall back to standard attention and generation still works.
 * Alternatively, you can enable Sage Attention globally by launching ComfyUI with the `--use-sage-attention` flag instead of adding the node.
+
+---
+
+## DATED ADDENDUM 2026-10-02 (external-evidence pass, H3 sampling research)
+
+**The live page changed.** Diffed against the live URL on 2026-10-02 during the
+H3 sampler research pass (Reddit-claims evidence sweep). The page now contains a
+**sampling-settings discussion entirely absent from the 2026-09-16 capture
+above**. New load-bearing statements on the live page, quoted verbatim:
+
+- "Every local MiniMax H3 workflow samples with `res_multistep` and the `simple`
+  scheduler."
+- "ComfyUI's H3 definition carries `shift` `12` and `audio_shift` `3`";
+  FastH3's ModelSamplingMiniMaxH3 node uses "`shift_video` `10` and
+  `shift_audio` `3`" — i.e. the FastH3 template deliberately drops video shift
+  from 12 to 10.
+- Step guidance beyond the native page's "20 → 25": simple shots hold at
+  12–16 steps; references that drift go to 25; high-frequency detail benefits
+  up to "about 50 steps".
+- Turbo: "drops the step count to 8 in the Text to Video and Image to Video
+  templates … and to 4" for R2V / Multiframe Reference / Fun ControlNet Union.
+- "The video shift drives the sampler's sigma schedule, and the model inverts
+  the video schedule onto the shared base grid to derive the audio schedule
+  from it."
+- FastH3 sparse-attention defaults: start_percent 0.2, end_percent 1.0, tau 1.3,
+  min_tokens 12288; FastH3 uses `vsa` mode at keep_percent 10.
+
+**Affects us:** yes — the canonical-recipe citation for `res_multistep`+`simple`
+shifts from [COMM] (community consensus in `docs/research/h3-sampler-shaping-and-motion-control.md`)
+to **[DOC]** (official ComfyUI docs sentence). No conclusion inverts; the
+`docs/research/h3-sampler-shaping-and-motion-control.md` quality-gating table
+should be re-tagged when next touched. The FastH3 10/3 detail is NEW (first
+official-source shift deviation from 12/3 we have on record).

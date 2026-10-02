@@ -23,6 +23,7 @@ were drawn against, and the header pins exactly which version that was.
 | [comfyui-minimax-h3-overview.md](comfyui-minimax-h3-overview.md) | docs.comfy.org H3 overview | unversioned site | none stated on-page | resolution/duration grids, SageAttention advice |
 | [comfyui-minimax-h3-native.md](comfyui-minimax-h3-native.md) | docs.comfy.org H3 native workflows | unversioned site | none stated on-page | latent-chaining research (most-cited URL, 17×) |
 | [comfyui-h3-motion-context-readme.md](comfyui-h3-motion-context-readme.md) | GitHub `NikoDemon80/ComfyUI-H3-Motion-Context` | main @ `5335715` | **GPL-3.0** (repo) | chaining design patterns (12×) |
+| [lightx2v-minimax-h3-turbo-readme.md](lightx2v-minimax-h3-turbo-readme.md) | GitHub `ModelTC/Minimax-H3-Turbo` README | main @ fetch (2026-10-02) | repo none stated; HF weights Apache-2.0 | turbo registry pairing contracts (per-checkpoint training shifts 544p 12/3, 768p 6/3; NFE sigma-grid math) |
 
 ## Protocol (how to add a capture)
 
