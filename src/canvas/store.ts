@@ -401,7 +401,10 @@ type CanvasActions = {
   recompute(): void
   select(tileId: string | null, options?: { toggle?: boolean }): void
   setChainSettings(chainId: string, patch: Partial<CanvasChainSettings>): Promise<ChainSettingsSave>
-  setChainIdentity(chainId: string, patch: { subjectText?: string; strength?: number }): Promise<void>
+  // (F02) The verdict rides the result like setChainSettings: the inspector
+  // tracks last-ACKNOWLEDGED persistence, so it must be able to tell a landed
+  // identity write from a failed one.
+  setChainIdentity(chainId: string, patch: { subjectText?: string; strength?: number }): Promise<{ ok: boolean; error?: string }>
   /** One typed-hole menu choice (§3 option menus). */
   runEndpointAction(chainId: string, direction: EndpointDirection, option: EndpointOption, sourceChainId?: string): Promise<void>
   /** Fork a chain's output on a substrate (§2 outputRef). */
@@ -1890,7 +1893,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       if (chain) {
         const nextSubject = patch.subjectText ?? chain.identity?.subjectText ?? ''
         const nextStrength = patch.strength ?? chain.identity?.strength ?? 1
-        if ((chain.identity?.subjectText ?? '') === nextSubject && Math.abs((chain.identity?.strength ?? 1) - nextStrength) < 1e-9) return // no-op: never write an empty identity row for a mere selection
+        if ((chain.identity?.subjectText ?? '') === nextSubject && Math.abs((chain.identity?.strength ?? 1) - nextStrength) < 1e-9) return { ok: true } // no-op: never write an empty identity row for a mere selection
       }
       try {
         await documentsApi.upsertIdentity({ chainId, ...patch })
@@ -1899,8 +1902,11 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
           const refreshed = await loadDocument(doc.project.id)
           if (refreshed) recomputeTiles()
         }
+        return { ok: true }
       } catch (error) {
-        get().toast('error', `The identity payload could not be saved: ${error instanceof Error ? error.message : String(error)}`)
+        const message = error instanceof Error ? error.message : String(error)
+        get().toast('error', `The identity payload could not be saved: ${message}`)
+        return { ok: false, error: message }
       }
     },
 

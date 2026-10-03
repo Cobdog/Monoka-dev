@@ -3971,4 +3971,136 @@ test('a pending panel draft survives an immediate chain switch (A04)', async ({ 
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// ---------------------------------------------------------------------------
+// (F01/F02, followup Codex audit 2026-10-03) The inspector's save seam: the
+// debounced autosaves used to fire UNSEQUENCED, so a held older write could
+// land after a fast newer one and overwrite it while the UI said "Draft
+// saved." — and the unload flush diffed against the OPTIMISTICALLY advanced
+// known state, so a draft whose save was still in flight (or had just
+// failed) was silently dropped at a surface switch.
+// ---------------------------------------------------------------------------
+
+/** The shared setup of the three race tests: one spawned generation chain,
+ *  its inspector open at the seed prompt. */
+async function openInspectorAtSeed(page: Page, seed: string) {
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill(seed)
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 10_000 })
+  const spawn = await activeDocument(page)
+  const chainId = spawn.chains.find((chain) => chain.kind === 'generation')!.id
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  const panel = page.locator('[data-canvas-properties]')
+  const prompt = panel.locator('[data-canvas-section="prompt"] textarea').first()
+  await expect(prompt).toHaveValue(seed)
+  return { chainId, panel, prompt }
+}
+
+test('inspector saves serialize per chain — the newer prompt survives a reversed-completion race (F01)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, prompt } = await openInspectorAtSeed(page, 'race seed prompt')
+
+  // Hold the FIRST chains/update mid-flight; every later one passes through.
+  // The audit's timing: the older autosave is held while a newer edit's
+  // autosave fires and completes FIRST — unfixed, the held write then lands
+  // last and the server (and the adopting panel) roll BACK to the older
+  // prompt with the save state reading "Draft saved."
+  let updates = 0
+  let releaseFirst: (() => void) | null = null
+  const firstStarted = new Promise<void>((resolveStarted) => {
+    void page.route('**/api/lan/documents/chains/update', async (route) => {
+      updates += 1
+      if (updates === 1) {
+        resolveStarted()
+        await new Promise<void>((resolveHold) => { releaseFirst = resolveHold })
+      }
+      await route.continue()
+    })
+  })
+  await prompt.fill('older draft in the race')
+  await firstStarted // the older save is demonstrably mid-request
+  await prompt.fill('newer draft in the race')
+  await page.waitForTimeout(1_200) // the newer debounced save fires — and (unfixed) completes first
+  releaseFirst!()
+  await page.waitForTimeout(1_500) // the held write lands and the reload settles
+
+  // Newest survives — persisted …
+  const document = await activeDocument(page)
+  expect(document.chains.find((entry) => entry.id === chainId)!.settings.prompt).toBe('newer draft in the race')
+  // … and visible in the panel that supposedly saved it.
+  await expect(prompt).toHaveValue('newer draft in the race')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('a draft whose save is still in flight survives the surface switch (F02)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, prompt } = await openInspectorAtSeed(page, 'in-flight seed prompt')
+
+  // The autosave is slow enough to still be IN FLIGHT when the page leaves:
+  // the first chains/update sleeps, later ones (the unload keepalive flush)
+  // pass straight through.
+  let first = true
+  const firstStarted = new Promise<void>((resolveStarted) => {
+    void page.route('**/api/lan/documents/chains/update', async (route) => {
+      if (first) {
+        first = false
+        resolveStarted()
+        await page.waitForTimeout(1_600)
+      }
+      try { await route.continue() } catch { /* the dying page aborts its in-flight save */ }
+    })
+  })
+  await prompt.fill('IN-FLIGHT NAVIGATION SENTINEL')
+  await firstStarted // the autosave is mid-request when the surface switches
+  await page.locator('[data-surface-switcher] [data-surface="images"]').click()
+  await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
+  // The page-load killed the in-flight request; the keepalive flush is what
+  // must survive it — poll the document store for the sentinel.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.settings.prompt
+  }, { timeout: 15_000 }).toBe('IN-FLIGHT NAVIGATION SENTINEL')
+  // Back on canvas the sentinel is the panel's adopted truth too.
+  await page.locator('[data-surface-switcher] [data-surface="canvas"]').click()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  await expect(page.locator('[data-canvas-properties] [data-canvas-section="prompt"] textarea').first()).toHaveValue('IN-FLIGHT NAVIGATION SENTINEL', { timeout: 10_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('a draft left unacknowledged by a FAILED save still flushes on navigation (F02)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, prompt } = await openInspectorAtSeed(page, 'failed-save seed prompt')
+
+  // The autosave fails once; every later write (the unload flush) passes.
+  let failOnce = true
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    if (failOnce) {
+      failOnce = false
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'F02 save unavailable' }) })
+      return
+    }
+    await route.continue()
+  })
+  await prompt.fill('FAILED-THEN-NAVIGATED SENTINEL')
+  await expect(page.locator('[data-canvas-save-state="failed"]')).toBeVisible({ timeout: 10_000 })
+  // Navigate AFTER the failure: the flush must retry the unacknowledged
+  // draft instead of trusting the save that claimed it.
+  await page.locator('[data-surface-switcher] [data-surface="images"]').click()
+  await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.settings.prompt
+  }, { timeout: 15_000 }).toBe('FAILED-THEN-NAVIGATED SENTINEL')
+  await page.locator('[data-surface-switcher] [data-surface="canvas"]').click()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  await expect(page.locator('[data-canvas-properties] [data-canvas-section="prompt"] textarea').first()).toHaveValue('FAILED-THEN-NAVIGATED SENTINEL', { timeout: 10_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 
