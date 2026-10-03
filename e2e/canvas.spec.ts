@@ -4373,4 +4373,82 @@ test('a held older identity write cannot clobber the keepalive\'s newer subject 
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// (C-1, round-3 fix round 2026-10-03, CRITICAL) The unload flush issues TWO
+// CONCURRENT revisioned writes per chain — settings (stamp k) then identity
+// (stamp k+1) — and round 3b gated both kinds on ONE shared column. The
+// payloads are DISJOINT: an identity arrival does not supersede a settings
+// draft, but the shared gate discarded the lower-stamped settings arrival
+// anyway. The arrival order below is imposed API-side with the flush's
+// EXACT wire shapes because the e2e flow cannot deterministically order
+// unload keepalives: instrumented runs showed a late keepalive can BYPASS
+// route interception entirely and apply directly (it rescued the sentinel
+// on every forced-ordering attempt — the bypass finding is documented on
+// the flush-regression test below).
+test('a settings arrival is not discarded by an identity arrival — per-kind revisions (C-1)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId } = await openInspectorAtSeed(page, 'per-kind seed prompt')
+  const base = await activeDocument(page)
+  const settings = { ...base.chains.find((entry) => entry.id === chainId)!.settings, prompt: 'PER-KIND REVISION SENTINEL' }
+  // The identity write (the higher stamp on the shared column) lands FIRST …
+  const identityFirst = await page.request.post('/api/lan/documents/identity', { data: { chainId, subjectText: '', strength: 1, settingsRevision: 3 } })
+  expect(identityFirst.ok()).toBeTruthy()
+  // … then the flush's settings arrival (the lower stamp) lands AFTER.
+  const settingsAfter = await page.request.post('/api/lan/documents/chains/update', { data: { id: chainId, settings, settingsRevision: 2 } })
+  expect(settingsAfter.ok()).toBeTruthy()
+  // The disjoint settings payload must SURVIVE the identity arrival.
+  const document = await activeDocument(page)
+  expect(document.chains.find((entry) => entry.id === chainId)!.settings.prompt).toBe('PER-KIND REVISION SENTINEL')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// (C-1 flush regression) The real dirty-set flow under concurrent identity
+// traffic: the deselect flush and the keepalives all land, with every
+// chains/update arrival delivered only after the identity write is
+// persisted (the inversion the bug needs, when the harness can order it).
+// NOTE the harness boundary this test documents: unload-time keepalive
+// fetches can BYPASS route interception and apply directly, so this flow
+// alone cannot prove the discard — the deterministic proof is the API-side
+// ordering above.
+test('the dirty-set settings flush lands under concurrent identity traffic (C-1 flush regression)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, prompt } = await openInspectorAtSeed(page, 'per-kind flush seed prompt')
+  const identityWriteLanded = () => new Promise<void>((resolve) => {
+    const started = Date.now()
+    const tick = async () => {
+      try {
+        const session = await (await page.request.get('/api/lan/documents/session')).json() as { session?: { activeProject?: string | null } }
+        const projectId = session.session?.activeProject
+        if (projectId) {
+          const document = await (await page.request.get(`/api/lan/documents/project?id=${encodeURIComponent(projectId)}`)).json() as { chains?: Array<{ id: string; identity?: unknown }> }
+          const chain = (document.chains ?? []).find((entry) => entry.id === chainId)
+          if (chain?.identity) { resolve(); return }
+        }
+      } catch { /* keep polling until the fallback */ }
+      if (Date.now() - started > 8_000) resolve()
+      else setTimeout(tick, 50)
+    }
+    void tick()
+  })
+  await page.route('**/api/lan/documents/identity', async (route) => { await route.continue() })
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await identityWriteLanded()
+    try {
+      const response = await route.fetch()
+      await route.fulfill({ response })
+    } catch { /* best-effort delivery */ }
+  })
+  await prompt.fill('PER-KIND FLUSH SENTINEL')
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(77)
+  await page.locator('[data-surface-switcher] [data-surface="images"]').click()
+  await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.settings.prompt
+  }, { timeout: 15_000 }).toBe('PER-KIND FLUSH SENTINEL')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 

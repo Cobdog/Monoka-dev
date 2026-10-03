@@ -145,7 +145,7 @@ export const documentsApi = {
   supersedeTake: (input: { outputId: string; takeId: string }) =>
     post<{ take: { id: string } }>('/api/lan/documents/takes/supersede', input),
 
-  upsertIdentity: (input: { chainId: string; refAssetIds?: string[]; subjectText?: string; strength?: number; perSlotStrengths?: Record<string, number> | null; settingsRevision?: number }, options?: { keepalive?: boolean }) =>
+  upsertIdentity: (input: { chainId: string; refAssetIds?: string[]; subjectText?: string; strength?: number; perSlotStrengths?: Record<string, number> | null; identityRevision?: number }, options?: { keepalive?: boolean }) =>
     post<{ identity: Record<string, unknown> }>('/api/lan/documents/identity', input, options?.keepalive ? { keepalive: true } : undefined),
 
   addOp: async (chainId: string, kind: string, settings?: Record<string, unknown>) =>

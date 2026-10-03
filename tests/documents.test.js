@@ -187,9 +187,10 @@ test('(a) migration: golden fixture N→N+1, fresh boot shape, 004 stray healing
   const fixtureColumns = fixtureDb.prepare('PRAGMA table_info(jobs)').all().map((column) => column.name)
   for (const column of ['gpu_queue_state', 'plan_ref', 'failure_json']) check(fixtureColumns.includes(column), `jobs extension adds ${column}`)
   check(migrateDatabase(fixtureDb) === 0, 're-running migrations is a no-op (idempotent, one-way)')
-  // --- migration 005: the per-chain settings revision column (R1 arrival-order gate) ---
+  // --- migration 005: the per-chain, PER-KIND revision columns (R1 arrival-order gates; C-1 split them) ---
   const chainColumns = fixtureDb.prepare('PRAGMA table_info(canvas_chain)').all().map((column) => column.name)
   check(chainColumns.includes('settings_revision'), 'migration 005 adds canvas_chain.settings_revision')
+  check(chainColumns.includes('identity_revision'), 'migration 005 adds canvas_chain.identity_revision')
 
   // --- migration 004: one-canonical-take partial unique index + healing ---
   // A pre-004 database can carry strays (the crash window the single-process

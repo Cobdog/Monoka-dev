@@ -1984,8 +1984,8 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
                   subjectText: typeof body.subjectText === 'string' ? body.subjectText.slice(0, 20_000) : undefined,
                   strength: typeof body.strength === 'number' && Number.isFinite(body.strength) ? body.strength : undefined,
                   perSlotStrengths: isRecord(body.perSlotStrengths) ? (body.perSlotStrengths as Record<string, number>) : undefined,
-                  // (R1/3b) The identity arrival gate rides the same column.
-                  settingsRevision: typeof body.settingsRevision === 'number' && Number.isFinite(body.settingsRevision) ? body.settingsRevision : undefined,
+                  // (R1/3b; C-1 fix) The identity kind's OWN gate + column.
+                  identityRevision: typeof body.identityRevision === 'number' && Number.isFinite(body.identityRevision) ? body.identityRevision : undefined,
                 }),
               })
             } catch (error) {

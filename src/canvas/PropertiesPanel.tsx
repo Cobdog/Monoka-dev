@@ -491,15 +491,19 @@ export function PropertiesPanel() {
   const writeQueueRef = useRef<Promise<boolean>>(Promise.resolve(true))
   const freshestRef = useRef<{ chainId: string | null; settings: CanvasChainSettings | null; subjectText: string; strength: number }>({ chainId, settings: draft, subjectText, strength })
   freshestRef.current = { chainId, settings: draft, subjectText, strength }
-  // (R1, round 3) Per-chain write revisions: every settings write this panel
-  // sends — queued OR keepalive — stamps a strictly increasing revision, so
-  // the SERVER can order arrivals (a stale arrival is a no-op there; the
-  // fire-and-forget keepalive leg cannot be sequenced client-side). The
-  // counter seeds from the adopted chain's stored revision and only moves up.
-  const revisionRef = useRef<Record<string, number>>({})
-  const nextRevision = (id: string): number => {
-    revisionRef.current[id] = (revisionRef.current[id] ?? 0) + 1
-    return revisionRef.current[id]
+  // (R1, round 3; C-1, fix round) Per-chain, PER-KIND write revisions:
+  // every write this panel sends — queued OR keepalive — stamps a strictly
+  // increasing revision from its OWN kind's counter, so the SERVER can
+  // discard stale arrivals per kind (the fire-and-forget keepalive leg
+  // cannot be sequenced client-side). The kinds must not share a counter:
+  // their payloads are disjoint, and a shared gate discarded a settings
+  // draft merely because an identity arrival carried a higher stamp. The
+  // counters seed from the adopted chain's stored columns and only move up.
+  const revisionRef = useRef<{ settings: Record<string, number>; identity: Record<string, number> }>({ settings: {}, identity: {} })
+  const nextRevision = (id: string, kind: 'settings' | 'identity'): number => {
+    const current = revisionRef.current[kind]
+    current[id] = (current[id] ?? 0) + 1
+    return current[id]
   }
   // (R3, round 3) Chains with UNACKNOWLEDGED local truth: the deselect/
   // chain-switch flush rides a normal fetch that dies at unload, and the
@@ -531,9 +535,10 @@ export function PropertiesPanel() {
     const settings = readChainSettings(chain.settings, useSessionStore.getState().settings)
     const incomingSubject = chain.identity?.subjectText ?? ''
     const incomingStrength = chain.identity?.strength ?? 1
-    // (R1) Seed the revision counter from the stored revision — this panel
-    // must never stamp below what the server already holds.
-    revisionRef.current[chain.id] = Math.max(revisionRef.current[chain.id] ?? 0, chain.settingsRevision ?? 0)
+    // (R1/C-1) Seed BOTH kind counters from the stored columns — this
+    // panel must never stamp below what the server already holds.
+    revisionRef.current.settings[chain.id] = Math.max(revisionRef.current.settings[chain.id] ?? 0, chain.settingsRevision ?? 0)
+    revisionRef.current.identity[chain.id] = Math.max(revisionRef.current.identity[chain.id] ?? 0, chain.identityRevision ?? 0)
     const known = knownRef.current
     const serverSettings = JSON.stringify(settings)
     const chainSwitched = !known || known.chainId !== chain.id
@@ -576,7 +581,7 @@ export function PropertiesPanel() {
       setSaveError(null)
       // (R1) The queued write stamps a strictly increasing revision; the
       // counter already accounts for every earlier stamp, keepalive or not.
-      const save = await setChainSettings(id, toWrite, { settingsRevision: nextRevision(id) })
+      const save = await setChainSettings(id, toWrite, { settingsRevision: nextRevision(id, 'settings') })
       setSaveState(save.ok ? 'saved' : 'failed')
       if (!save.ok) setSaveError(save.error ?? 'the save failed')
       if (save.ok) {
@@ -593,9 +598,10 @@ export function PropertiesPanel() {
   // scalars, so a plain enqueue with freshest-at-write-time composition
   // suffices — no functional-patch machinery. The ack (F02) rides the
   // result with the values that actually reached the wire.
-  // (R1/3b) Identity writes stamp the SAME per-chain revision counter as
-  // settings writes — the server gates both endpoints on one column, so
-  // arrivals of either kind are totally ordered.
+  // (R1/3b; C-1 fix) Identity writes stamp the identity kind's OWN
+  // counter — the server gates each endpoint on its own column, so within
+  // each kind arrivals are totally ordered and across kinds they never
+  // interact.
   const saveIdentity = (id: string, patch: { subjectText?: string; strength?: number }): Promise<boolean> => {
     const write = writeQueueRef.current.then(async () => {
       const freshest = freshestRef.current
@@ -605,7 +611,7 @@ export function PropertiesPanel() {
           ...(patch.strength !== undefined ? { strength: freshest.strength } : {}),
         }
         : patch
-      const result = await setChainIdentity(id, toWrite, { settingsRevision: nextRevision(id) })
+      const result = await setChainIdentity(id, toWrite, { identityRevision: nextRevision(id, 'identity') })
       if (result.ok && (toWrite.subjectText !== undefined || toWrite.strength !== undefined)) {
         ackedRef.current = {
           chainId: id,
@@ -629,9 +635,11 @@ export function PropertiesPanel() {
     if (acked && acked.chainId === chainId && acked.settings === JSON.stringify(value)) return // already acknowledged: never write for nothing
     const known = knownRef.current
     if (known && known.chainId === chainId) knownRef.current = { ...known, settings: JSON.stringify(value) }
-    // (R3) The enqueue point: this chain now has unacked local truth (the
-    // closure's identity state is the schedule-time freshest).
-    markDirty(chainId, { settings: value, subjectText, strength })
+    // (R3; M-1) The enqueue point: this chain now has unacked local
+    // truth — SETTINGS only. Identity fields join the snapshot ONLY at
+    // identity enqueues (genuinely dirty), so a settings-only edit never
+    // flushes a phantom identity row.
+    markDirty(chainId, { settings: value })
     void saveDraft(chainId, value)
   }, chainId)
   useDebouncedCommit(subjectText, !chain, (value) => {
@@ -674,30 +682,35 @@ export function PropertiesPanel() {
         if (acked?.settings !== JSON.stringify(state.draft)) {
           // (R1) The keepalive stamps a revision HIGHER than any in-flight
           // write (the counter already counts them) — late arrivals lose.
-          void documentsApi.updateChain({ id: state.chainId, settings: state.draft as unknown as Record<string, unknown>, settingsRevision: nextRevision(state.chainId) }, { keepalive: true })
+          void documentsApi.updateChain({ id: state.chainId, settings: state.draft as unknown as Record<string, unknown>, settingsRevision: nextRevision(state.chainId, 'settings') }, { keepalive: true })
             .catch(() => { /* nothing can surface during unload */ })
         }
         if (acked?.subjectText !== state.subjectText || acked?.strength === undefined || Math.abs(acked.strength - state.strength) > 1e-9) {
-          void documentsApi.upsertIdentity({ chainId: state.chainId, subjectText: state.subjectText, strength: state.strength, settingsRevision: nextRevision(state.chainId) }, { keepalive: true })
+          void documentsApi.upsertIdentity({ chainId: state.chainId, subjectText: state.subjectText, strength: state.strength, identityRevision: nextRevision(state.chainId, 'identity') }, { keepalive: true })
             .catch(() => { /* nothing can surface during unload */ })
         }
       }
       // (R3) Every chain with unacked local truth gets its keepalive too:
       // the deselect/chain-switch flush rode a normal fetch that died at
-      // unload. Multiple fire-and-forget writes are safe — the revision
-      // gate orders their arrivals server-side for BOTH write kinds.
+      // unload. Multiple fire-and-forget writes are safe — each kind's
+      // gate DISCARDS its own stale arrivals server-side (the gate does not
+      // ORDER arrivals; within a kind the newest stamp wins whichever way
+      // they interleave, and across kinds the columns never interact).
       for (const [id, entry] of dirtyChainsRef.current) {
         if (id === state.chainId) continue // the freshest draft above covers it
         if (entry.settings) {
-          void documentsApi.updateChain({ id, settings: entry.settings as unknown as Record<string, unknown>, settingsRevision: nextRevision(id) }, { keepalive: true })
+          void documentsApi.updateChain({ id, settings: entry.settings as unknown as Record<string, unknown>, settingsRevision: nextRevision(id, 'settings') }, { keepalive: true })
             .catch(() => { /* nothing can surface during unload */ })
         }
+        // (M-1) The identity keepalive fires only on GENUINE identity
+        // dirtiness — the snapshot's identity fields exist only if an
+        // identity commit enqueued them.
         if (entry.subjectText !== undefined || entry.strength !== undefined) {
           void documentsApi.upsertIdentity({
             chainId: id,
             ...(entry.subjectText !== undefined ? { subjectText: entry.subjectText } : {}),
             ...(entry.strength !== undefined ? { strength: entry.strength } : {}),
-            settingsRevision: nextRevision(id),
+            identityRevision: nextRevision(id, 'identity'),
           }, { keepalive: true })
             .catch(() => { /* nothing can surface during unload */ })
         }

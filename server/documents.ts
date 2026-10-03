@@ -515,7 +515,7 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
     chainsByProject: db.prepare('SELECT * FROM canvas_chain WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at, rowid ASC'),
     allLiveChains: db.prepare('SELECT * FROM canvas_chain WHERE deleted_at IS NULL'),
     setChainSettings: db.prepare('UPDATE canvas_chain SET settings_json = ?, lock_state = ?, hop_count = ?, drift_metrics_json = ?, settings_revision = ? WHERE id = ?'),
-    setChainRevision: db.prepare('UPDATE canvas_chain SET settings_revision = ? WHERE id = ?'),
+    setChainIdentityRevision: db.prepare('UPDATE canvas_chain SET identity_revision = ? WHERE id = ?'),
     setInputSpec: db.prepare('UPDATE canvas_chain SET input_spec_json = ? WHERE id = ?'),
     setChainStale: db.prepare('UPDATE canvas_chain SET stale = ? WHERE id = ?'),
     tombstoneChain: db.prepare('UPDATE canvas_chain SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL'),
@@ -921,6 +921,7 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
       lockState: str(row.lock_state),
       hopCount: Number(row.hop_count ?? 0),
       settingsRevision: Number(row.settings_revision ?? 0),
+      identityRevision: Number(row.identity_revision ?? 0),
       driftMetrics: parseJson<Record<string, unknown> | null>(row.drift_metrics_json, null),
       stale: Number(row.stale) === 1,
       createdAt: Number(row.created_at),
@@ -1655,11 +1656,13 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
     }) => {
       const row = statements.getChain.get(input.id) as Record<string, unknown> | undefined
       if (!row) throw new DocumentsRuleError(`No chain with id ${input.id}.`, 404)
-      // (R1, round 3) Arrival-order gate: a revisioned SETTINGS write whose
-      // revision does not exceed the stored one is a stale arrival — a
-      // newer write already landed. Silent no-op returning the current
-      // chain, never an error the client must handle. Writes without a
-      // revision keep the always-apply behavior.
+      // (R1, round 3; C-1, fix round) Arrival-order gate, PER KIND: a
+      // revisioned SETTINGS write whose revision does not exceed the stored
+      // settings_revision is a stale arrival — a newer settings write
+      // already landed. Silent no-op returning the current chain, never an
+      // error the client must handle. Writes without a revision keep the
+      // always-apply behavior. The identity kind's column never interacts
+      // here (C-1: disjoint payloads must not share a gate).
       const stamped = typeof input.settingsRevision === 'number' && Number.isFinite(input.settingsRevision)
         ? Math.max(0, Math.floor(input.settingsRevision))
         : null
@@ -1866,17 +1869,18 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
       subjectText?: string
       strength?: number
       perSlotStrengths?: Record<string, number> | null
-      settingsRevision?: number
+      identityRevision?: number
     }) => {
       const chain = statements.getChain.get(input.chainId) as Record<string, unknown> | undefined
       if (!chain) throw new DocumentsRuleError(`No chain with id ${input.chainId}.`, 404)
-      // (R1/3b, round 3b) The SAME arrival-order gate as chains/update, on
-      // the SAME column: identity IS chain settings state, and the client
-      // stamps both write kinds from one counter — a stale arrival is a
-      // silent no-op returning the current identity, never an error.
-      // Ungated writers keep the always-apply behavior.
-      const stamped = typeof input.settingsRevision === 'number' && Number.isFinite(input.settingsRevision)
-        ? Math.max(0, Math.floor(input.settingsRevision))
+      // (R1/3b; C-1, fix round) The identity kind's OWN arrival-order gate
+      // on its OWN column (identity_revision — never settings_revision: the
+      // payload kinds are disjoint and must not share a gate). A stale
+      // arrival is a silent no-op returning the current identity, never an
+      // error; an applying write advances only this kind's column. Ungated
+      // writers keep the always-apply behavior.
+      const stamped = typeof input.identityRevision === 'number' && Number.isFinite(input.identityRevision)
+        ? Math.max(0, Math.floor(input.identityRevision))
         : null
       const currentIdentity = () => {
         const row = statements.identityByChain.get(input.chainId) as Record<string, unknown> | undefined
@@ -1891,7 +1895,7 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
           perSlotStrengths: parseJson<Record<string, number> | null>(row.per_slot_strengths_json, null),
         }
       }
-      if (stamped !== null && stamped <= Number(chain.settings_revision ?? 0)) return currentIdentity()
+      if (stamped !== null && stamped <= Number(chain.identity_revision ?? 0)) return currentIdentity()
       const existing = statements.identityByChain.get(input.chainId) as Record<string, unknown> | undefined
       const id = existing ? str(existing.id) : randomUUID()
       statements.upsertIdentity.run({
@@ -1904,7 +1908,7 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
         per_slot_strengths_json: input.perSlotStrengths === undefined ? (existing?.per_slot_strengths_json ?? null) : JSON.stringify(input.perSlotStrengths ?? null),
         updated_at: now(),
       })
-      if (stamped !== null) statements.setChainRevision.run(stamped, input.chainId)
+      if (stamped !== null) statements.setChainIdentityRevision.run(stamped, input.chainId)
       const row = statements.identityByChain.get(input.chainId) as Record<string, unknown>
       return {
         id: str(row.id),
