@@ -491,6 +491,36 @@ export function PropertiesPanel() {
   const writeQueueRef = useRef<Promise<boolean>>(Promise.resolve(true))
   const freshestRef = useRef<{ chainId: string | null; settings: CanvasChainSettings | null; subjectText: string; strength: number }>({ chainId, settings: draft, subjectText, strength })
   freshestRef.current = { chainId, settings: draft, subjectText, strength }
+  // (R1, round 3) Per-chain write revisions: every settings write this panel
+  // sends — queued OR keepalive — stamps a strictly increasing revision, so
+  // the SERVER can order arrivals (a stale arrival is a no-op there; the
+  // fire-and-forget keepalive leg cannot be sequenced client-side). The
+  // counter seeds from the adopted chain's stored revision and only moves up.
+  const revisionRef = useRef<Record<string, number>>({})
+  const nextRevision = (id: string): number => {
+    revisionRef.current[id] = (revisionRef.current[id] ?? 0) + 1
+    return revisionRef.current[id]
+  }
+  // (R3, round 3) Chains with UNACKNOWLEDGED local truth: the deselect/
+  // chain-switch flush rides a normal fetch that dies at unload, and the
+  // keepalive used to cover only the CURRENTLY-open chain. Entries hold the
+  // last unacked snapshot per touched chain (bounded to this session); they
+  // are set at every enqueue and cleared when the chain's local truth is
+  // fully acknowledged.
+  const dirtyChainsRef = useRef<Map<string, { settings?: CanvasChainSettings; subjectText?: string; strength?: number }>>(new Map())
+  const markDirty = (id: string, patch: { settings?: CanvasChainSettings; subjectText?: string; strength?: number }) => {
+    const existing = dirtyChainsRef.current.get(id)
+    dirtyChainsRef.current.set(id, { ...existing, ...patch })
+  }
+  const settleDirty = (id: string) => {
+    const entry = dirtyChainsRef.current.get(id)
+    const acked = ackedRef.current
+    if (!entry || !acked || acked.chainId !== id) return
+    const settingsSettled = entry.settings === undefined || acked.settings === JSON.stringify(entry.settings)
+    const subjectSettled = entry.subjectText === undefined || acked.subjectText === entry.subjectText
+    const strengthSettled = entry.strength === undefined || (acked.strength !== undefined && Math.abs(acked.strength - entry.strength) < 1e-9)
+    if (settingsSettled && subjectSettled && strengthSettled) dirtyChainsRef.current.delete(id)
+  }
   useEffect(() => {
     if (!chain) {
       setDraft(null)
@@ -501,6 +531,9 @@ export function PropertiesPanel() {
     const settings = readChainSettings(chain.settings, useSessionStore.getState().settings)
     const incomingSubject = chain.identity?.subjectText ?? ''
     const incomingStrength = chain.identity?.strength ?? 1
+    // (R1) Seed the revision counter from the stored revision — this panel
+    // must never stamp below what the server already holds.
+    revisionRef.current[chain.id] = Math.max(revisionRef.current[chain.id] ?? 0, chain.settingsRevision ?? 0)
     const known = knownRef.current
     const serverSettings = JSON.stringify(settings)
     const chainSwitched = !known || known.chainId !== chain.id
@@ -541,10 +574,15 @@ export function PropertiesPanel() {
       const toWrite = freshest.chainId === id && freshest.settings ? freshest.settings : value
       setSaveState('saving')
       setSaveError(null)
-      const save = await setChainSettings(id, toWrite)
+      // (R1) The queued write stamps a strictly increasing revision; the
+      // counter already accounts for every earlier stamp, keepalive or not.
+      const save = await setChainSettings(id, toWrite, { settingsRevision: nextRevision(id) })
       setSaveState(save.ok ? 'saved' : 'failed')
       if (!save.ok) setSaveError(save.error ?? 'the save failed')
-      if (save.ok) ackedRef.current = { chainId: id, ...(ackedRef.current?.chainId === id ? ackedRef.current : {}), settings: JSON.stringify(toWrite) }
+      if (save.ok) {
+        ackedRef.current = { chainId: id, ...(ackedRef.current?.chainId === id ? ackedRef.current : {}), settings: JSON.stringify(toWrite) }
+        settleDirty(id)
+      }
       return save.ok
     })
     writeQueueRef.current = write.catch(() => false)
@@ -572,6 +610,7 @@ export function PropertiesPanel() {
           ...(toWrite.subjectText !== undefined ? { subjectText: toWrite.subjectText } : {}),
           ...(toWrite.strength !== undefined ? { strength: toWrite.strength } : {}),
         }
+        settleDirty(id)
       }
       return result.ok
     })
@@ -587,6 +626,9 @@ export function PropertiesPanel() {
     if (acked && acked.chainId === chainId && acked.settings === JSON.stringify(value)) return // already acknowledged: never write for nothing
     const known = knownRef.current
     if (known && known.chainId === chainId) knownRef.current = { ...known, settings: JSON.stringify(value) }
+    // (R3) The enqueue point: this chain now has unacked local truth (the
+    // closure's identity state is the schedule-time freshest).
+    markDirty(chainId, { settings: value, subjectText, strength })
     void saveDraft(chainId, value)
   }, chainId)
   useDebouncedCommit(subjectText, !chain, (value) => {
@@ -595,6 +637,7 @@ export function PropertiesPanel() {
     if (acked && acked.chainId === chainId && acked.subjectText === value) return
     const known = knownRef.current
     if (known && known.chainId === chainId) knownRef.current = { ...known, subjectText: value }
+    markDirty(chainId, { subjectText: value, strength })
     void saveIdentity(chainId, { subjectText: value })
   }, chainId, 700)
   useDebouncedCommit(strength, !chain, (value) => {
@@ -603,6 +646,7 @@ export function PropertiesPanel() {
     if (acked && acked.chainId === chainId && Math.abs((acked.strength ?? Number.NaN) - value) < 1e-9) return
     const known = knownRef.current
     if (known && known.chainId === chainId) knownRef.current = { ...known, strength: value }
+    markDirty(chainId, { strength: value, subjectText })
     void saveIdentity(chainId, { strength: value })
   }, chainId, 300)
 
@@ -622,15 +666,37 @@ export function PropertiesPanel() {
   useEffect(() => {
     const flushForUnload = () => {
       const state = unloadRef.current
-      if (!state.chainId || !state.draft) return
-      const acked = state.acked?.chainId === state.chainId ? state.acked : null
-      if (acked?.settings !== JSON.stringify(state.draft)) {
-        void documentsApi.updateChain({ id: state.chainId, settings: state.draft as unknown as Record<string, unknown> }, { keepalive: true })
-          .catch(() => { /* nothing can surface during unload */ })
+      if (state.chainId && state.draft) {
+        const acked = state.acked?.chainId === state.chainId ? state.acked : null
+        if (acked?.settings !== JSON.stringify(state.draft)) {
+          // (R1) The keepalive stamps a revision HIGHER than any in-flight
+          // write (the counter already counts them) — late arrivals lose.
+          void documentsApi.updateChain({ id: state.chainId, settings: state.draft as unknown as Record<string, unknown>, settingsRevision: nextRevision(state.chainId) }, { keepalive: true })
+            .catch(() => { /* nothing can surface during unload */ })
+        }
+        if (acked?.subjectText !== state.subjectText || acked?.strength === undefined || Math.abs(acked.strength - state.strength) > 1e-9) {
+          void documentsApi.upsertIdentity({ chainId: state.chainId, subjectText: state.subjectText, strength: state.strength }, { keepalive: true })
+            .catch(() => { /* nothing can surface during unload */ })
+        }
       }
-      if (acked?.subjectText !== state.subjectText || acked?.strength === undefined || Math.abs(acked.strength - state.strength) > 1e-9) {
-        void documentsApi.upsertIdentity({ chainId: state.chainId, subjectText: state.subjectText, strength: state.strength }, { keepalive: true })
-          .catch(() => { /* nothing can surface during unload */ })
+      // (R3) Every chain with unacked local truth gets its keepalive too:
+      // the deselect/chain-switch flush rode a normal fetch that died at
+      // unload. Multiple fire-and-forget writes are safe — R1's revision
+      // gating orders their arrivals server-side.
+      for (const [id, entry] of dirtyChainsRef.current) {
+        if (id === state.chainId) continue // the freshest draft above covers it
+        if (entry.settings) {
+          void documentsApi.updateChain({ id, settings: entry.settings as unknown as Record<string, unknown>, settingsRevision: nextRevision(id) }, { keepalive: true })
+            .catch(() => { /* nothing can surface during unload */ })
+        }
+        if (entry.subjectText !== undefined || entry.strength !== undefined) {
+          void documentsApi.upsertIdentity({
+            chainId: id,
+            ...(entry.subjectText !== undefined ? { subjectText: entry.subjectText } : {}),
+            ...(entry.strength !== undefined ? { strength: entry.strength } : {}),
+          }, { keepalive: true })
+            .catch(() => { /* nothing can surface during unload */ })
+        }
       }
     }
     window.addEventListener('pagehide', flushForUnload)

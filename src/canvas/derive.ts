@@ -47,6 +47,9 @@ export type DocumentChain = {
   settings: Record<string, unknown>
   lockState: string
   hopCount: number
+  /** (R1, round 3) The server's arrival-order gate for settings writes: a
+   *  revisioned write at or below this number is a stale-arrival no-op. */
+  settingsRevision?: number
   driftMetrics: Record<string, unknown> | null
   stale: boolean
   createdAt: number

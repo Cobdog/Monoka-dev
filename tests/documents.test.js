@@ -171,8 +171,8 @@ test('(a) migration: golden fixture N→N+1, fresh boot shape, 004 stray healing
     prompts: fixtureDb.prepare('SELECT * FROM saved_prompts').all(),
     projects: fixtureDb.prepare('SELECT * FROM projects').all(),
   }))
-  const applied = migrateDatabase(fixtureDb) // applies 002 + 003 + 004 (one-way, append-only)
-  check(applied === 3, `golden fixture migration applies exactly 002 + 003 + 004 (got ${applied})`)
+  const applied = migrateDatabase(fixtureDb) // applies 002 + 003 + 004 + 005 (one-way, append-only)
+  check(applied === 4, `golden fixture migration applies exactly 002 + 003 + 004 + 005 (got ${applied})`)
   const goldenAfter = sha256(JSON.stringify({
     jobs: fixtureDb.prepare('SELECT id, provider, media_type, mode, status, prompt, params_json, created_at, updated_at, error, width, height, duration, output_url FROM jobs').all(),
     workspace: fixtureDb.prepare('SELECT * FROM workspace_state').all(),
@@ -187,6 +187,9 @@ test('(a) migration: golden fixture N→N+1, fresh boot shape, 004 stray healing
   const fixtureColumns = fixtureDb.prepare('PRAGMA table_info(jobs)').all().map((column) => column.name)
   for (const column of ['gpu_queue_state', 'plan_ref', 'failure_json']) check(fixtureColumns.includes(column), `jobs extension adds ${column}`)
   check(migrateDatabase(fixtureDb) === 0, 're-running migrations is a no-op (idempotent, one-way)')
+  // --- migration 005: the per-chain settings revision column (R1 arrival-order gate) ---
+  const chainColumns = fixtureDb.prepare('PRAGMA table_info(canvas_chain)').all().map((column) => column.name)
+  check(chainColumns.includes('settings_revision'), 'migration 005 adds canvas_chain.settings_revision')
 
   // --- migration 004: one-canonical-take partial unique index + healing ---
   // A pre-004 database can carry strays (the crash window the single-process
@@ -212,7 +215,7 @@ test('(a) migration: golden fixture N→N+1, fresh boot shape, 004 stray healing
     strayDb.prepare("INSERT INTO canvas_take (id, output_id, artifacts_json, created_at) VALUES ('t-new', 'o1', '[]', 400)").run()
     strayDb.prepare("INSERT INTO canvas_take (id, output_id, artifacts_json, created_at) VALUES ('t-clean', 'o2', '[]', 500)").run()
     const strayApplied = migrateDatabase(strayDb)
-    check(strayApplied === 2, `the stray fixture applies exactly 003 + 004 (got ${strayApplied})`)
+    check(strayApplied === 3, `the stray fixture applies exactly 003 + 004 + 005 (got ${strayApplied})`)
     const canonicalOf = (outputId) => strayDb.prepare('SELECT id FROM canvas_take WHERE output_id = ? AND superseded_by IS NULL').all(outputId).map((row) => row.id)
     check(JSON.stringify(canonicalOf('o1')) === JSON.stringify(['t-new']), `migration 004 heals strays to the newest take (got ${JSON.stringify(canonicalOf('o1'))})`)
     check(strayDb.prepare("SELECT superseded_by FROM canvas_take WHERE id = 't-mid'").get().superseded_by === 't-new', 'the healed stray is superseded BY the winner (marker semantics match appendTake)')

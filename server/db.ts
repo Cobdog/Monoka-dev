@@ -198,6 +198,21 @@ export const migrations: Migration[] = [
       }
     },
   },
+  {
+    // Round 3 R1 (followup audit escalation, l0ebkju): per-chain settings
+    // revision for ARRIVAL-ORDER gating. The inspector's transport has a
+    // fire-and-forget leg (the unload keepalive) that cannot be sequenced
+    // against in-flight writes once requests leave the page — a proxy-held
+    // older write can arrive after a newer one. The server compares: a
+    // revisioned chains/update whose settingsRevision does not EXCEED the
+    // stored one is a stale-arrival no-op. Ungated writers (legacy callers,
+    // other surfaces) keep the always-apply behavior untouched.
+    id: 5,
+    name: '005-chain-settings-revision',
+    up(db) {
+      db.exec('ALTER TABLE canvas_chain ADD COLUMN settings_revision INTEGER NOT NULL DEFAULT 0')
+    },
+  },
 ]
 
 /** Applies pending migrations. Throws when the persisted history is not a

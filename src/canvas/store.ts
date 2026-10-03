@@ -400,7 +400,7 @@ type CanvasActions = {
   /** Jobs changed: land completions, rebuild links, recompute. */
   recompute(): void
   select(tileId: string | null, options?: { toggle?: boolean }): void
-  setChainSettings(chainId: string, patch: Partial<CanvasChainSettings>): Promise<ChainSettingsSave>
+  setChainSettings(chainId: string, patch: Partial<CanvasChainSettings>, options?: { settingsRevision?: number }): Promise<ChainSettingsSave>
   // (F02) The verdict rides the result like setChainSettings: the inspector
   // tracks last-ACKNOWLEDGED persistence, so it must be able to tell a landed
   // identity write from a failed one.
@@ -1863,7 +1863,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       })
     },
 
-    setChainSettings: async (chainId, patch) => {
+    setChainSettings: async (chainId, patch, options) => {
       const doc = activeDocument()
       const chain = doc?.chains.find((entry) => entry.id === chainId)
       if (!chain) return { ok: false, error: 'the chain no longer exists on this canvas' }
@@ -1872,7 +1872,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       // A no-op edit never writes, never reloads, never marks forks stale.
       if (JSON.stringify(current) === JSON.stringify(next)) return { ok: true }
       try {
-        await documentsApi.updateChain({ id: chainId, settings: next as unknown as Record<string, unknown> })
+        await documentsApi.updateChain({ id: chainId, settings: next as unknown as Record<string, unknown>, ...(options?.settingsRevision !== undefined ? { settingsRevision: options.settingsRevision } : {}) })
         const refreshed = await loadDocument(doc!.project.id)
         if (refreshed) recomputeTiles()
         return { ok: true }
