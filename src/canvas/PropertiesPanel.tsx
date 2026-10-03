@@ -677,6 +677,14 @@ export function PropertiesPanel() {
   useEffect(() => {
     const flushForUnload = () => {
       const state = unloadRef.current
+      const dirty = dirtyChainsRef.current
+      // (N01) The dirty set is the truth: an entry exists ⇔ something is
+      // unacked, and entries are IMMORTAL to adoption — a reselect adopts
+      // the STALE server state while the entry's write is still in flight,
+      // and that adopted state must never satisfy the current-chain
+      // divergence check. When the freshest state matches acked but a dirty
+      // entry exists, the entry's snapshot is what still needs to land.
+      const currentEntry = state.chainId ? dirty.get(state.chainId) : undefined
       if (state.chainId && state.draft) {
         const acked = state.acked?.chainId === state.chainId ? state.acked : null
         if (acked?.settings !== JSON.stringify(state.draft)) {
@@ -684,9 +692,22 @@ export function PropertiesPanel() {
           // write (the counter already counts them) — late arrivals lose.
           void documentsApi.updateChain({ id: state.chainId, settings: state.draft as unknown as Record<string, unknown>, settingsRevision: nextRevision(state.chainId, 'settings') }, { keepalive: true })
             .catch(() => { /* nothing can surface during unload */ })
+        } else if (currentEntry?.settings !== undefined) {
+          // (N01) Post-reselect: the adopted draft equals the adopted acked
+          // state — the entry is the only witness of the unacked truth.
+          void documentsApi.updateChain({ id: state.chainId, settings: currentEntry.settings as unknown as Record<string, unknown>, settingsRevision: nextRevision(state.chainId, 'settings') }, { keepalive: true })
+            .catch(() => { /* nothing can surface during unload */ })
         }
         if (acked?.subjectText !== state.subjectText || acked?.strength === undefined || Math.abs(acked.strength - state.strength) > 1e-9) {
           void documentsApi.upsertIdentity({ chainId: state.chainId, subjectText: state.subjectText, strength: state.strength, identityRevision: nextRevision(state.chainId, 'identity') }, { keepalive: true })
+            .catch(() => { /* nothing can surface during unload */ })
+        } else if (currentEntry && (currentEntry.subjectText !== undefined || currentEntry.strength !== undefined)) {
+          void documentsApi.upsertIdentity({
+            chainId: state.chainId,
+            ...(currentEntry.subjectText !== undefined ? { subjectText: currentEntry.subjectText } : {}),
+            ...(currentEntry.strength !== undefined ? { strength: currentEntry.strength } : {}),
+            identityRevision: nextRevision(state.chainId, 'identity'),
+          }, { keepalive: true })
             .catch(() => { /* nothing can surface during unload */ })
         }
       }
@@ -696,8 +717,8 @@ export function PropertiesPanel() {
       // gate DISCARDS its own stale arrivals server-side (the gate does not
       // ORDER arrivals; within a kind the newest stamp wins whichever way
       // they interleave, and across kinds the columns never interact).
-      for (const [id, entry] of dirtyChainsRef.current) {
-        if (id === state.chainId) continue // the freshest draft above covers it
+      for (const [id, entry] of dirty) {
+        if (id === state.chainId) continue // handled above: freshest-or-entry
         if (entry.settings) {
           void documentsApi.updateChain({ id, settings: entry.settings as unknown as Record<string, unknown>, settingsRevision: nextRevision(id, 'settings') }, { keepalive: true })
             .catch(() => { /* nothing can surface during unload */ })

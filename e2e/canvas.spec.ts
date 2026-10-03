@@ -4451,4 +4451,74 @@ test('the dirty-set settings flush lands under concurrent identity traffic (C-1 
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// ---------------------------------------------------------------------------
+// (N01, round 4 2026-10-03, S1) A RESELECT defeats the navigation backstop:
+// the deselect flush rides a queued fetch; reselecting the same chain ADOPTS
+// the stale server state (the write has not landed), which satisfies the
+// current-chain divergence check, and the dirty-set loop skips the chain
+// because it is current again — the in-flight write dies with the page and
+// no keepalive fires. The dirty entry is the truth: entries are immortal to
+// adoption, and while one exists for the current chain the divergence check
+// must not consult adopted/acked state.
+// ---------------------------------------------------------------------------
+
+test('a reselect cannot defeat the navigation backstop — the dirty entry outlives adoption (N01, settings)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, prompt } = await openInspectorAtSeed(page, 'reselect seed prompt')
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await page.waitForTimeout(900) // the queued flush rides a held fetch
+    try { await route.continue() } catch { /* the dying page aborts its write */ }
+  })
+  await prompt.fill('RESELECT NAVIGATION SENTINEL')
+  await page.keyboard.press('Escape') // deselect — the flush starts as a queued fetch
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click() // RESELECT: adopts the STALE server state
+  await expect(prompt).toHaveValue('reselect seed prompt', { timeout: 10_000 }) // the unacked sentinel is invisible to adoption
+  await page.waitForTimeout(150) // still inside the held write's RTT
+  await page.locator('[data-surface-switcher] [data-surface="images"]').click()
+  await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.settings.prompt
+  }, { timeout: 15_000 }).toBe('RESELECT NAVIGATION SENTINEL')
+  await page.locator('[data-surface-switcher] [data-surface="canvas"]').click()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  await expect(page.locator('[data-canvas-properties] [data-canvas-section="prompt"] textarea').first()).toHaveValue('RESELECT NAVIGATION SENTINEL', { timeout: 10_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('a reselect cannot defeat the navigation backstop — the dirty entry outlives adoption (N01, identity)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, panel } = await openInspectorAtSeed(page, 'reselect identity seed prompt')
+  await page.request.post('/api/lan/documents/identity', { data: { chainId, subjectText: 'reselect identity seed line', strength: 1 } })
+  await page.reload()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  const subject = panel.locator('[data-canvas-identity-subject]')
+  await expect(subject).toBeVisible({ timeout: 10_000 })
+  await expect(subject).toHaveValue('reselect identity seed line')
+  await page.route('**/api/lan/documents/identity', async (route) => {
+    await page.waitForTimeout(900) // the queued identity flush rides a held fetch
+    try { await route.continue() } catch { /* the dying page aborts its write */ }
+  })
+  await subject.fill('RESELECT IDENTITY SENTINEL')
+  await page.keyboard.press('Escape') // deselect — the identity flush starts as a queued fetch
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click() // RESELECT: adopts the STALE server identity
+  await expect(subject).toHaveValue('reselect identity seed line', { timeout: 10_000 })
+  await page.waitForTimeout(150) // still inside the held write's RTT
+  await page.locator('[data-surface-switcher] [data-surface="images"]').click()
+  await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText
+  }, { timeout: 15_000 }).toBe('RESELECT IDENTITY SENTINEL')
+  await page.locator('[data-surface-switcher] [data-surface="canvas"]').click()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  await expect(page.locator('[data-canvas-identity-subject]')).toHaveValue('RESELECT IDENTITY SENTINEL', { timeout: 10_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 
