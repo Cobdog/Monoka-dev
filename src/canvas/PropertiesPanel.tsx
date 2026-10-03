@@ -45,6 +45,7 @@ import {
 } from './loraTimeline'
 import { GAP_KINDS, GAP_LABEL, type PlanGapKind } from './plan'
 import { useCanvasStore } from './store'
+import { documentsApi } from './api'
 import type { DocumentChain } from './derive'
 
 /** AR-first resolution picking (ruling 2026-09-26): the ratio drives the
@@ -68,15 +69,42 @@ const VDN_RUNGS: Array<{ value: CanvasChainSettings['vdn']; label: string; note:
 ]
 
 /** Debounced persistence for panel edits: typing never hammers the document
- *  store; a chain switch or unmount flushes. */
-function useDebouncedCommit<T>(value: T, skip: boolean, commit: (value: T) => void, delay = 500) {
+ *  store; a chain switch (the resetKey) or an unmount FLUSHES the unsaved
+ *  commit — the cleanup used to cancel the timer, silently discarding the
+ *  draft (audit A04). The commit is captured at schedule time so a late
+ *  flush can never land on the wrong chain. */
+function useDebouncedCommit<T>(value: T, skip: boolean, commit: (value: T) => void, resetKey: unknown, delay = 500) {
   const commitRef = useRef(commit)
   commitRef.current = commit
+  const pending = useRef<{ value: T; commit: (value: T) => void } | null>(null)
+  const timer = useRef<number | null>(null)
+  const clearTimer = () => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current)
+      timer.current = null
+    }
+  }
   useEffect(() => {
     if (skip) return undefined
-    const timer = window.setTimeout(() => commitRef.current(value), delay)
-    return () => window.clearTimeout(timer)
+    pending.current = { value, commit: commitRef.current }
+    clearTimer()
+    timer.current = window.setTimeout(() => {
+      timer.current = null
+      const entry = pending.current
+      pending.current = null
+      entry?.commit(entry.value)
+    }, delay)
+    // An ordinary value change only reschedules; the flush lives on the
+    // resetKey effect below (its cleanup runs after this one, so the pending
+    // entry is still there when a chain switch or unmount needs it).
+    return clearTimer
   }, [value, skip, delay])
+  useEffect(() => () => {
+    clearTimer()
+    const entry = pending.current
+    pending.current = null
+    entry?.commit(entry.value)
+  }, [resetKey])
 }
 
 /** The free-ratio resolution inputs (AR-first picking): raw typing is kept
@@ -130,8 +158,9 @@ function LoraTimelineSection(props: {
   formAdapterInstalled: boolean
   onChange(next: LoraTimelineDoc | null): void
   /** Persist the panel's full draft before Apply compiles (the compiler reads
-   *  the persisted chain — the generate() precedent). */
-  flush(): Promise<void>
+   *  the persisted chain — the generate() precedent). False = the save
+   *  failed; the caller must not compile what was never written. */
+  flush(): Promise<boolean>
 }) {
   const { chainId, duration, doc, loraNames, formAdapterInstalled, onChange, flush } = props
   const [dragRange, setDragRange] = useState<number | null>(null) // the RIGHT range's sorted index whose start is dragged
@@ -205,7 +234,12 @@ function LoraTimelineSection(props: {
     setApplying(true)
     setFailure([])
     try {
-      await flush()
+      // (A02) Compiling reads the PERSISTED chain — a failed save must not
+      // compile what was never written.
+      if (!await flush()) {
+        setFailure(['The draft could not be saved — nothing was compiled. Retry once the save failure is resolved.'])
+        return
+      }
       const result = await useCanvasStore.getState().applyLoraTimeline(chainId)
       if (!result.ok && result.reasons) setFailure(result.reasons)
     } finally {
@@ -412,6 +446,10 @@ export function PropertiesPanel() {
   const [subjectText, setSubjectText] = useState('')
   const [strength, setStrength] = useState(1)
   const [submitting, setSubmitting] = useState(false)
+  // (A02) The draft's save fate, beside the Generate action: null = nothing
+  // in flight since the last look, otherwise the last save attempt's state.
+  const [saveState, setSaveState] = useState<'saving' | 'saved' | 'failed' | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
   // Phase 4: the CreateView capabilities this panel absorbs.
   const [libraryOpen, setLibraryOpen] = useState(false)
   const [promptingTool, setPromptingTool] = useState<'enhance' | 'timeline' | 'audio' | null>(null)
@@ -458,27 +496,73 @@ export function PropertiesPanel() {
     }
   }, [chain, draft, subjectText])
 
+  // (A02) The draft's save seam: every save reports saving/saved/failed
+  // beside Generate, and a FAILED save returns false so no caller submits
+  // the older persisted settings as if the user had authored them.
+  // Deliberately no knownRef short-circuit here — a debounced save may have
+  // just failed, so Generate must re-attempt the write (the store's own
+  // no-op gate keeps an already-saved draft write-free).
+  const saveDraft = async (id: string, value: CanvasChainSettings): Promise<boolean> => {
+    setSaveState('saving')
+    setSaveError(null)
+    const save = await setChainSettings(id, value)
+    setSaveState(save.ok ? 'saved' : 'failed')
+    if (!save.ok) setSaveError(save.error ?? 'the save failed')
+    return save.ok
+  }
+
   useDebouncedCommit(draft, !draft || !chainId, (value) => {
     if (!chainId || !value) return
     const known = knownRef.current
     if (known && known.chainId === chainId && known.settings === JSON.stringify(value)) return // no-op edit: never reload for nothing
     if (known && known.chainId === chainId) knownRef.current = { ...known, settings: JSON.stringify(value) }
-    void setChainSettings(chainId, value)
-  })
+    void saveDraft(chainId, value)
+  }, chainId)
   useDebouncedCommit(subjectText, !chain, (value) => {
     if (!chainId) return
     const known = knownRef.current
     if (known && known.chainId === chainId && known.subjectText === value) return
     if (known && known.chainId === chainId) knownRef.current = { ...known, subjectText: value }
     void setChainIdentity(chainId, { subjectText: value })
-  }, 700)
+  }, chainId, 700)
   useDebouncedCommit(strength, !chain, (value) => {
     if (!chainId) return
     const known = knownRef.current
     if (known && known.chainId === chainId && Math.abs(known.strength - value) < 1e-9) return
     if (known && known.chainId === chainId) knownRef.current = { ...known, strength: value }
     void setChainIdentity(chainId, { strength: value })
-  }, 300)
+  }, chainId, 300)
+
+  // (A04) A surface switch is a full page load — React cleanups never run
+  // across it, so whatever the debounces have not sent yet rides
+  // pagehide/beforeunload as keepalive fetches (the useDebouncedPersist
+  // close-flush contract, async-transport edition). The write carries the
+  // full panel draft, which is what the debounced commit would have sent; a
+  // server key another surface added after adoption is the accepted
+  // residual — losing the authored draft is the worse harm.
+  const unloadRef = useRef({ chainId, draft, subjectText, strength, known: knownRef.current })
+  unloadRef.current = { chainId, draft, subjectText, strength, known: knownRef.current }
+  useEffect(() => {
+    const flushForUnload = () => {
+      const state = unloadRef.current
+      const known = state.known
+      if (!state.chainId || !state.draft || !known || known.chainId !== state.chainId) return
+      if (known.settings !== JSON.stringify(state.draft)) {
+        void documentsApi.updateChain({ id: state.chainId, settings: state.draft as unknown as Record<string, unknown> }, { keepalive: true })
+          .catch(() => { /* nothing can surface during unload */ })
+      }
+      if (known.subjectText !== state.subjectText || Math.abs(known.strength - state.strength) > 1e-9) {
+        void documentsApi.upsertIdentity({ chainId: state.chainId, subjectText: state.subjectText, strength: state.strength }, { keepalive: true })
+          .catch(() => { /* nothing can surface during unload */ })
+      }
+    }
+    window.addEventListener('pagehide', flushForUnload)
+    window.addEventListener('beforeunload', flushForUnload)
+    return () => {
+      window.removeEventListener('pagehide', flushForUnload)
+      window.removeEventListener('beforeunload', flushForUnload)
+    }
+  }, [])
 
   // Structured mode (fh94g76): a duration change re-clips the flow ranges —
   // recompose the concat once per duration change (never on box edits, which
@@ -566,7 +650,9 @@ export function PropertiesPanel() {
     setSubmitting(true)
     try {
       // Commit the draft immediately — submit reads the persisted settings.
-      await setChainSettings(chainId, draft)
+      // (A02) A FAILED save aborts here: the previously persisted prompt is
+      // never submitted as if the user had authored it.
+      if (!await saveDraft(chainId, draft)) return
       await submitChain(chainId)
     } finally {
       setSubmitting(false)
@@ -1024,7 +1110,7 @@ export function PropertiesPanel() {
           loraNames={models.filter((file) => file.kind === 'loras').map((file) => file.name)}
           formAdapterInstalled={Boolean(info && (info as Record<string, unknown>)['MiniMaxH3LoraFormLoader'] !== undefined)}
           onChange={(loraTimeline) => patch({ loraTimeline })}
-          flush={async () => { await setChainSettings(chain.id, draft) }}
+          flush={() => saveDraft(chain.id, draft)}
         />
       )}
 
@@ -1266,6 +1352,18 @@ export function PropertiesPanel() {
           <span className="canvas-tile-ring" data-status={tile.status} /> {STATUS_LABEL[tile.status]}
         </div>
         {validation && <p className="canvas-properties-warning" data-canvas-validation role="alert">{validation}</p>}
+        {/* (A02) Save state beside the action — a failed save blocks
+            submission, so it must be readable here, not only in a vanishing
+            toast. Existing notice classes, no new tokens. */}
+        {saveState && <p
+          className={saveState === 'failed' ? 'canvas-properties-warning' : 'canvas-properties-note'}
+          data-canvas-save-state={saveState}
+          role={saveState === 'failed' ? 'alert' : 'status'}
+        >
+          {saveState === 'saving' ? 'Saving draft…'
+            : saveState === 'saved' ? 'Draft saved.'
+            : `Draft not saved — ${saveError ?? 'the save failed'}. Generate retries the save before submitting.`}
+        </p>}
         {tile.jobId && (tile.status === 'running' || tile.status === 'queued-gpu')
           ? <button type="button" className="canvas-properties-generate" data-canvas-cancel onClick={() => void cancelChainJob(chain.id)}><Square size={12} /> stop</button>
           : <button type="button" className="canvas-properties-generate" data-canvas-generate onClick={() => void generate()} disabled={submitting}>

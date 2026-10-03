@@ -58,11 +58,14 @@ export function AudioDock() {
         chainId = await createAudioChain(engine, caption.trim())
         if (!chainId) return
       }
-      await setChainSettings(chainId, {
+      // (A02) The same gate as the properties panel's Generate: a failed
+      // settings save aborts the submission — the previously persisted
+      // caption never renders as if the user had authored it.
+      if (!(await setChainSettings(chainId, {
         prompt: caption.trim(),
         mediaType: 'audio',
         audio: { engine, caption: caption.trim(), lyrics, duration, seed: Math.floor(Math.random() * 1_000_000_000) },
-      })
+      })).ok) return
       const result = await submitChain(chainId)
       if (result.ok) setAudioDock(null)
     } finally {
