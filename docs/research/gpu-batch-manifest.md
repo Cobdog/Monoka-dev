@@ -66,3 +66,7 @@ Turbo/pinned-row incompatibility: pinned-anchor experiments at 20 steps
 the floor per board · blind sonnet-judge convention for quality calls ·
 fixed seeds + the full-config manifest per run · /free between arms ·
 the engine's workload preempts ours — check before submitting.
+
+## Amendment 1 — the prompting-guide corrections reach the bake-off (2026-10-03)
+
+The packets' correction: the "zero-prompt engines" grouping was wrong 2-of-3 — **SCAIL-2 wants long detailed captions** ("short or empty can run but detailed usually produce better results" [DOC card]); **Wan-Animate-2 REQUIRES an appearance caption with motion excluded** [DOC]; only Viggle-Animate is text-free (frozen embed, Addendum 6). CONSEQUENCE: VG-1's bake-off must **control prompt quality per engine** — each engine's arm runs with its packet's caption recipe (a shared-baseline "bare default" arm + a "packet-tuned" arm per engine), or the bake-off measures prompt poverty, not engine quality. Add the E-K3 Krea dialect-swap arm (the guide's one [SPEC] prediction → measured; already top of the packet build's GPU queue). Also flagged: BFL docs drift (docs.bfl.ai showing FLUX 3-era content) — any Klein-arm settings verified against the packet's dated quotes, not the live site.
