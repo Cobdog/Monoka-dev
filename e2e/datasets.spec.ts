@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { mkdirSync, mkdtempSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
@@ -356,4 +357,70 @@ test('the crop editor and caption panel answer Escape (one press, one action)', 
   await expect(page.locator('[data-ds-caption]')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('[data-ds-caption]')).toHaveCount(0)
+})
+
+// ---------------------------------------------------------------------------
+// Audit remediation (k8y5hzk) — the Codex webui audit's two dataset dead-ends
+// (docs/audit/codex-webui-audit-2026-10-02.md A06/A07): a real image died
+// client-side before upload, and a fresh dataset could never satisfy the
+// export gate.
+
+test('LAN upload ingests a real-sized still through the UI path (A06)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  // The audit's repro: a valid 512² PNG (730,183 bytes) yielded "0 imported,
+  // Refusals: 1" with "Maximum call stack size exceeded" — the whole buffer
+  // was spread into String.fromCharCode arguments and died before any request
+  // left the page. The fixture here is the same class of file: a >500 KB
+  // valid PNG (noise defeats PNG's deflate), byte-deterministic, so re-runs
+  // content-dedupe onto the same source row instead of accumulating.
+  const home = join(process.cwd(), 'test-home')
+  mkdirSync(home, { recursive: true })
+  const dir = mkdtempSync(join(home, 'ds-e2e-'))
+  const bigStill = join(dir, 'e2e-upload.png')
+  await exec('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=duration=1:size=512x512:rate=24', '-vf', 'noise=alls=100:allf=t', '-frames:v', '1', bigStill])
+  expect((await stat(bigStill)).size).toBeGreaterThan(500 * 1024)
+  await page.goto('/?datasets=1')
+  await expect(page.locator('[data-ds-root]')).toBeVisible()
+  await page.setInputFiles('input[type="file"]', bigStill)
+  await expect(page.locator('[data-ds-notice]')).toContainText('1 imported', { timeout: 20_000 })
+  await expect(page.locator('[data-ds-notice]')).not.toContainText('Refusals')
+  await expect(page.locator('[data-ds-error]')).toHaveCount(0)
+  await expect(page.locator('[data-ds-master]', { hasText: 'e2e-upload.png' }).first()).toBeVisible({ timeout: 10_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('the fresh-user export cycle: the trigger is settable in the wizard and the export passes the gate (A07)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  const runId = Date.now().toString(36)
+  // Fresh state — the audit's A07 repro: the titlebar's "trigger: (unset)"
+  // was a static display with no control behind it (datasetsApi.saveSettings
+  // had no UI caller), so the export gate could never be satisfied.
+  await page.request.post('/api/lan/datasets/settings', { data: { triggerToken: '', contentClass: 'style' } })
+  const sourceId = await seedStill(page.request)
+  const layer = (await (await page.request.post('/api/lan/datasets/layers', { data: { sourceId, name: 'trigger-layer' } })).json()).layer
+  await page.request.post('/api/lan/datasets/captions', { data: { layerId: layer.id, text: `ph0t0r34l, a colorful test pattern drifting slowly; no audible sound (${runId})` } })
+  await page.goto('/?datasets=1')
+  await expect(page.locator('.ds-trigger code')).toHaveText('(unset)')
+  const master = page.locator('[data-ds-master]', { hasText: 'e2e-still' }).first()
+  await expect(master).toBeVisible({ timeout: 10_000 })
+  await master.locator('.ds-master-name').click() // expand to see the layer
+  // This run's layer is pinned by its caption's run id — layers from earlier
+  // runs accumulate on the shared home's deduped still (testing.md).
+  const layerRow = page.locator('[data-ds-layer]', { hasText: runId }).first()
+  await expect(layerRow).toBeVisible()
+  await layerRow.locator('.ds-layer-select').click()
+  await page.locator('.ds-tab', { hasText: 'export' }).click()
+  await expect(page.locator('[data-ds-export]')).toBeVisible()
+  // Gate 8's prerequisite is an editable control now: set it, save it, and
+  // the titlebar chip (the old static display) reflects the persisted token.
+  await page.locator('[data-ds-trigger-input]').fill('ph0t0r34l')
+  await page.locator('[data-ds-trigger-save]').click()
+  await expect(page.locator('.ds-trigger code')).toHaveText('ph0t0r34l', { timeout: 5_000 })
+  // The token persists server-side: the export runs past the trigger gate and
+  // lands the immutable snapshot (one still item: bake → write → validate).
+  await page.locator('[data-ds-export-folder]').fill(`e2e-trigger-export-${runId}`)
+  await page.locator('[data-ds-run-export]').click()
+  await expect(page.locator('[data-ds-export-result]')).toBeVisible({ timeout: 30_000 })
+  await expect(page.locator('[data-ds-export-result] h3')).toContainText('1 item(s) exported · 0 refused')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
