@@ -463,6 +463,11 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .camera-path-presets button { padding: 3px 9px; border: 1px solid var(--line-strong); border-radius: 999px; background: transparent; color: var(--muted); font-size: var(--text-2xs); cursor: pointer; }
 .camera-path-presets button:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .camera-path-inspector { display: grid; gap: 6px; padding: 7px 8px; border: 1px dashed var(--line-strong); border-radius: 8px; }
+/* (A08) The keyboard authoring row: keyframe select + insert button. */
+.camera-path-keyframe-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: end; }
+.camera-path-keyframe-add { padding: 3px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: transparent; color: var(--muted); font-size: var(--text-2xs); cursor: pointer; }
+.camera-path-keyframe-add:hover:not(:disabled) { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.camera-path-keyframe-add:disabled { opacity: .4; cursor: default; }
 .camera-path-delete { display: inline-flex; align-items: center; gap: 4px; width: max-content; padding: 3px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: transparent; color: var(--muted); font-size: var(--text-2xs); cursor: pointer; }
 .camera-path-delete:hover:not(:disabled) { color: var(--warning); }
 .camera-path-delete:disabled { opacity: .4; cursor: default; }

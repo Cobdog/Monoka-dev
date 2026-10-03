@@ -3191,6 +3191,78 @@ test('the camera path editor compiles a path into the Camera box; the composed b
   }
 })
 
+// (A08, Codex audit 2026-10-02) The path editor's PRIMARY authoring flow was
+// pointer-only: keyframe add lived on the rail's click, select on the SVG
+// handles' pointerdown, retime on the drag — Tab never reached any of it,
+// and the dialog had no accessible name. This is the keyboard path, driven
+// with the keyboard alone (engine offline is fine — authoring is pure SVG +
+// the compiler, no engine).
+test('the camera path editor authors keyframes by keyboard and carries an accessible name (A08)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('camera keyboard path probe')
+  await page.locator('[data-canvas-submit]').click()
+  const tile = page.locator('[data-canvas-tile]').first()
+  await expect(tile).toBeVisible({ timeout: 10_000 })
+  const panel = page.locator('[data-canvas-properties]')
+  await expect(panel).toBeVisible()
+  await panel.locator('[data-canvas-prompt-mode-toggle="structured"]').click()
+  const editor = panel.locator('[data-structured-editor]')
+  await expect(editor).toBeVisible()
+  await editor.locator('[data-structured-box="camera"] [data-structured-camera-path-edit]').click()
+  const modal = page.locator('[data-camera-path-editor]')
+  await expect(modal).toBeVisible()
+
+  // The dialog is NAMED (the header strong wires aria-labelledby).
+  const popup = page.locator('.camera-path-modal')
+  await expect(popup).toHaveAttribute('aria-labelledby', 'camera-path-title')
+  await expect(page.locator('#camera-path-title')).toContainText('Camera path')
+
+  // ADD by keyboard: focus the button, press Enter (the rail click was the
+  // only add path before). Inserts into the gap after the selected
+  // keyframe — the initial selection is the last, so the new keyframe lands
+  // before it.
+  await expect(modal.locator('[data-camera-keyframe]')).toHaveCount(3)
+  const add = modal.locator('[data-camera-keyframe-add]')
+  await add.focus()
+  await page.keyboard.press('Enter')
+  await expect(modal.locator('[data-camera-keyframe]')).toHaveCount(4)
+  await expect(modal.locator('[data-camera-keyframe-add]')).toBeFocused()
+
+  // SELECT by keyboard: the keyframe select is a native control (the SVG
+  // handles' pointerdown was the only selection path before). After the add
+  // the inserted keyframe is the selection ("3 of 4"); jump to keyframe 2.
+  const label = modal.locator('[data-camera-keyframe-label]')
+  await expect(label).toContainText('keyframe 3 of 4')
+  const select = modal.locator('[data-camera-keyframe-select]')
+  await select.focus()
+  await select.selectOption({ index: 1 })
+  await expect(label).toContainText('keyframe 2 of 4')
+
+  // RETIME by keyboard: the time field writes the same clamped retime the
+  // drag performs (bounded by the neighboring keyframes — read the field's
+  // own min/max and aim strictly inside, a quarter of the way up).
+  const timeField = modal.locator('[data-camera-field-time]')
+  await timeField.focus()
+  const bounds = await timeField.evaluate((element) => {
+    const input = element as HTMLInputElement
+    return { min: Number(input.min), max: Number(input.max) }
+  })
+  const before = Number(/—\s*([\d.]+)s/.exec(await label.innerText())?.[1] ?? '0')
+  const target = bounds.min + (bounds.max - bounds.min) / 4
+  await timeField.fill(target.toFixed(3))
+  const after = Number(/—\s*([\d.]+)s/.exec(await label.innerText())?.[1] ?? '0')
+  expect(Math.abs(after - target)).toBeLessThan(0.01) // the retime took, unclamped
+  expect(Math.abs(after - before)).toBeGreaterThan(0.01) // and it actually moved
+
+  // The compiled preview carries the retimed keyframe (the review gate
+  // updates from the keyboard edit alone).
+  await expect(modal.locator('[data-camera-compiled]')).toContainText('Compiled camera path — 124 frames at 24 fps')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 // ---------------------------------------------------------------------------
 // The LoRA timeline (7twfk6o, layer 1 — segment granularity): the properties
 // section paints LoRA ranges over the clip, the compiler generates a Director
