@@ -27,8 +27,8 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return body
 }
 
-const post = <T>(path: string, payload: unknown): Promise<T> =>
-  call<T>(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+const post = <T>(path: string, payload: unknown, init?: RequestInit): Promise<T> =>
+  call<T>(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), ...init })
 
 export type ProjectMeta = {
   id: string
@@ -110,8 +110,8 @@ export const documentsApi = {
   createChain: async (input: { projectId: string; kind?: string; inputSpec?: Record<string, unknown>; settings?: Record<string, unknown> }) =>
     (await post<{ chain: DocumentChain }>('/api/lan/documents/chains', input)).chain,
 
-  updateChain: (input: { id: string; settings?: Record<string, unknown>; inputSpec?: Record<string, unknown>; lockState?: 'locked' | 'unlocked'; hopCount?: number; driftMetrics?: Record<string, unknown> | null; stale?: boolean }) =>
-    post<{ chain: DocumentChain }>('/api/lan/documents/chains/update', input),
+  updateChain: (input: { id: string; settings?: Record<string, unknown>; inputSpec?: Record<string, unknown>; lockState?: 'locked' | 'unlocked'; hopCount?: number; driftMetrics?: Record<string, unknown> | null; stale?: boolean }, options?: { keepalive?: boolean }) =>
+    post<{ chain: DocumentChain }>('/api/lan/documents/chains/update', input, options?.keepalive ? { keepalive: true } : undefined),
 
   // ---- the trash front door (maintainer ruling 2026-09-26, directive -----
   // 1e363ec0 item 1): the store ALWAYS had full trash semantics — tombstone
@@ -145,8 +145,8 @@ export const documentsApi = {
   supersedeTake: (input: { outputId: string; takeId: string }) =>
     post<{ take: { id: string } }>('/api/lan/documents/takes/supersede', input),
 
-  upsertIdentity: (input: { chainId: string; refAssetIds?: string[]; subjectText?: string; strength?: number; perSlotStrengths?: Record<string, number> | null }) =>
-    post<{ identity: Record<string, unknown> }>('/api/lan/documents/identity', input),
+  upsertIdentity: (input: { chainId: string; refAssetIds?: string[]; subjectText?: string; strength?: number; perSlotStrengths?: Record<string, number> | null }, options?: { keepalive?: boolean }) =>
+    post<{ identity: Record<string, unknown> }>('/api/lan/documents/identity', input, options?.keepalive ? { keepalive: true } : undefined),
 
   addOp: async (chainId: string, kind: string, settings?: Record<string, unknown>) =>
     (await post<{ op: { id: string } }>('/api/lan/documents/ops', { chainId, kind, settings: settings ?? {} })).op,

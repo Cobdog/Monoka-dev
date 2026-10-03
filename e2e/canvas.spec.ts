@@ -3647,4 +3647,185 @@ test('a chainless createChain answer fails honestly — no pending: ghost tile (
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// ---------------------------------------------------------------------------
+// The audit's S1 inspector defects (codex-webui-audit-2026-10-02, A02 + A04):
+// a failed settings save must never submit, and a pending debounced draft
+// must never die at a navigation or a chain switch.
+
+/** The fake engine behind the A02 repro — records every submitted graph so
+ *  the test can prove the engine reachable (one control submission) and then
+ *  that the blocked save adds NOTHING to it. */
+async function startRecordingEngine() {
+  const http = await import('node:http')
+  const submitted: Array<Record<string, { class_type: string; inputs: Record<string, unknown> }>> = []
+  const engine = http.createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://engine.local')
+    if (url.pathname === '/system_stats') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ system: {}, devices: [] }))
+      return
+    }
+    if (serveObjectInfo(url, stockObjectInfo({ MiniMaxH3HybridLoader: {} }), res)) return
+    if (serveModelRegistry(url, H3_REGISTRY_LISTINGS, res)) return
+    if (url.pathname === '/prompt' && req.method === 'POST') {
+      let body = ''
+      req.on('data', (chunk) => { body += chunk })
+      req.on('end', () => {
+        submitted.push(JSON.parse(body).prompt)
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ prompt_id: 'a02-1', number: 1, node_errors: {} }))
+      })
+      return
+    }
+    if (url.pathname === '/history/a02-1') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ 'a02-1': { prompt: [], outputs: {}, status: { completed: false } } }))
+      return
+    }
+    if (url.pathname === '/interrupt' && req.method === 'POST') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ cancelled: true, state: 'canceled' }))
+      return
+    }
+    if (url.pathname === '/queue' && req.method === 'GET') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ queue_running: [['entry', 'a02-1']], queue_pending: [] }))
+      return
+    }
+    res.writeHead(404)
+    res.end()
+  })
+  const port = await new Promise<number>((resolve) => engine.listen(0, '127.0.0.1', () => resolve((engine.address() as { port: number }).port)))
+  return { engine, port, submitted }
+}
+
+test('a failed settings save aborts Generate — the persisted prompt never submits (A02)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const { engine, port, submitted } = await startRecordingEngine()
+  const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    await resetSession(page)
+    // Spawn the generator OFFLINE: the chain persists with its seed prompt
+    // and the spawn submit refuses honestly — nothing is queued yet.
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await page.locator('[data-canvas-prompt]').fill('Audit test shot')
+    await page.locator('[data-canvas-submit]').click()
+    await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 10_000 })
+    const spawnDocument = await activeDocument(page)
+    const chainId = spawnDocument.chains.find((chain) => chain.kind === 'generation')!.id
+    // Engine on: from here a REAL submission is possible — that is the point.
+    await request.post('/api/lan/settings', { data: { settings: { ...originalSettings, comfyUrl: `http://127.0.0.1:${port}` } } })
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+    const panel = page.locator('[data-canvas-properties]')
+    const generate = panel.locator('[data-canvas-generate]')
+    await expect(generate).toBeVisible({ timeout: 15_000 })
+    // Control submission: the engine demonstrably accepts this chain's graph
+    // (the audit's fake engine held the OLD prompt — the same starting truth).
+    await generate.click()
+    await expect.poll(() => submitted.length, { timeout: 15_000 }).toBe(1)
+    const stop = panel.locator('[data-canvas-cancel]')
+    await stop.click()
+    await expect(generate).toBeVisible({ timeout: 15_000 })
+
+    // The audit's injection: every settings update 500s from here.
+    await page.route('**/api/lan/documents/chains/update', async (route) => {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'AUDIT save unavailable' }) })
+    })
+    await panel.locator('[data-canvas-section="prompt"] textarea').first().fill('NEW PROMPT MUST NOT RUN OLD PROMPT')
+    await page.waitForTimeout(800) // the debounced save fires first — and fails
+    await generate.click()
+
+    // The failure surfaces beside the action, with the server's reason …
+    const saveState = page.locator('[data-canvas-save-state="failed"]')
+    await expect(saveState).toBeVisible()
+    await expect(saveState).toContainText('AUDIT save unavailable')
+    // … the honest toast still names the save failure, and NO queue success
+    // rides after it (the audit caught both notices showing at once).
+    await expect(page.locator('[data-canvas-toast="error"]').first()).toContainText('could not be saved')
+    await expect(page.locator('[data-canvas-toast="success"]').first()).not.toBeVisible()
+    // The engine received NOTHING more: the old prompt never ran again, the
+    // queue never grew past the control submission.
+    await expect.poll(() => submitted.length, { timeout: 3_000 }).toBe(1)
+    const tile = page.locator(`[data-canvas-tile="${chainId}"]`)
+    await expect.poll(() => tile.getAttribute('data-tile-status'), { timeout: 3_000 }).not.toMatch(/queued|running/)
+    // And the document holds the last SUCCESSFULLY persisted prompt.
+    const document = await activeDocument(page)
+    expect(document.chains.find((entry) => entry.id === chainId)!.settings.prompt).toBe('Audit test shot')
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    await request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } }).catch(() => undefined)
+    await new Promise<void>((resolve) => engine.close(() => resolve()))
+  }
+})
+
+test('a pending panel draft survives an immediate surface switch (A04)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('a draft that must survive navigation')
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 10_000 })
+  const spawnDocument = await activeDocument(page)
+  const chainId = spawnDocument.chains.find((chain) => chain.kind === 'generation')!.id
+  const panel = page.locator('[data-canvas-properties]')
+  await expect(panel).toBeVisible()
+  const prompt = panel.locator('[data-canvas-section="prompt"] textarea').first()
+  await expect(prompt).toHaveValue('a draft that must survive navigation')
+  // Edit and leave INSIDE the debounce window — the 500ms timer is not what
+  // stands between the user's text and the document store. A surface switch
+  // is a FULL PAGE LOAD: React cleanups never run across it.
+  await prompt.fill('UNSAVED NAVIGATION SENTINEL')
+  await page.locator('[data-surface-switcher] [data-surface="images"]').click()
+  await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
+  // Back: the canvas remounts cold — reopen the inspector.
+  await page.locator('[data-surface-switcher] [data-surface="canvas"]').click()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  await expect(page.locator('[data-canvas-properties]')).toBeVisible()
+  // The typed value persists (panel state is server-adopted here, so this
+  // IS the persistence proof; the retry window covers the flush's latency).
+  await expect(panel.locator('[data-canvas-section="prompt"] textarea').first()).toHaveValue('UNSAVED NAVIGATION SENTINEL', { timeout: 10_000 })
+  const document = await activeDocument(page)
+  expect(document.chains.find((entry) => entry.id === chainId)!.settings.prompt).toBe('UNSAVED NAVIGATION SENTINEL')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('a pending panel draft survives an immediate chain switch (A04)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('chain one seed')
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 10_000 })
+  const spawnDocument = await activeDocument(page)
+  const chainOne = spawnDocument.chains.find((chain) => chain.kind === 'generation')!.id
+  // A second generation object in the SAME project (the wave1 API-seed
+  // precedent) so the panel has somewhere real to switch to.
+  const session = await page.evaluate(async () => (await (await fetch('/api/lan/documents/session')).json()).session as { activeProject: string | null })
+  const second = await (await request.post('/api/lan/documents/chains', { data: { projectId: session.activeProject, kind: 'generation', settings: { prompt: 'chain two seed', mediaType: 'video' } } })).json() as { chain: { id: string } }
+  await page.reload()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await expect(page.locator(`[data-canvas-tile="${second.chain.id}"]`)).toBeVisible({ timeout: 15_000 })
+  const panel = page.locator('[data-canvas-properties]')
+  await page.locator(`[data-canvas-tile="${chainOne}"]`).click()
+  await expect(panel).toBeVisible()
+  await expect(panel.locator('[data-canvas-section="prompt"] textarea').first()).toHaveValue('chain one seed')
+  // Type on chain one, switch to chain two BEFORE the debounce lands.
+  await panel.locator('[data-canvas-section="prompt"] textarea').first().fill('UNSAVED CHAIN-SWITCH SENTINEL')
+  await page.locator(`[data-canvas-tile="${second.chain.id}"]`).click()
+  await expect(panel.locator('[data-canvas-section="prompt"] textarea').first()).toHaveValue('chain two seed', { timeout: 10_000 })
+  // Back to chain one: the typed value persisted.
+  await page.locator(`[data-canvas-tile="${chainOne}"]`).click()
+  await expect(panel.locator('[data-canvas-section="prompt"] textarea').first()).toHaveValue('UNSAVED CHAIN-SWITCH SENTINEL', { timeout: 10_000 })
+  const document = await activeDocument(page)
+  expect(document.chains.find((entry) => entry.id === chainOne)!.settings.prompt).toBe('UNSAVED CHAIN-SWITCH SENTINEL')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 

@@ -216,6 +216,11 @@ export type CameraCommand =
 
 export type CanvasToast = { id: number; tone: 'error' | 'success' | 'neutral'; text: string }
 
+/** The outcome of a chain-settings save (A02): the store toasts the failure
+ *  itself, and returns the verdict so callers that submit from the persisted
+ *  draft can gate on it instead of a failure resolving like a success. */
+export type ChainSettingsSave = { ok: boolean; error?: string }
+
 export type SelectionState = { tileIds: string[] }
 
 type CanvasState = {
@@ -395,7 +400,7 @@ type CanvasActions = {
   /** Jobs changed: land completions, rebuild links, recompute. */
   recompute(): void
   select(tileId: string | null, options?: { toggle?: boolean }): void
-  setChainSettings(chainId: string, patch: Partial<CanvasChainSettings>): Promise<void>
+  setChainSettings(chainId: string, patch: Partial<CanvasChainSettings>): Promise<ChainSettingsSave>
   setChainIdentity(chainId: string, patch: { subjectText?: string; strength?: number }): Promise<void>
   /** One typed-hole menu choice (§3 option menus). */
   runEndpointAction(chainId: string, direction: EndpointDirection, option: EndpointOption, sourceChainId?: string): Promise<void>
@@ -964,7 +969,9 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         }
         const settings = readChainSettings(chain.settings, useSessionStore.getState().settings)
         const binding = !settings.referenceAssetIds.includes(assetId)
-        await get().setChainSettings(chainId, { referenceAssetIds: binding ? [...settings.referenceAssetIds, assetId] : settings.referenceAssetIds.filter((id) => id !== assetId) })
+        // (A02) A failed bind must not half-land: no identity ref rides a
+        // settings write that never happened.
+        if (!(await get().setChainSettings(chainId, { referenceAssetIds: binding ? [...settings.referenceAssetIds, assetId] : settings.referenceAssetIds.filter((id) => id !== assetId) })).ok) return
         // The identity payload carries the asset as a ref (§2: reference set
         // / assets ride every window) — MERGE on bind, drop on unbind, so a
         // second asset never erases the first's record.
@@ -1126,7 +1133,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         get().toast('error', frame.refusal)
         return
       }
-      await get().setChainSettings(right.chainId, { firstFrameOutputId: frame.outputId, lastFrameOutputId: null })
+      if (!(await get().setChainSettings(right.chainId, { firstFrameOutputId: frame.outputId, lastFrameOutputId: null })).ok) return
       get().toast('success', 'FLF splice wired — the prior segment’s final frame is the next segment’s first frame (36 dB class, tranche 1).')
     },
 
@@ -1856,17 +1863,24 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     setChainSettings: async (chainId, patch) => {
       const doc = activeDocument()
       const chain = doc?.chains.find((entry) => entry.id === chainId)
-      if (!chain) return
+      if (!chain) return { ok: false, error: 'the chain no longer exists on this canvas' }
       const current = readChainSettings(chain.settings, useSessionStore.getState().settings)
       const next = { ...current, ...patch }
       // A no-op edit never writes, never reloads, never marks forks stale.
-      if (JSON.stringify(current) === JSON.stringify(next)) return
+      if (JSON.stringify(current) === JSON.stringify(next)) return { ok: true }
       try {
         await documentsApi.updateChain({ id: chainId, settings: next as unknown as Record<string, unknown> })
         const refreshed = await loadDocument(doc!.project.id)
         if (refreshed) recomputeTiles()
+        return { ok: true }
       } catch (error) {
-        get().toast('error', `The chain setting could not be saved: ${error instanceof Error ? error.message : String(error)}`)
+        // (A02) The failure is REPORTED, never swallowed: the toast stays,
+        // and the verdict rides the result — a caller that submits from the
+        // persisted settings must abort instead of reading the failure as a
+        // success.
+        const message = error instanceof Error ? error.message : String(error)
+        get().toast('error', `The chain setting could not be saved: ${message}`)
+        return { ok: false, error: message }
       }
     },
 
@@ -1913,10 +1927,10 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
           return
         }
         if (action.kind === 'set-first-frame') {
-          await get().setChainSettings(chainId, { firstFrameOutputId: sourceOutput, lastFrameOutputId: null, referenceOutputIds: [] })
+          if (!(await get().setChainSettings(chainId, { firstFrameOutputId: sourceOutput, lastFrameOutputId: null, referenceOutputIds: [] })).ok) return
           get().toast('success', `First frame set — ${modeLabelFor(readChainSettings(doc.chains.find((entry) => entry.id === chainId)!.settings))} ready.`)
         } else if (action.kind === 'set-last-frame') {
-          await get().setChainSettings(chainId, { lastFrameOutputId: sourceOutput })
+          if (!(await get().setChainSettings(chainId, { lastFrameOutputId: sourceOutput })).ok) return
           get().toast('success', 'Last frame set — first + last frame mode ready once a first frame is chosen.')
         } else {
           const chain = doc.chains.find((entry) => entry.id === chainId)
@@ -1925,7 +1939,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
             get().toast('error', 'Reference limit reached: 9 pictures.')
             return
           }
-          await get().setChainSettings(chainId, { referenceOutputIds: [...settings.referenceOutputIds, sourceOutput] })
+          if (!(await get().setChainSettings(chainId, { referenceOutputIds: [...settings.referenceOutputIds, sourceOutput] })).ok) return
           get().toast('success', `Reference added (${settings.referenceOutputIds.length + 1} of 9).`)
         }
         return
@@ -2124,7 +2138,9 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         // stack entry; both stay in sync through this action + the editor.
         if (kind === 'upscale') {
           const mode = (settings && typeof settings.mode === 'string' ? settings.mode : 'rtx') as CanvasChainSettings['upscaleMode']
-          await get().setChainSettings(chainId, { upscaleMode: mode })
+          // (A02) The op row is the visible half of this settings write —
+          // never record it when the write failed.
+          if (!(await get().setChainSettings(chainId, { upscaleMode: mode })).ok) return null
         }
         const op = await documentsApi.addOp(chainId, kind, settings ?? DEFAULT_SETTINGS[kind]() as unknown as Record<string, unknown>)
         const doc = activeDocument()
@@ -2143,7 +2159,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       try {
         await documentsApi.updateOpSettings(opId, settings)
         if (typeof settings.mode === 'string' && ['rtx', 'lbh2d', 'lbh3d'].includes(settings.mode)) {
-          await get().setChainSettings(chainId, { upscaleMode: settings.mode as CanvasChainSettings['upscaleMode'] })
+          if (!(await get().setChainSettings(chainId, { upscaleMode: settings.mode as CanvasChainSettings['upscaleMode'] })).ok) return
         }
         const doc = activeDocument()
         if (doc) {
