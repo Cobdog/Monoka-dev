@@ -404,7 +404,7 @@ type CanvasActions = {
   // (F02) The verdict rides the result like setChainSettings: the inspector
   // tracks last-ACKNOWLEDGED persistence, so it must be able to tell a landed
   // identity write from a failed one.
-  setChainIdentity(chainId: string, patch: { subjectText?: string; strength?: number }): Promise<{ ok: boolean; error?: string }>
+  setChainIdentity(chainId: string, patch: { subjectText?: string; strength?: number }, options?: { settingsRevision?: number }): Promise<{ ok: boolean; error?: string }>
   /** One typed-hole menu choice (§3 option menus). */
   runEndpointAction(chainId: string, direction: EndpointDirection, option: EndpointOption, sourceChainId?: string): Promise<void>
   /** Fork a chain's output on a substrate (§2 outputRef). */
@@ -1887,7 +1887,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       }
     },
 
-    setChainIdentity: async (chainId, patch) => {
+    setChainIdentity: async (chainId, patch, options) => {
       const doc = activeDocument()
       const chain = doc?.chains.find((entry) => entry.id === chainId)
       if (chain) {
@@ -1896,7 +1896,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         if ((chain.identity?.subjectText ?? '') === nextSubject && Math.abs((chain.identity?.strength ?? 1) - nextStrength) < 1e-9) return { ok: true } // no-op: never write an empty identity row for a mere selection
       }
       try {
-        await documentsApi.upsertIdentity({ chainId, ...patch })
+        await documentsApi.upsertIdentity({ chainId, ...patch, ...(options?.settingsRevision !== undefined ? { settingsRevision: options.settingsRevision } : {}) })
         const doc = activeDocument()
         if (doc) {
           const refreshed = await loadDocument(doc.project.id)

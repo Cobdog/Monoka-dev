@@ -4315,4 +4315,62 @@ test('a deselected chain\'s in-flight save is flushed by the unload keepalive �
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// (R1/3b, round 3b 2026-10-03) The auditor's R1 repro TRANSPOSED to the
+// identity seam — round 3 gated chains/update only; the identity endpoint
+// had the same arrival-order exposure. Same shape: the older SUBJECT write
+// is held upstream (a route.fetch release — a plain continue dies with the
+// page), the newer subject rides the keepalive/navigation, then the held
+// write arrives last.
+test('a held older identity write cannot clobber the keepalive\'s newer subject — the same arrival gate (R1/3b)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, panel } = await openInspectorAtSeed(page, 'identity arrival seed prompt')
+  // The identity section renders once a subject exists: seed one through
+  // the app's own API (before any routing), then reopen the panel.
+  await page.request.post('/api/lan/documents/identity', { data: { chainId, subjectText: 'seed identity arrival line', strength: 1 } })
+  await page.reload()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  const subject = panel.locator('[data-canvas-identity-subject]')
+  await expect(subject).toBeVisible({ timeout: 10_000 })
+  await expect(subject).toHaveValue('seed identity arrival line')
+
+  let updates = 0
+  let releaseFirst: (() => void) | null = null
+  const firstStarted = new Promise<void>((resolveStarted) => {
+    void page.route('**/api/lan/documents/identity', async (route) => {
+      updates += 1
+      if (updates === 1) {
+        resolveStarted()
+        await new Promise<void>((resolveHold) => { releaseFirst = resolveHold })
+        // A real proxy DELIVERS the paused request whatever happened to the
+        // page — route.fetch performs the write even after the page is gone.
+        try {
+          const response = await route.fetch()
+          await route.fulfill({ response })
+        } catch { /* the arrival never happens if even the context is gone */ }
+        return
+      }
+      await route.continue()
+    })
+  })
+  await subject.fill('older identity arrival line')
+  await firstStarted // the older subject write is held upstream mid-request
+  await subject.fill('newer identity arrival line')
+  // Navigate inside the 700ms debounce window: only the keepalive carries
+  // the newer subject.
+  await page.locator('[data-surface-switcher] [data-surface="images"]').click()
+  await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
+  await page.waitForTimeout(1_000) // the keepalive lands
+  releaseFirst!() // the held OLDER write arrives last
+  await page.waitForTimeout(1_500)
+  const document = await activeDocument(page)
+  expect(document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText).toBe('newer identity arrival line')
+  await page.locator('[data-surface-switcher] [data-surface="canvas"]').click()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  await expect(page.locator('[data-canvas-identity-subject]')).toHaveValue('newer identity arrival line', { timeout: 10_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 

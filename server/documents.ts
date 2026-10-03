@@ -515,6 +515,7 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
     chainsByProject: db.prepare('SELECT * FROM canvas_chain WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at, rowid ASC'),
     allLiveChains: db.prepare('SELECT * FROM canvas_chain WHERE deleted_at IS NULL'),
     setChainSettings: db.prepare('UPDATE canvas_chain SET settings_json = ?, lock_state = ?, hop_count = ?, drift_metrics_json = ?, settings_revision = ? WHERE id = ?'),
+    setChainRevision: db.prepare('UPDATE canvas_chain SET settings_revision = ? WHERE id = ?'),
     setInputSpec: db.prepare('UPDATE canvas_chain SET input_spec_json = ? WHERE id = ?'),
     setChainStale: db.prepare('UPDATE canvas_chain SET stale = ? WHERE id = ?'),
     tombstoneChain: db.prepare('UPDATE canvas_chain SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL'),
@@ -1865,9 +1866,32 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
       subjectText?: string
       strength?: number
       perSlotStrengths?: Record<string, number> | null
+      settingsRevision?: number
     }) => {
       const chain = statements.getChain.get(input.chainId) as Record<string, unknown> | undefined
       if (!chain) throw new DocumentsRuleError(`No chain with id ${input.chainId}.`, 404)
+      // (R1/3b, round 3b) The SAME arrival-order gate as chains/update, on
+      // the SAME column: identity IS chain settings state, and the client
+      // stamps both write kinds from one counter — a stale arrival is a
+      // silent no-op returning the current identity, never an error.
+      // Ungated writers keep the always-apply behavior.
+      const stamped = typeof input.settingsRevision === 'number' && Number.isFinite(input.settingsRevision)
+        ? Math.max(0, Math.floor(input.settingsRevision))
+        : null
+      const currentIdentity = () => {
+        const row = statements.identityByChain.get(input.chainId) as Record<string, unknown> | undefined
+        if (!row) return null
+        return {
+          id: str(row.id),
+          chainId: input.chainId,
+          refAssetIds: parseJson<string[]>(row.ref_asset_ids_json, []),
+          refmodIds: parseJson<string[]>(row.refmod_ids_json, []),
+          subjectText: str(row.subject_text),
+          strength: Number(row.strength),
+          perSlotStrengths: parseJson<Record<string, number> | null>(row.per_slot_strengths_json, null),
+        }
+      }
+      if (stamped !== null && stamped <= Number(chain.settings_revision ?? 0)) return currentIdentity()
       const existing = statements.identityByChain.get(input.chainId) as Record<string, unknown> | undefined
       const id = existing ? str(existing.id) : randomUUID()
       statements.upsertIdentity.run({
@@ -1880,6 +1904,7 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
         per_slot_strengths_json: input.perSlotStrengths === undefined ? (existing?.per_slot_strengths_json ?? null) : JSON.stringify(input.perSlotStrengths ?? null),
         updated_at: now(),
       })
+      if (stamped !== null) statements.setChainRevision.run(stamped, input.chainId)
       const row = statements.identityByChain.get(input.chainId) as Record<string, unknown>
       return {
         id: str(row.id),
