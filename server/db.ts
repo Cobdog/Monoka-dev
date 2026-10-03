@@ -229,11 +229,19 @@ export function migrateDatabase(db: Database.Database, list: Migration[] = migra
   db.exec('CREATE TABLE IF NOT EXISTS schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)')
   const ids = list.map((migration) => migration.id)
   if (new Set(ids).size !== ids.length) throw new Error('The migration list contains duplicate ids.')
-  const applied = db.prepare('SELECT id FROM schema_migrations ORDER BY id').all() as Array<{ id: number }>
+  const applied = db.prepare('SELECT id, name FROM schema_migrations ORDER BY id').all() as Array<{ id: number; name: string }>
   for (let index = 0; index < applied.length; index += 1) {
     const expected = list[index]
     if (!expected || expected.id !== applied[index].id) {
       throw new Error(`Persisted migration history diverges from the code at position ${index}. Migrations are append-only.`)
+    }
+    // (N02, round 4) Same id, different NAME: an applied migration's body
+    // was AMENDED on this branch (005's interim single-column form). Refuse
+    // at startup with ONE loud, actionable error — the id-only guard used
+    // to let such a home boot, and the repo then touched a column the old
+    // body never created, scattering cross-surface 503s instead.
+    if (expected.name !== applied[index].name) {
+      throw new Error(`Migration ${expected.id} was amended on this branch: this home applied '${applied[index].name}' but the code ships '${expected.name}'. Rebuild the scratch home (delete its studio.db / reset MINIMAX_STUDIO_HOME) — an amended migration never re-runs against an applied history.`)
     }
   }
   const runMigration = db.transaction((migration: Migration) => {

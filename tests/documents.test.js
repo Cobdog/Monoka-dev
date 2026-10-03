@@ -233,6 +233,25 @@ test('(a) migration: golden fixture N→N+1, fresh boot shape, 004 stray healing
   divergent.exec('CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)')
   divergent.prepare("INSERT INTO schema_migrations (id, name, applied_at) VALUES (999, 'bogus', 0)").run()
   assert.throws(() => migrateDatabase(divergent), /diverges/, 'a persisted history that is not a prefix of the code list is a hard error')
+
+  // (N02, round 4) An AMENDED migration — same id, different name/body (the
+  // interim single-column 005 that fc8f8e5 shipped) — must refuse at
+  // STARTUP with one loud, actionable error. The id-only guard used to let
+  // such a home boot, and the repo then touched a column the old body never
+  // created: canvas/jobs/datasets 503s scattered across every surface.
+  const interim005 = new Database(path.join(makeHome('interim005'), 'studio.db'))
+  interim005.exec('CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)')
+  for (const migration of migrations) {
+    // an interim-005 home: ids match the code list, but position 4 carries
+    // the AMENDED migration's old name
+    const name = migration.id === 5 ? '005-chain-settings-revision' : migration.name
+    interim005.prepare('INSERT INTO schema_migrations (id, name, applied_at) VALUES (?, ?, ?)').run(migration.id, name, 0)
+  }
+  assert.throws(
+    () => migrateDatabase(interim005),
+    (error) => /amended on this branch/.test(error.message) && /rebuild/i.test(error.message),
+    'an amended applied migration refuses at startup with the actionable rebuild message',
+  )
   assertions += 1
   fixtureDb.close()
   divergent.close()
