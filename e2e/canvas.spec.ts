@@ -4521,4 +4521,94 @@ test('a reselect cannot defeat the navigation backstop — the dirty entry outli
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// ---------------------------------------------------------------------------
+// (N03, round 5 2026-10-03) readChainSettings fills a MISSING seed (chain +
+// audio) with a RANDOM fallback, so every read of the same server record
+// produced different values. The adoption effect's change detection compared
+// those effective reads, saw a phantom "server settings changed" on every
+// render, and took the FULL adoption branch — overwriting a freshly typed
+// subject with the stale server identity before the debounced save could
+// land. The change detection now compares the RAW persisted record (the
+// server truth); fallback randomness never registers as a server change.
+// ---------------------------------------------------------------------------
+
+/** The auditor's sparse-chain setup: an API-created chain with no seed
+ *  fields, its identity seeded, the panel open at the seed subject. */
+async function openSparseChainAtSubject(page: Page, chainSettings: Record<string, unknown>, seedSubject: string) {
+  const project = await (await page.request.post('/api/lan/documents/projects', { data: { name: 'N03 chain' } })).json()
+  const chain = await (await page.request.post('/api/lan/documents/chains', { data: { projectId: project.project.id, kind: 'generation', settings: chainSettings } })).json()
+  await page.request.post('/api/lan/documents/session', { data: { openProjects: [project.project.id], activeProject: project.project.id } })
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chain.chain.id}"]`).click()
+  await page.request.post('/api/lan/documents/identity', { data: { chainId: chain.chain.id, subjectText: seedSubject, strength: 1 } })
+  await page.reload()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chain.chain.id}"]`).click()
+  const panel = page.locator('[data-canvas-properties]')
+  const subject = panel.locator('[data-canvas-identity-subject]')
+  await expect(subject).toBeVisible({ timeout: 10_000 })
+  await expect(subject).toHaveValue(seedSubject)
+  return { chainId: chain.chain.id as string, panel, subject }
+}
+
+test('a sparse chain\'s missing seed must not undo identity edits — fallback randomness is not a server change (N03)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  // The auditor's exact chain: {prompt, mediaType} — no seed fields anywhere.
+  const { chainId, subject } = await openSparseChainAtSubject(page, { prompt: 'sparse seed', mediaType: 'video' }, 'n03 seeded subject line')
+  // Ctrl+A + type a new subject (the auditor's edit).
+  await subject.click()
+  await subject.press('Control+A')
+  await subject.pressSequentially('n03 typed subject line', { delay: 20 })
+  // The typed subject STAYS visible …
+  await expect(subject).toHaveValue('n03 typed subject line')
+  // … and PERSISTS (the debounced identity save lands unmolested).
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText
+  }, { timeout: 10_000 }).toBe('n03 typed subject line')
+  // Reopen: the persisted subject is the typed one.
+  await page.reload()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  await expect(page.locator('[data-canvas-identity-subject]')).toHaveValue('n03 typed subject line', { timeout: 10_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('the seeded control: the identical edit on a fully-seeded chain persists (N03 control)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, subject } = await openSparseChainAtSubject(page, { prompt: 'seeded control', mediaType: 'video', seed: 1, audio: { seed: 1 } }, 'n03 control seed line')
+  await subject.click()
+  await subject.press('Control+A')
+  await subject.pressSequentially('n03 control typed line', { delay: 20 })
+  await expect(subject).toHaveValue('n03 control typed line')
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText
+  }, { timeout: 10_000 }).toBe('n03 control typed line')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('an external settings change is still adopted — the raw comparison did not blind change detection (N03 regression)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, subject } = await openSparseChainAtSubject(page, { prompt: 'adoption seed prompt', mediaType: 'video' }, 'n03 adoption seed line')
+  // An outside surface edits the PERSISTED settings (ungated API write).
+  const before = await activeDocument(page)
+  const settings = before.chains.find((entry) => entry.id === chainId)!.settings
+  const external = await page.request.post('/api/lan/documents/chains/update', { data: { id: chainId, settings: { ...settings, prompt: 'externally changed prompt' } } })
+  expect(external.ok()).toBeTruthy()
+  // A local identity edit triggers the document reload through which the
+  // panel observes the external change — the prompt must be ADOPTED while
+  // the typed subject survives its own save.
+  await subject.click()
+  await subject.press('Control+A')
+  await subject.pressSequentially('n03 adoption typed line', { delay: 20 })
+  await expect(page.locator('[data-canvas-properties] [data-canvas-section="prompt"] textarea').first()).toHaveValue('externally changed prompt', { timeout: 10_000 })
+  await expect(subject).toHaveValue('n03 adoption typed line')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 

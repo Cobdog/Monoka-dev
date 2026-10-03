@@ -469,7 +469,12 @@ export function PropertiesPanel() {
   // commit) must never wipe in-flight local edits: the server value is
   // adopted ONLY when it differs from what we last knew — and never while
   // the draft has moved past it.
-  const knownRef = useRef<{ chainId: string; settings: string; subjectText: string; strength: number } | null>(null)
+  // (N03, round 5) `rawSettings` is the RAW persisted record's JSON — the
+  // server truth the change detection compares. The effective read
+  // (readChainSettings) fills a MISSING seed with a RANDOM fallback, so
+  // comparing effective reads saw a phantom "server changed" on every
+  // render and the full-adoption branch overwrote freshly typed edits.
+  const knownRef = useRef<{ chainId: string; settings: string; rawSettings: string; subjectText: string; strength: number } | null>(null)
   // (F02, followup audit 2026-10-03) The last ACKNOWLEDGED persistence, held
   // separately from the draft and from in-flight attempts. knownRef advances
   // OPTIMISTICALLY at enqueue (it drives outside-edit adoption), so it can
@@ -541,14 +546,17 @@ export function PropertiesPanel() {
     revisionRef.current.identity[chain.id] = Math.max(revisionRef.current.identity[chain.id] ?? 0, chain.identityRevision ?? 0)
     const known = knownRef.current
     const serverSettings = JSON.stringify(settings)
+    const rawServerSettings = JSON.stringify(chain.settings)
     const chainSwitched = !known || known.chainId !== chain.id
     // Outside edits (another surface changed this chain): adopt when the
     // server state moved away from what we last committed/adopted AND the
     // local draft hasn't diverged past it (a diverged draft is the user's
-    // newer truth; its own commit lands momentarily).
-    const settingsChanged = !chainSwitched && known.settings !== serverSettings && JSON.stringify(draft) === known.settings
+    // newer truth; its own commit lands momentarily). The moved-away check
+    // compares the RAW persisted record — the effective read's random seed
+    // fallback must never register as a server-side change (N03).
+    const settingsChanged = !chainSwitched && known.rawSettings !== rawServerSettings && JSON.stringify(draft) === known.settings
     if (chainSwitched || settingsChanged) {
-      knownRef.current = { chainId: chain.id, settings: serverSettings, subjectText: incomingSubject, strength: incomingStrength }
+      knownRef.current = { chainId: chain.id, settings: serverSettings, rawSettings: rawServerSettings, subjectText: incomingSubject, strength: incomingStrength }
       // What we just adopted IS the server's persisted truth — acknowledged.
       ackedRef.current = { chainId: chain.id, settings: serverSettings, subjectText: incomingSubject, strength: incomingStrength }
       setDraft(settings)
@@ -556,7 +564,7 @@ export function PropertiesPanel() {
       setSubjectText(incomingSubject)
       setStrength(incomingStrength)
     } else if (known && (known.subjectText !== incomingSubject || Math.abs(known.strength - incomingStrength) > 1e-9) && known.subjectText === subjectText) {
-      knownRef.current = { chainId: chain.id, settings: known.settings, subjectText: incomingSubject, strength: incomingStrength }
+      knownRef.current = { chainId: chain.id, settings: known.settings, rawSettings: rawServerSettings, subjectText: incomingSubject, strength: incomingStrength }
       ackedRef.current = { chainId: chain.id, ...(ackedRef.current?.chainId === chain.id ? ackedRef.current : {}), subjectText: incomingSubject, strength: incomingStrength }
       setSubjectText(incomingSubject)
       setStrength(incomingStrength)
