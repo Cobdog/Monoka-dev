@@ -377,3 +377,21 @@ keep preserve; the pin stays documented for chain links where preserve is unavai
 8. Product surface — [viggle.ai/h3](https://viggle.ai/h3) (hosted MiniMax-H3 engine, mode lineup). API page 403 to bots this pass.
 9. Community [COMM]: [r/comfyui Viggle-Animate ComfyUI thread + the now-404 Saganaki22 pack](https://www.reddit.com/r/comfyui/comments/1w9e5i4/viggleanimate_comfyui) · [ComfyUI v0.27.0 convrot-int8 support](https://www.reddit.com/r/comfyui/comments/1uk6q5m/comfyui_v0270_now_officially_supports_convrot) · [r/StableDiffusion int8-convrot thread](https://www.reddit.com/r/StableDiffusion/comments/1uimp1j/so_is_int8convrot_the_new_hot_thing) · [@cocktailpeanut's 1.5M-view Animate post](https://x.com/cocktailpeanut/status/2097332291844399514) (card-linked) · Meridian interactive-camera community work (Linoy Tsaban / @multimodalart, X, 2026-09-22 week).
 10. Our record: task ul1l4j7 (Flux, 2026-09-14) · [h3-v2v-reanchor.md](h3-v2v-reanchor.md) (2026-09-25) · [fun-control-input-surface.md](fun-control-input-surface.md) · [hyperflow-assessment.md](hyperflow-assessment.md) · [qwen-image-2.1-assessment.md](qwen-image-2.1-assessment.md) · [licenses/policy.md](../licenses/policy.md) · licenses registry rows (`matlowai-fused-turbo-int8-convrot`, Viggle watch-tier row).
+
+---
+
+## Addendum 3 — the long-video chunking design (maintainer-confirmed capability, 2026-10-03)
+
+**The problem**: Viggle propagates ≤124 frames (5+17×7 — H3's own grid). A replacement over a much longer video requires chunked propagation with invisible seams. **Maintainer ruling: we need this** (2026-10-03).
+
+**The design** (composed from measured house machinery — nothing here is speculative):
+
+1. **Windows**: grid-valid chunks ≤124f at 24fps; **cut-aligned first** (boundaries at detected scene cuts — a re-render pop at a cut is invisible), fixed 107/124 grid windows mid-shot.
+2. **Per-chunk repaint from ONE canonical reference — never chained.** Chunk N+1's repaint anchor is the same character image/sheet as chunk 1's, NOT chunk N's output tail. Chaining converts render variance into chain-hop drift (~0.06 ArcFace/hop — the drift-envelope problem); independent hops from one anchor give variance only, which blending averages and which ArcFace-vs-reference stays flat across by construction.
+3. **Mid-shot seams**: 17–22f overlap + pixel cross-blend (the seamless-blending survey's blend-back tier; roychoo's 5f blend was the floor, this can afford ~0.7–0.9s). Arm-S seam re-denoise is the pocket tier if a blend still reads — expected overkill for same-reference re-renders.
+4. **Audio: never generated, never joined.** Every chunk runs silent; the ORIGINAL source soundtrack muxes back over the stitched whole. This dissolves the 39f phase-exactness problem entirely (phase only matters when joining generated audio). Exception lane: deliberate voice replacement = redub + LatentSync-class lipsync on the stitched output afterward (a different feature, not part of chunking).
+5. **Motion continuity is free**: every chunk propagates from the same continuous source — the skeleton trajectory cannot pop, only the render differs at seams. This is why blend-overlap suffices here vs the heavier machinery generated-chains need.
+6. **Orchestration (chain-manager shape)**: demux → 24fps conform → cut-detect → window plan → N independent propagation jobs (sequential GPU; per-chunk retry isolates failures) → per-seam stitch strategy → mux source audio → per-chunk drift check (ArcFace vs canonical reference; expect flat). Global color-match (ten-floats tier) as the optional settle pass if chunk-interior temperature variance reads.
+7. **Model-agnostic**: the identical pattern applies to whichever recast engine wins the Q2 bake-off (SCAIL-2 / Wan-Animate-2 have their own per-clip ceilings); the design lives at the orchestration layer, not inside Viggle.
+
+**Verify at build time** [UNK]: the 124f limit against the CURRENT API (Viggle iterates; this assessment's envelope was recorded 2026-09-14). Feeds task ul1l4j7's scope + the Q2 bake-off's long-form arm.
