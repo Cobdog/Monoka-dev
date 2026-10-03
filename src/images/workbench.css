@@ -98,10 +98,10 @@
 
 .iw-keep input[type='range'] { width: 100%; accent-color: var(--accent); }
 .iw-keep em { color: var(--accent); font-style: normal; float: right; }
-.iw-keep small { display: block; color: var(--muted); font-size: 10px; margin-top: 3px; }
+.iw-keep small { display: block; color: var(--muted); font-size: var(--text-md); margin-top: 3px; }
 
 .iw-loras header { display: flex; justify-content: space-between; align-items: baseline; }
-.iw-loras > small { color: var(--muted); font-size: 10px; }
+.iw-loras > small { color: var(--muted); font-size: var(--text-md); }
 .iw-lora-note { font-size: 10px; }
 .iw-lora-note[data-iw-lora-guidance] { color: var(--muted); }
 .iw-lora-slot { display: grid; grid-template-columns: 1fr 64px; gap: 5px; }

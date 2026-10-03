@@ -1057,7 +1057,7 @@ function WorkbenchSurface() {
 
           <div className="iw-loras" data-iw-loras>
             <header><strong>LoRA slots</strong><span className="iw-lora-note" data-iw-lora-guidance title={`Combined ${combinedLoraStrength.toFixed(2)} — healthy ≤ ~${H3IMG_RECIPE_PINS.lora.healthyCombinedMax}; collapse risk ≥ ~${H3IMG_RECIPE_PINS.lora.collapseRisk}`}>combined {combinedLoraStrength.toFixed(2)} {combinedLoraStrength >= H3IMG_RECIPE_PINS.lora.collapseRisk ? '· collapse risk' : combinedLoraStrength > H3IMG_RECIPE_PINS.lora.healthyCombinedMax ? '· above the healthy band' : '· healthy'}</span></header>
-            <small>Slot 1 rides the form adapter first (cross-form safety) when its node pack is installed.</small>
+            <small data-iw-lora-crossform>Slot 1 rides the form adapter first (cross-form safety) when its node pack is installed.</small>
             {settings.loras.map((lora, index) => (
               <div className="iw-lora-slot" key={index} data-iw-lora-slot={index}>
                 <select value={lora.name} data-iw-lora-name={index} onChange={(event) => {

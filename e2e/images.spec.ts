@@ -230,6 +230,15 @@ test('the reference strip: roles, auto-per-role transports, the beyond-9 honesty
   // The Keep dial rides its band hint.
   await expect(page.locator('[data-iw-keep-dial]')).toBeVisible()
   await expect(page.locator('[data-iw-keep-hint]')).toContainText('large pose/composition')
+  // (F05, followup Codex audit 2026-10-03) The Keep guidance and the LoRA
+  // cross-form safety note are decision-bearing helper text — the same
+  // >=11px computed floor as the A10 pins (they rendered at 10px).
+  for (const selector of ['[data-iw-keep-hint]', '[data-iw-lora-crossform]']) {
+    const note = page.locator(selector)
+    await expect(note).toBeVisible()
+    const size = await note.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+    expect(size, `${selector} renders at the >=11px floor`).toBeGreaterThanOrEqual(11)
+  }
   // The generated contract preview (never hand-written).
   await expect(page.locator('[data-iw-contract]')).toContainText('generated')
   await expect(page.locator('[data-iw-contract-text]')).toContainText('bowl of lemons')

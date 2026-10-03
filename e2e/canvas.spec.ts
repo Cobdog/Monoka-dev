@@ -3253,6 +3253,7 @@ test('the camera path editor authors keyframes by keyboard and carries an access
   const before = Number(/—\s*([\d.]+)s/.exec(await label.innerText())?.[1] ?? '0')
   const target = bounds.min + (bounds.max - bounds.min) / 4
   await timeField.fill(target.toFixed(3))
+  await timeField.press('Enter') // the crop-field contract: the commit lands on Enter/blur, never mid-keystroke
   const after = Number(/—\s*([\d.]+)s/.exec(await label.innerText())?.[1] ?? '0')
   expect(Math.abs(after - target)).toBeLessThan(0.01) // the retime took, unclamped
   expect(Math.abs(after - before)).toBeGreaterThan(0.01) // and it actually moved
@@ -3260,6 +3261,51 @@ test('the camera path editor authors keyframes by keyboard and carries an access
   // The compiled preview carries the retimed keyframe (the review gate
   // updates from the keyboard edit alone).
   await expect(modal.locator('[data-camera-compiled]')).toContainText('Compiled camera path — 124 frames at 24 fps')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// (F04, followup Codex audit 2026-10-03) The time field reformatted its
+// controlled value to toFixed(3) on EVERY keystroke, so select-all + typing
+// a new time fought the reformat and collapsed (1.250 → 1.000). The
+// crop-field contract instead: the field shows the raw draft while focused
+// and commits the neighbor-bounded clamp on blur/Enter.
+test('the camera time field takes typed values verbatim — the keystroke reformat fight is gone (F04)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('camera time field probe')
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 10_000 })
+  const panel = page.locator('[data-canvas-properties]')
+  await expect(panel).toBeVisible()
+  await panel.locator('[data-canvas-prompt-mode-toggle="structured"]').click()
+  const editor = panel.locator('[data-structured-editor]')
+  await expect(editor).toBeVisible()
+  await editor.locator('[data-structured-box="camera"] [data-structured-camera-path-edit]').click()
+  const modal = page.locator('[data-camera-path-editor]')
+  await expect(modal).toBeVisible()
+
+  // The audit's repro on a middle keyframe: select-all, type 1.250 — every
+  // digit must land, none eaten by a mid-keystroke reformat.
+  await modal.locator('[data-camera-keyframe-select]').selectOption({ index: 1 })
+  const timeField = modal.locator('[data-camera-field-time]')
+  await timeField.click()
+  await timeField.press('Control+A')
+  await timeField.pressSequentially('1.250', { delay: 40 })
+  await timeField.press('Enter')
+  await expect(timeField).toHaveValue('1.250')
+  // The commit took: the keyframe label carries the same time.
+  await expect(modal.locator('[data-camera-keyframe-label]')).toContainText('1.250s')
+
+  // (C11) The profile explanation speaks the engine frame grid — the 17k+5
+  // formula never appears in user-facing copy.
+  await expect(modal.locator('[data-camera-profile-note]')).toContainText('engine frame grid')
+  await expect(modal.locator('[data-camera-profile-note]')).not.toContainText('17k+5')
+  // (F05) The camera duration/profile explanation is decision prose the
+  // reader must be able to read — the >=11px computed floor, A10's method.
+  const noteSize = await modal.locator('[data-camera-profile-note]').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+  expect(noteSize, '[data-camera-profile-note] renders at the >=11px floor').toBeGreaterThanOrEqual(11)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
