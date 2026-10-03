@@ -154,6 +154,8 @@
 .ds-dist-count { font-size: 10px; color: var(--muted); }
 .ds-guidance { padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: var(--text-2xs, 11px); color: var(--muted); }
 .ds-export-form { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
+.ds-trigger-row { display: flex; gap: 6px; align-items: center; }
+.ds-trigger-row input { flex: 1; min-width: 0; }
 .ds-check { display: flex; gap: 8px; align-items: center; font-size: var(--text-2xs, 11px); color: var(--muted); }
 .ds-export-result { border-top: 1px solid color-mix(in srgb, var(--muted) 22%, transparent); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
 .ds-refusal ul { margin: 4px 0 0; padding-left: 16px; color: var(--danger); font-size: var(--text-2xs, 11px); }

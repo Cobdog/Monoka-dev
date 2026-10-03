@@ -398,7 +398,9 @@ export async function writeExport(request: ExportRequest, store: DatasetStore, t
   const wavsDir = join(folder, 'wavs')
   const captionsDir = join(folder, 'captions')
   if (clips.length) await mkdir(videosDir, { recursive: true })
-  if (clips.length) await mkdir(wavsDir, { recursive: true })
+  // Every passing item carries a wav sidecar — stills bake one too, so a
+  // stills-only export needs the dir (it ENOENT'd at the copy before).
+  if (passing.length) await mkdir(wavsDir, { recursive: true })
   if (stills.length) await mkdir(imagesDir, { recursive: true })
   if (request.shape !== 'diffsynx') await mkdir(captionsDir, { recursive: true })
   const rows: Array<Record<string, unknown>> = []

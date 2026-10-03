@@ -197,8 +197,15 @@ function DatasetsSurface() {
     const refusals: string[] = []
     for (const file of Array.from(files).slice(0, 200)) {
       try {
-        const dataBase64 = await file.arrayBuffer().then((buffer) => btoa(String.fromCharCode(...new Uint8Array(buffer))))
-        const result = await datasetsApi.ingestUpload(file.name, dataBase64)
+        // Chunked base64 (audit A06): spreading the whole buffer into
+        // String.fromCharCode overflows the argument stack on real files (the
+        // audit's 730 KB PNG died client-side, request never sent) — the same
+        // 8 KiB loop every other upload path in the app already uses.
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        let binary = ''
+        const chunk = 0x8000
+        for (let index = 0; index < bytes.length; index += chunk) binary += String.fromCharCode(...bytes.subarray(index, index + chunk))
+        const result = await datasetsApi.ingestUpload(file.name, btoa(binary))
         ingested += 1
         if (result.deduped) deduped += 1
         if (result.refusal?.verdict === 'refuse') refusals.push(`${file.name}: ${result.refusal.reason}`)
@@ -501,6 +508,7 @@ function DatasetsSurface() {
       onResult={setExportResult}
       onError={setError}
       onClearNotice={setNotice}
+      onSettingsSaved={setSettings}
     />}
 
     {tab === 'trash' && library && <TrashTab
@@ -703,6 +711,7 @@ function ExportWizard(props: {
   onResult(result: ExportResultPayload | null): void
   onError(message: string | null): void
   onClearNotice(message: string | null): void
+  onSettingsSaved(settings: DatasetSettings): void
 }) {
   const [shape, setShape] = useState<'musubi' | 'diffsynx' | 'external'>('musubi')
   const [trainer, setTrainer] = useState<'diffsynx' | 'musubi'>('diffsynx')
@@ -710,6 +719,20 @@ function ExportWizard(props: {
   const [gridTarget, setGridTarget] = useState<string>('')
   const [acceptWarnings, setAcceptWarnings] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [trigger, setTrigger] = useState(props.settings?.triggerToken ?? '')
+  const [triggerSaved, setTriggerSaved] = useState(false)
+
+  /** Gate 8's prerequisite, settable here (audit A07): the titlebar's
+   *  "trigger: (unset)" was a static display with no writer behind it, so a
+   *  fresh dataset could never satisfy the export gate. */
+  const saveTrigger = async () => {
+    try {
+      props.onSettingsSaved(await datasetsApi.saveSettings({ triggerToken: trigger.trim() }))
+      setTriggerSaved(true)
+    } catch (saveError) {
+      props.onError(saveError instanceof Error ? saveError.message : String(saveError))
+    }
+  }
 
   const run = async () => {
     if (!props.layerIds.length) {
@@ -741,6 +764,20 @@ function ExportWizard(props: {
     <p className="ds-hint">{props.layerIds.length} layer(s) selected. Exports are immutable snapshots; the gate report travels with the folder.</p>
     <div className="ds-export-form">
       <div className="ds-field">
+        <label>Trigger token (gate 8 — required before export)</label>
+        <div className="ds-trigger-row">
+          <input
+            value={trigger}
+            onChange={(event) => { setTrigger(event.target.value); setTriggerSaved(false) }}
+            placeholder="one rare token, e.g. ph0t0r34l — prepended to every caption"
+            data-ds-trigger-input
+          />
+          <button type="button" className="ds-btn" onClick={() => void saveTrigger()} data-ds-trigger-save>Save</button>
+        </div>
+        {triggerSaved && <p className="ds-status" data-ds-trigger-saved>Trigger saved.</p>}
+        <p className="ds-hint">Every caption must start with the trigger exactly once — the gates refuse the export until one is set.</p>
+      </div>
+      <div className="ds-field">
         <label>Shape</label>
         <div className="ds-filter-row">
           {(['musubi', 'diffsynx', 'external'] as const).map((entry) => (
@@ -759,7 +796,7 @@ function ExportWizard(props: {
       </div>
       <div className="ds-field">
         <label>Destination folder</label>
-        <input value={folder} onChange={(event) => setFolder(event.target.value)} placeholder={`dataset-export-${new Date().toISOString().slice(0, 10)} (relative names land inside the studio output directory; every destination must stay inside it)`} />
+        <input value={folder} onChange={(event) => setFolder(event.target.value)} placeholder={`dataset-export-${new Date().toISOString().slice(0, 10)} (relative names land inside the studio output directory; every destination must stay inside it)`} data-ds-export-folder />
       </div>
       <div className="ds-field">
         <label>Grid target (optional — default: the largest engine-legal frame count (5/22/39…) that fits each trim with +2 headroom)</label>
