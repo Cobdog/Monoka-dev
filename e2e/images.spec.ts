@@ -723,6 +723,11 @@ test('the start-frame exit reports a failed chain creation (A05): step notice, n
   await expect(page.locator('[data-iw-notice]')).toContainText('pinned', { timeout: 15_000 })
   await expect(page.locator('[data-iw-notice]')).toContainText('could not be created')
   await expect(page.locator('[data-iw-notice]')).toContainText('AUDIT chain creation unavailable')
+  // (Final review I1) The notice is the render channel for this branch's
+  // decision prose (step/save failures, decline guidance) — the same >=11px
+  // computed floor as the other A10 pins, not the dead --text-2xs fallback.
+  const noticeSize = await page.locator('[data-iw-notice]').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+  expect(noticeSize, '[data-iw-notice] renders at the >=11px floor').toBeGreaterThanOrEqual(11)
   // Busy cleared: the confirm control is live again (no frozen dialog).
   await expect(page.locator('[data-iw-exit-confirm]')).toBeEnabled()
   // No unhandled rejection reached the page.
