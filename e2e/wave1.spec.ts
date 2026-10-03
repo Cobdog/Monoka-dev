@@ -408,6 +408,21 @@ test('R-17: the remediation dock closes the loop — refusal → one install act
       res.end('{}')
       return
     }
+    // (6ljcxxx round 2) The teardown stops the parked re-render THROUGH THE
+    // APP — the engine must answer the cancel path's probe chain: /queue
+    // (the server gates the interrupt on the prompt being listed running)
+    // and /interrupt itself (the A02 recording fake's shapes).
+    if (url.pathname === '/queue' && req.method === 'GET') {
+      const running = engineState.promptSeq > 0 ? [['entry', `r17-${engineState.promptSeq}`]] : []
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ queue_running: running, queue_pending: [] }))
+      return
+    }
+    if (url.pathname === '/interrupt' && req.method === 'POST') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ cancelled: true, state: 'canceled' }))
+      return
+    }
     res.writeHead(404)
     res.end()
   }
@@ -500,10 +515,28 @@ test('R-17: the remediation dock closes the loop — refusal → one install act
     await page.locator('[data-canvas-generate]').click()
     await expect.poll(() => submittedGraphs.length, { timeout: 20_000 }).toBe(2)
     expect(Object.values(submittedGraphs[1]!).some((node) => node.class_type === 'MiniMaxH3LoraFormLoader'), 'the re-render carries the adapter node again').toBe(true)
+    // (6ljcxxx round 2) End the parked re-render THROUGH THE APP before
+    // teardown. The page's debounced job persistence re-upserts its live
+    // view of every non-terminal job (latest-write-wins per job id), so an
+    // API-side cancel alone — even in the finally — gets resurrected by the
+    // page's own next flush while it still holds the job as running. The
+    // stop control is the app's own cancel transition: once the CLIENT
+    // holds 'cancelled', every later flush persists a terminal row.
+    const stop = page.locator('[data-canvas-cancel]')
+    await expect(stop).toBeVisible({ timeout: 15_000 })
+    await stop.click()
+    await expect(page.locator('[data-canvas-generate]')).toBeVisible({ timeout: 15_000 })
+    await page.waitForTimeout(1_500) // the debounced (1 s) job persist lands
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
     await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
-    await page.request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } }).catch(() => undefined)
+    // (6ljcxxx, followup audit 2026-10-03) API-clean backstop, the same
+    // transition the acceptance walk's resetSession performs: cancel
+    // whatever is still non-terminal through the app's own jobs API. The
+    // PRIMARY cleanup is the in-test stop above — a live page re-upserts
+    // its running view (latest-write-wins per job id), so this finally
+    // alone could not keep a cancelled row cancelled.
+    await resetSession(page).catch(() => undefined)
     if (engine) await stopEngine()
   }
 })
