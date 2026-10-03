@@ -72,7 +72,10 @@ const DEFAULTS = {
   dev: true, prettyLogs: true, sourceMaps: true, vitePort: 5173,
   dbg: false,
 };
-const DEFAULT_ENGINE = "http://127.0.0.1:8188";
+// Default engine URL = 8189 (audit near-miss rail, 2026-10-02): a fresh or
+// reset studio home must never point at 8188 — the reserved personal
+// instance. Saved settings stand.
+const DEFAULT_ENGINE = "http://127.0.0.1:8189";
 const LOG_LEVELS = ["fatal", "error", "warn", "info", "debug", "trace"];
 const KEYS = Object.keys(DEFAULTS);
 const ALIASES = {

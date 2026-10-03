@@ -570,7 +570,10 @@ export function createStudioServer(paths: StudioServerPaths) {
     // media it prepares for renders.
     const home = resolve(dirname(paths.settingsFile))
     return {
-      comfyUrl: 'http://127.0.0.1:8188',
+      // Engine-URL default = 8189 (audit near-miss rail, maintainer
+      // directive 2026-10-02): a fresh/reset home must never point at
+      // 8188 — the reserved personal instance. Saved settings stand.
+      comfyUrl: 'http://127.0.0.1:8189',
       ollamaUrl: 'http://127.0.0.1:11434',
       ollamaModel: 'qwen3:latest',
       modelRoot: root,
