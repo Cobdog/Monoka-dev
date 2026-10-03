@@ -40,8 +40,9 @@ type Seeded = { projectId: string; chainId: string; outputId: string; takeId: st
 
 /** Seeds one workbench session with one landed packet take, the exact shape
  *  the landing loop writes (frame artifacts + scorer verdict + canonical
- *  pointer in metrics.h3img). */
-async function seedSession(request: APIRequestContext): Promise<Seeded> {
+ *  pointer in metrics.h3img). `options.refs` seeds reference slots into the
+ *  session settings (default none) — the ref-strip tests' starting state. */
+async function seedSession(request: APIRequestContext, options?: { refs?: Array<Record<string, unknown>> }): Promise<Seeded> {
   const project = await (await request.post('/api/lan/documents/projects', { data: { name: 'IW e2e' } })).json()
   const chain = await (await request.post('/api/lan/documents/chains', {
     data: {
@@ -55,7 +56,7 @@ async function seedSession(request: APIRequestContext): Promise<Seeded> {
         seed: 4242,
         resolution: '1344x768',
         loras: [],
-        refs: [],
+        refs: options?.refs ?? [],
         semanticOverflow: false,
         framePicks: {},
         refineEngine: '',
@@ -531,6 +532,50 @@ test('concurrent session edits persist together (A03): a slow write never erases
   await page.reload()
   await expect(page.locator('[data-iw-intent]')).toHaveValue('DO NOT LOSE THIS NEW INTENT', { timeout: 15_000 })
   await expect(page.locator('[data-iw-keep-value]')).toHaveText('0.73')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (Audit A03 fix round 1 — blind review F1, task 3tu6ei6) The write queue
+// fixed SCALAR fields, but every collection-valued patch was still a
+// WHOLE-ARRAY value derived from the render-scope snapshot (`settings`,
+// refreshed only after a write's reload): two edits to the same collection
+// inside the write-latency window still erased the first — folded
+// pre-flush the second array won; a straddling flush replaced the first
+// edit's durable result with the stale-derived array. The review's own
+// repro: set ref0's role, immediately set its transport under a 900 ms
+// route delay — BOTH must persist on one slot.
+test('same-collection ref edits persist together (A03 fix round 1): role then transport on one slot under write latency', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const seeded = await seedSession(request, {
+    refs: [{ id: 'ref-seed-0', role: 'subject', transport: null, keepOverride: null, note: 'seeded reference', source: { kind: 'file', path: '/seed/ref-0.png', name: 'seed-ref-0.png' } }],
+  })
+  await page.goto('/?images=1')
+  await expect(page.locator('[data-iw-ref-slot="0"]')).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('[data-iw-ref-count]')).toHaveText('1/9')
+  // Slow EVERY session write — the straddle window: the transport edit
+  // queues while the role write is still in flight.
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    await route.continue()
+  })
+  await page.locator('[data-iw-ref-role="0"]').selectOption('pose')
+  await page.locator('[data-iw-ref-transport="0"]').selectOption('native')
+  // Settle on DURABLE state: the transport (the second write) has landed.
+  await expect.poll(async () => {
+    const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+    const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+    return chain?.settings?.refs?.[0]?.transport ?? null
+  }, { timeout: 15_000 }).toBe('native')
+  // BOTH collection edits persist: the role AND the transport on one slot.
+  const settled = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+  const settledChain = settled.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+  expect(settledChain.settings.refs[0].role).toBe('pose')
+  expect(settledChain.settings.refs[0].transport).toBe('native')
+  // The visible session agrees (a reload shows both — no silent revert).
+  await page.reload()
+  await expect(page.locator('[data-iw-ref-role="0"]')).toHaveValue('pose', { timeout: 15_000 })
+  await expect(page.locator('[data-iw-ref-transport="0"]')).toHaveValue('native')
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
