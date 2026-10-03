@@ -470,10 +470,29 @@ export function PropertiesPanel() {
   // adopted ONLY when it differs from what we last knew — and never while
   // the draft has moved past it.
   const knownRef = useRef<{ chainId: string; settings: string; subjectText: string; strength: number } | null>(null)
+  // (F02, followup audit 2026-10-03) The last ACKNOWLEDGED persistence, held
+  // separately from the draft and from in-flight attempts. knownRef advances
+  // OPTIMISTICALLY at enqueue (it drives outside-edit adoption), so it can
+  // never gate the unload flush: a navigate-while-in-flight or a navigate-
+  // after-failed-save used to diff against the claimed-saved state, skip the
+  // keepalive write, and lose the draft. ackedRef advances ONLY when the
+  // server confirms (or when we adopt server state, which is confirmed by
+  // definition) — a failed save leaves it behind, so every later flush
+  // retries until the write lands. A duplicate identical write is harmless.
+  const ackedRef = useRef<{ chainId: string; settings?: string; subjectText?: string; strength?: number } | null>(null)
+  // (F01) The panel's write queue: debounced autosaves used to fire
+  // UNSEQUENCED, so a slow older write could land after a fast newer one and
+  // overwrite it while the UI said "Draft saved." One chained promise per
+  // panel (the WorkbenchApp session-write pattern); each write runs after
+  // the previous settles and composes from the FRESHEST draft at write time.
+  const writeQueueRef = useRef<Promise<boolean>>(Promise.resolve(true))
+  const freshestRef = useRef<{ chainId: string | null; settings: CanvasChainSettings | null }>({ chainId, settings: draft })
+  freshestRef.current = { chainId, settings: draft }
   useEffect(() => {
     if (!chain) {
       setDraft(null)
       knownRef.current = null
+      ackedRef.current = null
       return
     }
     const settings = readChainSettings(chain.settings, useSessionStore.getState().settings)
@@ -489,12 +508,15 @@ export function PropertiesPanel() {
     const settingsChanged = !chainSwitched && known.settings !== serverSettings && JSON.stringify(draft) === known.settings
     if (chainSwitched || settingsChanged) {
       knownRef.current = { chainId: chain.id, settings: serverSettings, subjectText: incomingSubject, strength: incomingStrength }
+      // What we just adopted IS the server's persisted truth — acknowledged.
+      ackedRef.current = { chainId: chain.id, settings: serverSettings, subjectText: incomingSubject, strength: incomingStrength }
       setDraft(settings)
       setFreeRatio(false)
       setSubjectText(incomingSubject)
       setStrength(incomingStrength)
     } else if (known && (known.subjectText !== incomingSubject || Math.abs(known.strength - incomingStrength) > 1e-9) && known.subjectText === subjectText) {
       knownRef.current = { chainId: chain.id, settings: known.settings, subjectText: incomingSubject, strength: incomingStrength }
+      ackedRef.current = { chainId: chain.id, ...(ackedRef.current?.chainId === chain.id ? ackedRef.current : {}), subjectText: incomingSubject, strength: incomingStrength }
       setSubjectText(incomingSubject)
       setStrength(incomingStrength)
     }
@@ -506,35 +528,55 @@ export function PropertiesPanel() {
   // Deliberately no knownRef short-circuit here — a debounced save may have
   // just failed, so Generate must re-attempt the write (the store's own
   // no-op gate keeps an already-saved draft write-free).
-  const saveDraft = async (id: string, value: CanvasChainSettings): Promise<boolean> => {
-    setSaveState('saving')
-    setSaveError(null)
-    const save = await setChainSettings(id, value)
-    setSaveState(save.ok ? 'saved' : 'failed')
-    if (!save.ok) setSaveError(save.error ?? 'the save failed')
-    return save.ok
+  // (F01) The write joins the panel's queue: it runs after any earlier save
+  // settles, and it carries the FRESHEST draft at write time — while this
+  // write waited, the user kept typing, and the newest truth is what must
+  // reach the wire (never a stale enqueue-time snapshot).
+  const saveDraft = (id: string, value: CanvasChainSettings): Promise<boolean> => {
+    const write = writeQueueRef.current.then(async () => {
+      const freshest = freshestRef.current
+      const toWrite = freshest.chainId === id && freshest.settings ? freshest.settings : value
+      setSaveState('saving')
+      setSaveError(null)
+      const save = await setChainSettings(id, toWrite)
+      setSaveState(save.ok ? 'saved' : 'failed')
+      if (!save.ok) setSaveError(save.error ?? 'the save failed')
+      if (save.ok) ackedRef.current = { chainId: id, ...(ackedRef.current?.chainId === id ? ackedRef.current : {}), settings: JSON.stringify(toWrite) }
+      return save.ok
+    })
+    writeQueueRef.current = write.catch(() => false)
+    return write
   }
 
+  // The no-op gates read the ACKNOWLEDGED state (F02): knownRef's optimistic
+  // advance would swallow a retry after a failed save of the same value.
   useDebouncedCommit(draft, !draft || !chainId, (value) => {
     if (!chainId || !value) return
+    const acked = ackedRef.current
+    if (acked && acked.chainId === chainId && acked.settings === JSON.stringify(value)) return // already acknowledged: never write for nothing
     const known = knownRef.current
-    if (known && known.chainId === chainId && known.settings === JSON.stringify(value)) return // no-op edit: never reload for nothing
     if (known && known.chainId === chainId) knownRef.current = { ...known, settings: JSON.stringify(value) }
     void saveDraft(chainId, value)
   }, chainId)
   useDebouncedCommit(subjectText, !chain, (value) => {
     if (!chainId) return
+    const acked = ackedRef.current
+    if (acked && acked.chainId === chainId && acked.subjectText === value) return
     const known = knownRef.current
-    if (known && known.chainId === chainId && known.subjectText === value) return
     if (known && known.chainId === chainId) knownRef.current = { ...known, subjectText: value }
-    void setChainIdentity(chainId, { subjectText: value })
+    void setChainIdentity(chainId, { subjectText: value }).then((result) => {
+      if (result.ok) ackedRef.current = { chainId, ...(ackedRef.current?.chainId === chainId ? ackedRef.current : {}), subjectText: value }
+    })
   }, chainId, 700)
   useDebouncedCommit(strength, !chain, (value) => {
     if (!chainId) return
+    const acked = ackedRef.current
+    if (acked && acked.chainId === chainId && Math.abs((acked.strength ?? Number.NaN) - value) < 1e-9) return
     const known = knownRef.current
-    if (known && known.chainId === chainId && Math.abs(known.strength - value) < 1e-9) return
     if (known && known.chainId === chainId) knownRef.current = { ...known, strength: value }
-    void setChainIdentity(chainId, { strength: value })
+    void setChainIdentity(chainId, { strength: value }).then((result) => {
+      if (result.ok) ackedRef.current = { chainId, ...(ackedRef.current?.chainId === chainId ? ackedRef.current : {}), strength: value }
+    })
   }, chainId, 300)
 
   // (A04) A surface switch is a full page load — React cleanups never run
@@ -544,18 +586,22 @@ export function PropertiesPanel() {
   // full panel draft, which is what the debounced commit would have sent; a
   // server key another surface added after adoption is the accepted
   // residual — losing the authored draft is the worse harm.
-  const unloadRef = useRef({ chainId, draft, subjectText, strength, known: knownRef.current })
-  unloadRef.current = { chainId, draft, subjectText, strength, known: knownRef.current }
+  // (F02) The diff is against last-ACKNOWLEDGED persistence, never knownRef:
+  // a draft whose save is still in flight, or whose save FAILED, is
+  // unacknowledged — the keepalive fires, erring toward writing (a
+  // duplicate identical write is harmless; a lost draft is not).
+  const unloadRef = useRef({ chainId, draft, subjectText, strength, acked: ackedRef.current })
+  unloadRef.current = { chainId, draft, subjectText, strength, acked: ackedRef.current }
   useEffect(() => {
     const flushForUnload = () => {
       const state = unloadRef.current
-      const known = state.known
-      if (!state.chainId || !state.draft || !known || known.chainId !== state.chainId) return
-      if (known.settings !== JSON.stringify(state.draft)) {
+      if (!state.chainId || !state.draft) return
+      const acked = state.acked?.chainId === state.chainId ? state.acked : null
+      if (acked?.settings !== JSON.stringify(state.draft)) {
         void documentsApi.updateChain({ id: state.chainId, settings: state.draft as unknown as Record<string, unknown> }, { keepalive: true })
           .catch(() => { /* nothing can surface during unload */ })
       }
-      if (known.subjectText !== state.subjectText || Math.abs(known.strength - state.strength) > 1e-9) {
+      if (acked?.subjectText !== state.subjectText || acked?.strength === undefined || Math.abs(acked.strength - state.strength) > 1e-9) {
         void documentsApi.upsertIdentity({ chainId: state.chainId, subjectText: state.subjectText, strength: state.strength }, { keepalive: true })
           .catch(() => { /* nothing can surface during unload */ })
       }
