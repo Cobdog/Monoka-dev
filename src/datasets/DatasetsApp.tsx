@@ -802,7 +802,7 @@ function ExportWizard(props: {
         <label>Grid target (optional — default: the largest engine-legal frame count (5/22/39…) that fits each trim with +2 headroom)</label>
         <input value={gridTarget} onChange={(event) => setGridTarget(event.target.value)} placeholder="22 / 39 / 56 / 73 / 90 / 107 / 124 …" inputMode="numeric" />
       </div>
-      <label className="ds-check">
+      <label className="ds-check" data-ds-accept-warnings>
         <input type="checkbox" checked={acceptWarnings} onChange={(event) => setAcceptWarnings(event.target.checked)} />
         Accept all WARNING-tier gate findings (never the refusing tier) — the explicit accept-all.
       </label>

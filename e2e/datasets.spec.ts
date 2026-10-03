@@ -458,6 +458,10 @@ test('the fresh-user export cycle: the trigger is settable in the wizard and the
   await layerRow.locator('.ds-layer-select').click()
   await page.locator('.ds-tab', { hasText: 'export' }).click()
   await expect(page.locator('[data-ds-export]')).toBeVisible()
+  // (A10 fix round 2) The WARNING-tier consent sentence renders with the
+  // form itself — computed size >= 11px like every other floored paragraph.
+  const consentSize = await page.locator('[data-ds-accept-warnings]').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+  expect(consentSize, 'the consent sentence renders at the >=11px floor').toBeGreaterThanOrEqual(11)
   // Gate 8's prerequisite is an editable control now: set it, save it, and
   // the titlebar chip (the old static display) reflects the persisted token.
   await page.locator('[data-ds-trigger-input]').fill('ph0t0r34l')
