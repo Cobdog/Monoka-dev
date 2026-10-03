@@ -236,16 +236,39 @@ function WorkbenchSurface() {
   const studioPackOnEngine = useMemo(() => h3ImageStudioPackPresent(sessionState.info), [sessionState.info])
   const fizgigPackOnEngine = useMemo(() => fizgigH3StillPackPresent(sessionState.info), [sessionState.info])
 
-  const patchSettings = useCallback(async (patch: Partial<WorkbenchSessionSettings>) => {
-    if (!sessionChain) return
-    const next = { ...readSessionSettings(sessionChain.settings), ...patch }
-    try {
-      await documentsApi.updateChain({ id: sessionChain.id, settings: next as unknown as Record<string, unknown> })
-      await useCanvasStore.getState().reloadActiveDocument()
-    } catch (error) {
-      setNotice(`The session could not be saved: ${error instanceof Error ? error.message : String(error)}`)
+  // Session writes are SERIALIZED (audit A03): each patch folds into one
+  // pending batch and a queued flush reads the chain FRESH from the store at
+  // write time — the closure chain is stale across awaits, and two rapid
+  // edits used to build two complete settings objects from the same snapshot,
+  // the second erasing the first's field with both requests succeeding.
+  const pendingPatchRef = useRef<Partial<WorkbenchSessionSettings> | null>(null)
+  const writeQueueRef = useRef<Promise<boolean>>(Promise.resolve(true))
+  const patchSettings = useCallback((patch: Partial<WorkbenchSessionSettings>): Promise<boolean> => {
+    pendingPatchRef.current = { ...(pendingPatchRef.current ?? {}), ...patch }
+    const flush = async (): Promise<boolean> => {
+      const pending = pendingPatchRef.current
+      if (!pending) return true
+      pendingPatchRef.current = null
+      const state = useCanvasStore.getState()
+      const projectId = state.activeProjectId
+      const freshChain = (projectId ? state.documents[projectId] ?? null : null)?.chains.find((chain) => isWorkbenchChain(chain)) ?? null
+      if (!freshChain) {
+        setNotice('The session could not be saved: the workbench session is gone.')
+        return false
+      }
+      try {
+        await documentsApi.updateChain({ id: freshChain.id, settings: { ...readSessionSettings(freshChain.settings), ...pending } as unknown as Record<string, unknown> })
+        await state.reloadActiveDocument()
+        return true
+      } catch (error) {
+        setNotice(`The session could not be saved: ${error instanceof Error ? error.message : String(error)}`)
+        return false
+      }
     }
-  }, [sessionChain])
+    const write = writeQueueRef.current.then(flush)
+    writeQueueRef.current = write.catch(() => false)
+    return write
+  }, [])
 
   // The takes of the session (the pick surface), newest-first.
   const takes = useMemo(() => {
@@ -338,19 +361,30 @@ function WorkbenchSurface() {
     setSourceFile({ path: resolved.media.path, name: resolved.media.name, preview: previewUrl ?? resolved.media.preview })
   }, [doc])
 
-  // Poserig handoff inbox (the rig surface stashes a render for the workbench).
+  // Poserig handoff inbox (the rig surface stashes a render for the
+  // workbench). (Audit A11) a cold navigation used to consume the inbox
+  // BEFORE the session chain existed — patchSettings early-returned on
+  // !sessionChain and the delivered reference vanished. The inbox is left in
+  // place until a session exists to receive it; the key is taken when the
+  // write starts (a re-render mid-write cannot append the slot twice) and
+  // put BACK if the save fails — consumed for good only once the reference
+  // is durably saved.
   useEffect(() => {
+    if (!sessionChain) return
     try {
       const raw = window.localStorage.getItem('h3img-poserig-handoff')
       if (!raw) return
       const parsed = JSON.parse(raw) as { path: string; name: string }
-      window.localStorage.removeItem('h3img-poserig-handoff')
-      const current = readSessionSettings(sessionChain?.settings)
+      const current = readSessionSettings(sessionChain.settings)
       if (current.refs.length >= 9) {
+        window.localStorage.removeItem('h3img-poserig-handoff')
         setNotice(BEYOND_NINE_GUIDANCE)
         return
       }
-      void patchSettings({ refs: [...current.refs, { id: `ref-${Date.now()}`, role: 'pose', transport: null, keepOverride: null, note: 'poserig render', source: { kind: 'poserig', path: parsed.path, name: parsed.name } }] })
+      window.localStorage.removeItem('h3img-poserig-handoff')
+      void patchSettings({ refs: [...current.refs, { id: `ref-${Date.now()}`, role: 'pose', transport: null, keepOverride: null, note: 'poserig render', source: { kind: 'poserig', path: parsed.path, name: parsed.name } }] }).then((saved) => {
+        if (!saved) window.localStorage.setItem('h3img-poserig-handoff', raw)
+      })
     } catch {
       /* a malformed handoff is dropped silently — it is a convenience key */
     }
@@ -651,8 +685,16 @@ function WorkbenchSurface() {
         firstFrameOutputId: pinnedOutputId,
         ...(exitPlan === 'anchor-plus-refs' ? { referenceOutputIds: settings.refs.flatMap((slot) => slot.source.kind === 'canvas' ? [slot.source.outputId] : []) } : {}),
       }
-      await documentsApi.createChain({ projectId: doc.project.id, kind: 'generate', settings: nextSettings as unknown as Record<string, unknown> })
-      await useCanvasStore.getState().reloadActiveDocument()
+      try {
+        await documentsApi.createChain({ projectId: doc.project.id, kind: 'generate', settings: nextSettings as unknown as Record<string, unknown> })
+        await useCanvasStore.getState().reloadActiveDocument()
+      } catch (error) {
+        // (Audit A05) the exit's second step fails LOUDLY and names both
+        // steps — the pin completed, the chain creation did not — never an
+        // unhandled rejection with the dialog frozen on a cleared spinner.
+        setNotice(`The frame was pinned to the canvas, but the video chain could not be created: ${error instanceof Error ? error.message : String(error)}`)
+        return
+      }
       useCanvasStore.getState().toast('success', 'The video chain is seeded from this frame — created and selected, never submitted. Open the canvas to direct it.')
       setExitOpen(false)
       setExitPlan(null)

@@ -496,3 +496,113 @@ test('T=1 lane: the badge names the ready machinery; single frames land with lan
     await new Promise<void>((resolve) => engine.close(() => resolve()))
   }
 })
+
+// ---------------------------------------------------------------------------
+// (Audit A03, task 3tu6ei6) Two rapid session edits under ordinary latency
+// used to erase the first edit: every write built the FULL settings object
+// from the same stale closure snapshot, so the second request carried the old
+// intent and overwrote the new one — with BOTH requests succeeding. The
+// audit's own repro: delay chain-update 900ms, change the intent, immediately
+// set Keep — after settling, BOTH must persist.
+test('concurrent session edits persist together (A03): a slow write never erases a newer field', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const seeded = await seedSession(request)
+  await page.goto('/?images=1')
+  await expect(page.locator('[data-iw-intent]')).toBeVisible({ timeout: 15_000 })
+  // Slow EVERY session write — the window the stale snapshot raced in.
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    await route.continue()
+  })
+  await page.locator('[data-iw-intent]').fill('DO NOT LOSE THIS NEW INTENT')
+  await page.locator('[data-iw-keep-dial]').fill('0.73')
+  // Settle on DURABLE state: the second write has landed on the document.
+  await expect.poll(async () => {
+    const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+    const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+    return chain?.settings?.keepDial ?? null
+  }, { timeout: 15_000 }).toBe(0.73)
+  // BOTH edits persist: the new intent AND the new Keep dial.
+  const settled = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+  const settledChain = settled.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+  expect(settledChain.settings.intent).toBe('DO NOT LOSE THIS NEW INTENT')
+  expect(settledChain.settings.keepDial).toBe(0.73)
+  // The visible session agrees (a reload shows both — no silent revert).
+  await page.reload()
+  await expect(page.locator('[data-iw-intent]')).toHaveValue('DO NOT LOSE THIS NEW INTENT', { timeout: 15_000 })
+  await expect(page.locator('[data-iw-keep-value]')).toHaveText('0.73')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (Audit A11, task 3tu6ei6) The poserig handoff was consumed BEFORE the
+// workbench session existed: on a cold navigation the inbox key was removed
+// on the first effect pass, patchSettings early-returned on !sessionChain,
+// and the delivered reference silently vanished — twice, for the auditor.
+// The audit's own repro: open 'from pose rig', click 'Send to image
+// workbench' — the pose reference must land in the strip and SURVIVE.
+test('the poserig handoff lands as a pose reference from a cold navigation (A11)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  // Cold: NO open project — the workbench creates its canvas + session AFTER
+  // the handoff arrives (the not-ready window the audit fell into).
+  await request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } })
+  await page.goto('/?poserig=1&send=iw')
+  await expect(page.locator('[data-poserig="app"]')).toBeVisible({ timeout: 20_000 })
+  await page.locator('[data-poserig-send-workbench]').click()
+  // The Send ingests the blob, stashes the inbox, and navigates to ?images=1.
+  await expect(page.locator('[data-iw-root]')).toBeVisible({ timeout: 20_000 })
+  // The reference landed: 1/9, a pose-role slot carrying the rig render.
+  await expect(page.locator('[data-iw-ref-count]')).toHaveText('1/9', { timeout: 20_000 })
+  await expect(page.locator('[data-iw-ref-slot="0"] select[data-iw-ref-role="0"]')).toHaveValue('pose')
+  await expect(page.locator('[data-iw-ref-slot="0"] .iw-poserig-tag')).toBeVisible()
+  // It is DURABLE: the session chain's own settings carry the poserig slot.
+  await expect.poll(async () => {
+    const session = await (await request.get('/api/lan/documents/session')).json()
+    const doc = await (await request.get(`/api/lan/documents/project?id=${session.session.activeProject}`)).json()
+    const chain = doc.chains.find((entry: { kind: string }) => entry.kind === 'h3img')
+    return chain?.settings?.refs?.length ?? 0
+  }, { timeout: 15_000 }).toBe(1)
+  // The inbox is consumed for good (no double-ingest on the next visit)…
+  const leftover = await page.evaluate(() => window.localStorage.getItem('h3img-poserig-handoff'))
+  expect(leftover).toBeNull()
+  // …and the reference survives a reload (it was saved, not merely shown).
+  await page.reload()
+  await expect(page.locator('[data-iw-ref-count]')).toHaveText('1/9', { timeout: 20_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (Audit A05, task 3tu6ei6) runExit had finally but no catch: an injected
+// failure creating the continuation chain escaped as an unhandled rejection
+// with the dialog frozen and no user-visible report. The frame pin (step 1)
+// completing must still be reported against the failed chain creation
+// (step 2) — a step-level notice, no unhandled rejection, busy cleared.
+test('the start-frame exit reports a failed chain creation (A05): step notice, no unhandled rejection, busy cleared', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const seeded = await seedSession(request)
+  await page.goto('/?images=1')
+  await expect(page.locator(`[data-iw-take="${seeded.takeId}"]`)).toBeVisible({ timeout: 15_000 })
+  // Fail ONLY the continuation chain (kind 'generate') — the frame pin's
+  // media chain succeeds, so step 1 completes and step 2 is what failed.
+  await page.route('**/api/lan/documents/chains', async (route) => {
+    if (route.request().method() === 'POST' && (route.request().postData() ?? '').includes('"kind":"generate"')) {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'AUDIT chain creation unavailable' }) })
+      return
+    }
+    await route.continue()
+  })
+  await page.locator('[data-iw-exit]').click()
+  const dialog = page.locator('[data-iw-exit-dialog]')
+  await expect(dialog).toBeVisible()
+  await page.locator('[data-iw-exit-choice="anchor"]').click()
+  await page.locator('[data-iw-exit-confirm]').click()
+  // The step-level notice names BOTH steps: the pin completed, the chain
+  // creation failed.
+  await expect(page.locator('[data-iw-notice]')).toContainText('pinned', { timeout: 15_000 })
+  await expect(page.locator('[data-iw-notice]')).toContainText('could not be created')
+  await expect(page.locator('[data-iw-notice]')).toContainText('AUDIT chain creation unavailable')
+  // Busy cleared: the confirm control is live again (no frozen dialog).
+  await expect(page.locator('[data-iw-exit-confirm]')).toBeEnabled()
+  // No unhandled rejection reached the page.
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
