@@ -239,7 +239,10 @@ READMEs, via [h3-image-workbench.md](../h3-image-workbench.md) §2.1].
   at 16:9 — skip the 1.0 MP preset (1376×768 exceeds the pixel-area cap)
   [DOC — docs.comfy.org overview capture]. **Adherence collapses above
   ~576p** (§7) — author low-res, re-render high-res through Ref2VA [COMM,
-  five corroborating replies — HF discussion #65].
+  five corroborating replies — HF discussion #65; **sourcing precision
+  (2026-10-03): ONE discussion thread, several reporters — community
+  evidence from a single venue, not independent studies, not yet measured
+  by us**].
 - **Durations**: 17k+5 frames at 24 fps (5/22/39/56…124…); `length` snaps
   down to the grid; ~15 s single-pass ceiling; 39 frames is the only
   phase-exact audio handoff length [DOC code + COMM — transitions doc §2].
@@ -404,7 +407,8 @@ per clip is the loopforge production pattern).
 1. **Resolution is the strongest knob** — structure following collapses
    above ~576p (ignored cameras, moved characters, duplicated subjects);
    more steps do NOT repair structure; author low, re-render high via
-   Ref2VA [COMM, multi-reporter — HF #65].
+   Ref2VA [COMM — single thread (HF #65) with several corroborating
+   replies; not independent studies, not yet measured by us].
 2. Sectioned structure + the official vocabulary beats length ("prompt
    structure beats prompt length"; six-block formula) [COMM].
 3. Reference discipline: wiring order = citation order; per-ref roles;

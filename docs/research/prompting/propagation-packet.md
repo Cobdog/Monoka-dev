@@ -100,7 +100,16 @@ lever, since Viggle has no in-model appearance dial):
    committed Qwen-first wave); or the outfit-only masked edit on a clean
    frame. One composed canonical reference then feeds EVERY chunk
    (chunking doctrine: never chain chunk-to-chunk — every chunk re-anchors
-   on the canonical reference, giving variance instead of chain drift).
+   on the canonical reference). **What independence does and does not buy
+   (2026-10-03 audit repair — the old "variance instead of chain drift,
+   flat by construction" claim was too strong):** it eliminates recursive
+   INPUT drift — no chunk inherits another chunk's output errors, so
+   error-accumulation-by-chaining is gone. It does NOT by itself guarantee
+   flat identity or error-free motion: each chunk is still an independent
+   render with its own variance (identity-vs-reference flatness is the
+   DESIGN EXPECTATION, unmeasured — per-chunk ArcFace checks stay in the
+   loop), and chunk boundaries still need the blend/stagger machinery and
+   per-seam inspection.
 2. **The repaint prompt contract is the stills engine's** (see those
    packets): ownership contract on H3 stills, instruction prose on Qwen,
    slot prose on Klein. SCAIL-2's multi-view refs make outfit enforceable
@@ -136,10 +145,18 @@ lever, since Viggle has no in-model appearance dial):
 - **Camera-decoupled recast (Wan-Animate-2)**: put the desired viewpoint in
   the appearance caption ("filmed from a low third-person angle…")
   [DOC — viewpoint control].
-- **Long-form**: cut-aligned windows ≤124 f (Viggle) / engine-native
-  windows (SCAIL five-frame chained anchors vs our independent-hops — the
-  live measured question, VIG-SEAM); one canonical ref for all chunks;
-  blend 17–22 f overlaps; stagger interleave passes for high-fps sources.
+- **Long-form**: cut-aligned windows ≤124 f (Viggle); engine-native
+  extension contracts where they exist — **attribution corrected
+  2026-10-03: the five-frame chained-anchor EVIDENCE is Saganaki's VIGGLE
+  pack (goofyrodent mirror, `five_frame_anchor`) [COMM — Addendum 6], NOT
+  a SCAIL mechanism — SCAIL-2's README documents no chaining (verified
+  2026-10-03); its own continuation surface, per the methodology audit, is
+  the ComfyUI node schema's `previous_frames`/`previous_frame_count`
+  [DOC — audit finding, node-schema-level], a separate mechanism needing
+  its own arm.** Chained-anchors (Viggle pack) vs our independent-hops
+  remains the live measured question (VIG-SEAM); one canonical ref for all
+  chunks; blend 17–22 f overlaps; stagger interleave passes for high-fps
+  sources.
 
 ## 7. Fundamentals — the triangle
 

@@ -34,15 +34,23 @@ addressing references by connection order [DOC ×3].
 
 ## 1. General principles (what transfers, and the honesty about what doesn't)
 
-**Universals — hold across every family we hold evidence for:**
+**Scoped defaults and working hypotheses** — graded, not universal laws.
+Each item states its class: a documented FORMAT requirement (official
+grammar — violating it is a contract breach), a PLACEMENT preference
+(where something tends to work — testable, not law), or a HYPOTHESIS
+(community evidence or our reasoning, unmeasured).
 
-1. **Specificity gradient: global → subject → detail.** Style/medium and
-   scene first, subject second, fine detail last. H3 puts style at the head
-   of `[Shot 1]` [DOC]; BFL: "medium and style first, then the subjects and
-   where they sit, then light, color, and background" [DOC]; Anima's tag
-   order is literally quality→count→character→series→artist→general [DOC].
-   Krea 2's captioner template enumerates object-level properties without
-   prescribing order, but subject-first prose is the community norm [COMM].
+1. **Specificity gradient: global → subject → detail.** FORMAT (where
+   officially mandated): H3's section labels with style at the head of
+   `[Shot 1]` [DOC — base guide]; Anima's tag order
+   quality→count→character→series→artist→general [DOC — card grammar].
+   PLACEMENT PREFERENCE (testable, not law): BFL's slot order is itself
+   "a useful starting structure, not a strict formula" [DOC] — useful, not
+   a precedence law; camera-line-first on H3 is a multi-thread community
+   placement finding [COMM]; Krea subject-first prose is community norm
+   [COMM] (the captioner template prescribes WHAT to enumerate, not the
+   order). Do not enforce slot order as a rule outside the families whose
+   docs mandate their own.
 2. **Only what's visible / only what changes.** Vague quality words
    ("beautiful", "masterpiece", "cinematic" as a filler) are documented
    anti-patterns on two families (BFL "only what's visible" [DOC]; H3
@@ -52,8 +60,9 @@ addressing references by connection order [DOC ×3].
 3. **Contradictions render as unions, not compromises.** Documented for H3
    (both people appear [COMM — Motion Context]); the same failure family
    shows up as Qwen's copy-shaped reference priority (an extra exemplar ref
-   overrides the skeleton [DOC-m]) and H3's same-subject ref merge. One
-   concept per channel, everywhere.
+   overrides the skeleton [DOC-m]) and H3's same-subject ref merge. The
+   operating rule is role-COMPATIBILITY, not "one concept per reference"
+   — see §5 rule 5 for the compatible/incompatible pairs.
 4. **Retention is named, never implied.** H3 keep-lists + retention markers
    [DOC/COMM]; BFL "name the elements to keep, not only 'the rest of the
    image'" [DOC]; Krea 2 is the exception that proves the rule — its edit
@@ -68,21 +77,28 @@ addressing references by connection order [DOC ×3].
    reference material" + grade refs toward what the model renders [DOC/COMM];
    propagation engines: the anchor IS the appearance authority [DOC].
 7. **Resolution interacts with adherence — not always the way you think.**
-   H3: adherence COLLAPSES above ~576p (author low, re-render high) [COMM,
-   multi-reporter]. Qwen: turbo distills are scoped to ~1024² (grid above)
+   H3: adherence collapses above ~576p (author low, re-render high). Source
+   precision: **one HF discussion thread (#65) with several corroborating
+   replies — community evidence from a single venue, NOT independent
+   studies, and not yet measured by us** [COMM — single-thread, multi-
+   reporter]. Qwen: turbo distills are scoped to ~1024² (grid above)
    [DOC-m]. Anima: 512²–1536² is the trained band [DOC]. Klein/Krea: no
    documented adherence cliff — but Krea's working sizes (≤2 MP) are
    compute ceilings. **Do not transfer the H3 low-res-authoring rule to
    families that lack the evidence.**
 
-**Where the universals STOP (the don't-transfer list):**
-- Tag piles: correct ONLY on Anima. Keyword piles are out-of-distribution
-  for every LLM-encoder family (H3/Krea/Klein/Qwen) [DOC].
+**Where the scoped defaults STOP (the don't-transfer list):**
+- Tag piles: correct ONLY on Anima. Keyword piles are officially
+  UNSUPPORTED on every LLM-encoder family (each official guide prescribes
+  natural-language prose [DOC]) — whether they are merely suboptimal or
+  truly out-of-distribution is untested [UNK — an LLM text encoder alone
+  does not prove OOD; treat "OOD" claims as inference, not fact].
 - Long prompts: H3 prompts run to thousands of chars (up to 7k on the API
   [DOC]); Anima NL caps at ~300 words; Krea at ~1k tokens; Klein has no
   limit but "write more only for what you control" [DOC].
 - Keep-lists: load-bearing on H3/Klein/Qwen-in-prose; off-contract on
-  Krea-Identity-Edit (dials own it).
+  Krea-Identity-Edit (dials own it — itself a prediction, unmeasured; see
+  the Krea packet §3).
 - Negative prompts: real on Anima/Krea-stage-1/Qwen-(cfg>1); absent/inert
   on H3/Krea-turbo/Qwen-at-cfg-1.
 
@@ -134,6 +150,31 @@ but documented-weak · — = not that family's job.
 Ready to prefill. `{slots}` are user-facing. Each preset names its settings
 regime (full settings in the family packet).
 
+**Validation ledger (post the 2026-10-03 methodology-audit repair).**
+Evidence = the preset's grounding class; Status = its current disposition:
+
+| Preset | Evidence | Status |
+|---|---|---|
+| 3.1–3.3 (H3 T2VA/I2VA/FL2VA) | official guide shapes [DOC]; slot assembly SPEC-derived | inherited |
+| 3.4 (H3 multi-ref) | ref-guide structure [DOC] | **rewritten** 2026-10-03 (typed subject roles) |
+| 3.5 (H3 video edit) | Runware contract [DOC] + wiring notes | **rewritten** 2026-10-03 (audio wiring made explicit) |
+| 3.6 (H3 removal, masked lane) | mechanics [DOC]; prompt shape SPEC-derived | **rewritten** 2026-10-03 (preservation classes; no bit-exact claim) |
+| 3.7–3.8 (H3 camera/dialogue) | vocabulary [DOC]; placement [COMM] | inherited |
+| 3.9 (H3 no-speech/no-music) | fields [DOC]; mechanism [COMM single-source cluster] | **rewritten** 2026-10-03 (renamed; negation block removed pending test) |
+| 3.10–3.13 (Qwen) | official + fooocus measured [DOC/DOC-m] | inherited |
+| 3.14 (Krea identity edit) | lane recipes [DOC] | **rewritten** 2026-10-03 (wardrobe default; restage routed) |
+| 3.15–3.16 (Krea masked lanes) | E-K1 measured / card [MEASURED/DOC] | inherited |
+| 3.17–3.19 (Klein) | BFL guides verbatim [DOC] | inherited |
+| 3.20 (Anima tag mode) | card verbatim [DOC] | inherited |
+| 3.21 (Anima mixed) | card hybrid stance [DOC] | **rewritten** 2026-10-03 (2+ NL sentences; 1-sentence mixes experimental) |
+| 3.22 (Viggle recast) | corpus addenda [DOC] | inherited |
+| 3.23 (SCAIL/Wan captions) | cards [DOC] | **rewritten** 2026-10-03 (SCAIL expansion schema) |
+| 3.24 (Music 3) / 3.25 (YuE2) | official docs [DOC] | **split** 2026-10-03 (was one combined preset) |
+
+The Krea keep-list dialect-swap rule (§4.1) is a **prediction, unmeasured**
+(E-K3 designed, not run) — the ledger carries it so no consumer mistakes
+it for a measured finding.
+
 ### 3.1 H3 — cinematic clip (T2VA)
 Settings: base, `res_multistep`+`simple`, 20–25 steps, shifts 12/3, ≤576p
 authoring, 124 f [COMM/DOC mix — h3-packet §4].
@@ -166,32 +207,39 @@ non_diegetic_music: {or N/A}
 ```
 [DOC — Case 3 shape; single shot preferred]
 
-### 3.4 H3 — multi-reference composition (R2V, six sections)
+### 3.4 H3 — multi-reference composition (R2V, six sections) — rewritten 2026-10-03
 Settings: hybrid b25-49 [MEASURED], `ref_image_size: max` for identity, 20
 steps, refs wired in citation order.
 ```text
 subject_definitions:
-<Subject 1> is {the subject} in <Picture 1>, with {defining appearance details}.
-<Subject 2> is {the second subject / outfit / environment} in <Picture 2>, with {details}.
+<Subject 1> is {ACTOR — the performing subject} in <Picture 1>, with {defining appearance details}.
+⟨<Subject 2> is {second ACTOR} in <Picture 2>, with {details}.⟩
+⟨<Subject N> is {ATTRIBUTE source — the outfit / style / lighting / environment} from <Picture N>, providing {the attributes that transfer}.⟩
 
 summary:
 [reference generation] The target video shows {one-paragraph summary of the shot and what each reference provides}.
 
 retention_analysis:
 <Subject 1> (appears in [Shot 1]): fully_preserved - {what is retained}.
-<Subject 2> (appears in [Shot 1]): attribute_transfer - {what transfers}.
+<Subject 2> (appears in [Shot 1]): fully_preserved - {what is retained}.
+⟨<Subject N>: attribute_transfer - {what transfers}.⟩
 
 detailed_description:
 {1-2 style sentences}.
-[Shot 1] {composition}. <Subject 1> {position + action}. <Subject 2> {position + action}. The camera {triplet}. {beat development}.
+[Shot 1] {composition}. <Subject 1> {position + action}. ⟨<Subject 2> {position + action}.⟩ ⟨{attribute transfer phrased AS A TRANSFER, never as the attribute acting: "<Subject 1> wears the jacket from <Subject 3>" / "the scene is set in the environment of <Subject 3>"}.⟩ The camera {triplet}. {beat development}.
 
 overall_soundscape: …
 non_diegetic_music: …
 ```
+**Typed slots (the 2026-10-03 repair): ACTORS act; ATTRIBUTE roles
+(outfit/style/environment/lighting) transfer and never take verbs of their
+own — not every `<Subject N>` is a person.** An outfit does not "sit" or
+"enter"; it is worn. [DOC for the ref-guide's subject/transfer semantics;
+the typing rule itself SPEC-derived]
 [DOC — ref-guide structure; the strongest single stability lever is
 `<Subject N>` description strength [COMM]]
 
-### 3.5 H3 — video instruction edit (replace/restyle/relight/wardrobe)
+### 3.5 H3 — video instruction edit (replace/restyle/relight/wardrobe) — rewritten 2026-10-03
 ```text
 subject_definitions:
 <Video 1> is the source video for the target video edit.
@@ -206,19 +254,50 @@ retention_analysis:
 
 detailed_description:
 {style sentences}. The edit: {THE CHANGE, named concretely}. Keep: {keep-list — camera path, motion, timing, other subjects, background, lighting on unedited regions}. Everything else stays exactly as in <Video 1>.
-overall_soundscape: {if audio reuse: the original soundtrack continues unchanged}. {else: …}
-non_diegetic_music: …
+overall_soundscape: {per the audio-wiring note below}.
+non_diegetic_music: {per the audio-wiring note below}.
 ```
+**Audio wiring is CONFIGURATION, not prose (the 2026-10-03 repair): writing
+"the original soundtrack continues unchanged" does NOT by itself make the
+audio reuse happen — native audio is re-generated with every edit.** Pick
+and wire one explicitly:
+1. **Copy/mux** the source soundtrack over the edited output (never
+   generated; the long-form chunking doctrine's default) — mouth motion is
+   then whatever the edit rendered and must be CHECKED, not assumed;
+2. **Reuse conditioning**: attach the source audio (`ref_video_audio` /
+   LongMedia `audio_mode: preserve`) + `<Audio N>: fully_copy` in
+   retention_analysis — still a re-render; verify at the seams;
+3. **Clean-pin**: hold the driving audio rows at t=1.0 for the whole
+   denoise (the Viggle pin; output track ≈ the input round-tripped) —
+   lip-sync tracks the pinned audio, but silent-intent edits still need a
+   separate mouth-motion check (pinning audio does not close mouths).
+[DOC — LongMedia/Runware/Viggle-pin mechanisms; the "prose alone is not
+wiring" rule is the repair's clarification]
 [DOC — Runware edit contract + ref-guide; Change/Keep framing COMM DomoAI]
 Settings: width/height = source aspect; one change per call; shorter
 sources preserve better.
 
-### 3.6 H3 — object removal (video, deterministic lane)
+### 3.6 H3 — object removal (video, masked lane) — rewritten 2026-10-03
 Fun Control inpaint: mask (1=regenerate) + source_video; 40 steps,
 guidance 1.0; prompt = the normal scene prompt with the object ABSENT and
 the fill described: "The plaza is empty where {object} stood, the pavement
 continuing uninterrupted." [DOC mechanics; prompt shape SPEC-derived from
 fal's "describe what fills the space"]
+
+**Preservation classes (the 2026-10-03 repair — "deterministic" was
+overclaiming):** what survives outside the mask depends on WHERE the
+guarantee lives —
+1. **Latent preservation** (in-model): un-masked conditioning rows carry
+   the source every step (the trained 49-ch layout) — the strongest
+   in-model guarantee, but the output is still DECODED;
+2. **VAE reconstruction**: ordinary decode re-renders — un-masked regions
+   match the source to reconstruction class, NOT bit-exact. No bit-exact
+   promise from ordinary decode, ever;
+3. **Exact source composite** (app-side): paste back the original pixels
+   outside the mask with a boundary blend — the ONLY bit-exact option, and
+   it is our compositing, not the model's.
+State which class a flow promises; label flows by it. [DOC for the channel
+layout; the classes framing per the audit]
 
 ### 3.7 H3 — camera movement direction
 Camera line first in the shot, exactly one named behavior:
@@ -238,14 +317,22 @@ Rules: identity outside `<d>`; verbatim words inside; voiceover formula +
 "while {pronoun} lips remain completely closed."; `<scenetrans>` at both
 sides of a cut-spanning line. [DOC — base guide §4.4]
 
-### 3.9 H3 — deliberate silence (the anti-gibberish preset)
+### 3.9 H3 — no speech, no music (ambience stays) — rewritten 2026-10-03
 ```text
-overall_soundscape: {ambience scripted for every second: wind, room tone, footsteps…}. {no human voice events}.
+overall_soundscape: {ambience scripted for every second: wind, room tone, rain, footsteps…}.
 non_diegetic_music: N/A
 ```
-+ optional belt-and-braces block: "No dialogue, no narration, no singing,
-no speech." A bare "no dialogue" leaves the audio budget unspent — the
-actual failure mode. [COMM multi-source; the fields are DOC]
+This is the NO-SPEECH/NO-MUSIC contract, not silence: ambience is
+deliberately KEPT so the audio budget is spent — unspecified seconds get
+filled with gibberish speech/muttering, and a bare "no dialogue" leaves
+the budget unspent (the actual failure mode) [COMM multi-source; the
+fields are DOC]. **Total silence is a DISTINCT contract**: per the base
+guide, `overall_soundscape: N/A` is for when "the user explicitly requests
+complete silence throughout the video" [DOC §4.6] — use it only on that
+explicit request, and never together with an ambience line. **No automatic
+speech-negation block** ("No dialogue, no narration…"): removed as a
+default in the 2026-10-03 repair — untested on our stack; if a user wants
+one it rides as an explicit opt-in pending a dedicated test arm.
 
 ### 3.10 Qwen-Image-2.1 — instruction edit (single ref, no tags)
 Settings: 25–40 steps, cfg 1, reference-scale 1024, explicit frame dims.
@@ -274,14 +361,26 @@ This is an RGBA image with transparency. {description}. The image has alpha chan
 ```
 [DOC — official formula verbatim]
 
-### 3.14 Krea 2 — identity edit (instruct lane)
+### 3.14 Krea 2 — identity edit (instruct lane) — rewritten 2026-10-03
 Settings: Turbo 8 / CFG 1 / grounding_px 768 / ref_boost 1.0 (→4 for
 likeness).
+**Default preset — wardrobe/appearance edit** (the lane's bread-and-butter
+identity-preserving change):
 ```text
-{Bare instruction}: Change the outfit to {description}. / Restage the subject in {setting}.
+Change the outfit to {description}. / Change the {hair/jacket/accessory} to {description}.
 ```
-No keep-list prose — dials own preservation. Removal preset flips the lane:
-RAW / CFG 3.0 / ~20 steps: `Remove the {object}.` [DOC]
+**Restage (subject into a new setting) — labeled alternative, not the
+default**: offered with its weak-class routing from the packet's own
+findings — full background replacement is a documented Instruct weakness
+(route a full scene swap to the mask lane, AnyPaint with a background
+mask); pose retention in reference-based clothes swaps is weak (pose-critical
+work → Klein/Qwen or the H3 lanes); semantic-interaction edits ("pick up X
+with Y") are the documented failure class (route out). Camera-angle
+geometry changes remain a listed Instruct strength [COMM A/B; DOC card].
+No keep-list prose on this lane — dials own preservation **(prediction,
+unmeasured — E-K3 designed, not run; see the Krea packet §3)**. Removal
+preset flips the lane: RAW / CFG 3.0 / ~20 steps: `Remove the {object}.`
+[DOC]
 
 ### 3.15 Krea 2 — masked refine (AnyPaint, scene-style contract)
 Settings: Turbo 8 / guidance 0 / LoRA 1.0 / white=generate.
@@ -325,11 +424,15 @@ masterpiece, best quality, score_7, safe, {1girl|1boy|…}, {character}, {series
 Negative (prefilled): `worst quality, low quality, score_1, score_2, score_3, artist name, blurry, jpeg artifacts, chromatic aberration`
 [DOC — card verbatim]
 
-### 3.21 Anima — mixed mode
+### 3.21 Anima — mixed mode — rewritten 2026-10-03
 ```text
-{1-3 sentences: subject, action, setting}. {tag tail: count, wardrobe, artist, quality}
+{2+ natural-language sentences (the card's NL floor): subject, action, setting}. {tag tail: count, wardrobe, artist, quality}
 ```
-[DOC hybrid stance; composition SPEC-derived]
+The card's NL recommendation is "at least 2 sentences" [DOC] — mixes that
+claim compliance carry 2+ sentences of prose. **One-sentence mixes are an
+experimental alternative only** (below the documented NL floor; label them
+as such in any UI that offers the shortcut) [SPEC — untested against the
+card's floor]. [DOC hybrid stance; composition SPEC-derived]
 
 ### 3.22 Propagation — character recast (Viggle)
 No prompt. The preset is the ANCHOR pipeline: repaint the clearest front-on
@@ -337,24 +440,51 @@ frame with the target identity via §3.10/3.17/3.14 → driving video +
 repainted frame → pin audio or run silent + mux original. [DOC — viggle
 addenda]
 
-### 3.23 Propagation — SCAIL-2 caption / Wan-Animate-2 caption
-SCAIL-2 (long caption): `A video of {character appearance in detail},
-{clothing}, {interacting objects}, in {environment}, {lighting}.` —
-describe the OUTPUT video, never an instruction [DOC].
-Wan-Animate-2 (appearance only): `{Character appearance description,
-motion excluded}. {Background description}.` [DOC]
+### 3.23 Propagation — SCAIL-2 caption / Wan-Animate-2 caption — rewritten 2026-10-03
+**SCAIL-2 caption-expansion schema** (it was trained with long, detailed
+prompts; short or empty "can run" but underperform — expand along these
+axes, and describe the OUTPUT video, never an instruction to the model
+[DOC]):
+```text
+A video of {character appearance: identity features, build, hair, skin},
+wearing {clothing: every visible garment with materials and colors},
+{interacting objects: what the character holds/touches and their state},
+in {scene: environment, depth cues, lighting}, {temporal detail: what
+changes across the clip — transitions between activities, object states
+over time — phrased as the video's content, not directions}.
+```
+Axes: output appearance → clothing/interactions → scene → temporal detail.
+The predecessor repo shipped LLM caption generation (reading reference +
+motion) for exactly this expansion [DOC]; a caption-writer pass is the
+sanctioned way to fill the schema.
+**Wan-Animate-2 stays appearance/background-ONLY** (motion excluded by
+rule; viewpoint language only for camera decoupling):
+`{Character appearance description, motion excluded}. {Background
+description}.` [DOC]
 
-### 3.24 Audio — Music 3 caption / YuE2
-Music 3:
+### 3.24 Audio — MiniMax Music 3 (three-section caption + tagged lyrics)
 ```text
 Genre: {genres}; BPM {n}; key {key} {scale}; emotional progression: {arc}; scenario: {listening context}; production: {profile}.
 Vocals: {gender}, {timbre}, {performance style}, {harmonies}.
 Arrangement: {lead instrument}, {secondary}, {groove}, {bass}, {percussion}, {textures}, {space}.
 ```
-Lyrics with `[Verse]`/`[Chorus]` tags — tags are the ONLY structural
-instructions. [DOC]
-YuE2: genre/style prompt + tagged lyrics; `cot=melody` for covers; edit the
-ABC score for revision. [DOC]
+Lyrics with `[Intro]/[Verse]/[Chorus]/…` tags — tags are the ONLY
+structural instructions (executable; never embed structure in prose).
+Completion criterion for the caption: all three sections present, every
+field concretely filled ("the more specific, the closer the result").
+[DOC — docs.comfy.org tutorial]
+
+### 3.25 Audio — YuE2 (genre/style + tagged lyrics + the editable score)
+```text
+{genre/style prompt}. Lyrics with [Verse]/[Chorus]-class tags.
+```
+Contract differs from Music 3: the structural surface is the **ABC
+score** (melody/chords) — `cot="full"` writes it, `cot="melody"` for
+covers (melody-only), `cot="off"` direct; bring-your-own ABC accepted;
+seed reuse reproduces the exact plan for revision loops; agentic revision
+edits score/style/lyrics then re-renders. Completion criterion: style
+prompt + tagged lyrics + chosen cot mode (and, for revisions, the edited
+ABC). [DOC — YuE2 assessment]
 
 ---
 
@@ -376,7 +506,10 @@ form ("Keep the identity, face, hair, clothing, camera, and environment
 from `<Picture 1>`; {change}; Change nothing else." [DOC×3 pack form]);
 Qwen → prose instruction (no tags at N=1, no mask words, no transparency
 vocabulary); Klein → the §3.17 form; Krea instruct → STRIP the retain
-clause (dials own it).
+clause — **prediction, unmeasured** (the lane trains on bare instructions
+[DOC]; that keep-lists are neutral-or-harmful there is OUR untested
+expectation — E-K3 is designed, not run; until it reports, offer the strip
+as the default-with-honest-label, not a measured rule).
 
 ### 4.2 Video edit prefill (H3 six-section, edit flavored)
 §3.5 with the invariant slots: `{SOURCE_ASPECT}` in the node, `keep-list`
@@ -416,31 +549,58 @@ composes with, what it conflicts with, and its dialect constraints.
 | **B-SUBJECT** | `{count tag or subject sentence} + 2-4 identifying details + position` | all | FIRST after style everywhere. Anima: `1girl`-class count tag mandatory |
 | **B-STYLE** | style word / medium / @artist / style-ref role | all | H3: opens `[Shot 1]`; BFL slot 3; Anima: `@artist` + quality prefix; Krea: prose |
 | **B-CAMERA** | the H3 triplet / BFL camera-settings slot / Meridian geometry | H3, Klein; others weak | ONE named behavior per shot (H3); lens-name words "do almost nothing" on H3 [COMM] |
-| **B-LIGHT** | light source + direction + quality (color words / L* intent) | all | composes with B-STYLE and B-MOOD; in RELIGHT edits it IS the change |
+| **B-LIGHT** | light source + direction + quality (color words / L* intent) | all | composes with B-STYLE; in RELIGHT edits it IS the change |
 | **B-ACTION** | subject verb chain in temporal order; micro-actions | all (motion families) | H3: motion bias wants this named; Anima: pose tags instead |
 | **B-RETAIN** | named keep-list + "Change nothing else" | H3, Klein, Qwen-prose | CONFLICTS: Krea-instruct (dial-owned); Anima (no edit lane) |
-| **B-AUDIO-AMBIENCE** | 1-4 sentences covering every second | H3 only | mandatory unless B-AUDIO-SILENCE |
-| **B-AUDIO-SILENCE** | `non_diegetic_music: N/A` + scripted ambience + no-dialogue block | H3 only | composes with B-AUDIO-AMBIENCE (ambience stays); conflicts with B-DIALOGUE |
-| **B-DIALOGUE** | speaker ID + `<d>[Lang] verbatim</d>` lines | H3 only | speaker IDs stable across shots; voiceover needs the closed-lips clause |
+| **B-AUDIO-AMBIENCE** | 1-4 ambience sentences covering every second (wind/room tone/rain/footsteps — physical sound, no speech) | H3 only | present in every audio mode EXCEPT total silence |
+| **B-AUDIO-TOTAL-SILENCE** | `overall_soundscape: N/A` AND `non_diegetic_music: N/A` — only on an explicit complete-silence request | H3 only | excludes ambience, dialogue, and music entirely |
+| **B-MUSIC** | `non_diegetic_music` line: instrumentation, tempo, dynamic arc — or `N/A` | H3 only | independent on/off in every audio mode except total silence |
+| **B-DIALOGUE** | speaker ID + `<d>[Lang] verbatim</d>` lines | H3 only | speaker IDs stable across shots; voiceover needs the closed-lips clause; ambience field still written |
 | **B-TEXT-ONSCREEN** | quoted verbatim strings | H3, Qwen, Klein (capability order) | CONFLICT: H3 anti-burn-in — never quote what you don't want rendered |
 | **B-REFROLE** | per-reference role sentence (indexed) | H3, Qwen, Klein, Krea | one concept per reference; compose with B-RETAIN only on different refs |
 | **B-NEGATIVE** | suppression vocabulary | Anima (real), Krea stage-1, Qwen cfg>1 (emergency) | NEVER on H3; never as positive-prompt negation on Qwen transparency |
 
 ### Composition rules (which compose, which conflict)
 
-1. **B-STYLE + B-CAMERA + B-LIGHT + B-SUBJECT** compose freely in every
-   family (that IS the BFL slot order and the H3 shot opening).
+1. **B-STYLE + B-CAMERA + B-LIGHT + B-SUBJECT** compose freely in
+   GENERATION tasks on the prose families (H3, Klein, Krea, Qwen — that is
+   the H3 shot opening and the BFL slot set). **Scoped by task and family
+   (2026-10-03 repair — "every family" was wrong):** Anima has no edit lane
+   and expresses these as TAGS (composition/lighting tags; camera is weak —
+   framing tags like `upper body`, `dutch angle` at best); the propagation
+   engines take NONE of these blocks (SCAIL-2/Wan captions have their own
+   §3.23 schemas; Viggle takes no text at all); B-CAMERA is strong on H3
+   (the documented triplet) and present-but-undocumented on Klein (the
+   camera-settings slot), weak/absent on Qwen and Krea — do not promise
+   camera control from prose there.
 2. **B-RETAIN conflicts with dials**: on Krea instruct, delete B-RETAIN and
-   move intent into grounding_px/ref_boost. On Qwen masked edits, B-RETAIN
-   reduces to what the mask already guarantees — extra retention words
-   about the masked region are fine, words ABOUT the mask are not.
-3. **B-DIALOGUE excludes B-AUDIO-SILENCE** (a silence block with dialogue
-   is a contradiction → union risk).
+   move intent into grounding_px/ref_boost (prediction, unmeasured — E-K3).
+   On Qwen masked edits, B-RETAIN reduces to what the mask already
+   guarantees — extra retention words about the masked region are fine,
+   words ABOUT the mask are not.
+3. **The audio MODES are mutually exclusive: total silence | ambience-only
+   | speech-present.** B-AUDIO-TOTAL-SILENCE excludes everything else;
+   B-DIALOGUE requires B-AUDIO-AMBIENCE still written (the budget rule);
+   B-MUSIC is an independent on/off toggle in the ambience-only and
+   speech-present modes, and impossible under total silence. (2026-10-03
+   repair: the old "mandatory unless silence" wording was incoherent — the
+   old silence block itself contained ambience.)
 4. **B-TEXT-ONSCREEN anti-composes with burn-in avoidance**: quoting text
    teaches the text. On H3, quote ONLY text that should render.
-5. **B-REFROLE is exclusive per reference**: two roles on one reference
-   merge (the union/copy-shaped hazard family). Split refs or move the
-   second concept into words.
+5. **B-REFROLE pairs — compatible vs incompatible (2026-10-03 repair: the
+   blanket "one role per reference" ban was wrong):**
+   - COMPATIBLE on one reference: identity + clothing (the same visible
+     body — a subject ref legitimately retains both); identity + voice on
+     H3 (`<Picture N>` + `<Audio N>` bound to one `<Subject N>`); scene +
+     lighting (one environment ref).
+   - INCOMPATIBLE on one reference: pose-ref + style-exemplar on Qwen (the
+     copy-shaped override — the exemplar's pose wins [DOC-m]); two
+     different people as identity refs for ONE subject (merge-to-hybrid
+     [COMM]); two refs supplying the SAME dimension (two wardrobes, two
+     backgrounds) — contradictions render as unions.
+   - Rule of thumb: one reference owns one VISIBLE DIMENSION (who / what
+     they wear / where / how lit); a single dimension may bundle what is
+     physically inseparable in one image.
 6. **B-NEGATIVE belongs to exactly three places** (Anima positive-negative
    pair; Krea stage-1 flattened; Qwen cfg>1 emergency). Elsewhere use
    positive phrasing of the absence.
@@ -450,7 +610,7 @@ composes with, what it conflicts with, and its dialect constraints.
 ### Worked compositions
 
 - *Cinematic dialogue shot*: B-STYLE + B-SUBJECT + B-CAMERA + B-ACTION +
-  B-DIALOGUE + B-AUDIO-AMBIENCE (music N/A or B-MOOD-music line).
+  B-DIALOGUE + B-AUDIO-AMBIENCE + (B-MUSIC, or music `N/A`).
 - *Identity-locked wardrobe edit (video)*: B-REFROLE ×2 + B-RETAIN +
   B-STYLE-continuity (same words as the source shot).
 - *Fast anime portrait*: Anima prefix + B-SUBJECT(count+character+series) +
