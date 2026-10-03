@@ -370,6 +370,32 @@ test('the crop editor is a named, focus-contained dialog with keyboard-settable 
   await expect(overlay).toHaveCount(0)
 })
 
+// (F03, followup Codex audit 2026-10-03) The crop fields reused the
+// DIMENSION minimum (32) for coordinates, so x=0/y=0 snapped to 32 — the
+// top-left corner was un-enterable. And Enter committed by BLURRING to the
+// body, stranding keyboard focus outside the dialog.
+test('crop coordinates accept zero and Enter keeps focus inside the dialog (F03)', async ({ page }) => {
+  await seedLibrary(page.request)
+  await page.goto('/?datasets=1')
+  const master = page.locator('[data-ds-master]', { hasText: 'e2e-clip' }).first()
+  await expect(master).toBeVisible({ timeout: 10_000 })
+  await master.getByRole('button', { name: /layer/ }).first().click()
+  await expect(page.locator('[data-ds-editor]')).toBeVisible()
+  // X=0 commits AS ZERO (dimensions keep their positive 32 floor). Shrink the
+  // width first so the x coordinate has room to move — the seed crop is
+  // full-frame, where x is pinned to 0 by the frame bound either way.
+  const width = page.locator('[data-ds-crop-field="w"]')
+  await width.fill('256')
+  await width.blur()
+  const field = page.locator('[data-ds-crop-field="x"]')
+  await field.fill('0')
+  await field.press('Enter')
+  await expect(page.locator('.ds-crop-readout')).toContainText('x 0')
+  // Enter commits WITHOUT blurring to the body — focus stays in the dialog.
+  expect(await page.evaluate(() => document.activeElement?.closest('[data-ds-editor]') ?? null)).not.toBeNull()
+  await expect(field).toBeFocused()
+})
+
 test('the crop editor and caption panel answer Escape (one press, one action)', async ({ page }) => {
   await seedLibrary(page.request)
   await page.goto('/?datasets=1')

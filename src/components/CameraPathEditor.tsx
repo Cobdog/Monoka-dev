@@ -71,6 +71,11 @@ export function CameraPathEditor(props: {
   const [selected, setSelected] = useState<number>(() => Math.max(0, (exactDoc ?? parsedBox.doc).keyframes.length - 1))
   const [scrub, setScrub] = useState(0)
   const [dragging, setDragging] = useState<'keyframe' | 'playhead' | null>(null)
+  // (F04, followup audit 2026-10-03) The time field's typing draft: null when
+  // the field is at rest (it shows the formatted value); the raw text while
+  // the author is in it. Committing on blur/Enter — never mid-keystroke — is
+  // what stops the toFixed(3) reformat from eating digits (1.250 → 1.000).
+  const [timeDraft, setTimeDraft] = useState<string | null>(null)
   const railRef = useRef<SVGRectElement | null>(null)
 
   const planEnd = planEndOf(doc.profile)
@@ -140,6 +145,14 @@ export function CameraPathEditor(props: {
     const upper = index === doc.keyframes.length - 1 ? 1 : doc.keyframes[index + 1].time - 0.001
     const time = Math.min(upper, Math.max(lower, seconds / planEnd))
     patchKeyframe(index, { time: Math.round(time * 10000) / 10000 })
+  }
+  // (F04) The crop-field contract for the time field: the draft commits
+  // against the SAME neighbor-bounded clamp the drag uses, on blur/Enter.
+  const commitTimeDraft = () => {
+    if (timeDraft === null) return
+    const value = Number(timeDraft)
+    setTimeDraft(null)
+    if (Number.isFinite(value) && doc.keyframes[selected]) dragKeyframeTo(selected, value)
   }
   // (A08) The keyboard add path: the rail click stays the pointer's, this
   // inserts into the gap after the selected keyframe (the gap before it when
@@ -326,7 +339,7 @@ export function CameraPathEditor(props: {
           </select>
         </label>
         <p className="camera-path-note" data-camera-profile-note>
-          chain {duration.toFixed(1)}s ≈ {chainFrames} frames — the compiler ships three proven profiles (the 17k+5 grid); timing below uses {(planEnd).toFixed(3)}s.
+          chain {duration.toFixed(1)}s ≈ {chainFrames} frames — the compiler ships three proven profiles (the engine frame grid); timing below uses {(planEnd).toFixed(3)}s.
         </p>
         <label className="camera-path-field">
           interpolation
@@ -402,8 +415,14 @@ export function CameraPathEditor(props: {
                   min={((doc.keyframes[selected - 1].time + 0.001) * planEnd).toFixed(3)}
                   max={((selected === doc.keyframes.length - 1 ? 1 : doc.keyframes[selected + 1].time - 0.001) * planEnd).toFixed(3)}
                   data-camera-field-time
-                  value={(keyframe.time * planEnd).toFixed(3)}
-                  onChange={(event) => { const value = Number(event.target.value); if (Number.isFinite(value)) dragKeyframeTo(selected, value) }}
+                  value={timeDraft ?? (keyframe.time * planEnd).toFixed(3)}
+                  onChange={(event) => setTimeDraft(event.target.value)}
+                  onBlur={commitTimeDraft}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    commitTimeDraft()
+                  }}
                 />
               </label>
               <label className="camera-path-field">

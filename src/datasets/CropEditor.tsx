@@ -31,6 +31,13 @@ function snap(value: number, limit: number): number {
   return Math.max(GRID, Math.min(Math.round(value / GRID) * GRID, Math.floor(limit / GRID) * GRID))
 }
 
+/** (F03, followup audit 2026-10-03) Coordinates floor at ZERO, not GRID —
+ *  the dimension minimum never applied to x/y (the top-left corner used to
+ *  snap to 32, making x=0/y=0 un-enterable). */
+function snapCoord(value: number, limit: number): number {
+  return Math.max(0, Math.min(Math.round(value / GRID) * GRID, Math.floor(limit / GRID) * GRID))
+}
+
 /** Largest grid rect with the aspect inside the frame, anchored at center. */
 function rectForRatio(ratio: number, width: number, height: number, anchor: { cx: number; cy: number }): CropRect {
   const maxW = Math.floor(width / GRID) * GRID
@@ -53,7 +60,7 @@ function clampToFrame(rect: CropRect, width: number, height: number): CropRect {
   const maxH = Math.floor(height / GRID) * GRID
   const w = snap(rect.w, maxW)
   const h = snap(rect.h, maxH)
-  return { w, h, x: Math.max(0, Math.min(snap(rect.x, maxW), maxW - w)), y: Math.max(0, Math.min(snap(rect.y, maxH), maxH - h)) }
+  return { w, h, x: Math.max(0, Math.min(snapCoord(rect.x, maxW), maxW - w)), y: Math.max(0, Math.min(snapCoord(rect.y, maxH), maxH - h)) }
 }
 
 export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) {
@@ -223,6 +230,17 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
     dragStart.current = null
   }
 
+  // (F03, followup audit 2026-10-03) One commit path for blur AND Enter: the
+  // field's text snaps to the same clamped rect either way — Enter just
+  // never kicks focus out of the dialog to do it (the field stays active).
+  const commitCropField = (input: HTMLInputElement, key: 'x' | 'y' | 'w' | 'h') => {
+    const value = Number(input.value)
+    if (!Number.isFinite(value)) return
+    const snapped = clampToFrame({ ...draft.crop, [key]: value }, source.probe.width, source.probe.height)
+    setDraft((current) => ({ ...current, crop: snapped }))
+    input.value = String(snapped[key])
+  }
+
   // Middle-click mirror (spec §3): jump to the mirrored ratio when it exists
   // in the enabled list; the hint names why when it does not.
   const onAuxClick = (event: React.MouseEvent) => {
@@ -341,15 +359,12 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
                   step={GRID}
                   data-ds-crop-field={key}
                   defaultValue={draft.crop[key]}
-                  onBlur={(event) => {
-                    const input = event.currentTarget
-                    const value = Number(input.value)
-                    if (!Number.isFinite(value)) return
-                    const snapped = clampToFrame({ ...draft.crop, [key]: value }, source.probe.width, source.probe.height)
-                    setDraft((current) => ({ ...current, crop: snapped }))
-                    input.value = String(snapped[key])
+                  onBlur={(event) => { commitCropField(event.currentTarget, key) }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    commitCropField(event.currentTarget, key)
                   }}
-                  onKeyDown={(event) => { if (event.key === 'Enter') (event.target as HTMLInputElement).blur() }}
                 />
               </label>
             ))}

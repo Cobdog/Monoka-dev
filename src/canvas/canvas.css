@@ -456,7 +456,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .camera-path-field select, .camera-path-field input { padding: 4px 7px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-2); color: var(--text); font-size: var(--text-2xs); }
 .camera-path-field input[type='range'] { padding: 0; accent-color: var(--accent); }
 .camera-path-field input[type='number'] { font-family: ui-monospace, Consolas, monospace; }
-.camera-path-note { margin: 0; color: var(--muted-2); font-size: var(--text-2xs); }
+.camera-path-note { margin: 0; color: var(--muted-2); font-size: var(--text-md); }
 .camera-path-mirror { margin: 0; padding: 6px 8px; border: 1px dashed color-mix(in srgb, var(--warning) 45%, transparent); border-radius: 8px; color: var(--muted); font-size: var(--text-2xs); }
 .camera-path-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .camera-path-presets-label { display: inline-flex; align-items: center; gap: 4px; width: 100%; color: var(--muted-2); font-size: var(--text-2xs); }
