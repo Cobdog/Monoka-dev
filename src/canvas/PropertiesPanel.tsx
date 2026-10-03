@@ -485,9 +485,12 @@ export function PropertiesPanel() {
   // overwrite it while the UI said "Draft saved." One chained promise per
   // panel (the WorkbenchApp session-write pattern); each write runs after
   // the previous settles and composes from the FRESHEST draft at write time.
+  // (R2, scoped re-review 2026-10-03) The identity commits ride the SAME
+  // queue — the two setChainIdentity debounces were the last unsequenced
+  // writes on this seam.
   const writeQueueRef = useRef<Promise<boolean>>(Promise.resolve(true))
-  const freshestRef = useRef<{ chainId: string | null; settings: CanvasChainSettings | null }>({ chainId, settings: draft })
-  freshestRef.current = { chainId, settings: draft }
+  const freshestRef = useRef<{ chainId: string | null; settings: CanvasChainSettings | null; subjectText: string; strength: number }>({ chainId, settings: draft, subjectText, strength })
+  freshestRef.current = { chainId, settings: draft, subjectText, strength }
   useEffect(() => {
     if (!chain) {
       setDraft(null)
@@ -548,6 +551,34 @@ export function PropertiesPanel() {
     return write
   }
 
+  // (R2) The identity commits join the same queue: identity fields are
+  // scalars, so a plain enqueue with freshest-at-write-time composition
+  // suffices — no functional-patch machinery. The ack (F02) rides the
+  // result with the values that actually reached the wire.
+  const saveIdentity = (id: string, patch: { subjectText?: string; strength?: number }): Promise<boolean> => {
+    const write = writeQueueRef.current.then(async () => {
+      const freshest = freshestRef.current
+      const toWrite = freshest.chainId === id
+        ? {
+          ...(patch.subjectText !== undefined ? { subjectText: freshest.subjectText } : {}),
+          ...(patch.strength !== undefined ? { strength: freshest.strength } : {}),
+        }
+        : patch
+      const result = await setChainIdentity(id, toWrite)
+      if (result.ok && (toWrite.subjectText !== undefined || toWrite.strength !== undefined)) {
+        ackedRef.current = {
+          chainId: id,
+          ...(ackedRef.current?.chainId === id ? ackedRef.current : {}),
+          ...(toWrite.subjectText !== undefined ? { subjectText: toWrite.subjectText } : {}),
+          ...(toWrite.strength !== undefined ? { strength: toWrite.strength } : {}),
+        }
+      }
+      return result.ok
+    })
+    writeQueueRef.current = write.catch(() => false)
+    return write
+  }
+
   // The no-op gates read the ACKNOWLEDGED state (F02): knownRef's optimistic
   // advance would swallow a retry after a failed save of the same value.
   useDebouncedCommit(draft, !draft || !chainId, (value) => {
@@ -564,9 +595,7 @@ export function PropertiesPanel() {
     if (acked && acked.chainId === chainId && acked.subjectText === value) return
     const known = knownRef.current
     if (known && known.chainId === chainId) knownRef.current = { ...known, subjectText: value }
-    void setChainIdentity(chainId, { subjectText: value }).then((result) => {
-      if (result.ok) ackedRef.current = { chainId, ...(ackedRef.current?.chainId === chainId ? ackedRef.current : {}), subjectText: value }
-    })
+    void saveIdentity(chainId, { subjectText: value })
   }, chainId, 700)
   useDebouncedCommit(strength, !chain, (value) => {
     if (!chainId) return
@@ -574,9 +603,7 @@ export function PropertiesPanel() {
     if (acked && acked.chainId === chainId && Math.abs((acked.strength ?? Number.NaN) - value) < 1e-9) return
     const known = knownRef.current
     if (known && known.chainId === chainId) knownRef.current = { ...known, strength: value }
-    void setChainIdentity(chainId, { strength: value }).then((result) => {
-      if (result.ok) ackedRef.current = { chainId, ...(ackedRef.current?.chainId === chainId ? ackedRef.current : {}), strength: value }
-    })
+    void saveIdentity(chainId, { strength: value })
   }, chainId, 300)
 
   // (A04) A surface switch is a full page load — React cleanups never run

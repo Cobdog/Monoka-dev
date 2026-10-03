@@ -4149,4 +4149,51 @@ test('a draft left unacknowledged by a FAILED save still flushes on navigation (
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// (R2, scoped re-review 2026-10-03) F01's exact race class on the identity
+// seam: the two setChainIdentity debounces (subject 700 ms, strength 300 ms)
+// fired unsequenced, so a slow older identity write landing after a newer
+// one persisted the older subject/strength. Same reversed-completion shape
+// as F01, on /api/lan/documents/identity.
+test('identity saves serialize per chain — the newer subject survives a reversed-completion race (R2)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, panel } = await openInspectorAtSeed(page, 'identity race seed prompt')
+  // The identity section renders once a subject exists: seed one through
+  // the app's own API (before any routing), then reopen the panel to adopt.
+  await page.request.post('/api/lan/documents/identity', { data: { chainId, subjectText: 'seed identity line', strength: 1 } })
+  await page.reload()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  const subject = panel.locator('[data-canvas-identity-subject]')
+  await expect(subject).toBeVisible({ timeout: 10_000 })
+  await expect(subject).toHaveValue('seed identity line')
+
+  // Hold the FIRST identity write mid-flight; later ones pass through.
+  let updates = 0
+  let releaseFirst: (() => void) | null = null
+  const firstStarted = new Promise<void>((resolveStarted) => {
+    void page.route('**/api/lan/documents/identity', async (route) => {
+      updates += 1
+      if (updates === 1) {
+        resolveStarted()
+        await new Promise<void>((resolveHold) => { releaseFirst = resolveHold })
+      }
+      await route.continue()
+    })
+  })
+  await subject.fill('older identity in the race')
+  await firstStarted // the older identity save is demonstrably mid-request
+  await subject.fill('newer identity in the race')
+  await page.waitForTimeout(1_400) // the newer debounced save (700 ms) fires — and (unfixed) completes first
+  releaseFirst!()
+  await page.waitForTimeout(1_500) // the held write lands and the reload settles
+
+  // Newest survives — persisted …
+  const document = await activeDocument(page)
+  expect(document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText).toBe('newer identity in the race')
+  // … and visible in the panel.
+  await expect(subject).toHaveValue('newer identity in the race')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 
