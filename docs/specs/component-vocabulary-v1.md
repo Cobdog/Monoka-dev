@@ -1,10 +1,10 @@
 # Component vocabulary v1 — the dependable-primitives round
 
-Status: **DRAFTED r2** (2026-10-03, brainstorm a10wyw5). r1 reviewed
-adversarially by Codex (2026-10-03): verdict BLESS-AFTER-FINDINGS, 15
-findings (CV01–CV15) — all folded here. Counts corrected to the review's
-verified values; approximate inventories replaced by the manifest
-requirement (§2.0). Pending maintainer blessing, then writing-plans.
+Status: **DRAFTED r3** (2026-10-03, brainstorm a10wyw5). r1 Codex review:
+BLASS-AFTER-FINDINGS, 15 findings (CV01–CV15), folded in r2. r2 Codex
+review: BLESS-AFTER-FINDINGS — 10 of r1's findings confirmed resolved; 4
+remaining S2s (R2-01…R2-04) folded here, plus the layering-order planning
+note. Pending maintainer blessing, then writing-plans.
 
 Provenance: the Codex UI audit's opinion pass (the six dependable
 components "before further layout expansion"), scope-expanded by
@@ -23,7 +23,12 @@ regression gates; this round builds on, and never claims, that work.
    z-order = the raise discipline (newest-interacted wins, the inspector
    included — CV03: NOT inspector-always-on-top); modal = a defined band
    above the dock ceiling; consent overrides stay topmost. Written as
-   named z tokens, tested by z-order assertions.
+   named z tokens, tested by z-order assertions. **Planning requirement
+   (r2 review): repeated raises must stay within the dock band WHILE
+   PRESERVING RELATIVE ORDERING** — renormalize (e.g., re-rank the
+   participating docks to consecutive band values on each raise) rather
+   than clamping or modulo-wrapping the counter, both of which would
+   invert or collapse ordering.
 2. **Keyboard ownership & nesting** (CV06): one Escape closes exactly the
    topmost layer; command controls (palette, library, timeline) retain
    their local navigation keys; background canvas shortcuts cannot fire
@@ -31,18 +36,27 @@ regression gates; this round builds on, and never claims, that work.
    (Caption → VLM) unwind topmost-first. "Eager event capture" (Field)
    means: event values read into locals at dispatch, never dereferenced
    inside deferred callbacks — the T2 bug class.
-3. **Selection semantics** (CV11): the chip/button kit carries an explicit
-   choice contract — independent toggle vs exclusive group (exclusive
-   groups use radiogroup semantics with accessible selected state, as
-   BottomBar's lanes already do correctly and the tier chips don't);
-   unavailable choices render honest refusal, not visual dimming alone.
-4. **Effective-setting provenance** (CV08): the row DISPLAYS value +
-   provenance supplied by the existing resolver (modelOverrides.ts) —
-   including auto/inference, migration provenance, refusal, and degraded
-   fallback; it never resolves anything itself. Reset targets the nearest
-   applicable override level; a read-only variant (no reset) exists for
-   Control-center-style views; direct authoring controls do not inherit
-   the row.
+3. **Selection semantics** (CV11, corrected per r2 review): the chip/button
+   kit carries an explicit choice contract — independent toggle vs
+   exclusive group. **Exclusive groups get the COMPLETE radio
+   interaction: `role="radiogroup"`/`role="radio"` + `aria-checked` (which
+   BottomBar's lanes AND the tier chips already declare — the r1 claim
+   that one was correct and the other not was wrong; NEITHER implements
+   the full behavior) PLUS roving tabindex within the group, arrow-key
+   selection, and Tab/Shift+Tab moving past the group as one unit.**
+   Roles and checked-states alone are not the contract. Unavailable
+   choices render honest refusal, not visual dimming alone.
+4. **Effective-setting provenance** (CV08, tightened per R2-03): the row
+   DISPLAYS value + provenance supplied by the existing resolver
+   (modelOverrides.ts) — including auto/inference, migration provenance,
+   refusal, and degraded fallback; it never resolves anything itself.
+   **Reset is caller-supplied and scoped to the override level THIS ROW
+   owns**: resetting a row-level override reveals the inherited effective
+   value WITHOUT deleting any upstream (chain/global) override; when the
+   row owns no override, reset is hidden or disabled (the display shows
+   inherited provenance read-only). A read-only variant (no reset action
+   at all) exists for Control-center-style views; direct authoring
+   controls do not inherit the row.
 5. **Handoff retry ownership** (CV07): the component renders caller-owned
    operation state — per-step landed/failed with RETAINED successful
    identifiers so retry re-runs only the failed mutation (a failed
@@ -86,7 +100,13 @@ All absorption claims live in a **manifest generated at planning time,
 pinned to the post-remediation merge revision**: per family — name,
 consumer sites (file:line), replacement, exemption (if any), verification
 (grep pattern or test). Grep acceptance runs against manifest targets
-only. Review-corrected baselines: `window.confirm` **×7**,
+only. **Governance (R2-04): the manifest ENUMERATES the already-locked
+scope — planning may not add targets, and exemptions are valid only where
+this spec's named exclusions apply (§3, the never-shared list, the exempt
+families in §2.0's baseline). Any other scope change requires a recorded
+maintainer ruling BEFORE entering the manifest. The manifest's diff is
+retained across rebases (regeneration is itself a reviewable change).**
+Review-corrected baselines: `window.confirm` **×7**,
 `window.prompt` ×4, LoaderCircle ×32 (button-busy subset to be enumerated
 by the manifest — not all 32 are button swaps), StudioDialog consumers
 ×4, IwDialog dialogs ×3, roleless datasets overlays ×3, resize literals
@@ -130,8 +150,14 @@ the manifest (the `.notice`, shell/nav, mobile-sidebar, and consumerless
   agrees with Field BEFORE either lands (review: no incompatible
   conventions).
 - **StudioDock thin shell** — drag/raise/resize/close/error-boundary
-  slot; brings the inspector and both AudioDock branches into the raise
-  discipline (CV03).
+  slot; brings the inspector, both AudioDock branches, AND PoseRigDock
+  into the raise discipline (R2-01: PoseRigDock still lacks raise
+  handling at PoseRigDock.tsx:62 and stays pinned at z-55 in
+  canvas.css:590 — it was in r1's scope and wrongly dropped in r2;
+  PR-1 covers all four, each with open- and interaction-path assertions).
+  SCOPE NOTE: the pose-rig DOCK (canvas chrome) is in scope; the pose-rig
+  AUTHORING SURFACE remains exempt per the never-shared list — two
+  different things, both named to keep them separate.
 - **ToastHost + NoticeBanner** — one placement-prop host (deletes the
   Workbench inline copy); roles + aria-live on datasets banners; one
   dismiss contract; deletes the dead-CSS selectors from the manifest.
