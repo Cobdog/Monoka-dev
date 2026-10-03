@@ -83,6 +83,8 @@
 
 ## Research docs (docs/research/)
 
+- **Model-family research packets are prerequisites** (standing rule, 2026-10-03): a new family lands only with its full packet (prompting contract, sampler settings, resolutions, steps, sigmas, frame rates, failure modes) in `docs/research/prompting/`; gaps found in existing packets get filled, not deferred.
+
 - Header states the task id, date, and METHOD (what was code-read vs
   README-assessed vs measured). Claims carry evidence tags: **[DOC]**
   verified in shipped code / official source, **[COMM]** reputable community
