@@ -580,6 +580,53 @@ test('same-collection ref edits persist together (A03 fix round 1): role then tr
 })
 
 // ---------------------------------------------------------------------------
+// (Audit A03 fix round 2 — re-review, task 3tu6ei6) Composing collection
+// ops POSITIONALLY hits the wrong slot: the strip does not re-render until
+// a write's reload, so two removes inside the write-latency window both
+// carry render-time indices — composed against the fresh array, the second
+// filter deleted a reference the user never touched (remove b then c left
+// [a,c], deleting d). The re-review's repro: refs [a,b,c,d], remove slot
+// 1 then slot 2 under a 900 ms route delay — the durable result must be
+// exactly [a,d].
+test('same-collection ref removals persist together (A03 fix round 2): remove b then c under write latency deletes exactly those slots', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const seeded = await seedSession(request, {
+    refs: ['a', 'b', 'c', 'd'].map((tag) => ({
+      id: `ref-seed-${tag}`,
+      role: 'subject',
+      transport: null,
+      keepOverride: null,
+      note: `seeded reference ${tag}`,
+      source: { kind: 'file', path: `/seed/ref-${tag}.png`, name: `seed-ref-${tag}.png` },
+    })),
+  })
+  await page.goto('/?images=1')
+  await expect(page.locator('[data-iw-ref-count]')).toHaveText('4/9', { timeout: 15_000 })
+  // Slow EVERY session write — both removes queue before the first reload.
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 900))
+    await route.continue()
+  })
+  await page.locator('[data-iw-ref-slot="1"] .iw-ref-remove').click()
+  await page.locator('[data-iw-ref-slot="2"] .iw-ref-remove').click()
+  // Settle on DURABLE state: the second write has landed (two slots left).
+  await expect.poll(async () => {
+    const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+    const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+    return chain?.settings?.refs?.length ?? 0
+  }, { timeout: 15_000 }).toBe(2)
+  // EXACTLY the two targeted slots are gone: b and c removed, the untouched
+  // d survives (positional composition used to delete d and keep c).
+  const settled = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+  const settledChain = settled.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+  expect(settledChain.settings.refs.map((slot: { id: string }) => slot.id)).toEqual(['ref-seed-a', 'ref-seed-d'])
+  // The visible session agrees.
+  await page.reload()
+  await expect(page.locator('[data-iw-ref-count]')).toHaveText('2/9', { timeout: 15_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
 // (Audit A11, task 3tu6ei6) The poserig handoff was consumed BEFORE the
 // workbench session existed: on a cold navigation the inbox key was removed
 // on the first effect pass, patchSettings early-returned on !sessionChain,

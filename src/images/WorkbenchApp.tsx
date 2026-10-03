@@ -156,6 +156,13 @@ export function WorkbenchApp() {
  *  owns the user feedback for declining. */
 type SessionSettingsPatch = Partial<WorkbenchSessionSettings> | ((current: WorkbenchSessionSettings) => Partial<WorkbenchSessionSettings> | null)
 
+/** Collision-proof ref-slot ids (fix round 2): two appends inside one clock
+ *  millisecond — exactly the write-latency window — used to collide, both as
+ *  durable identities and as React keys. The counter makes ids unique within
+ *  a session; the timestamp keeps them unique across reloads. */
+let refSlotSeq = 0
+const nextRefSlotId = () => `ref-${Date.now()}-${(refSlotSeq += 1)}`
+
 function WorkbenchSurface() {
   const boot = useCanvasStore((state) => state.boot)
   const phase = useCanvasStore((state) => state.phase)
@@ -337,7 +344,7 @@ function WorkbenchSurface() {
         for (let index = 0; index < bytes.length; index += chunk) binary += String.fromCharCode(...bytes.subarray(index, index + chunk))
         const ingested = await documentsApi.ingestBlob({ dataBase64: btoa(binary), name: file.name, kind: 'image' })
         const slot: SessionRefSlot = {
-          id: `ref-${Date.now()}`,
+          id: nextRefSlotId(),
           // Smart default from the source: poserig renders default to pose.
           role: /poserig|pose/i.test(file.name) ? 'pose' : 'subject',
           transport: null,
@@ -415,7 +422,7 @@ function WorkbenchSurface() {
           setNotice(BEYOND_NINE_GUIDANCE)
           return null
         }
-        return { refs: [...current.refs, { id: `ref-${Date.now()}`, role: 'pose', transport: null, keepOverride: null, note: 'poserig render', source: { kind: 'poserig', path: parsed.path, name: parsed.name } }] }
+        return { refs: [...current.refs, { id: nextRefSlotId(), role: 'pose', transport: null, keepOverride: null, note: 'poserig render', source: { kind: 'poserig', path: parsed.path, name: parsed.name } }] }
       }).then((saved) => {
         if (!saved) window.localStorage.setItem('h3img-poserig-handoff', raw)
       })
@@ -997,14 +1004,18 @@ function WorkbenchSurface() {
                     // at flush time, after React has restored the controlled
                     // select to its (pre-write) prop value — dereferencing
                     // event.target there would read the stale DOM value back.
+                    // The op targets the slot by ID, never by strip index: a
+                    // render-time index can point at the WRONG slot once
+                    // earlier queued ops reshaped the fresh array (fix round
+                    // 2: remove b then c used to delete the untouched d).
                     const value = event.target.value as H3ImgRefRole
-                    void patchSettings((current) => ({ refs: current.refs.map((entry, i) => i === index ? { ...entry, role: value } : entry) }))
+                    void patchSettings((current) => ({ refs: current.refs.map((entry) => entry.id === slot.id ? { ...entry, role: value } : entry) }))
                   }} aria-label={`Reference ${index + 1} role`}>
                     {ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
                   </select>
                   <select value={slot.transport ?? 'auto'} data-iw-ref-transport={index} onChange={(event) => {
                     const value = event.target.value
-                    void patchSettings((current) => ({ refs: current.refs.map((entry, i) => i === index ? { ...entry, transport: value === 'auto' ? null : value as 'native' | 'semantic', transportOverride: value !== 'auto' } : entry) }))
+                    void patchSettings((current) => ({ refs: current.refs.map((entry) => entry.id === slot.id ? { ...entry, transport: value === 'auto' ? null : value as 'native' | 'semantic', transportOverride: value !== 'auto' } : entry) }))
                   }} aria-label={`Reference ${index + 1} transport`}>
                     <option value="auto">auto ({TRANSPORT_FOR_ROLE[slot.role]})</option>
                     <option value="native">native</option>
@@ -1022,10 +1033,10 @@ function WorkbenchSurface() {
                     title="Per-picture Keep override (empty = the global dial)"
                     onChange={(event) => {
                       const value = event.target.value
-                      void patchSettings((current) => ({ refs: current.refs.map((entry, i) => i === index ? { ...entry, keepOverride: value === '' ? null : Number(value) } : entry) }))
+                      void patchSettings((current) => ({ refs: current.refs.map((entry) => entry.id === slot.id ? { ...entry, keepOverride: value === '' ? null : Number(value) } : entry) }))
                     }}
                   />
-                  <button type="button" className="iw-ref-remove" aria-label={`Remove reference ${index + 1}`} onClick={() => void patchSettings((current) => ({ refs: current.refs.filter((_entry, i) => i !== index) }))}>×</button>
+                  <button type="button" className="iw-ref-remove" aria-label={`Remove reference ${index + 1}`} onClick={() => void patchSettings((current) => ({ refs: current.refs.filter((entry) => entry.id !== slot.id) }))}>×</button>
                 </div>
               ))}
               {settings.refs.length < 9 && (
@@ -1232,7 +1243,7 @@ function WorkbenchSurface() {
                 setNotice(BEYOND_NINE_GUIDANCE)
                 return null
               }
-              return { refs: [...current.refs, { id: `ref-${Date.now()}`, role: 'subject', transport: null, keepOverride: null, note: 'canvas take', source: { kind: 'canvas', outputId, takeId } }] }
+              return { refs: [...current.refs, { id: nextRefSlotId(), role: 'subject', transport: null, keepOverride: null, note: 'canvas take', source: { kind: 'canvas', outputId, takeId } }] }
             })
             setCanvasPickerOpen(false)
           }}
