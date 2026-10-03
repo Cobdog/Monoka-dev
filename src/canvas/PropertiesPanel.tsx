@@ -593,6 +593,9 @@ export function PropertiesPanel() {
   // scalars, so a plain enqueue with freshest-at-write-time composition
   // suffices — no functional-patch machinery. The ack (F02) rides the
   // result with the values that actually reached the wire.
+  // (R1/3b) Identity writes stamp the SAME per-chain revision counter as
+  // settings writes — the server gates both endpoints on one column, so
+  // arrivals of either kind are totally ordered.
   const saveIdentity = (id: string, patch: { subjectText?: string; strength?: number }): Promise<boolean> => {
     const write = writeQueueRef.current.then(async () => {
       const freshest = freshestRef.current
@@ -602,7 +605,7 @@ export function PropertiesPanel() {
           ...(patch.strength !== undefined ? { strength: freshest.strength } : {}),
         }
         : patch
-      const result = await setChainIdentity(id, toWrite)
+      const result = await setChainIdentity(id, toWrite, { settingsRevision: nextRevision(id) })
       if (result.ok && (toWrite.subjectText !== undefined || toWrite.strength !== undefined)) {
         ackedRef.current = {
           chainId: id,
@@ -675,14 +678,14 @@ export function PropertiesPanel() {
             .catch(() => { /* nothing can surface during unload */ })
         }
         if (acked?.subjectText !== state.subjectText || acked?.strength === undefined || Math.abs(acked.strength - state.strength) > 1e-9) {
-          void documentsApi.upsertIdentity({ chainId: state.chainId, subjectText: state.subjectText, strength: state.strength }, { keepalive: true })
+          void documentsApi.upsertIdentity({ chainId: state.chainId, subjectText: state.subjectText, strength: state.strength, settingsRevision: nextRevision(state.chainId) }, { keepalive: true })
             .catch(() => { /* nothing can surface during unload */ })
         }
       }
       // (R3) Every chain with unacked local truth gets its keepalive too:
       // the deselect/chain-switch flush rode a normal fetch that died at
-      // unload. Multiple fire-and-forget writes are safe — R1's revision
-      // gating orders their arrivals server-side.
+      // unload. Multiple fire-and-forget writes are safe — the revision
+      // gate orders their arrivals server-side for BOTH write kinds.
       for (const [id, entry] of dirtyChainsRef.current) {
         if (id === state.chainId) continue // the freshest draft above covers it
         if (entry.settings) {
@@ -694,6 +697,7 @@ export function PropertiesPanel() {
             chainId: id,
             ...(entry.subjectText !== undefined ? { subjectText: entry.subjectText } : {}),
             ...(entry.strength !== undefined ? { strength: entry.strength } : {}),
+            settingsRevision: nextRevision(id),
           }, { keepalive: true })
             .catch(() => { /* nothing can surface during unload */ })
         }
