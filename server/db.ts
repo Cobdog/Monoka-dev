@@ -199,18 +199,25 @@ export const migrations: Migration[] = [
     },
   },
   {
-    // Round 3 R1 (followup audit escalation, l0ebkju): per-chain settings
-    // revision for ARRIVAL-ORDER gating. The inspector's transport has a
-    // fire-and-forget leg (the unload keepalive) that cannot be sequenced
-    // against in-flight writes once requests leave the page — a proxy-held
-    // older write can arrive after a newer one. The server compares: a
-    // revisioned chains/update whose settingsRevision does not EXCEED the
-    // stored one is a stale-arrival no-op. Ungated writers (legacy callers,
-    // other surfaces) keep the always-apply behavior untouched.
+    // Round 3 R1 (followup audit escalation, l0ebkju) + round-3 fix round
+    // C-1: per-chain, PER-KIND revision columns for arrival-order gating.
+    // The inspector's transport has a fire-and-forget leg (the unload
+    // keepalive) that cannot be sequenced against in-flight writes once
+    // requests leave the page — a proxy-held older write can arrive after a
+    // newer one. The server compares PER KIND: a revisioned write whose
+    // revision does not EXCEED its kind's stored column is a stale-arrival
+    // no-op. The kinds MUST NOT share a column (C-1, critical): settings and
+    // identity payloads are disjoint, and a shared gate discarded a settings
+    // arrival merely because an identity arrival carried a higher stamp.
+    // Ungated writers (legacy callers, other surfaces) keep the always-apply
+    // behavior untouched.
     id: 5,
-    name: '005-chain-settings-revision',
+    name: '005-chain-revision-gates',
     up(db) {
-      db.exec('ALTER TABLE canvas_chain ADD COLUMN settings_revision INTEGER NOT NULL DEFAULT 0')
+      db.exec(`
+        ALTER TABLE canvas_chain ADD COLUMN settings_revision INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE canvas_chain ADD COLUMN identity_revision INTEGER NOT NULL DEFAULT 0;
+      `)
     },
   },
 ]

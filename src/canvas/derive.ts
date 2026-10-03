@@ -47,9 +47,12 @@ export type DocumentChain = {
   settings: Record<string, unknown>
   lockState: string
   hopCount: number
-  /** (R1, round 3) The server's arrival-order gate for settings writes: a
-   *  revisioned write at or below this number is a stale-arrival no-op. */
+  /** (R1, round 3; C-1, fix round) The server's per-KIND arrival-order
+   *  gates: a revisioned write at or below its kind's number is a
+   *  stale-arrival no-op. The kinds never share a gate — their payloads are
+   *  disjoint. */
   settingsRevision?: number
+  identityRevision?: number
   driftMetrics: Record<string, unknown> | null
   stale: boolean
   createdAt: number
