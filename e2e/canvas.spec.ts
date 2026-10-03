@@ -3880,6 +3880,11 @@ test('a failed settings save aborts Generate — the persisted prompt never subm
     const saveState = page.locator('[data-canvas-save-state="failed"]')
     await expect(saveState).toBeVisible()
     await expect(saveState).toContainText('AUDIT save unavailable')
+    // (Final review I2) The failed-save alert is decision prose — the same
+    // >=11px computed floor as the A10 pins. The saving/saved note next to it
+    // stays dense chrome (the shared class floors, not the note).
+    const warningSize = await saveState.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+    expect(warningSize, 'the failed-save alert renders at the >=11px floor').toBeGreaterThanOrEqual(11)
     // … the honest toast still names the save failure, and NO queue success
     // rides after it (the audit caught both notices showing at once).
     await expect(page.locator('[data-canvas-toast="error"]').first()).toContainText('could not be saved')
