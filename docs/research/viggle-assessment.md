@@ -395,3 +395,15 @@ keep preserve; the pin stays documented for chain links where preserve is unavai
 7. **Model-agnostic**: the identical pattern applies to whichever recast engine wins the Q2 bake-off (SCAIL-2 / Wan-Animate-2 have their own per-clip ceilings); the design lives at the orchestration layer, not inside Viggle.
 
 **Verify at build time** [UNK]: the 124f limit against the CURRENT API (Viggle iterates; this assessment's envelope was recorded 2026-09-14). Feeds task ul1l4j7's scope + the Q2 bake-off's long-form arm.
+
+---
+
+## Addendum 4 — appearance control: the outfit problem and the two-path design (2026-10-03)
+
+**The operator fact (maintainer observation, 2026-10-03)**: in Viggle's contract, **appearance authority belongs to the reference** — the driving video contributes motion/scene/lighting; wardrobe comes from the anchor image. A reference in a different outfit overrides the original's outfit; there is no in-model appearance dial. Consequence: outfit/appearance control is either pre-propagation or post-propagation.
+
+**Path A — compose the reference first (the primary lever)**. The anchor is bounded by what you can paint → make the painting a stills-stack pipeline: identity + outfit composed from two sources via the Krea 2 edit machinery / Klein multi-ref / the Qwen-Image-2.1 edit lanes (the committed Qwen-first wave); or the outfit-only masked edit on a clean frame (W3 pattern) when keeping the original character. SCAIL-2 additionally accepts multi-view references (back/close-up/occluded, each masked) — outfit enforceable from several angles there; Viggle's single anchor makes pre-editing its ONLY appearance lever. Composes with Addendum 3 by construction: one composed canonical reference feeds every chunk.
+
+**Path B — V2V after motion lock (the spot-fix tier)**. The propagation output is a valid reference for H3 instruction editing with preservation clauses (motion/camera/background preserved; outfit becomes X) — the R-family re-anchor machinery, hybrid-adaln profile (E-ED1: +3.4 dB identity-through-edit). Surgical variant: per-token denoise masks = region-scoped outfit re-render, world untouched, no full-video re-render drift.
+
+**The shipped shape: A first, B as spot-fix** — pre-compose so propagation starts from the intended appearance (cheap, chunk-consistent, the only in-Viggle lever), then masked-V2V only the regions propagation mangled on the motion-locked output. Pure-B pays video-scale generation to fix what a stills edit prevents.
