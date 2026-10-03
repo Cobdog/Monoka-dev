@@ -54,10 +54,12 @@ exists) · **UNK** (remains open).
 
 - §0 contract-difference table (the four dialects side by side — the
   anti-blurring device).
-- §1 the cross-family universals + the don't-transfer list + the triangle.
+- §1 the cross-family scoped defaults/hypotheses + the don't-transfer list
+  + the triangle (retitled from "universals" in the audit repair).
 - §2 task×family matrix (19 task rows × 7 lanes).
-- §3 **24 curated presets** (3.1–3.24), each with settings regime and
-  evidence tag — the prefill-ready layer.
+- §3 **25 curated presets** (3.1–3.25; 3.24/3.25 split in the audit
+  repair), each with settings regime, evidence tag, and a validation-status
+  ledger — the prefill-ready layer.
 - §4 prefill templates with `{slot}` markers, incl. the family-agnostic
   edit scaffold with dialect-swap rules.
 - §5 the block grammar: 12 blocks + 7 composition/conflict rules + worked
@@ -126,3 +128,39 @@ layer honest against field practice.
 - The BFL guide drift (FLUX 3-era) means Klein quotes mix two harvests —
   both dated in the packet; a FLUX.2-era guide capture would be a library
   candidate if klein stays load-bearing.
+
+## ADDENDUM — the methodology-audit repair wave (2026-10-03, later same day)
+
+The GPU-batch methodology audit
+(docs/audit/codex-gpu-methodology-audit-2026-10-03.md, preserved by the
+coordinator) audited this corpus alongside the experiment designs and
+returned 17 defects; all repaired in one commit. Headlines: preset 3.9
+renamed to no-speech/no-music with total silence split out as a distinct
+contract and the speech-negation block removed pending a test arm; preset
+3.4 gained typed ACTOR/ATTRIBUTE subject slots (outfits transfer, they
+never act); 3.5's audio reuse made explicit CONFIGURATION (copy/mux,
+fully_copy conditioning, or t=1.0 clean-pin) with mouth-motion called out
+as a separate check; 3.6's "deterministic" replaced by the three
+preservation classes (latent / VAE-reconstruction / exact-composite — no
+bit-exact claim from ordinary decode); 3.14 defaults to wardrobe edits
+with restage labeled and routed per the lane's own weak-task findings;
+3.21 requires 2+ NL sentences (one-sentence mixes = experimental); 3.23
+gained a real SCAIL caption-expansion schema (Wan stays
+appearance/background-only); 3.24/3.25 split Music 3 from YuE2; the block
+grammar rescoped (composition rule 1 by task/family; coherent
+mutually-exclusive audio modes with B-MUSIC defined and B-MOOD removed;
+B-REFROLE's blanket ban replaced by compatible/incompatible pairs); §1
+retitled to scoped defaults/hypotheses with documented-format vs
+placement-preference split and the keyword-OOD claim downgraded to
+unsupported/UNK; the H3 resolution-collapse sourcing pinned to ONE thread
+(HF #65, several reporters — not independent studies); the long-form
+independence claim narrowed (kills recursive input drift; does not
+guarantee flat identity or error-free seams); and the **SCAIL five-frame
+attribution error corrected everywhere** (the evidence is Saganaki's
+VIGGLE pack `five_frame_anchor`; SCAIL-2's own continuation surface is the
+node schema's `previous_frames`/`previous_frame_count`; SCAIL's README
+documents no chaining — re-verified 2026-10-03), including the GPU batch
+manifest's VIG-SEAM S1 arm. The Krea dialect-swap rule relabeled
+**"prediction, unmeasured"** (the former MEASURED-pending tag overstated).
+A validation-status ledger now heads guide §3 recording each preset's
+disposition (rewritten / inherited / split).

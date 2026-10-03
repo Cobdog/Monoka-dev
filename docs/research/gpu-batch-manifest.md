@@ -33,8 +33,12 @@ style-LoRA-on-finetune smoke (0.5/1.0, adaln-free) — gates the own-adapter
 track (license-clean per Addendum 6).
 
 ## Block 4 — Long-form
-VIG-SEAM: three seam strategies on a long board — S1 SCAIL-native
-five-frame chained anchors vs S2 independent-hop blend (Addendum 3) vs S3
+VIG-SEAM: three seam strategies on a long board — S1 five-frame chained
+anchors (CORRECTED 2026-10-03: the evidence is Saganaki's VIGGLE pack,
+`five_frame_anchor` — NOT a SCAIL mechanism; SCAIL-2's README documents no
+chaining and its own continuation surface is the node schema's
+`previous_frames`/`previous_frame_count`, a separate mechanism needing its
+own arm if tested) vs S2 independent-hop blend (Addendum 3) vs S3
 staggered double-coverage; per-chunk ArcFace-vs-canonical-reference +
 seam-visibility metric · VIG-FPS: native-24 vs conform-16+RIFE vs N=2
 interleave (+ N=4 only if N=2 shimmer clean); cross-pass micro-shimmer

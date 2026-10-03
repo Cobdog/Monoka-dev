@@ -80,9 +80,11 @@ quality bug, not a preference.
   edit card].
 - **Edit instructions are instructions**: the Identity Edit LoRA was trained
   on plain-language instructions with instruction captions, not
-  scene descriptions — bare "Change the jacket to red" is on-contract;
-  H3-style keep-lists are neutral-to-harmful off-contract (dials own
-  preservation) [DOC + MEASURED-pending E-K3 prediction].
+  scene descriptions — bare "Change the jacket to red" is on-contract
+  [DOC — the training-caption format]. That H3-style keep-lists are
+  neutral-to-harmful here (dials own preservation) is **our prediction —
+  unmeasured** [SPEC; E-K3 is designed, not run — relabeled 2026-10-03;
+  the earlier "MEASURED-pending" tag overstated].
 
 ## 4. Sampler settings, resolutions, frames
 
@@ -160,10 +162,11 @@ NOT region-preserving — leak measured at 26.5 dB outside the edit region
 ## 7. Fundamentals — the triangle
 
 - **Adherence**: dials dominate prose. grounding_px/ref_boost move
-  edit-vs-identity far more than prompt structure; the model's open-release
-  adherence gap is real — write the captioner's prose for CONTENT, use
-  dials for behavior. Stage-1 weights don't exist: flatten syntax or accept
-  it is inert there.
+  edit-vs-identity far more than prompt structure (**prediction,
+  unmeasured — E-K3 designed, not run; relabeled 2026-10-03**); the
+  model's open-release adherence gap is real [COMM — AMA-adjacent] — write
+  the captioner's prose for CONTENT, use dials for behavior. Stage-1
+  weights don't exist: flatten syntax or accept it is inert there.
 - **Quality**: prose density in the captioner enumeration (texture/
   quantity/spatial relationships); ≤2 MP working size (Raw direct caps
   ~1.2 MP on 24 GB; AnyPaint quant caveat measured clean). Style reference
