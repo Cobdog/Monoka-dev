@@ -110,7 +110,7 @@ export const documentsApi = {
   createChain: async (input: { projectId: string; kind?: string; inputSpec?: Record<string, unknown>; settings?: Record<string, unknown> }) =>
     (await post<{ chain: DocumentChain }>('/api/lan/documents/chains', input)).chain,
 
-  updateChain: (input: { id: string; settings?: Record<string, unknown>; inputSpec?: Record<string, unknown>; lockState?: 'locked' | 'unlocked'; hopCount?: number; driftMetrics?: Record<string, unknown> | null; stale?: boolean }, options?: { keepalive?: boolean }) =>
+  updateChain: (input: { id: string; settings?: Record<string, unknown>; inputSpec?: Record<string, unknown>; lockState?: 'locked' | 'unlocked'; hopCount?: number; driftMetrics?: Record<string, unknown> | null; stale?: boolean; settingsRevision?: number }, options?: { keepalive?: boolean }) =>
     post<{ chain: DocumentChain }>('/api/lan/documents/chains/update', input, options?.keepalive ? { keepalive: true } : undefined),
 
   // ---- the trash front door (maintainer ruling 2026-09-26, directive -----

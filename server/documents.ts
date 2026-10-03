@@ -514,7 +514,7 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
     getChain: db.prepare('SELECT * FROM canvas_chain WHERE id = ?'),
     chainsByProject: db.prepare('SELECT * FROM canvas_chain WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at, rowid ASC'),
     allLiveChains: db.prepare('SELECT * FROM canvas_chain WHERE deleted_at IS NULL'),
-    setChainSettings: db.prepare('UPDATE canvas_chain SET settings_json = ?, lock_state = ?, hop_count = ?, drift_metrics_json = ? WHERE id = ?'),
+    setChainSettings: db.prepare('UPDATE canvas_chain SET settings_json = ?, lock_state = ?, hop_count = ?, drift_metrics_json = ?, settings_revision = ? WHERE id = ?'),
     setInputSpec: db.prepare('UPDATE canvas_chain SET input_spec_json = ? WHERE id = ?'),
     setChainStale: db.prepare('UPDATE canvas_chain SET stale = ? WHERE id = ?'),
     tombstoneChain: db.prepare('UPDATE canvas_chain SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL'),
@@ -919,6 +919,7 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
       settings: parseJson<Record<string, unknown>>(row.settings_json, {}),
       lockState: str(row.lock_state),
       hopCount: Number(row.hop_count ?? 0),
+      settingsRevision: Number(row.settings_revision ?? 0),
       driftMetrics: parseJson<Record<string, unknown> | null>(row.drift_metrics_json, null),
       stale: Number(row.stale) === 1,
       createdAt: Number(row.created_at),
@@ -1649,15 +1650,28 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
       hopCount?: number
       driftMetrics?: Record<string, unknown> | null
       inputSpec?: Record<string, unknown>
+      settingsRevision?: number
     }) => {
       const row = statements.getChain.get(input.id) as Record<string, unknown> | undefined
       if (!row) throw new DocumentsRuleError(`No chain with id ${input.id}.`, 404)
+      // (R1, round 3) Arrival-order gate: a revisioned SETTINGS write whose
+      // revision does not exceed the stored one is a stale arrival — a
+      // newer write already landed. Silent no-op returning the current
+      // chain, never an error the client must handle. Writes without a
+      // revision keep the always-apply behavior.
+      const stamped = typeof input.settingsRevision === 'number' && Number.isFinite(input.settingsRevision)
+        ? Math.max(0, Math.floor(input.settingsRevision))
+        : null
+      if (stamped !== null && input.settings !== undefined && stamped <= Number(row.settings_revision ?? 0)) {
+        return hydrateChain(row)
+      }
       const settingsChanged = input.settings !== undefined
       statements.setChainSettings.run(
         JSON.stringify(input.settings ?? parseJson<Record<string, unknown>>(row.settings_json, {})),
         input.lockState === 'locked' || input.lockState === 'unlocked' ? input.lockState : str(row.lock_state),
         input.hopCount === undefined ? Number(row.hop_count) : Math.max(0, intOrNull(input.hopCount) ?? 0),
         input.driftMetrics === undefined ? (row.drift_metrics_json === null ? null : str(row.drift_metrics_json)) : JSON.stringify(input.driftMetrics ?? null),
+        stamped !== null && input.settings !== undefined ? stamped : Number(row.settings_revision ?? 0),
         input.id,
       )
       if (input.inputSpec !== undefined) {

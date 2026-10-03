@@ -4196,4 +4196,123 @@ test('identity saves serialize per chain — the newer subject survives a revers
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// ---------------------------------------------------------------------------
+// (Round 3, followup audit escalation 2026-10-03) R1/R3 — the fire-and-forget
+// transport's ARRIVAL ORDER, and the flush's blast radius. The keepalive
+// flush cannot be sequenced against in-flight writes, so the server
+// revision-gates chains/update (a stale arrival is a no-op), and the unload
+// flush covers every chain with an unacked dirty draft — not just the
+// currently-open one.
+// ---------------------------------------------------------------------------
+
+test('a held older write cannot clobber the keepalive\'s newer draft — arrival-order revision gating (R1)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, prompt } = await openInspectorAtSeed(page, 'arrival order seed prompt')
+  let updates = 0
+  let releaseFirst: (() => void) | null = null
+  const firstStarted = new Promise<void>((resolveStarted) => {
+    void page.route('**/api/lan/documents/chains/update', async (route) => {
+      updates += 1
+      if (updates === 1) {
+        resolveStarted()
+        await new Promise<void>((resolveHold) => { releaseFirst = resolveHold })
+        // A real proxy DELIVERS the paused request whatever happened to the
+        // page — route.fetch performs the write even after the page that
+        // issued it is gone (a plain continue dies with the page).
+        try {
+          const response = await route.fetch()
+          await route.fulfill({ response })
+        } catch { /* the arrival never happens if even the context is gone */ }
+        return
+      }
+      await route.continue()
+    })
+  })
+  // Edit 1: its autosave is held UPSTREAM mid-request (a proxy pause).
+  await prompt.fill('arrival draft one')
+  await firstStarted
+  // Edit 2, then navigate INSIDE the debounce window: only the keepalive
+  // carries draft two.
+  await prompt.fill('arrival draft two')
+  await page.locator('[data-surface-switcher] [data-surface="images"]').click()
+  await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
+  // The keepalive lands; THEN the held OLDER write is released — it arrives
+  // last. Unfixed, it overwrites the newer persisted draft.
+  await page.waitForTimeout(1_000)
+  releaseFirst!()
+  await page.waitForTimeout(1_500)
+  const document = await activeDocument(page)
+  expect(document.chains.find((entry) => entry.id === chainId)!.settings.prompt).toBe('arrival draft two')
+  // Reopen: the panel adopts the newest, not the write that arrived last.
+  await page.locator('[data-surface-switcher] [data-surface="canvas"]').click()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  await expect(page.locator('[data-canvas-properties] [data-canvas-section="prompt"] textarea').first()).toHaveValue('arrival draft two', { timeout: 10_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('rapid queued writes stamp strictly increasing revisions and the unload keepalive outranks them (R1)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, prompt } = await openInspectorAtSeed(page, 'revision order seed prompt')
+  const revisions: number[] = []
+  let updates = 0
+  const resolvers: Array<(() => void) | undefined> = []
+  void page.route('**/api/lan/documents/chains/update', async (route) => {
+    updates += 1
+    const body = route.request().postDataJSON() as { settingsRevision?: number }
+    if (typeof body.settingsRevision === 'number') revisions.push(body.settingsRevision)
+    resolvers[updates - 1]?.()
+    // Latency on every write: the SECOND write must still be unacked at the
+    // unload (localhost would otherwise ack it before the page leaves).
+    await page.waitForTimeout(400)
+    try { await route.continue() } catch { /* a dying page aborts its write */ }
+  })
+  const firstStarted = new Promise<void>((resolve) => { resolvers[0] = resolve })
+  const secondStarted = new Promise<void>((resolve) => { resolvers[1] = resolve })
+  await prompt.fill('queued revision draft one')
+  await firstStarted // write 1 on the wire
+  await prompt.fill('queued revision draft two')
+  await secondStarted // write 2 enqueued behind 1, now on the wire too
+  // Immediate unload: write 2's normal fetch dies with the page; the
+  // keepalive carries draft two with a revision HIGHER than any in-flight.
+  await page.locator('[data-surface-switcher] [data-surface="images"]').click()
+  await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
+  await page.waitForTimeout(1_200)
+  expect(revisions.length, 'the two queued writes and the keepalive all carry revisions').toBeGreaterThanOrEqual(3)
+  for (let index = 1; index < revisions.length; index += 1) {
+    expect(revisions[index], `revision ${revisions[index]} must outrank the earlier ${revisions[index - 1]}`).toBeGreaterThan(revisions[index - 1]!)
+  }
+  const document = await activeDocument(page)
+  expect(document.chains.find((entry) => entry.id === chainId)!.settings.prompt).toBe('queued revision draft two')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('a deselected chain\'s in-flight save is flushed by the unload keepalive — the dirty set (R3)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, prompt } = await openInspectorAtSeed(page, 'dirty set seed prompt')
+  // 900ms injected RTT: the deselection flush rides a normal fetch that
+  // dies at unload — the keepalive must pick the draft up instead.
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await page.waitForTimeout(900)
+    try { await route.continue() } catch { /* the dying page aborts its in-flight write */ }
+  })
+  await prompt.fill('DIRTY-SET NAVIGATION SENTINEL')
+  await page.keyboard.press('Escape') // deselect — the debounce flushes as a normal queued fetch
+  await page.waitForTimeout(77) // still inside the write's RTT
+  await page.locator('[data-surface-switcher] [data-surface="images"]').click()
+  await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.settings.prompt
+  }, { timeout: 15_000 }).toBe('DIRTY-SET NAVIGATION SENTINEL')
+  await page.locator('[data-surface-switcher] [data-surface="canvas"]').click()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  await expect(page.locator('[data-canvas-properties] [data-canvas-section="prompt"] textarea').first()).toHaveValue('DIRTY-SET NAVIGATION SENTINEL', { timeout: 10_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 

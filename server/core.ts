@@ -1810,6 +1810,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
             if (!id) return sendJson(response, 400, { error: 'A chain id is required.' })
             const update: Record<string, unknown> = { id }
             if (isRecord(body.settings)) update.settings = body.settings
+            // (R1, round 3) The inspector's arrival-order gate: the client
+            // stamps a monotonically increasing per-chain revision on its
+            // settings writes; the store ignores a stale arrival.
+            if (typeof body.settingsRevision === 'number' && Number.isFinite(body.settingsRevision)) update.settingsRevision = body.settingsRevision
             if (body.lockState === 'locked' || body.lockState === 'unlocked') update.lockState = body.lockState
             if (typeof body.hopCount === 'number' && Number.isFinite(body.hopCount)) update.hopCount = body.hopCount
             if (isRecord(body.driftMetrics) || body.driftMetrics === null) update.driftMetrics = body.driftMetrics
