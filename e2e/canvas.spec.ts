@@ -1747,6 +1747,72 @@ test('audio jobs relink after a mid-render reload through the canvas manifest (M
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// A01 (3dvcjxr): the queue's persistence window is the MOST RECENT 100 jobs —
+// recovery-relevant state is the newest. On a home with >100 jobs, a job
+// seeded AFTER the list is loaded must still land inside the persisted window
+// and survive the reload; an append-at-the-list-end leaves it past the
+// slice(0, 100) cut, the ring reads idle after the reload, and this is red.
+test('a job seeded onto a >100-job home persists across the reload — the window keeps the NEWEST 100 (A01)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  // Self-populate a >100-job history through the same storage API the queue
+  // writes through: fixed ids + upserts make the run idempotent on the shared
+  // dev home and deterministic on a fresh CI home (the server caps batches at
+  // 100 rows per request, hence the chunking).
+  const filler = Array.from({ length: 105 }, (_, index) => ({
+    id: `a01-window-${String(index).padStart(3, '0')}`, mode: 'text', status: 'completed',
+    prompt: 'a01 persistence-window filler', createdAt: Date.now() - (105 - index) * 60_000,
+    progress: 100, width: 1344, height: 768, duration: 5,
+  }))
+  for (let offset = 0; offset < filler.length; offset += 100) {
+    const response = await page.request.post('/api/lan/jobs', { data: { jobs: filler.slice(offset, offset + 100) } })
+    expect(response.status(), 'the populate batch must save').toBe(200)
+  }
+  await resetSession(page)
+  let seeded: { ok: boolean; reason?: string; chainId?: string; jobId?: string } | null = null
+  try {
+    await page.goto('/?canvas=1&probe=canvas')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await dropPng(page, 'a01-source.png')
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 10_000 })
+    seeded = await page.evaluate(() => (window as unknown as { __canvasScenario(name: string): { ok: boolean; reason?: string; chainId?: string; jobId?: string } }).__canvasScenario('seed-audio-mock'))
+    expect(seeded.ok).toBe(true)
+    // Pin the persistence itself, not just its downstream symptom: the debounced
+    // flush (1 s trailing) must have landed the seeded job server-side.
+    await page.waitForTimeout(1_400)
+    const persisted = (await (await page.request.get('/api/lan/jobs')).json()) as { jobs?: Array<{ id: string }> }
+    const persistedIds = new Set((persisted.jobs ?? []).map((job) => job.id))
+    expect(persistedIds.has(seeded.jobId!), 'the NEWEST job must sit inside the persisted 100-job window').toBe(true)
+    // And the recovery read: after the reload the relink finds it (queued-gpu).
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    const ring = page.locator(`[data-canvas-tile="${seeded.chainId}"] .canvas-tile-ring`)
+    await expect(ring).toHaveAttribute('data-status', 'queued-gpu', { timeout: 10_000 })
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    // Shared-home hygiene (docs/agent/testing.md): the test deliberately ends
+    // with the job still queued, but a leaked queued job breaks the
+    // radar-at-rest contract in app.spec on every later boot. End it THROUGH
+    // the page first (complete-mock drives the real completion landing, so
+    // the page's own debounced persist writes the terminal state — an API-side
+    // cancel alone is overwritten by the page's teardown flush); then, once
+    // the page is closed and can no longer flush, cancel whatever is still
+    // non-terminal through the same storage API the queue writes through.
+    if (seeded?.jobId) {
+      await page.evaluate(() => (window as unknown as { __canvasScenario(name: string): unknown }).__canvasScenario('complete-mock')).catch(() => undefined)
+      await page.waitForTimeout(1_400)
+      await page.close()
+      const listed = await page.request.get('/api/lan/jobs')
+      if (listed.ok()) {
+        const body = (await listed.json()) as { jobs?: Array<Record<string, unknown>> }
+        const leaked = (body.jobs ?? []).find((job) => job.id === seeded!.jobId)
+        if (leaked && ['queued', 'running', 'pending'].includes(String(leaked.status))) {
+          await page.request.post('/api/lan/jobs', { data: { jobs: [{ ...leaked, status: 'cancelled' }] } })
+        }
+      }
+    }
+  }
+})
+
 test("the 'r' rerunStale gesture clears the stale flags it remediates (M2)", async ({ page }) => {
   const problems = await trackErrors(page)
   await resetSession(page)
