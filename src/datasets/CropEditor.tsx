@@ -60,6 +60,7 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
   const enabled = useMemo(() => aspects.filter((aspect) => aspect.enabled), [aspects])
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
   const [aspectIndex, setAspectIndex] = useState(() => {
     const initial = layer?.crop ? enabled.findIndex((aspect) => Math.abs(aspect.ratio - layer.crop!.w / layer.crop!.h) < 0.05) : enabled.findIndex((aspect) => aspect.id === '16:9')
     return initial >= 0 ? initial : 0
@@ -157,6 +158,38 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
     return () => window.removeEventListener('keydown', onKey)
   }, [busy, onClose])
 
+  // (A09, Codex audit 2026-10-02 — standing C2) The editor is a real dialog:
+  // focus moves in on open, Tab wraps at the panel's edges (it used to walk
+  // the background gallery), and focus returns to the trigger on close.
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+    const restore = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    panel.focus()
+    const tabbables = () => Array.from(panel.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'))
+      .filter((element) => !(element as HTMLButtonElement).disabled && element.offsetParent !== null)
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return
+      const items = tabbables()
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      if (event.shiftKey && (active === first || active === panel || !panel.contains(active))) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (active === last || active === panel || !panel.contains(active))) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    panel.addEventListener('keydown', onKey)
+    return () => {
+      panel.removeEventListener('keydown', onKey)
+      restore?.focus()
+    }
+  }, [])
+
   const onPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
     const bounds = stageRef.current?.getBoundingClientRect()
@@ -231,10 +264,17 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
   const trimOut = draft.trim.outFrame ?? totalFrames
 
   return <div className="ds-editor-overlay" data-ds-editor>
-    <div className="ds-editor">
+    <div
+      ref={panelRef}
+      className="ds-editor"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="ds-editor-title"
+      tabIndex={-1}
+    >
       <header className="ds-editor-head">
         <div>
-          <h2>{layer ? 'Edit layer' : 'New layer'} — {source.name}</h2>
+          <h2 id="ds-editor-title">{layer ? 'Edit layer' : 'New layer'} — {source.name}</h2>
           <p className="ds-sub">{source.probe.width}×{source.probe.height} · {source.kind === 'image' ? 'still' : `${(source.probe.fps ?? 0).toFixed(3)} fps · ${totalFrames} decoded frames`}</p>
         </div>
         <button type="button" className="ds-btn ghost" onClick={onClose}>Close</button>
@@ -286,9 +326,34 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
               </button>
             ))}
           </div>
-          <p className="ds-hint"><Move size={12} /> drag places the stamp · <Grid2x2 size={12} /> scroll resizes · shift+scroll scrubs the spectrum (hard stops, never loops) · <FlipHorizontal2 size={12} /> middle-click mirrors</p>
+          <p className="ds-hint"><Move size={12} /> drag places the stamp · <Grid2x2 size={12} /> scroll resizes · shift+scroll scrubs the spectrum (hard stops, never loops) · <FlipHorizontal2 size={12} /> middle-click mirrors · the fields below set the geometry exactly (32-grid)</p>
           {status && <p className="ds-status">{status}</p>}
           {mirrorHint && <p className="ds-status warn">{mirrorHint}</p>}
+          {/* (A09, standing C10) Keyboard geometry: the pointer stays the
+              fast path; these fields write the same clamped, grid-snapped
+              rect. Uncontrolled + key-synced so typing is never fought by
+              the snap (it lands on blur/Enter). */}
+          <div className="ds-crop-inputs" data-ds-crop-inputs>
+            {(['x', 'y', 'w', 'h'] as const).map((key) => (
+              <label key={`${key}-${draft.crop[key]}`}>{key}
+                <input
+                  type="number"
+                  step={GRID}
+                  data-ds-crop-field={key}
+                  defaultValue={draft.crop[key]}
+                  onBlur={(event) => {
+                    const input = event.currentTarget
+                    const value = Number(input.value)
+                    if (!Number.isFinite(value)) return
+                    const snapped = clampToFrame({ ...draft.crop, [key]: value }, source.probe.width, source.probe.height)
+                    setDraft((current) => ({ ...current, crop: snapped }))
+                    input.value = String(snapped[key])
+                  }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') (event.target as HTMLInputElement).blur() }}
+                />
+              </label>
+            ))}
+          </div>
           <div className="ds-crop-readout">
             <span>x {draft.crop.x} · y {draft.crop.y}</span>
             <span>w {draft.crop.w} · h {draft.crop.h} <em>(32-grid)</em></span>

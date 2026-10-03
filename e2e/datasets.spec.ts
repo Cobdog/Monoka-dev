@@ -327,6 +327,49 @@ test('the crop editor scroll-resize never strands below the grid floor (the 256�
   expect(grown).toBeGreaterThan(shrunkFurther)
 })
 
+// (A09, Codex audit 2026-10-02 — standing C2/C10) The crop editor was a
+// nameless non-dialog whose Tab walked the background controls, and the crop
+// geometry was pointer-only (drag/scroll). This pins the dialog semantics,
+// focus containment, and the keyboard geometry path.
+test('the crop editor is a named, focus-contained dialog with keyboard-settable geometry (A09)', async ({ page }) => {
+  await seedLibrary(page.request)
+  await page.goto('/?datasets=1')
+  const master = page.locator('[data-ds-master]', { hasText: 'e2e-clip' }).first()
+  await expect(master).toBeVisible({ timeout: 10_000 })
+  await master.getByRole('button', { name: /layer/ }).first().click()
+  const overlay = page.locator('[data-ds-editor]')
+  const panel = page.locator('.ds-editor')
+  await expect(overlay).toBeVisible()
+
+  // Dialog semantics: role + modal + named by the visible heading.
+  await expect(panel).toHaveAttribute('role', 'dialog')
+  await expect(panel).toHaveAttribute('aria-modal', 'true')
+  await expect(panel).toHaveAttribute('aria-labelledby', 'ds-editor-title')
+  await expect(page.locator('#ds-editor-title')).toContainText('New layer')
+
+  // Focus containment (C2): focus moves INTO the dialog on open, and Tab
+  // stays inside no matter how far it walks (it used to travel the
+  // background gallery controls).
+  await expect(panel).toBeFocused()
+  for (let index = 0; index < 30; index += 1) await page.keyboard.press('Tab')
+  expect(await page.evaluate(() => document.activeElement?.closest('[data-ds-editor]') ?? null)).not.toBeNull()
+
+  // Keyboard geometry (C10): the numeric fields set the crop — the 480×832
+  // seed snaps to the 32-grid, so 256 and 224 land exactly.
+  await page.locator('[data-ds-crop-field="w"]').fill('256')
+  await page.locator('[data-ds-crop-field="w"]').blur()
+  await page.locator('[data-ds-crop-field="x"]').fill('224')
+  await page.locator('[data-ds-crop-field="x"]').blur()
+  await expect(page.locator('.ds-crop-readout')).toContainText('x 224')
+  await expect(page.locator('.ds-crop-readout')).toContainText('w 256')
+  // The rect follows (the visual stage reflects the keyboard edit).
+  await expect(page.locator('[data-ds-crop-rect]')).toBeVisible()
+
+  // Escape still closes (the standing behavior, kept).
+  await page.keyboard.press('Escape')
+  await expect(overlay).toHaveCount(0)
+})
+
 test('the crop editor and caption panel answer Escape (one press, one action)', async ({ page }) => {
   await seedLibrary(page.request)
   await page.goto('/?datasets=1')

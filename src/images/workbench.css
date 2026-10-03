@@ -33,11 +33,11 @@
 .iw-preview { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 14px; gap: 10px; }
 .iw-canvas { flex: 1; min-height: 0; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--muted) 20%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--muted) 4%, transparent); overflow: hidden; }
 .iw-canvas img { flex: 1 1 auto; min-height: 0; width: 100%; object-fit: contain; }
-.iw-empty-frame { color: var(--muted); padding: 30px; font-size: var(--text-2xs, 11px); }
+.iw-empty-frame { color: var(--muted); padding: 30px; font-size: var(--text-md); }
 .iw-canvas figcaption { padding: 6px 12px; font-size: var(--text-2xs, 10px); color: var(--muted); display: flex; gap: 10px; align-items: center; border-top: 1px solid color-mix(in srgb, var(--muted) 18%, transparent); width: 100%; justify-content: center; flex-wrap: wrap; }
 .iw-scorer { color: var(--accent); font-style: normal; }
 .iw-scorer.none { color: var(--danger); }
-.iw-preview-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--muted); border: 1px dashed color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 12px; padding: 30px; text-align: center; font-size: var(--text-2xs, 11px); max-width: 420px; margin: auto; }
+.iw-preview-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--muted); border: 1px dashed color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 12px; padding: 30px; text-align: center; font-size: var(--text-md); max-width: 420px; margin: auto; }
 
 .iw-affordances { display: flex; flex-direction: column; gap: 8px; }
 .iw-refine { display: flex; flex-direction: column; gap: 6px; }
@@ -47,7 +47,7 @@
 .iw-refine-tap { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); font-weight: 700; cursor: pointer; font-size: var(--text-2xs, 11px); }
 .iw-refine-tap.quality { border-color: color-mix(in srgb, var(--muted) 45%, transparent); background: color-mix(in srgb, var(--muted) 8%, transparent); color: var(--text, #edf3ef); font-weight: 500; }
 .iw-refine-tap:disabled { opacity: 0.5; cursor: default; }
-.iw-t1-note, .iw-engine-note { font-style: normal; font-size: 10px; color: var(--muted); }
+.iw-t1-note, .iw-engine-note { font-style: normal; font-size: var(--text-md); color: var(--muted); }
 .iw-burst-row { display: flex; gap: 8px; align-items: center; }
 .iw-burst, .iw-tone-lock { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); background: none; color: var(--muted); cursor: pointer; font-size: var(--text-2xs, 11px); }
 .iw-burst.gated { opacity: 0.55; }
@@ -61,12 +61,15 @@
 .iw-intent textarea:focus { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .iw-contract summary { cursor: pointer; font-size: var(--text-2xs, 11px); color: var(--muted); }
 .iw-contract pre { max-height: 200px; overflow: auto; white-space: pre-wrap; font-size: 10px; color: var(--muted); border: 1px dashed color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 8px; padding: 8px; }
-/* (V3, perfect-state sweep 2026-09-27) Legibility floors on the explanatory
-   paragraphs: the red reason text (warnings, unavailable notes) and the
-   machinery/staging notes carry the reader's decision — 9–10px was below
-   the readable floor. Badges and chips stay at their compact sizes. */
-.iw-warning { margin: 0; font-size: var(--text-2xs, 11px); color: var(--danger); opacity: 0.9; }
-.iw-unavailable-note { margin: 0; font-size: var(--text-2xs, 11px); color: var(--danger); display: flex; flex-direction: column; gap: 6px; }
+/* (V3, perfect-state sweep 2026-09-27; mechanism corrected for A10, Codex
+   audit 2026-10-02) Legibility floors on the explanatory paragraphs: the red
+   reason text (warnings, unavailable notes) and the machinery/staging notes
+   carry the reader's decision. The sweep's var(--text-2xs, 11px) was a DEAD
+   fallback — the token is defined (7px), so everything rendered at 7px. The
+   floor now rides --text-md, the ramp's real 11px step (badges, chips, and
+   control chrome keep their compact sizes). */
+.iw-warning { margin: 0; font-size: var(--text-md); color: var(--danger); opacity: 0.9; }
+.iw-unavailable-note { margin: 0; font-size: var(--text-md); color: var(--danger); display: flex; flex-direction: column; gap: 6px; }
 .iw-unavailable-note p { margin: 0; }
 .iw-source span { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
 /* (W12) The source affordances never butt flush against the wrapped heading
@@ -80,7 +83,7 @@
 
 .iw-refs header { display: flex; align-items: baseline; gap: 8px; }
 .iw-ref-count { font-size: 10px; color: var(--muted); }
-.iw-refs-note { margin: 4px 0; font-size: 10px; color: var(--muted); opacity: 0.8; }
+.iw-refs-note { margin: 4px 0; font-size: var(--text-md); color: var(--muted); opacity: 0.8; }
 .iw-ref-strip { display: flex; flex-direction: column; gap: 6px; }
 .iw-ref-slot { display: grid; grid-template-columns: 44px 1fr 1fr 46px 22px; gap: 5px; align-items: center; border: 1px solid color-mix(in srgb, var(--muted) 20%, transparent); border-radius: 9px; padding: 5px; }
 .iw-ref-thumb { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: color-mix(in srgb, var(--muted) 8%, transparent); color: var(--muted); overflow: hidden; }
@@ -112,7 +115,7 @@
 .iw-generate { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-weight: 700; cursor: pointer; font-size: var(--text-sm, 12px); }
 .iw-generate:disabled { opacity: 0.55; cursor: default; }
 .iw-generate .spin { animation: iw-spin 1s linear infinite; }
-.iw-staging-note { margin: 0; font-size: var(--text-2xs, 11px); color: var(--muted); }
+.iw-staging-note { margin: 0; font-size: var(--text-md); color: var(--muted); }
 
 .iw-handoffs { display: flex; gap: 8px; }
 .iw-pin, .iw-exit { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 9px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); background: none; color: inherit; cursor: pointer; font-size: var(--text-2xs, 11px); }
@@ -120,7 +123,7 @@
 .iw-pin:disabled, .iw-exit:disabled { opacity: 0.5; cursor: default; }
 
 .iw-take-strip { flex: 0 0 auto; border-top: 1px solid color-mix(in srgb, var(--muted) 22%, transparent); padding: 8px 14px; display: flex; gap: 10px; overflow-x: auto; max-height: 168px; }
-.iw-takes-empty { color: var(--muted); font-size: var(--text-2xs, 11px); align-self: center; }
+.iw-takes-empty { color: var(--muted); font-size: var(--text-md); align-self: center; }
 .iw-take { border: 1px solid color-mix(in srgb, var(--muted) 22%, transparent); border-radius: 10px; padding: 5px 6px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 5px; }
 .iw-take.selected { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
 .iw-take header { display: flex; gap: 6px; align-items: center; font-size: 10px; }
@@ -162,7 +165,7 @@
 .iw-machinery-select { display: flex; flex-direction: column; gap: 3px; font-size: var(--text-2xs, 11px); }
 .iw-machinery-select span em { font-style: normal; font-size: 9px; color: var(--warning, #d0a030); }
 .iw-machinery-select select { padding: 4px 6px; border-radius: 7px; border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); background: none; color: inherit; font-size: var(--text-2xs, 11px); }
-.iw-machinery-note { margin: 0; font-size: var(--text-2xs, 11px); color: var(--muted); }
+.iw-machinery-note { margin: 0; font-size: var(--text-md); color: var(--muted); }
 .iw-machinery-note .canvas-chip { padding: 1px 7px; font-size: 9px; }
 
 .iw-tiered-resolution { display: inline-flex; gap: 6px; align-items: center; }

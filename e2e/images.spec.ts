@@ -134,6 +134,27 @@ test('the workbench boots at ?images=1 with the seeded packet take on the pick s
   expect(problemsAfterBoot).toEqual([])
 })
 
+// (A10, Codex audit 2026-10-02) The perfect-state sweep's V3 "11px helper
+// floor" was claimed through var(--text-2xs, 11px) — a dead fallback: the
+// token IS defined (7px), so every decision-bearing paragraph rendered at
+// 7px. The floor is asserted on the COMPUTED style (the audit's own method):
+// staging note + unavailable note + engine note, the paragraphs that carry
+// the reader's decision.
+test('decision-bearing helper text meets the 11px legibility floor (A10)', async ({ page, request }) => {
+  await seedSession(request)
+  await page.goto('/?images=1')
+  await expect(page.locator('[data-iw-root]')).toBeVisible()
+  // Engine offline in this leg → the packet family is unavailable, so the
+  // unavailable note and the engine note render alongside the always-on
+  // staging note.
+  for (const selector of ['[data-iw-staging]', '[data-iw-unavailable]', '.iw-engine-note']) {
+    const note = page.locator(selector).first()
+    await expect(note).toBeVisible()
+    const size = await note.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+    expect(size, `${selector} renders at the >=11px floor`).toBeGreaterThanOrEqual(11)
+  }
+})
+
 test('the workbench carries the shared surface switcher — Alt+2/Alt+3 live (the surface contract)', async ({ page, request }) => {
   const problems = await trackErrors(page)
   await seedSession(request)

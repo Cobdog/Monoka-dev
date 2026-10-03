@@ -26,6 +26,9 @@ import {
 
 const SAMPLES = 64
 
+/** The dialog's accessible name anchors here (the visible header). */
+const CAMERA_PATH_TITLE = 'camera-path-title'
+
 /** Timeline geometry: x = time (0..planEnd → 10..630), y = azimuth mapped
  *  into the curve band (48..8, inverted — up is more azimuth). */
 function timelinePoint(time: number, azimuth: number, planEnd: number, extent: { min: number; max: number }) {
@@ -138,6 +141,16 @@ export function CameraPathEditor(props: {
     const time = Math.min(upper, Math.max(lower, seconds / planEnd))
     patchKeyframe(index, { time: Math.round(time * 10000) / 10000 })
   }
+  // (A08) The keyboard add path: the rail click stays the pointer's, this
+  // inserts into the gap after the selected keyframe (the gap before it when
+  // the last is selected) — the pose interpolates, so the curve is unchanged
+  // until the new keyframe is retuned.
+  const insertKeyframeInGap = () => {
+    if (doc.keyframes.length < 2) return
+    const gapStart = doc.keyframes[Math.min(selected, doc.keyframes.length - 2)].time
+    const gapEnd = doc.keyframes[Math.min(selected, doc.keyframes.length - 2) + 1].time
+    addKeyframeAt(((gapStart + gapEnd) / 2) * planEnd)
+  }
 
   // ---- SVG projections ----
   const azimuthExtent = useMemo(() => {
@@ -183,11 +196,12 @@ export function CameraPathEditor(props: {
     onClose={onClose}
     backdropClassName="canvas-opmodal-backdrop"
     popupClassName="camera-path-modal"
+    labelledBy={CAMERA_PATH_TITLE}
   >
     <div className="camera-path-root" data-camera-path-editor>
     <header className="camera-path-header">
       <div>
-        <strong><Camera size={13} /> Camera path — compiles into the Camera box</strong>
+        <strong id={CAMERA_PATH_TITLE}><Camera size={13} /> Camera path — compiles into the Camera box</strong>
         <span>The authored trajectory compiles through the camera compiler (src/lib/camera) into guide-correct language.</span>
       </div>
       {!exactDoc && <em className="camera-path-approximate" data-camera-approximate>reconstructed from the box text — approximate, review the keyframes</em>}
@@ -296,7 +310,7 @@ export function CameraPathEditor(props: {
               <rect x={10 + scrub * 620 - 4} y="0" width="8" height="10" rx="2" className="camera-timeline-playhead-grip" />
             </g>
           </svg>
-          <figcaption>click the rail to add a keyframe · drag handles to retime · the anchor (filled) is locked</figcaption>
+          <figcaption>click the rail to add a keyframe · drag handles to retime · the inspector's keyframe controls do both by keyboard · the anchor (filled) is locked</figcaption>
         </figure>
       </div>
 
@@ -352,13 +366,46 @@ export function CameraPathEditor(props: {
         </div>
 
         <div className="camera-path-inspector" data-camera-inspector>
-          <span className="camera-path-presets-label">
+          <span className="camera-path-presets-label" data-camera-keyframe-label>
             <Crosshair size={11} /> keyframe {selected + 1} of {doc.keyframes.length} — {(keyframe.time * planEnd).toFixed(3)}s ({(keyframe.time * 100).toFixed(1)}%)
           </span>
+          {/* (A08) The keyboard authoring row: select + insert are native
+              controls (the rail click and the SVG handles stay the pointer's
+              path); retiming rides the time field below. */}
+          <div className="camera-path-keyframe-row">
+            <label className="camera-path-field">
+              keyframe
+              <select data-camera-keyframe-select value={selected} onChange={(event) => setSelected(Number(event.target.value))}>
+                {doc.keyframes.map((point, index) => (
+                  <option key={index} value={index}>{index + 1}{index === 0 ? ' · anchor' : ` · ${(point.time * planEnd).toFixed(2)}s`}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="camera-path-keyframe-add"
+              data-camera-keyframe-add
+              disabled={doc.keyframes.length >= 24}
+              title="Insert a keyframe midway in the gap after the selected one — retune it with the fields below."
+              onClick={insertKeyframeInGap}
+            >add keyframe</button>
+          </div>
           {selected === 0 ? (
             <p className="camera-path-note" data-camera-anchor-note>anchor — the source frame itself (time 0, azimuth 0, elevation 0, radius 1×); locked by the compiler's contract.</p>
           ) : (
             <>
+              <label className="camera-path-field">
+                time s ({((doc.keyframes[selected - 1].time + 0.001) * planEnd).toFixed(3)}–{((selected === doc.keyframes.length - 1 ? 1 : doc.keyframes[selected + 1].time - 0.001) * planEnd).toFixed(3)})
+                <input
+                  type="number"
+                  step={0.05}
+                  min={((doc.keyframes[selected - 1].time + 0.001) * planEnd).toFixed(3)}
+                  max={((selected === doc.keyframes.length - 1 ? 1 : doc.keyframes[selected + 1].time - 0.001) * planEnd).toFixed(3)}
+                  data-camera-field-time
+                  value={(keyframe.time * planEnd).toFixed(3)}
+                  onChange={(event) => { const value = Number(event.target.value); if (Number.isFinite(value)) dragKeyframeTo(selected, value) }}
+                />
+              </label>
               <label className="camera-path-field">
                 azimuth ° (unwrapped)
                 <input type="number" step={5} data-camera-field-azimuth value={keyframe.azimuth} onChange={(event) => { const value = Number(event.target.value); if (Number.isFinite(value)) patchKeyframe(selected, { azimuth: value }) }} />

@@ -246,3 +246,31 @@ than polish — the walk's own headline (zero hard regressions) holds after
 the sweep. The honest risk concentrates in the v1 workbench's remaining
 lifetime (anything built on it now is scheduled demolition) and the
 properties panel's code structure.
+
+---
+
+## Addendum 2026-10-03 — the V3 claim corrected (A10)
+
+§6's V3 row ("helper-text floors — ZEROED (floors only)… the 11px floor")
+was WRONG: the sweep's fix never took effect. It was written as
+`var(--text-2xs, 11px)`, and a var() fallback is not a minimum —
+`--text-2xs` is defined (7px, src/styles.css:47), so every "lifted"
+paragraph rendered at 7px, SMALLER than the 9–10px the finding was about.
+The Codex adversarial audit (2026-10-02,
+[codex-webui-audit-2026-10-02.md](codex-webui-audit-2026-10-02.md))
+re-caught it as **A10 — STANDING**: "the claimed 11px helper floor holds…
+Computed warning/staging text is 7px," and its §4 records "V3's claimed
+helper-text floor did NOT hold."
+
+Corrected in task beo7ts6 (branch audit-fixes-2026-10-02): the floor now
+rides `var(--text-md)` — the design ramp's real 11px step — on the
+workbench's decision-bearing helper/warning text (warnings, unavailable
+notes, staging/machinery notes, the T=1/engine notes, empty-state
+guidance) and on the datasets family's identical dead-fallback set
+(notices, error banners, validation/refusal/gate text, stale notes,
+guidance). Badges, chips, eyebrows, and control chrome keep the deliberate
+dense ramp — the canvas's bare `var(--text-2xs)` uses are untouched by
+design. The floor is pinned by an e2e computed-style assertion
+(images.spec.ts, "(A10)") so this claim cannot silently rot again. The V3
+row above stands as written; this addendum is the correction, not a
+rewrite.
