@@ -2363,10 +2363,10 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         if (!tile) return { ok: false, reason: 'no unlinked seed chain' }
         const jobId = `${CANVAS_MOCK_JOB_PREFIX}${tile.id}`
         useCanvasStore.setState((current) => ({ chainJobs: { ...current.chainJobs, [tile.id]: jobId } }))
-        useJobsStore.getState().setJobs((jobs) => [...jobs.filter((job) => job.id !== jobId), {
+        useJobsStore.getState().setJobs((jobs) => [{
           id: jobId, mode: 'text', prompt: tile.prompt, createdAt: Date.now(), status: 'queued', progress: 0,
           width: 1344, height: 768, duration: 6, provider: 'minimax', mediaType: 'video', manifest: { canvasPhase2Mock: true },
-        }])
+        }, ...jobs.filter((job) => job.id !== jobId)])
         useCanvasStore.getState().recompute()
         return { ok: true, chainId: tile.id, jobId }
       }
@@ -2379,10 +2379,10 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         if (!tile) return { ok: false, reason: 'no unlinked seed chain' }
         const jobId = `${CANVAS_MOCK_JOB_PREFIX}${tile.id}`
         useCanvasStore.setState((current) => ({ chainJobs: { ...current.chainJobs, [tile.id]: jobId } }))
-        useJobsStore.getState().setJobs((jobs) => [...jobs.filter((job) => job.id !== jobId), {
+        useJobsStore.getState().setJobs((jobs) => [{
           id: jobId, mode: 'text', prompt: tile.prompt, createdAt: Date.now(), status: 'running', progress: 4, progressLabel: 'Waiting for ComfyUI to start', promptId: 'e2e-live-1',
           width: 1344, height: 768, duration: 6, provider: 'minimax', mediaType: 'video', manifest: { canvasPhase2Mock: true },
-        }])
+        }, ...jobs.filter((job) => job.id !== jobId)])
         useCanvasStore.getState().recompute()
         return { ok: true, chainId: tile.id, jobId }
       }
@@ -2448,11 +2448,15 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         const projectId = useCanvasStore.getState().activeProjectId
         if (!projectId) return { ok: false, reason: 'no active project' }
         const jobId = `${CANVAS_MOCK_JOB_PREFIX}audio:${chainId}`
-        useJobsStore.getState().setJobs((jobs) => [...jobs.filter((job) => job.id !== jobId), {
+        // PREPEND like every real submit core: the queue is newest-first and
+        // persistence keeps the first (most recent) 100 — an append-at-the-end
+        // lands past that window on a populated home and the job never
+        // survives the reload (A01).
+        useJobsStore.getState().setJobs((jobs) => [{
           id: jobId, mode: 'text', prompt: 'upbeat courtyard drums', createdAt: Date.now(), status: 'queued', progress: 0,
           width: 0, height: 0, duration: 60, provider: 'music3', mediaType: 'audio',
           manifest: { canvas: { chainId, projectId } },
-        }])
+        }, ...jobs.filter((job) => job.id !== jobId)])
         useCanvasStore.getState().recompute()
         return { ok: true, chainId, jobId, projectId }
       }

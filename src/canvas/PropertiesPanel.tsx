@@ -25,7 +25,11 @@ import { Captions, Clock3, Dices, LoaderCircle, Play, Sparkles, Square, Star, Vo
 import { SmartPromptEditor, type SmartPromptEditorHandle } from '../components/SmartPromptEditor'
 import { StructuredPromptEditor } from '../components/StructuredPromptEditor'
 import { PromptLibraryBrowser } from '../components/PromptLibraryBrowser'
-import { detectOptimizations, engineFamilyForChain, turboFetchPlan, vdnAvailability } from '../lib/graph'
+import { detectOptimizations, engineFamilyForChain, vdnAvailability } from '../lib/graph'
+// Direct from the exporting module — re-exporting turboFetchPlan through
+// graph/index.ts wedges index↔turbo into mutual chunk dependencies (the
+// Rollup circular-chunk warning's own suggested fix).
+import { turboFetchPlan } from '../lib/graph/turbo'
 import { inferredOverrideSlotFile, migrateLegacyModelOverrideSlots, modelClassHint, modelFamilyInfo, overrideLayerCounts, overrideLayerSummary, overridePickOutcome, SLOT_LABELS, type ModelFamilyId, type ModelOverrideSlotName } from '../lib/modelOverrides'
 import { guideFrameWarning } from '../lib/workflow'
 import { ASPECT_RATIOS, optimalResolutionFor, parseResolution, ratioKeyOf, resolutionsForRatio, snapResolutionDim, tieredResolutionGroups } from '../lib/aspectResolutions'

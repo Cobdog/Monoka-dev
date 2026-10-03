@@ -159,6 +159,16 @@ test('(a) fresh boot creates studio.db with the schema version stamped', () => {
   // safely (no divergence error on the already-migrated file).
 })
 
+// Fresh-home default engine URL (audit follow-up, 3dvcjxr): a home with no
+// saved settings must ship comfyUrl 8189 — the default landed in c5d08df and
+// this rail reds the moment anyone points it back at the reserved personal
+// 8188. Runs before any settings PATCH in this suite, so the answer is the
+// pristine default, not a test-mutated value.
+test('(a2) fresh-home default settings pin the engine URL at 8189', async () => {
+  const settings = (await get('/api/lan/settings')).body.settings
+  assert.equal(settings.comfyUrl, 'http://127.0.0.1:8189', 'the shipped default engine URL must be 8189, never the reserved personal 8188')
+})
+
 test('(b) job upsert round-trip: graph stripped, manifest preserved; shape-first validation refuses unknown shapes', async () => {
   const saved = await post('/api/lan/jobs', { jobs: [jobB, jobA] })
   assert.equal(saved.status, 200, `job POST failed: ${JSON.stringify(saved.body)}`)

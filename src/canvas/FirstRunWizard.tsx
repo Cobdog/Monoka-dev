@@ -52,9 +52,10 @@ function writeWizard(state: WizardState): void {
 }
 
 /** The probe list for the engine step (R-24): 8188 is ComfyUI's canonical
- * default (kept as the shipped default — a fresh user's own install almost
- * certainly lives there); 8189+ are the studio/testbed conventions. The
- * probe is EXPLICIT (the button is the consent — nothing probes on its own). */
+ * port (a fresh user's own install often lives there, so it stays first in
+ * the list); the SHIPPED default is 8189 — never the reserved personal 8188
+ * — and 8190+ are the studio/testbed conventions. The probe is EXPLICIT
+ * (the button is the consent — nothing probes on its own). */
 const COMMON_PORTS = [8188, 8189, 8190, 8191, 8192]
 
 const STEP_TITLES = ['Engine', 'Models', 'Node packs', 'First prompt']
