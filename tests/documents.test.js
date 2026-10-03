@@ -257,6 +257,41 @@ test('(a) migration: golden fixture N→N+1, fresh boot shape, 004 stray healing
   divergent.close()
 })
 
+// (N02 diagnostic, round 5) The refusal must reach the operator VERBATIM on
+// the actual boot log — sanitization used to eat it into
+// "[redacted] 5 [redacted] 005 [redacted] ..." (app-authored static text has
+// zero PII; the exemption is structural and rides on the error object).
+test('(a2) an interim-005 home logs the actionable refusal verbatim — the sanitizer cannot eat app-authored diagnostics', async () => {
+  const home = makeHome('interim005boot')
+  const fixture = new Database(path.join(home, 'studio.db'))
+  fixture.exec('CREATE TABLE schema_migrations (id INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at INTEGER NOT NULL)')
+  for (const migration of migrations) {
+    const name = migration.id === 5 ? '005-chain-settings-revision' : migration.name
+    fixture.prepare('INSERT INTO schema_migrations (id, name, applied_at) VALUES (?, ?, ?)').run(migration.id, name, 0)
+  }
+  fixture.close()
+  const booted = await bootServer(home, 'interim005')
+  try {
+    const refusal = outputLine(booted.output.text, 'db/open')
+    assert.ok(refusal, 'the db/open failure line is logged')
+    assert.ok(refusal.includes('Migration 5 was amended on this branch'), `the refusal names the amended migration verbatim (got: ${refusal})`)
+    assert.ok(refusal.includes('005-chain-revision-gates'), 'the shipped migration name survives')
+    assert.ok(refusal.includes('Rebuild the scratch home'), 'the rebuild instruction survives')
+    assert.ok(!refusal.includes('[redacted]'), 'no redacted soup in the app-authored refusal')
+  } finally {
+    booted.child.kill()
+  }
+})
+
+/** One logged JSON line by its stage field (logFailure payloads carry stage). */
+function outputLine(text, stage) {
+  const lines = text.split('\n')
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].includes(`"stage":"${stage}"`) || lines[index].includes(`"stage": "${stage}"`)) return lines[index]
+  }
+  return ''
+}
+
 beforeAll(async () => {
   // =====================================================================
   // Boot server A + seed the OLD surface (import sources)
