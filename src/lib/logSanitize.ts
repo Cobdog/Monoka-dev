@@ -25,6 +25,23 @@ export const ERROR_FALLBACK_TITLE = 'This view hit an error'
 
 export type SanitizedError = { name: string; reason: string; path: string }
 
+/** (N02 diagnostic, round 5) App-authored operational diagnostics: static
+ *  strings composed in server code that carry the operator's next ACTION
+ *  (a rebuild instruction, migration names) and must reach the log VERBATIM
+ *  — a scrubbed instruction is unactionable soup. The exemption is
+ *  STRUCTURAL: it rides on the error object, never on message text.
+ *  User-derived content never travels in these errors; the same words in an
+ *  UNMARKED error scrub exactly as before; and a site that interpolates
+ *  foreign values (a name read from a database) must sanitize those values
+ *  itself before composing the message — see the migration guard. */
+export type AppAuthoredDiagnosticError = Error & { appAuthoredDiagnostic: true }
+
+export function appAuthoredDiagnostic(message: string): AppAuthoredDiagnosticError {
+  const error = new Error(message) as AppAuthoredDiagnosticError
+  ;(error as { appAuthoredDiagnostic?: true }).appAuthoredDiagnostic = true
+  return error
+}
+
 const REDACTED = '[redacted]'
 
 /** Hard cap on any sanitized string — a corrupted multi-megabyte message must
@@ -187,7 +204,11 @@ export function sanitizeError(error: unknown): SanitizedError {
     name = typeof error
     message = String(error)
   }
-  return { name, reason: sanitizeErrorMessage(message), path: firstStackPath(stack) }
+  // (N02 diagnostic, round 5) A marked app-authored diagnostic passes
+  // VERBATIM (and uncapped — its length is authored in code, never
+  // attacker-scaled); everything else scrubs exactly as before.
+  const appAuthored = error !== null && typeof error === 'object' && (error as { appAuthoredDiagnostic?: unknown }).appAuthoredDiagnostic === true
+  return { name, reason: appAuthored ? message : sanitizeErrorMessage(message), path: firstStackPath(stack) }
 }
 
 function firstStackPath(stack: string): string {

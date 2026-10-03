@@ -1102,6 +1102,22 @@ test('job poll reduction (P1 family): completion, stale polls, tolerance, struct
     const oomReason = sanitizeForReducer('torch.OutOfMemoryError: CUDA out of memory while rendering moonlit qzxveldra umbrella merchants waltzing')
     assert.ok(oomReason.includes('CUDA out of memory'), 'sanitized reason keeps the cause')
     assert.ok(!oomReason.includes('qzxveldra') && !oomReason.includes('umbrella') && !oomReason.includes('waltzing'), 'sanitized reason drops prompt echoes')
+
+    // (N02 diagnostic, round 5) App-authored operational diagnostics survive
+    // scrubbing STRUCTURALLY: the exemption rides on the error object
+    // (appAuthoredDiagnostic), never on message text — the same words without
+    // the marker scrub exactly as before, and user-derived content always
+    // scrubs.
+    const round5 = load('src/lib/logSanitize.ts')
+    const guardMessage = "Migration 5 was amended on this branch: this home applied '005-chain-settings-revision' but the code ships '005-chain-revision-gates'. Rebuild the scratch home (delete its studio.db / reset MINIMAX_STUDIO_HOME) — an amended migration never re-runs against an applied history."
+    const markedReason = round5.sanitizeError(round5.appAuthoredDiagnostic(guardMessage)).reason
+    assert.ok(markedReason.includes('Migration 5 was amended on this branch'), 'the marked diagnostic keeps its instruction verbatim')
+    assert.ok(markedReason.includes('005-chain-revision-gates') && markedReason.includes('Rebuild the scratch home'), 'the migration name and the rebuild instruction survive')
+    assert.ok(!markedReason.includes('[redacted]'), 'no redacted soup in the app-authored refusal')
+    const unmarkedReason = round5.sanitizeError(new Error(guardMessage)).reason
+    assert.ok(unmarkedReason.includes('[redacted]') && !unmarkedReason.includes('Rebuild'), 'the SAME text without the marker still scrubs — the marker is the key, not the wording')
+    const userDerivedReason = round5.sanitizeError(new Error(`${process.env.TMPDIR ?? '/tmp'} my secret project about moonlit qzxveldra umbrella merchants`)).reason
+    assert.ok(userDerivedReason.includes('[redacted]') && !userDerivedReason.includes('qzxveldra'), 'user-derived content (an env path, prompt prose) still scrubs')
     const oom = reduceJobPoll(baseJob, { kind: 'executionError', node: '84', nodeType: 'VAEDecodeTiled', reason: oomReason }, Date.now())
     assert.equal(oom.transitionedTo, 'failed')
     assert.ok(oom.job.error?.includes('node 84'), `error names the node id (got: ${oom.job.error})`)

@@ -22,6 +22,7 @@ import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
 import { upCanvasDocuments } from './documents'
 import { upDatasetTables } from './datasets/store'
+import { appAuthoredDiagnostic, sanitizeErrorMessage } from './logSanitize'
 
 export type Migration = {
   id: number
@@ -235,13 +236,19 @@ export function migrateDatabase(db: Database.Database, list: Migration[] = migra
     if (!expected || expected.id !== applied[index].id) {
       throw new Error(`Persisted migration history diverges from the code at position ${index}. Migrations are append-only.`)
     }
-    // (N02, round 4) Same id, different NAME: an applied migration's body
-    // was AMENDED on this branch (005's interim single-column form). Refuse
-    // at startup with ONE loud, actionable error — the id-only guard used
-    // to let such a home boot, and the repo then touched a column the old
-    // body never created, scattering cross-surface 503s instead.
+    // (N02, round 4; diagnostic fix round 5) Same id, different NAME: an
+    // applied migration's body was AMENDED on this branch (005's interim
+    // single-column form). Refuse at startup with ONE loud, actionable
+    // error — the id-only guard used to let such a home boot, and the repo
+    // then touched a column the old body never created, scattering
+    // cross-surface 503s instead. The error is an APP-AUTHORED diagnostic:
+    // it passes log sanitization verbatim (the marker rides on the object),
+    // and the one foreign value — the applied name, read from the home's
+    // migration table — passes only as a structurally valid migration slug
+    // so a corrupted home cannot launder prose through the exemption.
     if (expected.name !== applied[index].name) {
-      throw new Error(`Migration ${expected.id} was amended on this branch: this home applied '${applied[index].name}' but the code ships '${expected.name}'. Rebuild the scratch home (delete its studio.db / reset MINIMAX_STUDIO_HOME) — an amended migration never re-runs against an applied history.`)
+      const appliedName = /^[0-9]{3}-[a-z0-9-]+$/.test(applied[index].name) ? applied[index].name : sanitizeErrorMessage(applied[index].name)
+      throw appAuthoredDiagnostic(`Migration ${expected.id} was amended on this branch: this home applied '${appliedName}' but the code ships '${expected.name}'. Rebuild the scratch home (delete its studio.db / reset MINIMAX_STUDIO_HOME) — an amended migration never re-runs against an applied history.`)
     }
   }
   const runMigration = db.transaction((migration: Migration) => {
