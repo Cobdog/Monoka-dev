@@ -145,14 +145,14 @@
 .iw-dialog-backdrop { position: fixed; inset: 0; background: color-mix(in srgb, var(--color-surface-abyss, #000) 62%, transparent); display: flex; align-items: center; justify-content: center; z-index: 50; }
 .iw-dialog { width: min(560px, 92vw); max-height: 80vh; overflow: auto; background: var(--color-surface-deep, #0a0d0b); border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
 .iw-dialog h3 { margin: 0; font-size: var(--text-sm, 13px); }
-.iw-dialog p { margin: 0; font-size: var(--text-2xs, 11px); color: var(--muted); }
+.iw-dialog p { margin: 0; font-size: var(--text-md); color: var(--muted); }
 .iw-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }
 .iw-dialog footer button { padding: 6px 14px; border-radius: 9px; cursor: pointer; font-size: var(--text-2xs, 11px); border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); background: none; color: inherit; }
 .iw-dialog footer button.primary { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
 .iw-exit-choices { display: flex; gap: 8px; }
 .iw-exit-choices button { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); background: none; color: inherit; cursor: pointer; font-size: var(--text-2xs, 11px); }
 .iw-exit-choices button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-.iw-exit-note { font-size: 10px; }
+.iw-exit-note { font-size: var(--text-md); }
 .iw-exit-note.warn { color: var(--danger); }
 .iw-canvas-refs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
 .iw-canvas-ref { display: flex; flex-direction: column; gap: 4px; align-items: center; border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 10px; padding: 6px; background: none; color: var(--muted); cursor: pointer; font-size: 10px; }

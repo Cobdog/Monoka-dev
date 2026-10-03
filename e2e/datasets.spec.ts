@@ -426,6 +426,10 @@ test('LAN upload ingests a real-sized still through the UI path (A06)', async ({
   await expect(page.locator('[data-ds-root]')).toBeVisible()
   await page.setInputFiles('input[type="file"]', bigStill)
   await expect(page.locator('[data-ds-notice]')).toContainText('1 imported', { timeout: 20_000 })
+  // (A10) The datasets family's helper floor is pinned like the workbench's:
+  // the notice is decision prose, computed style >= 11px.
+  const noticeSize = await page.locator('[data-ds-notice]').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+  expect(noticeSize, 'ds-notice renders at the >=11px floor').toBeGreaterThanOrEqual(11)
   await expect(page.locator('[data-ds-notice]')).not.toContainText('Refusals')
   await expect(page.locator('[data-ds-error]')).toHaveCount(0)
   await expect(page.locator('[data-ds-master]', { hasText: 'e2e-upload.png' }).first()).toBeVisible({ timeout: 10_000 })

@@ -247,6 +247,15 @@ test('the exit dialog is consent-gated and names the hybrid limitation honestly'
   await expect(dialog).toContainText('created and selected, never submitted')
   // No hybrid loader (engine offline) → the stock limitation is NAMED.
   await expect(page.locator('[data-iw-exit-hybrid]')).toContainText('silently drop one of')
+  // (A10 fix round 1) The exit dialog's explainer and its danger warning are
+  // decision prose a first-run user must read before confirming — the same
+  // >=11px floor as the staging/unavailable notes.
+  for (const selector of ['.iw-dialog p', '[data-iw-exit-hybrid]']) {
+    const note = page.locator(selector).first()
+    await expect(note).toBeVisible()
+    const size = await note.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+    expect(size, `${selector} renders at the >=11px floor`).toBeGreaterThanOrEqual(11)
+  }
   await page.locator('[data-iw-exit-choice="anchor"]').click()
   await expect(page.locator('[data-iw-exit-confirm]')).toBeEnabled()
   await page.locator('[data-iw-exit-confirm]').click()
