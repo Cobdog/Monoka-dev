@@ -230,15 +230,19 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
     dragStart.current = null
   }
 
-  // (F03, followup audit 2026-10-03) One commit path for blur AND Enter: the
-  // field's text snaps to the same clamped rect either way — Enter just
-  // never kicks focus out of the dialog to do it (the field stays active).
-  const commitCropField = (input: HTMLInputElement, key: 'x' | 'y' | 'w' | 'h') => {
-    const value = Number(input.value)
+  // (F03 + R4, followup audit rounds 2026-10-03) The geometry fields are
+  // controlled-with-draft (the camera time field's idiom): the field shows
+  // the raw typing draft while focused and the committed value when not,
+  // landing the clamp on blur/Enter. There is NO value-keyed remount — a
+  // commit that changes the value used to remount the input mid-keystroke
+  // and drop focus to the body.
+  const [cropFieldDraft, setCropFieldDraft] = useState<{ key: 'x' | 'y' | 'w' | 'h'; text: string } | null>(null)
+  const commitCropField = (key: 'x' | 'y' | 'w' | 'h', text: string) => {
+    setCropFieldDraft(null)
+    const value = Number(text)
     if (!Number.isFinite(value)) return
     const snapped = clampToFrame({ ...draft.crop, [key]: value }, source.probe.width, source.probe.height)
     setDraft((current) => ({ ...current, crop: snapped }))
-    input.value = String(snapped[key])
   }
 
   // Middle-click mirror (spec §3): jump to the mirrored ratio when it exists
@@ -347,23 +351,25 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
           <p className="ds-hint"><Move size={12} /> drag places the stamp · <Grid2x2 size={12} /> scroll resizes · shift+scroll scrubs the spectrum (hard stops, never loops) · <FlipHorizontal2 size={12} /> middle-click mirrors · the fields below set the geometry exactly (32-grid)</p>
           {status && <p className="ds-status">{status}</p>}
           {mirrorHint && <p className="ds-status warn">{mirrorHint}</p>}
-          {/* (A09, standing C10) Keyboard geometry: the pointer stays the
-              fast path; these fields write the same clamped, grid-snapped
-              rect. Uncontrolled + key-synced so typing is never fought by
-              the snap (it lands on blur/Enter). */}
+          {/* (A09, standing C10; F03/R4) Keyboard geometry: the pointer stays
+              the fast path; these fields write the same clamped, grid-snapped
+              rect. Controlled-with-draft so typing is never fought by the
+              snap (it lands on blur/Enter) and a changing commit never
+              remounts the field under focus. */}
           <div className="ds-crop-inputs" data-ds-crop-inputs>
             {(['x', 'y', 'w', 'h'] as const).map((key) => (
-              <label key={`${key}-${draft.crop[key]}`}>{key}
+              <label key={key}>{key}
                 <input
                   type="number"
                   step={GRID}
                   data-ds-crop-field={key}
-                  defaultValue={draft.crop[key]}
-                  onBlur={(event) => { commitCropField(event.currentTarget, key) }}
+                  value={cropFieldDraft?.key === key ? cropFieldDraft.text : String(draft.crop[key])}
+                  onChange={(event) => setCropFieldDraft({ key, text: event.target.value })}
+                  onBlur={() => { if (cropFieldDraft?.key === key) commitCropField(key, cropFieldDraft.text) }}
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter') return
                     event.preventDefault()
-                    commitCropField(event.currentTarget, key)
+                    commitCropField(key, cropFieldDraft?.key === key ? cropFieldDraft.text : String(draft.crop[key]))
                   }}
                 />
               </label>

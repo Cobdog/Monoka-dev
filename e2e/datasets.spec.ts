@@ -396,6 +396,39 @@ test('crop coordinates accept zero and Enter keeps focus inside the dialog (F03)
   await expect(field).toBeFocused()
 })
 
+// (R4, round-3 escalation 2026-10-03) An Enter commit that CHANGES the value
+// used to remount the key-synced input (the label key carried the value), so
+// focus fell to BODY mid-dialog. The fields are controlled-with-draft now
+// (the camera time field's idiom): no remount on the field's own commits.
+test('a value-changing Enter commit keeps focus inside the crop dialog — no remount (R4)', async ({ page }) => {
+  await seedLibrary(page.request)
+  await page.goto('/?datasets=1')
+  const master = page.locator('[data-ds-master]', { hasText: 'e2e-clip' }).first()
+  await expect(master).toBeVisible({ timeout: 10_000 })
+  await master.getByRole('button', { name: /layer/ }).first().click()
+  await expect(page.locator('[data-ds-editor]')).toBeVisible()
+  const width = page.locator('[data-ds-crop-field="w"]')
+  await width.fill('256')
+  await width.blur()
+  const field = page.locator('[data-ds-crop-field="x"]')
+  // An UNCHANGED commit (x stays 0) keeps focus — the F03 pin.
+  await field.fill('0')
+  await field.press('Enter')
+  await expect(page.locator('.ds-crop-readout')).toContainText('x 0')
+  await expect(field).toBeFocused()
+  // A CHANGING commit (0 → 64): the value lands AND the field keeps focus.
+  await field.fill('64')
+  await field.press('Enter')
+  await expect(page.locator('.ds-crop-readout')).toContainText('x 64')
+  expect(await page.evaluate(() => document.activeElement?.closest('[data-ds-editor]') ?? null)).not.toBeNull()
+  await expect(field).toBeFocused()
+  // The blur-commit path is unchanged: an unfocused edit still lands (focus
+  // naturally leaves the field on blur — the pin is the VALUE).
+  await field.fill('96')
+  await field.blur()
+  await expect(page.locator('.ds-crop-readout')).toContainText('x 96')
+})
+
 test('the crop editor and caption panel answer Escape (one press, one action)', async ({ page }) => {
   await seedLibrary(page.request)
   await page.goto('/?datasets=1')
