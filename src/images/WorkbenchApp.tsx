@@ -145,6 +145,17 @@ export function WorkbenchApp() {
   )
 }
 
+/** A session-settings patch: a plain partial (scalar fields fold per-key), or
+ *  a FUNCTION of the fresh base the flush reads at write time — mandatory for
+ *  collection-valued fields (refs/loras/framePicks), whose whole-array values
+ *  must be derived from current durable state, never a render-scope snapshot
+ *  (fix round 1, review F1: snapshot-derived arrays re-introduced the A03
+ *  erase for collections inside the write-latency window). A function may
+ *  return null to DECLINE when a fresh-state precondition fails (the 9-slot
+ *  budget): the op is skipped — the write is not a failure — and the function
+ *  owns the user feedback for declining. */
+type SessionSettingsPatch = Partial<WorkbenchSessionSettings> | ((current: WorkbenchSessionSettings) => Partial<WorkbenchSessionSettings> | null)
+
 function WorkbenchSurface() {
   const boot = useCanvasStore((state) => state.boot)
   const phase = useCanvasStore((state) => state.phase)
@@ -236,19 +247,23 @@ function WorkbenchSurface() {
   const studioPackOnEngine = useMemo(() => h3ImageStudioPackPresent(sessionState.info), [sessionState.info])
   const fizgigPackOnEngine = useMemo(() => fizgigH3StillPackPresent(sessionState.info), [sessionState.info])
 
-  // Session writes are SERIALIZED (audit A03): each patch folds into one
-  // pending batch and a queued flush reads the chain FRESH from the store at
-  // write time — the closure chain is stale across awaits, and two rapid
-  // edits used to build two complete settings objects from the same snapshot,
-  // the second erasing the first's field with both requests succeeding.
-  const pendingPatchRef = useRef<Partial<WorkbenchSessionSettings> | null>(null)
+  // Session writes are SERIALIZED (audit A03): each patch joins one pending
+  // queue and a queued flush reads the chain FRESH from the store at write
+  // time — the closure chain is stale across awaits, and two rapid edits used
+  // to build two complete settings objects from the same snapshot, the second
+  // erasing the first's field with both requests succeeding. (Fix round 1,
+  // review F1) COLLECTION-valued fields patch as functions of that fresh
+  // base: a whole-array value derived from the render-scope `settings` memo
+  // re-created the same erase inside the write-latency window, because the
+  // second array was built before the first write's reload landed.
+  const pendingPatchesRef = useRef<SessionSettingsPatch[]>([])
   const writeQueueRef = useRef<Promise<boolean>>(Promise.resolve(true))
-  const patchSettings = useCallback((patch: Partial<WorkbenchSessionSettings>): Promise<boolean> => {
-    pendingPatchRef.current = { ...(pendingPatchRef.current ?? {}), ...patch }
+  const patchSettings = useCallback((patch: SessionSettingsPatch): Promise<boolean> => {
+    pendingPatchesRef.current = [...pendingPatchesRef.current, patch]
     const flush = async (): Promise<boolean> => {
-      const pending = pendingPatchRef.current
-      if (!pending) return true
-      pendingPatchRef.current = null
+      const pending = pendingPatchesRef.current
+      if (!pending.length) return true
+      pendingPatchesRef.current = []
       const state = useCanvasStore.getState()
       const projectId = state.activeProjectId
       const freshChain = (projectId ? state.documents[projectId] ?? null : null)?.chains.find((chain) => isWorkbenchChain(chain)) ?? null
@@ -257,7 +272,17 @@ function WorkbenchSurface() {
         return false
       }
       try {
-        await documentsApi.updateChain({ id: freshChain.id, settings: { ...readSessionSettings(freshChain.settings), ...pending } as unknown as Record<string, unknown> })
+        // The queued ops compose IN ORDER over the fresh base: plain
+        // partials overlay per-key (the original fold semantics); functions
+        // re-derive their collections from a base that already carries every
+        // earlier op — and a straddling flush starts from the previous
+        // write's durable result.
+        let next = readSessionSettings(freshChain.settings)
+        for (const op of pending) {
+          const partial = typeof op === 'function' ? op(next) : op
+          if (partial) next = { ...next, ...partial }
+        }
+        await documentsApi.updateChain({ id: freshChain.id, settings: next as unknown as Record<string, unknown> })
         await state.reloadActiveDocument()
         return true
       } catch (error) {
@@ -311,11 +336,6 @@ function WorkbenchSurface() {
         const chunk = 0x8000
         for (let index = 0; index < bytes.length; index += chunk) binary += String.fromCharCode(...bytes.subarray(index, index + chunk))
         const ingested = await documentsApi.ingestBlob({ dataBase64: btoa(binary), name: file.name, kind: 'image' })
-        const current = readSessionSettings(sessionChain?.settings)
-        if (current.refs.length >= 9) {
-          setNotice(BEYOND_NINE_GUIDANCE)
-          return
-        }
         const slot: SessionRefSlot = {
           id: `ref-${Date.now()}`,
           // Smart default from the source: poserig renders default to pose.
@@ -325,12 +345,21 @@ function WorkbenchSurface() {
           note: '',
           source: { kind: 'file', path: ingested.path, name: file.name, preview },
         }
-        await patchSettings({ refs: [...current.refs, slot] })
+        // The append is a FUNCTION of the fresh base — the 9-slot budget is
+        // re-checked at write time, so a ref that raced another append can
+        // never land as the tenth slot.
+        await patchSettings((current) => {
+          if (current.refs.length >= 9) {
+            setNotice(BEYOND_NINE_GUIDANCE)
+            return null
+          }
+          return { refs: [...current.refs, slot] }
+        })
       } catch (error) {
         setNotice(`The reference could not be added: ${error instanceof Error ? error.message : String(error)}`)
       }
     })()
-  }, [sessionChain, patchSettings])
+  }, [patchSettings])
 
   // The anchored source: bytes land through the blob ingest so the path is
   // uploadable (an object URL is not a filesystem path).
@@ -375,14 +404,19 @@ function WorkbenchSurface() {
       const raw = window.localStorage.getItem('h3img-poserig-handoff')
       if (!raw) return
       const parsed = JSON.parse(raw) as { path: string; name: string }
-      const current = readSessionSettings(sessionChain.settings)
-      if (current.refs.length >= 9) {
-        window.localStorage.removeItem('h3img-poserig-handoff')
-        setNotice(BEYOND_NINE_GUIDANCE)
-        return
-      }
       window.localStorage.removeItem('h3img-poserig-handoff')
-      void patchSettings({ refs: [...current.refs, { id: `ref-${Date.now()}`, role: 'pose', transport: null, keepOverride: null, note: 'poserig render', source: { kind: 'poserig', path: parsed.path, name: parsed.name } }] }).then((saved) => {
+      // The append derives from the FRESH base at write time: the 9-slot
+      // budget is re-checked there (a full session declines with the
+      // guidance and the key stays consumed — nothing could land), and the
+      // slot rides a refs array that carries every edit that landed while
+      // the handoff was in flight.
+      void patchSettings((current) => {
+        if (current.refs.length >= 9) {
+          setNotice(BEYOND_NINE_GUIDANCE)
+          return null
+        }
+        return { refs: [...current.refs, { id: `ref-${Date.now()}`, role: 'pose', transport: null, keepOverride: null, note: 'poserig render', source: { kind: 'poserig', path: parsed.path, name: parsed.name } }] }
+      }).then((saved) => {
         if (!saved) window.localStorage.setItem('h3img-poserig-handoff', raw)
       })
     } catch {
@@ -958,10 +992,20 @@ function WorkbenchSurface() {
                   <div className="iw-ref-thumb">
                     {slot.source.kind === 'canvas' ? <span className="iw-canvas-tag" title="canvas reference"><Layers size={14} /></span> : slot.source.kind === 'refmod' ? <span className="iw-refmod-tag">RefMod</span> : slot.source.kind === 'poserig' ? <span className="iw-poserig-tag">rig</span> : null}
                   </div>
-                  <select value={slot.role} data-iw-ref-role={index} onChange={(event) => void patchSettings({ refs: settings.refs.map((entry, i) => i === index ? { ...entry, role: event.target.value as H3ImgRefRole } : entry) })} aria-label={`Reference ${index + 1} role`}>
+                  <select value={slot.role} data-iw-ref-role={index} onChange={(event) => {
+                    // The choice is captured EAGERLY: a functional patch runs
+                    // at flush time, after React has restored the controlled
+                    // select to its (pre-write) prop value — dereferencing
+                    // event.target there would read the stale DOM value back.
+                    const value = event.target.value as H3ImgRefRole
+                    void patchSettings((current) => ({ refs: current.refs.map((entry, i) => i === index ? { ...entry, role: value } : entry) }))
+                  }} aria-label={`Reference ${index + 1} role`}>
                     {ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
                   </select>
-                  <select value={slot.transport ?? 'auto'} data-iw-ref-transport={index} onChange={(event) => void patchSettings({ refs: settings.refs.map((entry, i) => i === index ? { ...entry, transport: event.target.value === 'auto' ? null : event.target.value as 'native' | 'semantic', transportOverride: event.target.value !== 'auto' } : entry) })} aria-label={`Reference ${index + 1} transport`}>
+                  <select value={slot.transport ?? 'auto'} data-iw-ref-transport={index} onChange={(event) => {
+                    const value = event.target.value
+                    void patchSettings((current) => ({ refs: current.refs.map((entry, i) => i === index ? { ...entry, transport: value === 'auto' ? null : value as 'native' | 'semantic', transportOverride: value !== 'auto' } : entry) }))
+                  }} aria-label={`Reference ${index + 1} transport`}>
                     <option value="auto">auto ({TRANSPORT_FOR_ROLE[slot.role]})</option>
                     <option value="native">native</option>
                     <option value="semantic">semantic</option>
@@ -976,9 +1020,12 @@ function WorkbenchSurface() {
                     placeholder="keep"
                     data-iw-ref-keep={index}
                     title="Per-picture Keep override (empty = the global dial)"
-                    onChange={(event) => void patchSettings({ refs: settings.refs.map((entry, i) => i === index ? { ...entry, keepOverride: event.target.value === '' ? null : Number(event.target.value) } : entry) })}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      void patchSettings((current) => ({ refs: current.refs.map((entry, i) => i === index ? { ...entry, keepOverride: value === '' ? null : Number(value) } : entry) }))
+                    }}
                   />
-                  <button type="button" className="iw-ref-remove" aria-label={`Remove reference ${index + 1}`} onClick={() => void patchSettings({ refs: settings.refs.filter((_entry, i) => i !== index) })}>×</button>
+                  <button type="button" className="iw-ref-remove" aria-label={`Remove reference ${index + 1}`} onClick={() => void patchSettings((current) => ({ refs: current.refs.filter((_entry, i) => i !== index) }))}>×</button>
                 </div>
               ))}
               {settings.refs.length < 9 && (
@@ -1002,14 +1049,20 @@ function WorkbenchSurface() {
             <small>Slot 1 rides the form adapter first (cross-form safety) when its node pack is installed.</small>
             {settings.loras.map((lora, index) => (
               <div className="iw-lora-slot" key={index} data-iw-lora-slot={index}>
-                <select value={lora.name} data-iw-lora-name={index} onChange={(event) => void patchSettings({ loras: settings.loras.map((entry, i) => i === index ? { ...entry, name: event.target.value } : entry) })} aria-label={`LoRA ${index + 1}`}>
+                <select value={lora.name} data-iw-lora-name={index} onChange={(event) => {
+                  const value = event.target.value
+                  void patchSettings((current) => ({ loras: current.loras.map((entry, i) => i === index ? { ...entry, name: value } : entry) }))
+                }} aria-label={`LoRA ${index + 1}`}>
                   <option value="">— none —</option>
                   {sessionState.models.filter((model) => model.kind === 'loras').map((model) => <option key={model.name} value={model.name}>{model.name}</option>)}
                 </select>
-                <input type="number" min={0} max={2} step={0.05} value={lora.strength} data-iw-lora-strength={index} onChange={(event) => void patchSettings({ loras: settings.loras.map((entry, i) => i === index ? { ...entry, strength: Number(event.target.value) } : entry) })} aria-label={`LoRA ${index + 1} strength`} />
+                <input type="number" min={0} max={2} step={0.05} value={lora.strength} data-iw-lora-strength={index} onChange={(event) => {
+                  const value = event.target.value
+                  void patchSettings((current) => ({ loras: current.loras.map((entry, i) => i === index ? { ...entry, strength: Number(value) } : entry) }))
+                }} aria-label={`LoRA ${index + 1} strength`} />
               </div>
             ))}
-            {settings.loras.length < 2 && <button type="button" data-iw-lora-add onClick={() => void patchSettings({ loras: [...settings.loras, { name: '', strength: 1 }] })}>+ LoRA slot</button>}
+            {settings.loras.length < 2 && <button type="button" data-iw-lora-add onClick={() => void patchSettings((current) => ({ loras: [...current.loras, { name: '', strength: 1 }] }))}>+ LoRA slot</button>}
           </div>
 
           <div className="iw-row">
@@ -1140,7 +1193,7 @@ function WorkbenchSurface() {
                       className={`iw-frame ${frame.index === pick ? 'picked' : ''} ${provenance?.scorer && provenance.scorer.bestIndex === frame.index ? 'scorer' : ''}`}
                       data-iw-frame={frame.index}
                       title={provenance?.scorer && provenance.scorer.bestIndex === frame.index ? `Scorer pick — ${provenance.scorer.reason}` : `Frame ${frame.index + 1} — click to pick`}
-                      onClick={() => void patchSettings({ framePicks: { ...settings.framePicks, [take.id]: frame.index } }).then(() => setSelectedTakeId(take.id))}
+                      onClick={() => void patchSettings((current) => ({ framePicks: { ...current.framePicks, [take.id]: frame.index } })).then(() => setSelectedTakeId(take.id))}
                     >
                       {url ? <img src={url} alt={`Frame ${frame.index + 1}`} /> : <span className="iw-frame-evicted">evicted</span>}
                     </button>
@@ -1167,12 +1220,20 @@ function WorkbenchSurface() {
               setCanvasPickerOpen(false)
               return
             }
-            const current = readSessionSettings(sessionChain.settings)
-            if (current.refs.length >= 9) {
+            // The full-strip fast path keeps the picker open (the flush
+            // re-checks the budget against fresh state — the structural
+            // guard lives there, not here).
+            if (readSessionSettings(sessionChain.settings).refs.length >= 9) {
               setNotice(BEYOND_NINE_GUIDANCE)
               return
             }
-            await patchSettings({ refs: [...current.refs, { id: `ref-${Date.now()}`, role: 'subject', transport: null, keepOverride: null, note: 'canvas take', source: { kind: 'canvas', outputId, takeId } }] })
+            await patchSettings((current) => {
+              if (current.refs.length >= 9) {
+                setNotice(BEYOND_NINE_GUIDANCE)
+                return null
+              }
+              return { refs: [...current.refs, { id: `ref-${Date.now()}`, role: 'subject', transport: null, keepOverride: null, note: 'canvas take', source: { kind: 'canvas', outputId, takeId } }] }
+            })
             setCanvasPickerOpen(false)
           }}
         />
