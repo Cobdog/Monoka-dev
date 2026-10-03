@@ -1,8 +1,8 @@
-# Component Vocabulary Implementation Plan (r2)
+# Component Vocabulary Implementation Plan (r3)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**r2 (2026-10-03):** Codex plan review verdict REWORK — 12 findings (P01–P12) + 2 contract gaps, all folded: live-selector deletion prevented (P01), no invented colors (P02), reactive dock ranks (P03), Playwright-for-browser-behavior + CI mappings (P04), the ownership mechanism precedes and spans all dialog layers (P05), chip geometry truly local (P06), ToastHost via adapter (P07), provenance origin/outcome separated (P08), the canonical `pnpm gate` (P09), three-column acceptance (P10), domain-qualified statusToken (P11), stylelint scope recorded (P12), crop busy-dismissal uniform (C1), handoff write/refresh states independent (C2).
+**r3 (2026-10-03):** r2 Codex re-review APPROVE-AFTER-CORRECTIONS — folded: StudioDialog integration + real consumer + double-Escape prevention moved INTO task 10 (which previously tested a hook that didn't exist yet); origin allows the no-override case (`auto`) with the attempted pick's origin distinguished from the effective fallback's; dead-CSS checks search normalized CLASS TOKENS (composed strings included) with dependency inspection before any death declaration; independent toggles are pressed buttons (`aria-pressed`), exclusive groups carry the radiogroup contract; per-suite build prerequisites (server suites need fresh server output); vision = `scripts/vision-e2e/scenarios.ts` + the JUDGE.md pass + `pnpm vision:report <bundle>`; token verification cross-checks CSS declarations, not a hand-maintained constant. **r2 (2026-10-03):** the REWORK round — 12 findings (P01–P12) + 2 contract gaps, folded as recorded in the r2 commit (33634e0).
 
 **Goal:** Collapse the webui's hand-rolled UI duplication into one dependable shared component kit — in the current skin — per the locked spec (r3).
 
@@ -15,7 +15,7 @@
 ## Global Constraints
 
 - **No new theming or colors**: every color comes from an EXISTING token at the pinned revision (P02). No new literal font-sizes; the `--text-*` ramp rules.
-- **Test placement** (P04): vitest runs `environment: 'node'` — unit suites test PURE models (maps, class math, state reducers) only; EVERY browser-behavior assertion (focus, Tab, arrows, computed styles, roles) is a Playwright test in `e2e/*.spec.ts`. **Every new unit suite is registered in `scripts/ci-map.cjs`** in the same commit that creates it. Dist-dependent unit checks require a fresh `pnpm build:web` first.
+- **Test placement** (P04): vitest runs `environment: 'node'` — unit suites test PURE models (maps, class math, state reducers) only; EVERY browser-behavior assertion (focus, Tab, arrows, computed styles, roles) is a Playwright test in `e2e/*.spec.ts`. **Every new unit suite is registered in `scripts/ci-map.cjs`** in the same commit that creates it. **Build prerequisites are per-suite** (r3 correction): web-dist-dependent checks need a fresh `pnpm build:web`; server-output-dependent suites need a fresh server build — per docs/agent/testing.md's build-before-dependent-units doctrine.
 - **Never-shared list** (spec §1.3, extended by P07): components receive data and actions as props; adapters own store connections. StatusRing visual; fat docks; combobox/palette merge; prototypes + the pose-rig AUTHORING surface; **domain resolution and operation orchestration**.
 - **Selection contract** (spec §0.3): exclusive groups = radiogroup roles + aria-checked + roving tabindex + arrow-key selection + group-as-one Tab exit — verified in Playwright.
 - **Keyboard ownership** (spec §0.2) — ONE mechanism spanning StudioDialog instances, hook overlays, and popovers (P05): a module-level layer registry keyed by identity with register/unregister supporting NON-TOP removal; one Escape closes exactly the topmost registered layer; window-level listeners participate through registration, not independently.
@@ -44,7 +44,7 @@
 **Interfaces:** Produces the enumeration every migration step uses + task 24's acceptance columns.
 
 - [ ] **Step 1** — pin `git rev-parse main` post-remediation-merge at the top.
-- [ ] **Step 2** — enumerate per spec §2.0 seeds, with THREE verification columns (P10): `retired selectors` (grep → target ZERO after absorption), `retained geometry selectors` (grep → target PRESENT; tone rules deleted, shape rules stay), `behavior tests` (test ids). Dead-CSS candidates get a **consumer-check column** (P01): a selector is dead ONLY if zero TSX/TS references exist at the pinned revision — verify by grepping the SELECTOR STRING across src/**/*.{ts,tsx} including `popupClassName`/`className` template literals. **Known live (do NOT list as dead): `.clip-modal`** (FetchBrowser.tsx:212 uses it in `popupClassName="clip-modal fetch-consent-modal"`). The dead list seeds: `.notice`, `.mode-tabs`, `.nav-button`/`.sidebar`/`.app-shell`/`.titlebar` grid, the mobile-sidebar block, consumerless `.progress` — each carrying its consumer-check result.
+- [ ] **Step 2** — enumerate per spec §2.0 seeds, with THREE verification columns (P10): `retired selectors` (grep → target ZERO after absorption), `retained geometry selectors` (grep → target PRESENT; tone rules deleted, shape rules stay), `behavior tests` (test ids). Dead-CSS candidates get a **consumer-check column** (P01, r3-corrected): search NORMALIZED CLASS TOKENS, not dotted selector strings — CSS `.clip-modal` appears in JSX as the bare token `clip-modal`, including inside composed strings like `popupClassName="clip-modal fetch-consent-modal"`; tokenize `className`/`popupClassName`/template-literal values and match tokens. Zero direct token references makes a rule a **deletion CANDIDATE only** — then inspect the rule for selector dependencies (compound selectors, `:has()`, attribute selectors referencing it) before declaring it dead. **Known live (never a candidate): `clip-modal`** (FetchBrowser.tsx:212). The dead-list seeds: `.notice`, `.mode-tabs`, `.nav-button`/`.sidebar`/`.app-shell`/`.titlebar` grid, the mobile-sidebar block, consumerless `.progress` — each carrying its consumer-check result.
 - [ ] **Step 3** — run every verification column; record actual hits.
 - [ ] **Step 4** — commit.
 
@@ -71,7 +71,7 @@
 **Files:** Create `src/ui/statusToken.ts`; modify the four map sites; Test: `tests/statusToken.test.js` (pure map — node-appropriate) + scoped Playwright for rendering.
 **Interfaces:** `statusToken(status: DomainStatus): { fg: string; bg: string }` where `DomainStatus` is a DISCRIMINATED union per domain (P11): `TileStatus | ConnectionStatus | DoctorSeverity | InstallStatus` — no bare string union. Adapters normalize where domains share words; where current skins intentionally DIFFER (timeline running = accent vs tile ring = info), the adapter preserves the difference and a table in the file documents each intentional divergence (no forced equality).
 
-- [ ] **Steps** — failing unit test (per-domain entries return DEFINED token names — verified against a token-name list imported from a shared constant, not just `^--`; the divergence table is exhaustive) → implement + the token-definitions constant → migrate the four sites (tile ring keeps its component; sources colors) → scoped Playwright: each domain's rendered states → suites; commit.
+- [ ] **Steps** — failing unit test (per-domain entries return token names **verified against actual CSS declarations** — the test parses `src/styles.css`'s `:root` block at run time, so membership proves the token is DEFINED, not merely listed in a hand-maintained constant; the divergence table is exhaustive) → implement → migrate the four sites (tile ring keeps its component; sources colors) → scoped Playwright: each domain's rendered states (browser-computed values as the final authority) → suites; commit.
 
 ### Task 5: The stylelint guard (scope recorded)
 
@@ -82,9 +82,9 @@
 ### Task 6: The chip system + selection semantics
 
 **Files:** Create `src/ui/Chip.tsx`; `src/styles.css` (tone/state recipe classes ONLY: `.chip--{tone}`, `.chip--selected`, `.chip--busy` — color, background, border-color via color-mix on tokens. **NO padding/radius/font in the shared classes** — P06: geometry (padding, radius, font-size) stays in the consuming surface's own class applied alongside); Test: `tests/chip-classes.test.js` (pure class-mapping, node) + `e2e/settings.spec.ts` + `e2e/canvas.spec.ts` extensions (ALL keyboard behavior).
-**Interfaces:** `Chip({ tone, variant, selected, busy, className, children, id })` — className MERGES surface geometry; `<ChipGroup exclusive aria-label onChange>{children}</ChipGroup>` — controlled selection (`value` + `onChange(next)`), roving tabindex, Arrow keys move selection, Tab exits as one unit; icon-only chips require `aria-label`.
+**Interfaces:** `Chip({ tone, variant, selected, busy, className, children, id })` — className MERGES surface geometry; `<ChipGroup exclusive aria-label onChange>{children}</ChipGroup>` — controlled selection (`value` + `onChange(next)`), roving tabindex, Arrow keys move selection, Tab exits as one unit; icon-only chips require `aria-label`. **Toggle semantics (r3): independent toggles render as PRESSED BUTTONS** — `<button aria-pressed>` with Space/Enter activation — NOT aria-checked (which requires a checkbox/radio role); `aria-checked` + the radiogroup contract belong to EXCLUSIVE groups only.
 
-- [ ] Steps — failing Playwright FIRST (BottomBar lanes post-migration: ArrowRight moves selection AND focus; Tab from any chip exits the group; non-exclusive toggles flip aria-checked) + failing node class-map test → implement → migrate manifest batch 1 (first row `canvas-chip` fully worked: tone rules deleted from canvas.css, geometry rule retained, classes composed) → mechanical transform for the rest → suites; commit.
+- [ ] Steps — failing Playwright FIRST (BottomBar lanes post-migration: ArrowRight moves selection AND focus; Tab from any chip exits the group; non-exclusive toggles flip `aria-pressed` on Space/Enter) + failing node class-map test → implement → migrate manifest batch 1 (first row `canvas-chip` fully worked: tone rules deleted from canvas.css, geometry rule retained, classes composed) → mechanical transform for the rest → suites; commit.
 
 ### Task 7: The Button API
 
@@ -103,12 +103,12 @@
 **Interfaces (P07):** `ToastHost({ toasts, onDismiss, placement })` — PURE props; `toastAdapter` connects the existing canvas zustand store (timeouts: error 15s / other 4.2s; dismissal) and renders `<ToastHost {...}/>`. Canvas mounts the adapter (behavior unchanged); WorkbenchApp mounts the adapter with `placement="bottom-right"` (the inline copy dies). `NoticeBanner({ tone, role: 'status'|'alert', onDismiss? })` — the × owns its handler.
 - [ ] Failing Playwright (roles, placement, × handler, datasets banners announce) → implement → migrate → dead-selector deletion (manifest's consumer-checked list ONLY) → suites; commit.
 
-### Task 10: The layer-ownership registry (before any dialog migration)
+### Task 10: The layer-ownership registry + StudioDialog integration (before any dialog migration)
 
-**Files:** Create `src/ui/layerRegistry.ts`; Test: `tests/layerRegistry.test.js` (pure registry mechanics — node-appropriate: push/pop/non-top removal/identity) + Playwright integration.
-**Interfaces:** `registerLayer({ id, modal, onEscape }): () => unregister` — identity-keyed; removal of NON-top entries supported; `topmostLayer()`; window-keydown listeners route through the registry (one global listener; registered layers' Escape rules: topmost-only close). StudioDialog integration: a wrapper (task 11) registers on open. This is the ONE mechanism (P05).
+**Files:** Create `src/ui/layerRegistry.ts`, `src/ui/StudioDialogLayered.tsx` (the wrapper every registry-participating dialog uses); Modify `src/ui/StudioDialog.tsx` ONLY IF the wrapper cannot coordinate from outside (prefer the wrapper). Test: `tests/layerRegistry.test.js` (pure registry mechanics — node) + Playwright at a REAL consumer.
+**Interfaces:** `registerLayer({ id, modal, onEscape }): () => unregister` — identity-keyed; removal of NON-top entries supported; `topmostLayer()`; ONE global window keydown listener routes Escape to the topmost registered layer only. **`StudioDialogLayered`** wraps StudioDialog: registers on open, unregisters on close, and **prevents double-Escape handling** (when the registry routes Escape to this layer, the wrapper suppresses Base UI's own outside-press/Escape dismissal for that event — one keystroke, one dismissal path; Base UI's dismissal remains for un-routed paths like outside-press). Real consumer for the tests: `PromptLibraryBrowser` (a current StudioDialog user) wrapped in `StudioDialogLayered`.
 
-- [ ] Steps — failing node tests (ordering incl. non-top removal) → implement → failing Playwright (two hook overlays: Escape closes topmost only) → commit.
+- [ ] Steps — failing node tests (ordering incl. non-top removal) → implement the registry → wrap PromptLibraryBrowser → failing Playwright AT THAT CONSUMER (open it; Escape closes it; open it over a hook-overlay stand-in div registered via the registry API directly in the test; Escape closes ONLY the topmost — the nested dialog/overlay ownership case, Review Focus #1's mechanism) → suites; commit. (Hook overlays themselves migrate at task 14 when the hook exists.)
 
 ### Task 11: Reactive dock ranks + the z-band (replaces local-state retention)
 
@@ -159,7 +159,7 @@
 ### Task 19: The effective-setting row (origin ≠ outcome)
 
 **Files:** Create `src/ui/EffectiveSettingRow.tsx`; consumer the properties dial rows.
-**Interfaces (P08):** `EffectiveSettingRow({ label, value, origin: 'node'|'chain'|'global', outcome: 'resolved'|'auto'|'inferred'|'refused'|'degraded'|'migrated', onReset? })` — the RESOLVER supplies both, jointly (a refused global pick = origin 'global' + outcome 'refused'); the row renders, never resolves. `onReset` absent → read-only.
+**Interfaces (P08, r3-corrected):** `EffectiveSettingRow({ label, value, origin, attempt?, onReset? })` where **`origin: { kind: 'override', level: 'node'|'chain'|'global' } | { kind: 'auto' }`** — `auto` is the resolver's no-override state ({state:'auto'} at modelOverrides.ts:354-358 maps here WITHOUT fabricating a level — the row shows "auto/default", no origin chip) — and **`attempt?: { level: 'node'|'chain'|'global'; outcome: 'refused'|'degraded' }`** carries the ATTEMPTED pick separately from the effective fallback (a refused global pick renders: effective = auto (or the surviving lower override), attempt = global/refused). The resolver supplies all fields; the row renders, never resolves. `onReset` present only when `origin.kind === 'override'` at the row's owned level.
 - [ ] Failing Playwright — Review Focus #3 AT THE REAL CONSUMER: set a chain override over a global; reset the chain row; global value+origin revealed; the global SETTING unchanged (assert via the settings API). Refused/degraded origins render their outcome chips. → Implement → migrate → suites; commit.
 
 ### Task 20: SaveStatus
@@ -189,7 +189,7 @@
 
 - [ ] Manifest columns re-run: retired selectors → ZERO; retained geometry → PRESENT; behavior tests → green.
 - [ ] `grep -rn "window.confirm\|window.prompt" src/` → zero.
-- [ ] **`pnpm gate`** (canonical: license audit, fresh builds, server smoke, full suites, capture) — quote the tail. **The judged visual pass runs as its own explicit step** (`pnpm test:registry`-adjacent judge command per docs/agent/testing.md) with the report linked — capture success and visual judgment kept distinct (P09).
+- [ ] **`pnpm gate`** (canonical: license audit, fresh builds, server smoke, full suites, capture) — quote the tail. **The judged visual pass (r3 mechanics): scenarios live in `scripts/vision-e2e/scenarios.ts`; the judge executes the instructions at `scripts/vision-e2e/JUDGE.md`; the report lands via `pnpm vision:report <bundle>`** — capture success and visual judgment kept distinct (P09); the gallery's scenarios join `scenarios.ts` at task 23.
 - [ ] CI both legs deliberately dispatched; run links recorded. Round closes through the maintainer's audit gate.
 
 ---
