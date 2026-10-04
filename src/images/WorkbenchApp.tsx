@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { ImagePlus, Layers, LoaderCircle, Lock, Send, Settings, Sparkles, Wand2 } from 'lucide-react'
+import { Button } from '../ui/Button'
 import { useStudioSession } from '../hooks/useStudioSession'
 import { useGenerationQueue } from '../hooks/useGenerationQueue'
 import { useLivePreview } from '../lib/useLivePreview'
@@ -1153,17 +1154,19 @@ function WorkbenchSurface() {
             <span>semantic overflow <em>experimental</em></span>
           </label>
 
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size={13}
             className="iw-generate"
             data-iw-generate
-            disabled={busy || !detectionOf(settings.family)?.available}
+            busy={busy}
+            disabled={!detectionOf(settings.family)?.available}
             title={detectionOf(settings.family)?.available ? 'Generate' : (detectionOf(settings.family)?.missingModels.join('; ') || detectionOf(settings.family)?.missingNodes.join('; ') || 'unavailable')}
+            icon={<Sparkles size={13} />}
             onClick={() => void generate()}
           >
-            {busy ? <LoaderCircle className="spin" size={13} /> : <Sparkles size={13} />}
             Generate {family?.profile === 't1' ? '(T=1 fast — structurally soft)' : family?.profile === 'sharp' ? `(fast-sharp — ${settings.tier}-frame context, one slice)` : `(${family?.kind === 'generate-directed' ? '39-frame packet' : packetTierLabel(settings.tier, studioPackOnEngine)})`}
-          </button>
+          </Button>
           <p className="iw-staging-note" data-iw-staging>Staging: Generate → free → Refine/Burst → free → Exit (24 GB discipline — stages never run concurrently).</p>
 
           <div className="iw-handoffs" data-iw-handoffs>

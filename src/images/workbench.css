@@ -115,7 +115,7 @@
 .iw-overflow { display: flex; gap: 6px; align-items: center; font-size: 10px; color: var(--muted); }
 .iw-overflow em { font-size: 9px; border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent); color: var(--danger); padding: 0 5px; border-radius: 999px; font-style: normal; }
 
-.iw-generate { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-weight: 700; cursor: pointer; font-size: var(--text-sm); }
+.iw-generate { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px; border-radius: 10px; border-width: 1px; border-style: solid; border-color: color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-weight: 700; cursor: pointer; font-size: var(--text-sm); }
 .iw-generate:disabled { opacity: 0.55; cursor: default; }
 .iw-generate .spin { animation: iw-spin 1s linear infinite; }
 .iw-staging-note { margin: 0; font-size: var(--text-md); color: var(--muted); }

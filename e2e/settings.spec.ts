@@ -631,3 +631,53 @@ test('M13: no empty-jobs POST on boot — the 400-every-fresh-boot fix', async (
   await page.waitForTimeout(2500)
   expect(emptyPosts, 'no empty-jobs POST fires on boot').toBe(0)
 })
+
+// Button busy (component vocabulary task 7, k2q0n9s — manifest §2's named
+// test): busy = LoaderCircle + aria-busy + disabled, at a REAL busy site.
+// The engine Test-connection button is held mid-flight by hanging its
+// /api/lan/comfy-status request at the route layer — the busy state is
+// deterministic, not a race with a fast probe. The focus leg pins the
+// keyboard focus ring on the same button (the global button:focus-visible
+// rule — Button must not lose it).
+test('button: busy = LoaderCircle + aria-busy + disabled', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await openSettings(page)
+
+  const testButton = page.locator('[data-settings-section="engine"] .connection-row button', { hasText: 'Test connection' })
+  // Rest state: enabled, no aria-busy, the resting icon (no spinner), and
+  // the Button recipe classes composed under the surface dialect class.
+  await expect(testButton).toBeEnabled()
+  await expect(testButton).not.toHaveAttribute('aria-busy')
+  await expect(testButton.locator('.spin')).toHaveCount(0)
+  await expect(testButton).toHaveClass(/(^|\s)btn btn--secondary(\s|$)/)
+
+  // Focus leg: keyboard focus (Tab from the URL input) shows the focus ring.
+  await page.locator('#comfy-url').click()
+  await page.keyboard.press('Tab')
+  await expect(testButton).toBeFocused()
+  expect(await testButton.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('solid')
+
+  // Hold the manual check mid-flight; the button enters busy.
+  let release!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/lan/comfy-status**', async (route) => {
+    await held
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ connected: false }) })
+  })
+  await testButton.click()
+  await expect(testButton).toHaveAttribute('aria-busy', 'true')
+  await expect(testButton).toBeDisabled()
+  await expect(testButton.locator('.spin')).toHaveCount(1)
+  await expect(testButton).toHaveClass(/btn--busy/)
+
+  // Release: the check settles, the busy state unwinds (aria-busy removed,
+  // spinner gone, button re-enabled).
+  release()
+  await expect(testButton).not.toHaveAttribute('aria-busy', { timeout: 10_000 })
+  await expect(testButton).toBeEnabled()
+  await expect(testButton.locator('.spin')).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})

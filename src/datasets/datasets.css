@@ -29,13 +29,19 @@
 .ds-toolbar-block h4 { font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 8px; }
 .ds-toolbar-block { display: flex; flex-direction: column; gap: 6px; }
 
-.ds-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); background: color-mix(in srgb, var(--muted) 8%, transparent); color: inherit; cursor: pointer; font-size: var(--text-2xs); }
-.ds-btn:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-.ds-btn.primary { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); font-weight: 700; }
-.ds-btn.ghost { border-color: transparent; background: none; color: var(--muted); }
+/* ds-btn — the button recipes' first family, worked fully (task 7, k2q0n9s):
+   GEOMETRY ONLY now. The tone/state rules moved VERBATIM to the .btn recipes
+   in src/styles.css (base/hover/:disabled → .btn/.btn--secondary, primary →
+   .btn--primary, ghost → .btn--ghost, danger → .btn--danger); every consumer
+   composes them through <Button variant=… className="ds-btn">. The old
+   `border:` shorthand became width/style LONGHANDS on purpose — the shorthand
+   resets border-color to currentcolor and, at (0,1,0) in this later-loading
+   sheet, silently beats the recipes (T6's C1 hazard; the net in
+   tests/button-classes.test.js (h) holds this line). The primary variant's
+   font-weight is surface-owned state geometry (P06 — the chip I1 precedent). */
+.ds-btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-width: 1px; border-style: solid; border-radius: 8px; cursor: pointer; font-size: var(--text-2xs); }
+.ds-btn.btn--primary { font-weight: 700; }
 .ds-btn.small { padding: 2px 7px; font-size: 10px; }
-.ds-btn.danger { border-color: color-mix(in srgb, var(--danger) 40%, transparent); color: var(--danger); }
-.ds-btn:disabled { opacity: 0.5; cursor: default; }
 
 .ds-search { display: flex; align-items: center; gap: 6px; border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 8px; padding: 4px 8px; }
 .ds-search input { background: none; border: none; color: inherit; outline: none; width: 100%; font-size: var(--text-2xs); }

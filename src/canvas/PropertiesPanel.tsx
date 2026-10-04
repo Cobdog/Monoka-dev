@@ -21,7 +21,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Rnd } from 'react-rnd'
-import { Captions, Clock3, Dices, LoaderCircle, Play, Sparkles, Square, Star, Volume2, WandSparkles, X } from 'lucide-react'
+import { Captions, Clock3, Dices, Play, Sparkles, Square, Star, Volume2, WandSparkles, X } from 'lucide-react'
+import { Button } from '../ui/Button'
 import { SmartPromptEditor, type SmartPromptEditorHandle } from '../components/SmartPromptEditor'
 import { StructuredPromptEditor } from '../components/StructuredPromptEditor'
 import { PromptLibraryBrowser } from '../components/PromptLibraryBrowser'
@@ -1071,17 +1072,17 @@ export function PropertiesPanel() {
           )}
           {draft.promptMode === 'freeform' && (
             <>
-              <button type="button" data-canvas-prompt-tool="enhance" disabled={!llmAvailable || Boolean(promptingTool)} title={!llmAvailable ? 'Connect a local text model (llama.cpp router or Ollama) in Settings — nothing leaves this workstation' : 'Rewrite the prompt for stronger MiniMax video direction'} onClick={() => void runPromptTool('enhance')}>
-                {promptingTool === 'enhance' ? <LoaderCircle size={12} className="spin" /> : <WandSparkles size={12} />} enhance
-              </button>
-              <button type="button" data-canvas-prompt-tool="audio" disabled={!llmAvailable || Boolean(promptingTool)} title={!llmAvailable ? 'Connect a local text model in Settings' : 'Improve ambience, dialogue, and sound cues'} onClick={() => void runPromptTool('audio')}>
-                {promptingTool === 'audio' ? <LoaderCircle size={12} className="spin" /> : <Volume2 size={12} />} audio pass
-              </button>
+              <Button variant="ghost" size={12} data-canvas-prompt-tool="enhance" disabled={!llmAvailable || Boolean(promptingTool)} title={!llmAvailable ? 'Connect a local text model (llama.cpp router or Ollama) in Settings — nothing leaves this workstation' : 'Rewrite the prompt for stronger MiniMax video direction'} onClick={() => void runPromptTool('enhance')} icon={<WandSparkles size={12} />} busy={promptingTool === 'enhance'}>
+                enhance
+              </Button>
+              <Button variant="ghost" size={12} data-canvas-prompt-tool="audio" disabled={!llmAvailable || Boolean(promptingTool)} title={!llmAvailable ? 'Connect a local text model in Settings' : 'Improve ambience, dialogue, and sound cues'} onClick={() => void runPromptTool('audio')} icon={<Volume2 size={12} />} busy={promptingTool === 'audio'}>
+                audio pass
+              </Button>
             </>
           )}
-          <button type="button" data-canvas-prompt-tool="timeline" disabled={!llmAvailable || Boolean(promptingTool)} title={!llmAvailable ? 'Connect a local text model in Settings' : 'Retired 2026-09-18: fills the structured editor\'s Flow box with timed beats (no longer appends prompt text)'} onClick={() => void runPromptTool('timeline')}>
-            {promptingTool === 'timeline' ? <LoaderCircle size={12} className="spin" /> : <Clock3 size={12} />} timeline → Flow
-          </button>
+          <Button variant="ghost" size={12} data-canvas-prompt-tool="timeline" disabled={!llmAvailable || Boolean(promptingTool)} title={!llmAvailable ? 'Connect a local text model in Settings' : 'Retired 2026-09-18: fills the structured editor\'s Flow box with timed beats (no longer appends prompt text)'} onClick={() => void runPromptTool('timeline')} icon={<Clock3 size={12} />} busy={promptingTool === 'timeline'}>
+            timeline → Flow
+          </Button>
           <button type="button" data-canvas-prompt-library title="Search public Civitai generation metadata for reusable prompts" onClick={() => setLibraryOpen(true)}>
             <Sparkles size={12} /> library
           </button>
@@ -1326,17 +1327,18 @@ export function PropertiesPanel() {
               <span className="chip chip--accent canvas-properties-ref-tag">&lt;Picture {index + 1}&gt;</span>
               <span className="canvas-properties-ref-label">{binding.label}</span>
               {binding.file.kind === 'image' && (
-                <button
-                  type="button"
+                <Button
+                  variant="icon"
+                  size={11}
                   className="canvas-properties-ref-caption"
                   data-canvas-reference-caption={index}
                   disabled={captioningIndex !== null}
                   title={captioningIndex === index ? 'Describing with the local vision model…' : 'Describe this picture with the local vision model; the description inserts into the prompt'}
                   aria-label={`Caption ${binding.label}`}
+                  icon={<Captions size={11} />}
+                  busy={captioningIndex === index}
                   onClick={() => void captionReference(index)}
-                >
-                  {captioningIndex === index ? <LoaderCircle size={11} className="spin" /> : <Captions size={11} />}
-                </button>
+                />
               )}
             </li>
           ))}

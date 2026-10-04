@@ -9,6 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Database, Download, FolderOpen, Layers, LoaderCircle, Pin, Plus, RefreshCw, Search, Settings, Sparkles, Trash2, Upload, Video } from 'lucide-react'
+import { Button } from '../ui/Button'
 import { datasetsApi, mediaUrlFor, type AspectEntry, type DashboardPayload, type DatasetSettings, type ExportResultPayload, type LibraryLayer, type LibrarySource } from './api'
 import { useStudioSession } from '../hooks/useStudioSession'
 import { submitH3DiagnosticPair } from '../lib/h3Diagnostics'
@@ -346,10 +347,10 @@ function DatasetsSurface() {
         {/* (R-21, Wave 3) Settings reachability: this surface mounts its own
             session host now, so the docked panel opens HERE — no navigation,
             the dataset view is never replaced (audit M7's fix). */}
-        <button type="button" className="ds-btn ghost" data-ds-settings-button onClick={() => useCanvasStore.getState().setSettingsDock(true)} title="Settings — docked right here (R-21: opening it never leaves this surface)"><Settings size={13} /></button>
+        <Button variant="ghost" className="ds-btn" data-ds-settings-button aria-label="Settings" onClick={() => useCanvasStore.getState().setSettingsDock(true)} title="Settings — docked right here (R-21: opening it never leaves this surface)"><Settings size={13} /></Button>
         {settings && <span className="ds-trigger" title="Dataset trigger token">trigger: <code>{settings.triggerToken || '(unset)'}</code></span>}
         <span className={`ds-rife ${rifeAvailable ? 'ok' : ''}`} title={rifeAvailable ? 'rife-ncnn-vulkan detected — preferred interpolator' : 'rife-ncnn-vulkan absent — minterpolate fallback (A1 final)'}>{rifeAvailable ? 'RIFE' : 'minterpolate'}</span>
-        <button type="button" className="ds-btn ghost" title="Refresh — also clears the error banner (a user-initiated refresh)" onClick={() => void refresh({ clearError: true })}><RefreshCw size={13} /></button>
+        <Button variant="ghost" className="ds-btn" aria-label="Refresh" title="Refresh — also clears the error banner (a user-initiated refresh)" onClick={() => void refresh({ clearError: true })}><RefreshCw size={13} /></Button>
       </div>
     </header>
 
@@ -360,10 +361,10 @@ function DatasetsSurface() {
       <aside className="ds-toolbar">
         <div className="ds-toolbar-block">
           <h4>Import</h4>
-          <button type="button" className="ds-btn" onClick={() => fileInput.current?.click()}><Upload size={13} /> Upload from LAN</button>
+          <Button variant="secondary" className="ds-btn" onClick={() => fileInput.current?.click()}><Upload size={13} /> Upload from LAN</Button>
           <input ref={fileInput} type="file" accept="video/*,image/*" multiple hidden onChange={(event) => void ingestFiles(event.target.files)} />
-          <button type="button" className="ds-btn" onClick={() => void ingestByPath()}><FolderOpen size={13} /> Reference a file</button>
-          <button type="button" className="ds-btn" onClick={() => void ingestFromCanvas()}><Camera size={13} /> From canvas take</button>
+          <Button variant="secondary" className="ds-btn" onClick={() => void ingestByPath()}><FolderOpen size={13} /> Reference a file</Button>
+          <Button variant="secondary" className="ds-btn" onClick={() => void ingestFromCanvas()}><Camera size={13} /> From canvas take</Button>
         </div>
         <div className="ds-toolbar-block">
           <h4>Search &amp; filter</h4>
@@ -381,24 +382,24 @@ function DatasetsSurface() {
         </div>
         <div className="ds-toolbar-block">
           <h4>Curation</h4>
-          <button type="button" className="ds-btn" onClick={() => void runDedup()} disabled={busy}><Layers size={13} /> Dedup pass</button>
+          <Button variant="secondary" className="ds-btn" onClick={() => void runDedup()} disabled={busy}><Layers size={13} /> Dedup pass</Button>
           {dedupState && <p className="ds-hint">{dedupState}</p>}
           {clipConsent && !clipConsent.consented && (
             <p className="ds-hint">
               CLIP embeddings are off (perceptual fallback).{' '}
-              <button type="button" className="ds-btn ghost" onClick={() => void enableClip()} disabled={busy}>
+              <Button variant="ghost" className="ds-btn" onClick={() => void enableClip()} disabled={busy}>
                 Enable CLIP
-              </button>{' '}
+              </Button>{' '}
               — downloads its model ({clipConsent.model}, Apache-2.0) from huggingface.co once, behind this explicit consent.
             </p>
           )}
-          <button type="button" className="ds-btn" onClick={() => void batchVlm('skip')} disabled={busy}><Sparkles size={13} /> Batch VLM (skip hand)</button>
-          <button type="button" className="ds-btn" onClick={() => void batchVlm('queue')} disabled={busy}><Sparkles size={13} /> Batch draft → review queue</button>
+          <Button variant="secondary" className="ds-btn" onClick={() => void batchVlm('skip')} disabled={busy}><Sparkles size={13} /> Batch VLM (skip hand)</Button>
+          <Button variant="secondary" className="ds-btn" onClick={() => void batchVlm('queue')} disabled={busy}><Sparkles size={13} /> Batch draft → review queue</Button>
         </div>
         <div className="ds-toolbar-block">
           <h4>Selection</h4>
           <p className="ds-hint">{selected.size} layer(s) selected</p>
-          <button type="button" className="ds-btn primary" onClick={() => void openExport()}><Download size={13} /> Export…</button>
+          <Button variant="primary" className="ds-btn" onClick={() => void openExport()}><Download size={13} /> Export…</Button>
         </div>
       </aside>
 
@@ -591,7 +592,7 @@ function MasterCard(props: {
       }}
     >
       {source.health === 'missing'
-        ? <div className="ds-poster-missing" data-ds-missing>MISSING<button type="button" className="ds-btn small" onClick={props.onRelink}>Re-link…</button></div>
+        ? <div className="ds-poster-missing" data-ds-missing>MISSING<Button variant="secondary" className="ds-btn small" onClick={props.onRelink}>Re-link…</Button></div>
         : source.kind === 'video'
           ? <video ref={videoRef} src={mediaUrlFor(source.id)} muted loop playsInline preload="metadata" className="ds-poster-media" />
           : <img src={mediaUrlFor(source.id)} alt="" className="ds-poster-media" />}
@@ -613,10 +614,10 @@ function MasterCard(props: {
         {source.probe.fps ? ` · ${source.probe.fps.toFixed(3)}fps` : ' · still'}
       </span>
       <div className="ds-master-actions">
-        <button type="button" className="ds-btn small" onClick={() => props.onEdit(null)}><Plus size={11} /> layer</button>
-        {source.kind === 'video' && <button type="button" className="ds-btn small" onClick={props.onSceneSplit}>split scenes</button>}
-        <button type="button" className="ds-btn small" onClick={props.onAudit}>slow-mo audit</button>
-        <button type="button" className="ds-btn small danger" onClick={props.onTrashSource}><Trash2 size={11} /></button>
+        <Button variant="secondary" className="ds-btn small" onClick={() => props.onEdit(null)}><Plus size={11} /> layer</Button>
+        {source.kind === 'video' && <Button variant="secondary" className="ds-btn small" onClick={props.onSceneSplit}>split scenes</Button>}
+        <Button variant="secondary" className="ds-btn small" onClick={props.onAudit}>slow-mo audit</Button>
+        <Button variant="danger" className="ds-btn small" aria-label="Trash this source" onClick={props.onTrashSource}><Trash2 size={11} /></Button>
       </div>
       {clusters.size > 0 && <p className="ds-cluster-note" data-ds-cluster-note>{clusters.size} cluster group(s) — same-content items are grouped + numbered in the gallery (cross-ratio = bucket diversity, advisory only)</p>}
     </div>
@@ -635,9 +636,9 @@ function MasterCard(props: {
             <span className="ds-layer-caption">{layer.caption?.text?.slice(0, 120) ?? <em>uncaptioned</em>}</span>
           </div>
           <div className="ds-layer-actions">
-            <button type="button" className="ds-btn small" onClick={() => props.onEdit(layer)}>crop/trim</button>
-            <button type="button" className="ds-btn small" onClick={() => props.onCaption(layer)}>caption</button>
-            <button type="button" className="ds-btn small" onClick={() => props.onPin(layer)} title="Pin onto the canvas as a reference asset"><Pin size={11} /></button>
+            <Button variant="secondary" className="ds-btn small" onClick={() => props.onEdit(layer)}>crop/trim</Button>
+            <Button variant="secondary" className="ds-btn small" onClick={() => props.onCaption(layer)}>caption</Button>
+            <Button variant="secondary" className="ds-btn small" aria-label="Pin onto the canvas as a reference asset" onClick={() => props.onPin(layer)} title="Pin onto the canvas as a reference asset"><Pin size={11} /></Button>
             {layer.slowmoDisposition
               ? <span className="ds-disposition">{layer.slowmoDisposition}</span>
               : <select className="ds-disposition-select" defaultValue="" onChange={(event) => event.target.value && props.onSlowMo(layer, event.target.value)} title="Slow-mo disposition (gate 4)">
@@ -659,7 +660,7 @@ function DashboardTab({ payload, onRefresh }: { payload: DashboardPayload | null
   return <div className="ds-dashboard" data-ds-dashboard>
     <header className="ds-section-head">
       <h2>Balance &amp; budget</h2>
-      <button type="button" className="ds-btn ghost" onClick={onRefresh}><RefreshCw size={13} /> refresh</button>
+      <Button variant="ghost" className="ds-btn" onClick={onRefresh}><RefreshCw size={13} /> refresh</Button>
     </header>
     {!payload && <p className="ds-hint">Computing…</p>}
     {payload && <>
@@ -772,7 +773,7 @@ function ExportWizard(props: {
             placeholder="one rare token, e.g. ph0t0r34l — prepended to every caption"
             data-ds-trigger-input
           />
-          <button type="button" className="ds-btn" onClick={() => void saveTrigger()} data-ds-trigger-save>Save</button>
+          <Button variant="secondary" className="ds-btn" onClick={() => void saveTrigger()} data-ds-trigger-save>Save</Button>
         </div>
         {triggerSaved && <p className="ds-status" data-ds-trigger-saved>Trigger saved.</p>}
         <p className="ds-hint">Every caption must start with the trigger exactly once — the gates refuse the export until one is set.</p>
@@ -806,9 +807,9 @@ function ExportWizard(props: {
         <input type="checkbox" checked={acceptWarnings} onChange={(event) => setAcceptWarnings(event.target.checked)} />
         Accept all WARNING-tier gate findings (never the refusing tier) — the explicit accept-all.
       </label>
-      <button type="button" className="ds-btn primary" onClick={run} disabled={busy} data-ds-run-export>
-        {busy ? <LoaderCircle className="spin" size={13} /> : <Download size={13} />} Run gates → bake → export
-      </button>
+      <Button variant="primary" className="ds-btn" size={13} busy={busy} icon={<Download size={13} />} onClick={run} data-ds-run-export>
+        Run gates → bake → export
+      </Button>
     </div>
     {props.result && <div className="ds-export-result" data-ds-export-result>
       <h3>{props.result.written.length} item(s) exported · {props.result.refused.length} refused</h3>
@@ -848,14 +849,14 @@ function TrashTab(props: {
   return <div className="ds-trash" data-ds-trash>
     <header className="ds-section-head">
       <h2>Trash (soft-deleted — restorable)</h2>
-      <button type="button" className="ds-btn danger" onClick={props.onEmpty}>Empty trash (the one real delete — app-owned bytes only)</button>
+      <Button variant="danger" className="ds-btn" onClick={props.onEmpty}>Empty trash (the one real delete — app-owned bytes only)</Button>
     </header>
     {props.trashed.length === 0 && <p className="ds-hint">Trash is empty.</p>}
     {props.trashed.map((entry) => (
       <div key={entry.id} className="ds-trash-row">
         <span>{entry.name}</span>
         <span className="ds-hint">{entry.ingestPath === 'upload' ? 'app-owned bytes (restorable from the trash store)' : 'referenced file — entry only; the original was never touched'} · {entry.layers} layer(s)</span>
-        <button type="button" className="ds-btn small" onClick={() => props.onRestore(entry.id)}>Restore</button>
+        <Button variant="secondary" className="ds-btn small" onClick={() => props.onRestore(entry.id)}>Restore</Button>
       </div>
     ))}
   </div>

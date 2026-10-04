@@ -224,11 +224,42 @@ select { text-overflow: ellipsis; }
 .add-reference:disabled { opacity: .4; cursor: not-allowed; }
 .number-input { height: 38px; padding: 0 10px; }
 .number-input:disabled { opacity: .45; }
+/* ---- Component vocabulary: the button recipes (task 7, k2q0n9s) --------------
+ * Shared tone/state RECIPES for the Button API (src/ui/Button.tsx) —
+ * color, background, border-color (+opacity/cursor state affordances)
+ * ONLY (P06: padding/radius/font/border-width/border-style stay in the
+ * consuming surface's own class composed alongside). The values are the
+ * ds-btn dialect lifted VERBATIM (datasets.css — the plan's named complete
+ * dialect, migrated as the first family: its tone rules moved here, its
+ * geometry stayed there). Closed matrix: the neutral base (+secondary,
+ * the surface-filled neutral — same paint in this skin, grouped so a
+ * future skin can split them), primary, ghost, icon (ghost paint for
+ * icon-only buttons), danger, and the disabled/busy states.
+ *
+ * CASCADE BRIDGE (deliberate): this block sits BEFORE the dialect rules
+ * below (.primary-button/.secondary-button, the structured/prompt-tool
+ * descendant rules in canvas.css, .chip, .iw-generate) so surfaces not yet
+ * absorbed keep painting through their OWN rules wherever they still
+ * declare tone — the spec's named-legacy-recipes bridge between batches.
+ * Absorbed surfaces (ds-btn) carry no tone declarations of their own, so
+ * these recipes own them exclusively. Hover rules render at :hover with
+ * the variant (grouped) so the base hover can never bleed through a
+ * variant, and WITHOUT :not(:disabled) — the source dialect hovers
+ * disabled buttons too; .btn--busy's one deliberate addition over the
+ * disabled look is the progress cursor. The class math that emits these
+ * lives in src/ui/buttonClasses.ts (node-tested against THIS block). */
+.btn, .btn--secondary { border-color: color-mix(in srgb, var(--muted) 35%, transparent); background: color-mix(in srgb, var(--muted) 8%, transparent); color: inherit; }
+.btn:hover, .btn--secondary:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.btn--primary, .btn--primary:hover { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+.btn--ghost, .btn--icon, .btn--ghost:hover, .btn--icon:hover { border-color: transparent; background: transparent; color: var(--muted); }
+.btn--danger, .btn--danger:hover { border-color: color-mix(in srgb, var(--danger) 40%, transparent); color: var(--danger); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn--busy, .btn--busy:disabled { cursor: progress; }
 .primary-button, .secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 0 13px; border-radius: 8px; font-size:var(--text-md); font-weight: 600; text-decoration: none; cursor: pointer; }
-.primary-button { border: 1px solid var(--accent); background: var(--accent); color: var(--accent-ink); }
+.primary-button { border-width: 1px; border-style: solid; border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
 .primary-button:hover:not(:disabled) { background: #d2ff83; }
 .primary-button:disabled { border-color:var(--line-strong); background:var(--line); color: #68716c; cursor: not-allowed; }
-.secondary-button { border: 1px solid var(--line-strong); background: var(--surface-3); color: #d8dfdb; }
+.secondary-button { border-width: 1px; border-style: solid; border-color: var(--line-strong); background: var(--surface-3); color: #d8dfdb; }
 .secondary-button:hover:not(:disabled) { border-color: #56615b; background: #222a26; }
 .secondary-button:disabled { opacity: .5; cursor: not-allowed; }
 
@@ -497,7 +528,9 @@ select { text-overflow: ellipsis; }
 .mode-tabs button:nth-child(4).selected { border-color:color-mix(in srgb, var(--spectrum-violet) 38%, transparent); box-shadow:inset 0 2px 0 color-mix(in srgb, var(--spectrum-violet) 55%, transparent); }
 
 .page-heading > .primary-button:not(:disabled), .settings-heading .primary-button:not(:disabled) {
-  border: 1px solid transparent;
+  border-width: 1px;
+  border-style: solid;
+  border-color: transparent;
   background: linear-gradient(#171d19, #171d19) padding-box, var(--spectrum) border-box;
   color: #f6fff9;
   box-shadow:0 0 18px color-mix(in srgb, var(--spectrum-blue) 10%, transparent);
