@@ -360,3 +360,152 @@ disagreements escalate as protocol events — most interesting here would
 be p03–p06 (if the eye sees keep-list differences where the metrics say
 tie-class, that is a display-pipeline or subtlety question worth
 recording).
+
+## ADDENDUM — the maintainer's blind review, reconciled (2026-10-04)
+
+26 pairs called: 12 tie · 3 right · 2 left · 4 cannot-assess · 5 uncalled (4 of the 5 carry preference-adjacent notes). Responses preserved verbatim below (the no-test-sets directive moved preservation from gpu-review/ into this doc). The maintainer's framing difficulty — "no idea what each pass was supposed to represent" — is recorded as **instrument Amendment 7** (the ledger): every pair's shared-context block must state the QUESTION and WHAT TO JUDGE in maintainer terms, not just the arm names; side-swapped pairs must say so.
+
+### The null gate, by eye
+**p01 (canary mid vs start) = TIE · p02 (image-floor duplicates through the alias lever) = TIE.** The instrument's null pair held under the maintainer's own eyes — the set's review counts.
+
+### Concordance (the eye vs the metrics)
+- **D1 — 7/7 TIES** (p03-p09: all four dial corners + the scene arm + both Krea2T adjunct pairs). The human confirms the metric verdict exactly: keep-lists NEUTRAL, Krea2T a no-op, both below JND. The guide's rule stands eye-confirmed: **bare instructions on Krea 2**.
+- **D2 SCAIL — the eye favors LONG on both called pairs**: p10 (girl_eats) → long; p12 (board_p2) → long (note: "she tries to eat the coffee cup" — a caption misfire on the long side, still preferred). Concordant with the metric (+0.151 on both cells). **D2 verdict eye-confirmed: long > bare.**
+- **D2 Wan — ties + two cannot-assess with CONTENT findings** (below). p14 tie = the metric's small monotone delta was real but sub-JND.
+- **D4 — preset wins 768p P1 by eye** (p23; "both clean and artifact free" — the call, not the artifacts, decided it) — concordant with the 26× flicker cut. The 544p lean (p25's note: "the one on the right is slightly better" — right = stripped) is concordant with no-rescue-at-544p.
+
+### The discordance that matters — **p20 (D3, compiled vs naive, P3 high motion): the EYE PREFERS NAIVE**
+Note verbatim: *"The ball on the right changes direction as it reaches the edge of the frame, the one on the left stops."* Right = naive; left = compiled. The naive ball BOUNCES at the edge; the compiled ball STOPS. This **contradicts the metric's headline** (compiled −64% plan error at high motion). The metric scored plan adherence globally; the eye caught the single most salient behavior — the edge bounce — and the compiled prompt's version lost it. **Disposition: D3's verdict drops from "compiled wins high motion" to CONTESTED — the metric's aggregate and the eye's salient-behavior call disagree on the same pair. The recipe ledger records both; no default changes on this cell without a re-run isolating the bounce instruction.**
+
+### The content-level findings (the notes saw what metrics cannot)
+1. **Wan captions are a CONTENT lever (p16)**: *"These videos are very different, different framing, different motions"* — bare vs long on board_p2 produced different SHOTS, not different fidelities. Combined with D3's framing effect, the batch's cross-cutting finding: **prompt structure's dominant effect on these engines is shot content (framing/motion), not fidelity.** The caption contracts must treat length as a content decision.
+2. **D3's arms produce different ACTIONS (p19/p21/p22)**: *"left she is stirring, the right she is eating"* (naive vs hand6); "flipped perspective, different framing" (compiled vs naive P2). Same seed, same subject — the prompt structure alone changed WHAT HAPPENED. This is why three D3 pairs were unjudgeable blind: without the question stated, content divergence reads as noise. **It is also evidence: at fixed seed, structure is a stronger content determinant than the batch's framing assumed.**
+3. **p15 crop artifact**: *"Video is cropped strangely, cannot assess"* — the Wan girl_eats long render has a crop defect. Flagged for the executor's artifact log; not a verdict input.
+
+### Verbatim responses (preserved per the no-test-sets directive)
+```
+{
+  "exported": "2026-10-04T23:50:08.960Z",
+  "responses": {
+    "p01": {
+      "call": "tie",
+      "ts": "2026-10-04T23:40:56.833Z"
+    },
+    "p02": {
+      "call": "tie",
+      "ts": "2026-10-04T23:41:12.573Z"
+    },
+    "p03": {
+      "call": "tie",
+      "ts": "2026-10-04T23:41:22.842Z"
+    },
+    "p04": {
+      "call": "tie",
+      "ts": "2026-10-04T23:41:39.665Z"
+    },
+    "p05": {
+      "call": "tie",
+      "ts": "2026-10-04T23:41:56.727Z"
+    },
+    "p06": {
+      "call": "tie",
+      "ts": "2026-10-04T23:42:30.213Z"
+    },
+    "p07": {
+      "call": "tie",
+      "ts": "2026-10-04T23:42:37.188Z"
+    },
+    "p08": {
+      "call": "tie",
+      "ts": "2026-10-04T23:42:41.518Z"
+    },
+    "p09": {
+      "call": "tie",
+      "ts": "2026-10-04T23:42:51.256Z"
+    },
+    "p10": {
+      "call": "right",
+      "ts": "2026-10-04T23:43:20.582Z"
+    },
+    "p11": {
+      "call": "cannot-assess",
+      "note": "Transfer seems to have taken, motions are identical with different appearances.",
+      "ts": "2026-10-04T23:43:42.504Z"
+    },
+    "p12": {
+      "call": "left",
+      "note": "She tries to eat the coffee cup, but otherwise identity transfer seems to have worked,",
+      "ts": "2026-10-04T23:44:22.605Z"
+    },
+    "p13": {
+      "call": "right",
+      "note": "Identity transfer held pretty well here again.",
+      "ts": "2026-10-04T23:44:54.595Z"
+    },
+    "p14": {
+      "call": "tie",
+      "ts": "2026-10-04T23:45:14.412Z"
+    },
+    "p15": {
+      "call": "cannot-assess",
+      "note": "Video is cropped strangely, cannot assess.",
+      "ts": "2026-10-04T23:45:23.890Z"
+    },
+    "p16": {
+      "call": "cannot-assess",
+      "note": "These videos are very different, different framing, different motions.",
+      "ts": "2026-10-04T23:46:02.391Z"
+    },
+    "p17": {
+      "call": "tie",
+      "ts": "2026-10-04T23:46:15.048Z"
+    },
+    "p18": {
+      "call": "tie",
+      "note": "They are both good, not sure what I am assessing here. They look different, but both are clean, with no flicker or issues.",
+      "ts": "2026-10-04T23:46:29.667Z"
+    },
+    "p19": {
+      "note": "These two are entirely different, same subject matter, flipped perspective, different framing."
+    },
+    "p20": {
+      "call": "right",
+      "note": "The ball on the right changes direction as it reaches the edge of the frame, the one on the left stops.",
+      "ts": "2026-10-04T23:48:10.038Z"
+    },
+    "p21": {
+      "call": "cannot-assess",
+      "note": "Two entirely different videos, similar subject matter, left she is stirring, the right she is eating, side view on the left, front view, perspective on the right.",
+      "ts": "2026-10-04T23:48:20.497Z"
+    },
+    "p22": {
+      "note": "Same as P21."
+    },
+    "p23": {
+      "call": "left",
+      "note": "Both are clean and artifact free.",
+      "ts": "2026-10-04T23:49:09.444Z"
+    },
+    "p24": {
+      "note": "Same character, different motion."
+    },
+    "p25": {
+      "note": "Ball moves slightly, the one on the right is slightly better."
+    },
+    "p26": {
+      "note": "Same action, different hair style."
+    }
+  },
+  "set": "D"
+}
+```
+
+### Final verdicts (metric + eye, together)
+| Cell | Verdict |
+|---|---|
+| D1 keep-lists | **NEASURED-NEUTRAL, eye-confirmed** — bare instructions stand |
+| D1 Krea2T | **MEASURED NO-OP, eye-confirmed** — do not ship as an adjunct |
+| D2 captions | **long > bare, eye-confirmed on both called SCAIL cells**; Wan sub-JND monotone; captions are ALSO a content lever (finding 1) |
+| D2 dose | **CONTESTED** — metric monotone; the eye preferred short on p13's clip |
+| D3 structure | **CONTESTED at high motion** (p20 discordance); tie at low; structure's real effect is CONTENT (finding 2) |
+| D4 presets | **MEASURED-CONDITIONAL, eye-confirmed at 768p** (flicker); no rescue at 544p |
