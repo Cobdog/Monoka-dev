@@ -223,6 +223,24 @@ the research grant.
 | `dwpose-onnx` (yzd-v), `dwpose-torchscript` (hr16), `da3-base` (Comfy-Org Depth-Anything-3) | Apache-2.0 `[API-2026-09-14]` | fetch-consent; notice-clean |
 | `hed-annotator`, `mlsd-annotator` (lllyasviel/Annotators) | **NO-LICENSE** — repo carries only a `license: other` tag, no file `[API]` | fetch-consent, flagged; never redistributed |
 
+### 5h. The Wan lane (Set D engines — SCAIL-2, Wan-Animate-2)
+
+Both upstreams are permissive — no community-license duties ride these
+weights, and neither grant restricts outputs. Fetched 2026-10-04 for the GPU
+batch's Set D caption factorials (task ourbqum), via the Comfy-Org repackage
+repos (the actual home of the split_files layouts — the first attempt's
+GitHub-derived URLs returned stubs; corrected in 58894d0); sha256-verified
+against the HF LFS etags at fetch time, staged in
+`/home/agent/models/{scail2-dl,wan-animate2-dl}/` pending Set D install.
+
+| Asset | License record | Mode |
+| --- | --- | --- |
+| `scail2-int8` (`wan2.1_14B_SCAIL_2_int8_convrot`) | **MIT** upstream (zai-org/SCAIL-2) AND mirror (Comfy-Org/SCAIL-2) `[API-2026-10-04]` — a Wan2.1-14B derivative under the permissive floor | fetch-consent |
+| `wan-animate2-distill-int8` (`wan_animate_2_distill_int8_convrot`; the base non-distill variant is fetch-on-demand) | **Apache-2.0** upstream (Wan-AI/Wan2.2-Animate-2-14B) AND mirror `[API-2026-10-04]` | fetch-consent |
+| Shared Wan assets: `umt5_xxl_fp8_e4m3fn_scaled`, `Wan2_1_VAE_bf16`, `clip_vision_h` | Apache-2.0 `[API-2026-10-04 — the Comfy-Org/Wan-Animate-2 repackage's tag; the umt5/clip_vision lineage rides the Wan distribution]` | fetch-consent |
+| `lightx2v_I2V_14B_480p_cfg_step_distill_rank64` | Apache-2.0 (the LightX2V distill; distributed via Comfy-Org/Wan-Animate-2 — also the official SCAIL-2 template's speed LoRA @ 0.8) `[API-2026-10-04]` | fetch-consent |
+| `wan2.1_SCAIL_2_DPO_lora` + `wan2.1_SCAIL_2_relight_lora` | MIT (SCAIL-2's own — DPO: hands/lip/eye sync @ 1.0; relight: replacement-mode lighting blend) `[API-2026-10-04]` | fetch-consent |
+| `sam3.1_multiplex_fp16` (the official SCAIL-2 replacement workflow's tracker) | **SAM License** (Meta community-style, dated 2025-11-19 — royalty-free use/modify/distribute grant with acceptable-use + trade-controls riders; LICENSE read at fetch) `[API + LICENSE-read 2026-10-04]` | fetch-consent, **flagged** (custom license; surfaced at consent, never vendored) |
 ## 6. Fonts, icons, cursor (the shibui plan — none shipped yet)
 
 Planned per [shibui-fonts-icons.md](../research/shibui-fonts-icons.md); rows

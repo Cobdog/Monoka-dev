@@ -917,3 +917,26 @@ across the whole set; the canary-stop rule never fired.
 - Set D staged: D1 (30 imgs, Krea falsifier), D2 (18 gens, needs the downloads), D3 (18, IR-gap), D4 (16, preset ladder). ~30-36 review pairs. Dispatch per ledger Set D spec on the maintainer's return.
 - Set C CLOSED (46f00d9): X1 falsified (beta eye-preference counter-signal recorded), X3 binary, X6 simple/8, X2 cliff+inversion human-confirmed. Sets A/B/C complete; D-J queued.
 - CORRECTION: the first download attempt got 15-byte stubs (wrong resolve URLs) — killed + cleaned. The Set D dispatch must fetch via verified paths (check the Comfy-Org repo file trees first: Comfy-Org/SCAIL-2 and Comfy-Org/Wan-Animate-2 split_files layouts) with license consent rows.
+
+## SET D FETCH LOG + WAN-LORA RULING (2026-10-04, downloads re-run while GPU is the maintainer's)
+
+**The verified-path correction, resolved:** the split_files layouts live on HF under the `Comfy-Org` org (NOT GitHub — the org's GitHub carries tooling only; the first attempt's GitHub-derived URLs were the stub source). Verified trees + sha256-against-LFS-etag fetches running per `setD-fetch*.sh` (log: /home/agent/models/setD-fetch.log), all staged in engine dirs (`scail2-dl/`, `wan-animate2-dl/`), install to canonical subdirs at graph-build.
+
+**The complete Set D fetch manifest (9 files, ~46 GB):**
+1. `wan2.1_14B_SCAIL_2_int8_convrot` (16.65 GB, MIT) — SCAIL-2 arm engine
+2. `wan_animate_2_distill_int8_convrot` (16.65 GB, Apache-2.0) — Wan-Animate-2 arm engine, DISTILL variant (the official distilled workflow template is the native fast path; base non-distill is fetch-on-demand)
+3. `lightx2v_I2V_14B_480p_cfg_step_distill_rank64` (0.70 GB) — the official SCAIL template's speed LoRA @ 0.8 AND the Wan-Animate-2 distilled template's LoRA (both templates stack it)
+4. `wan2.1_SCAIL_2_DPO_lora` (1.14 GB, MIT) @ 1.0 — hands/lip/eye sync
+5. `wan2.1_SCAIL_2_relight_lora` (1.14 GB, MIT) — replacement-mode lighting blend (optional arm)
+6. `umt5_xxl_fp8_e4m3fn_scaled` (6.74 GB) — shared TE (the repackage and Wan-Animate-2 copies are IDENTICAL sizes; same files mirrored — one copy serves both arms)
+7. `clip_vision_h` (1.26 GB) — same mirror identity
+8. `Wan2_1_VAE_bf16` (0.25 GB) — same
+9. `sam3.1_multiplex_fp16` (1.75 GB, **SAM License — flagged row**) — the replacement workflow's tracker (SAM3_VideoTrack)
+
+**WAN-LORA ANSWER (maintainer question 2026-10-04, recorded for the recipe ledger):** YES, by design. SCAIL-2 is a Wan2.1-14B finetune whose additions (in-context conditioning, masking channels, RoPE) live in input/positional wiring — the attn+MLP blocks LoRAs target are unchanged, and the OFFICIAL ComfyUI template itself stacks two LoraLoaderModelOnly nodes: a stock ecosystem lightx2v (generic Wan 14B I2V distill) @ 0.8 + SCAIL's own DPO @ 1.0. zai's README adds relight + documents the native-repo equivalent (rank-128 lightx2v @ alpha 1.0, 8 steps). Verified-on-SCAIL trio: lightx2v / DPO / relight. Generic Wan2.1-14B LoRAs ATTACH but their deltas were trained against stock weights — expect attenuation + strength retuning; control-type LoRAs (conditioning-wiring-dependent) transfer worse than aesthetic deltas; anything beyond the trio is attach-yes-effect-unmeasured (our harness's question).
+
+**D2 DESIGN RULING (pending maintainer override at dispatch):** the SCAIL arm runs the OFFICIAL stack — int8 + lightx2v@0.8 + DPO@1.0 at 8 steps (zai's native default is 40 steps; the official Comfy recipe IS the distill stack, and 40-step × 9 gens on 14B is the expensive way to run a caption factorial). The caption contract is the treatment; the operating point stays pinned per-arm either way.
+
+**ENGINE FACTS (verified locally):** the pinned shared install 0.37.4 ALREADY ships `nodes_scail.py` (WanSCAILToVideo, SCAIL2ColoredMask) + `nodes_sam3.py` (SAM3_VideoTrack) + `nodes_sam3d_body.py` (the zero-shot SAM3D-Body mesh control) — no custom node pack, no engine update, no cache-continuity rupture. The template's "update ComfyUI first" note targets older installs.
+
+**INSTALL NOTE:** both arms pin same-named assets (umt5/clip_vision/VAE are byte-identical mirrors — no collision; the lightx2v LoRA is one file). Install = symlink from the staging dirs; the two ENGINE checkpoints land in diffusion_models/ side by side (distinct names, no conflict).
