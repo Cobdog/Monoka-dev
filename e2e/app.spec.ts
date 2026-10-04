@@ -6,6 +6,8 @@ import { expect, test, type Page } from '@playwright/test'
 // Scratch-dir ledger (Wave 4 test hygiene): every per-run home registers and
 // the file-level afterAll tears them down — per-run homes never accumulate.
 import { makeScratchDir, removeAllScratchDirs } from '../tests/lib/scratch.cjs'
+// The fake-engine contract helpers (the canvas-suite harness pattern).
+import { H3_REGISTRY_LISTINGS, serveModelRegistry, serveObjectInfo, stockObjectInfo } from './fakeEngineInfo'
 
 test.afterAll(() => { void removeAllScratchDirs() })
 
@@ -921,5 +923,136 @@ test('a virgin home seeds no "Imported workspace" — the legacy import gates on
   } finally {
     child.kill()
     await new Promise<void>((resolve) => { if (child.exitCode !== null) resolve(); else child.on('exit', () => resolve()) })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Component vocabulary PR-1a (k2q0n9s, 2026-10-04): --color-status-ok — the
+// GHOST TOKEN. canvas.css's engine-online rules (the Radar chip + the bar,
+// dot and text, four declarations) have referenced it since those surfaces
+// landed, but nothing ever defined it and no fallback exists — the online
+// tone resolved to nothing (the dot to transparent, the text to its
+// inherited color). The fix ALIASES it to an existing token (P02 — no new
+// literal): the accent, the connection-health map's own intent
+// (.health-pill.online paints the accent). This test walks the REAL Radar
+// chip through all three engine states against a fake external instance:
+// offline and degraded must keep their existing tokens (--muted-2 /
+// --warning), and online — the red line — must find the token DEFINED in
+// :root with the chip's dot AND text computing to exactly its resolved
+// value (each token is normalized through the browser's own pipeline, so
+// no hand-maintained color literal rides in the assertion).
+test('--color-status-ok is defined and drives the Radar engine chip online tone; offline/degraded keep their tokens', async ({ page }) => {
+  const problems = await trackErrors(page)
+  test.setTimeout(120_000)
+  const http = await import('node:http')
+
+  // One mutable-registry fake engine (the canvas-suite harness pattern): the
+  // DEGRADED phase serves an empty model listing (connected, nothing to
+  // run), the ONLINE phase the shared H3 stack listing.
+  let listings: Record<string, string[]> = { diffusion_models: [], text_encoders: [], vae: [], loras: [] }
+  const engine = http.createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://engine.local')
+    if (url.pathname === '/system_stats') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ system: {}, devices: [] }))
+      return
+    }
+    if (serveObjectInfo(url, stockObjectInfo(), res)) return
+    if (serveModelRegistry(url, listings, res)) return
+    res.writeHead(404)
+    res.end()
+  })
+  const enginePort = await new Promise<number>((resolve) => engine.listen(0, '127.0.0.1', () => resolve((engine.address() as { port: number }).port)))
+
+  // The offline phase's dead target: a reserved-then-released port (nothing
+  // listens there while the phase runs — the wave1 reserve pattern).
+  const holder = http.createServer(() => undefined)
+  const deadPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as { port: number }).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+
+  // The computed-tone probe: token definitions from :root plus the LIVE
+  // chip's computed colors, every token normalized through a throwaway
+  // probe element so token and rendering compare as plain strings.
+  const tone = () => page.evaluate(() => {
+    const rootStyle = getComputedStyle(document.documentElement)
+    const chip = document.querySelector<HTMLElement>('[data-canvas-engine]')
+    const dot = chip?.querySelector<HTMLElement>('.status-dot') ?? null
+    const normalized = (token: string) => {
+      const probe = document.createElement('span')
+      probe.style.color = token
+      document.body.appendChild(probe)
+      const computed = getComputedStyle(probe).color
+      probe.remove()
+      return computed
+    }
+    const statusOk = rootStyle.getPropertyValue('--color-status-ok').trim()
+    return {
+      statusOk,
+      chipClass: chip?.className ?? '',
+      chipColor: chip ? getComputedStyle(chip).color : '',
+      dotBackground: dot ? getComputedStyle(dot).backgroundColor : '',
+      tokenColor: statusOk ? normalized(statusOk) : '',
+      mutedColor: normalized(rootStyle.getPropertyValue('--muted-2').trim()),
+      warningColor: normalized(rootStyle.getPropertyValue('--warning').trim()),
+    }
+  })
+
+  const originalSettings = ((await (await page.request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  // Engine-connected boots would auto-resume stale queued jobs against the
+  // fake engine (shared-home accumulation) — cancel them through the app's
+  // own API first, the canvas-suite hygiene.
+  const listed = ((await (await page.request.get('/api/lan/jobs')).json()) as { jobs?: Array<Record<string, unknown>> }).jobs
+  const stale = (listed ?? []).filter((job) => job.status === 'queued' || job.status === 'running').map((job) => ({ ...job, status: 'cancelled' }))
+  if (stale.length) await page.request.post('/api/lan/jobs', { data: { jobs: stale } })
+  const bootAt = async (comfyUrl: string) => {
+    await page.request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl,
+      engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
+    } } })
+    await resetSession(page)
+    await page.goto('/')
+  }
+  try {
+    const chip = page.locator('[data-canvas-engine]')
+
+    // OFFLINE — a dead port: the chip keeps its resting tone; the ghost
+    // token must not leak into the states that never referenced it.
+    await bootAt(`http://127.0.0.1:${deadPort}`)
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await expect(chip).toHaveAttribute('data-engine-connected', 'false', { timeout: 15_000 })
+    const offline = await tone()
+    expect(offline.chipClass).not.toMatch(/online|degraded/)
+    expect(offline.chipColor).toBe(offline.mutedColor)
+    expect(offline.dotBackground).toBe(offline.mutedColor)
+
+    // DEGRADED — the engine answers but serves no models: connected, not
+    // ready; the existing warning token keeps both dot and text.
+    await bootAt(`http://127.0.0.1:${enginePort}`)
+    await expect(chip).toHaveAttribute('data-engine-connected', 'true', { timeout: 15_000 })
+    await expect(chip).toHaveAttribute('data-engine-ready', 'false', { timeout: 15_000 })
+    await expect(chip).toContainText('models missing')
+    const degraded = await tone()
+    expect(degraded.chipClass).toContain('degraded')
+    expect(degraded.chipColor).toBe(degraded.warningColor)
+    expect(degraded.dotBackground).toBe(degraded.warningColor)
+
+    // ONLINE — the H3 stack listing answers: the ghost token must be
+    // DEFINED (before the fix this resolved empty) and the chip's dot AND
+    // text must compute to exactly its resolved value.
+    listings = { ...H3_REGISTRY_LISTINGS }
+    await bootAt(`http://127.0.0.1:${enginePort}`)
+    await expect(chip).toHaveAttribute('data-engine-ready', 'true', { timeout: 15_000 })
+    await expect(chip).toContainText('H3 engine ready')
+    const online = await tone()
+    expect(online.statusOk, '--color-status-ok must be defined in :root — the ghost token resolved to nothing').not.toBe('')
+    expect(online.chipClass).toContain('online')
+    expect(online.chipColor).toBe(online.tokenColor)
+    expect(online.dotBackground).toBe(online.tokenColor)
+
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await page.request.post('/api/lan/settings', { data: { settings: originalSettings } })
+    engine.close()
   }
 })

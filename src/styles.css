@@ -42,6 +42,13 @@
   --lime: var(--accent);
   --surface-1: var(--surface-2);
   --surface-raised: var(--surface-2);
+  /* Ghost token (component vocabulary PR-1a, 2026-10-04): canvas.css's
+   * engine-online rules (Radar chip + bar, dot and text) referenced this
+   * since those surfaces landed — never defined, no fallback, so the online
+   * tone resolved to nothing. Aliased to the accent per P02 (no new
+   * literal): the connection-health map's own intent (.health-pill.online
+   * paints the accent). */
+  --color-status-ok: var(--accent);
   /* Type scale — the studio's dense ramp. Display sizes (14px+) stay literal
    * until the UI/UX overhaul chooses their rhythm. */
   --text-2xs: 7px;
