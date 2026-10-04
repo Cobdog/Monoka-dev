@@ -1,3 +1,5 @@
+import os from 'node:os'
+import path from 'node:path'
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { H3_REGISTRY_LISTINGS, serveModelRegistry, serveObjectInfo, stockObjectInfo } from './fakeEngineInfo'
 
@@ -488,7 +490,7 @@ test('T=1 lane: the badge names the ready machinery; single frames land with lan
     // The caption speaks the lane's vocabulary (T=1 fast — the 'single
     // frame' wording is the non-t1 single-frame lanes').
     await expect(page.locator('[data-iw-preview-caption]')).toContainText('T=1 fast')
-    await expect(page.locator('.iw-toasts [data-canvas-toast="success"]', { hasText: 'frame landed' }).first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('.toast-host--bottom-right [data-canvas-toast="success"]', { hasText: 'frame landed' }).first()).toBeVisible({ timeout: 15_000 })
 
     // (W1) The start-frame exit dialog carries dialog semantics and answers
     // Escape.
@@ -728,17 +730,79 @@ test('the start-frame exit reports a failed chain creation (A05): step notice, n
   await page.locator('[data-iw-exit-choice="anchor"]').click()
   await page.locator('[data-iw-exit-confirm]').click()
   // The step-level notice names BOTH steps: the pin completed, the chain
-  // creation failed.
-  await expect(page.locator('[data-iw-notice]')).toContainText('pinned', { timeout: 15_000 })
-  await expect(page.locator('[data-iw-notice]')).toContainText('could not be created')
-  await expect(page.locator('[data-iw-notice]')).toContainText('AUDIT chain creation unavailable')
+  // creation failed. (Task 9, k2q0n9s: the banner is NoticeBanner — the
+  // data attribute renamed with the vocabulary; the roles ride the
+  // component.)
+  const note = page.locator('[data-iw-note]')
+  await expect(note).toContainText('pinned', { timeout: 15_000 })
+  await expect(note).toContainText('could not be created')
+  await expect(note).toContainText('AUDIT chain creation unavailable')
+  await expect(note).toHaveAttribute('role', 'status')
+  await expect(note).toHaveAttribute('aria-live', 'polite')
+  await expect(note).toHaveClass(/notice-banner notice-banner--accent iw-note/)
   // (Final review I1) The notice is the render channel for this branch's
   // decision prose (step/save failures, decline guidance) — the same >=11px
   // computed floor as the other A10 pins, not the dead --text-2xs fallback.
-  const noticeSize = await page.locator('[data-iw-notice]').evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
-  expect(noticeSize, '[data-iw-notice] renders at the >=11px floor').toBeGreaterThanOrEqual(11)
+  const noticeSize = await note.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+  expect(noticeSize, '[data-iw-note] renders at the >=11px floor').toBeGreaterThanOrEqual(11)
   // Busy cleared: the confirm control is live again (no frozen dialog).
   await expect(page.locator('[data-iw-exit-confirm]')).toBeEnabled()
+  // Close the exit dialog so the banner beneath is reachable by pointer.
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-iw-exit-dialog]')).toHaveCount(0)
+  // Task 9 (k2q0n9s): ONE dismiss contract — the × owns its handler. The
+  // banner body never dismisses (the retired hand-rolled banner's
+  // banner-click dismissal died with it); the button alone clears it.
+  await note.click()
+  await expect(note, 'clicking the banner body does not dismiss — the × is the only path').toBeVisible()
+  await note.locator('button[aria-label="Dismiss"]').click()
+  await expect(note).toHaveCount(0)
   // No unhandled rejection reached the page.
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// Component vocabulary task 9 (Flux k2q0n9s): the workbench's inline toast
+// strip is DELETED — the surface mounts the shared adapter with
+// placement="bottom-right". The placement prop is what positions the host
+// (computed authority: fixed at the old .iw-toasts coordinates), toasts keep
+// the store's contract through the adapter (roles per tone, auto-dismiss at
+// the store's own 4.2 s), and the inline copy's classes are gone.
+test('the workbench toast strip is the adapter at bottom-right — the placement prop positions (k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  const original = ((await (await page.request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    await page.goto('/?images=1')
+    await expect(page.locator('[data-iw-root]')).toBeVisible({ timeout: 20_000 })
+
+    // The inline copy is dead: no iw-toasts strip anywhere — the mount is
+    // the shared host placed bottom-right.
+    await expect(page.locator('.iw-toasts')).toHaveCount(0)
+    const host = page.locator('.toast-host')
+    await expect(host).toHaveClass(/toast-host toast-host--bottom-right canvas-toasts/)
+    const hostComputed = await host.evaluate((element) => {
+      const cs = getComputedStyle(element)
+      return { position: cs.position, right: cs.right, bottom: cs.bottom, display: cs.display, gap: cs.gap }
+    })
+    expect(hostComputed.position, 'bottom-right is the workbench placement (fixed)').toBe('fixed')
+    expect(hostComputed.right).toBe('16px')
+    expect(hostComputed.bottom).toBe('16px')
+    expect(hostComputed.display, 'the base recipe\'s column layout (the retired .iw-toasts geometry)').toBe('flex')
+
+    // A toast through a real flow (the settings save warning, M4's path):
+    // the strip still lands there with its role, and the STORE still
+    // auto-dismisses it at 4.2 s — the adapter never re-times.
+    await page.locator('[data-iw-settings-button]').click()
+    await expect(page.locator('[data-canvas-settings-dock]')).toBeVisible()
+    await page.locator('#output-path').fill(path.join(os.tmpdir(), 't9-workbench-toast-definitely-missing'))
+    await page.locator('[data-save-settings]').click()
+    const toast = page.locator('.toast-host [data-canvas-toast="success"]').first()
+    await expect(toast).toBeVisible({ timeout: 20_000 })
+    await expect(toast).toHaveAttribute('role', 'status')
+    await expect(toast).toHaveAttribute('aria-live', 'polite')
+    await expect(toast).toBeHidden({ timeout: 8_000 })
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await page.request.post('/api/lan/settings', { data: { settings: original } }).catch(() => undefined)
+  }
 })

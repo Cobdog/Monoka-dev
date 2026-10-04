@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import http from 'node:http'
+import os from 'node:os'
 import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { WebSocketServer } from 'ws'
@@ -2775,6 +2776,99 @@ test('F6 live progress: targeted engine events + preview frames surface on the g
     await resetSession(page).catch(() => undefined)
     await new Promise<void>((resolve) => wss.close(() => resolve()))
     await new Promise<void>((resolve) => engine.close(() => resolve()))
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Component vocabulary task 9 (Flux k2q0n9s) — ToastHost, the ADAPTER pattern
+// (P07): the canvas mounts the shared adapter, which connects the zustand
+// store (timeouts, dismissal) to the PURE host. What must hold after the
+// migration: the host renders the recipe placement (bottom-left) composed
+// with the canvas's retained container geometry; every toast carries a ROLE
+// (error = alert/assertive — a failure the user must act on; other tones =
+// status/polite) — ONE live mechanism per item, the old container
+// aria-live="polite" died with the strip; the STORE still owns the timeouts
+// (the adapter never re-times: the success toast auto-dismisses at 4.2 s
+// while the error toast — 15 s — is still on screen, and eventually
+// auto-dismisses on its own); and the × button owns the dismiss handler.
+test('toast host: roles, placement prop, × handler, and the store\'s own timeouts (adapter pattern, k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  const original = ((await (await page.request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    await resetSession(page)
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+
+    // An ERROR toast through a real flow: the engine is offline in tests, so
+    // the prompt submit is honestly refused.
+    await page.locator('[data-canvas-prompt]').fill('toast host e2e — a lone drummer on a night train')
+    await page.locator('[data-canvas-submit]').click()
+    const errorToast = page.locator('[data-canvas-toast="error"]').first()
+    await expect(errorToast).toBeVisible({ timeout: 10_000 })
+
+    // The host is the pure component mounted by the adapter: the recipe
+    // placement (bottom-left) composed with the canvas's retained container
+    // class — and the placement actually POSITIONS (computed authority).
+    const host = page.locator('.toast-host')
+    await expect(host).toHaveClass(/toast-host toast-host--bottom-left canvas-toasts/)
+    const hostComputed = await host.evaluate((element) => {
+      const cs = getComputedStyle(element)
+      return { position: cs.position, left: cs.left, bottom: cs.bottom, display: cs.display, zIndex: cs.zIndex }
+    })
+    expect(hostComputed.position, 'bottom-left is the canvas strip placement (absolute)').toBe('absolute')
+    expect(hostComputed.left).toBe('14px')
+    expect(hostComputed.bottom).toBe('44px')
+    expect(hostComputed.display, 'the retained .canvas-toasts container geometry still wins the cascade').toBe('grid')
+    expect(hostComputed.zIndex).toBe('60')
+
+    // Roles: the error toast is an ALERT — assertive (the store's severity
+    // contract: a failure the user must act on outlives a success toast).
+    await expect(errorToast).toHaveAttribute('role', 'alert')
+    await expect(errorToast).toHaveAttribute('aria-live', 'assertive')
+    await expect(host).not.toHaveAttribute('aria-live')
+
+    // A SUCCESS toast through a real flow (the settings save warning, M4's
+    // path): role=status, polite.
+    await page.locator('[data-canvas-settings-button]').click()
+    await expect(page.locator('[data-canvas-settings-dock]')).toBeVisible()
+    await page.locator('#output-path').fill(path.join(os.tmpdir(), 't9-toast-host-definitely-missing'))
+    await page.locator('[data-save-settings]').click()
+    const successToast = page.locator('[data-canvas-toast="success"]').first()
+    await expect(successToast).toBeVisible({ timeout: 20_000 })
+    await expect(successToast).toContainText('does not exist yet')
+    await expect(successToast).toHaveAttribute('role', 'status')
+    await expect(successToast).toHaveAttribute('aria-live', 'polite')
+
+    // The STORE owns the timeouts (the adapter reads, never rewrites): the
+    // success toast auto-dismisses at its 4.2 s…
+    await expect(successToast).toBeHidden({ timeout: 8_000 })
+    // …while the error toast (15 s) is STILL on screen — the severity
+    // differential IS the timeout contract.
+    await expect(errorToast).toBeVisible()
+
+    // The error toast eventually auto-dismisses at its own 15 s — no ×
+    // needed, nothing clicked.
+    await expect(errorToast).toBeHidden({ timeout: 17_000 })
+
+    // The × OWNS its handler: a fresh toast dies on the button click. The
+    // dock's second save is routed to FAIL — a fresh ERROR toast (the 15 s
+    // window; no race with the auto-dismiss).
+    await page.route('**/api/lan/settings', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 't9 dismissal arm: the save endpoint is down' }) })
+        return
+      }
+      await route.continue()
+    })
+    await page.locator('[data-save-settings]').click()
+    const fresh = page.locator('[data-canvas-toast="error"]', { hasText: 'Settings could not be saved' }).first()
+    await expect(fresh).toBeVisible({ timeout: 20_000 })
+    await fresh.locator('button[aria-label="Dismiss"]').click()
+    await expect(fresh).toBeHidden()
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await page.unroute('**/api/lan/settings').catch(() => undefined)
+    await page.request.post('/api/lan/settings', { data: { settings: original } }).catch(() => undefined)
   }
 })
 

@@ -654,3 +654,67 @@ test('button busy: the caption save announces aria-busy and disables while held'
   await expect(save.locator('.spin')).toHaveCount(0)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
+
+// ---------------------------------------------------------------------------
+// Component vocabulary task 9 (Flux k2q0n9s): the datasets banners are
+// NoticeBanner — roleless before, they now ANNOUNCE (role + aria-live, the
+// role deriving its live politeness: status→polite, alert→assertive), the
+// tone recipes paint (computed authority, token-equal), and the × owns the
+// ONE dismiss contract (the banner body never dismisses).
+test('datasets banners announce (NoticeBanner: role + aria-live, the × owns dismissal, k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  // Both banners through real app paths, driven from the endpoints: the
+  // health probe reports missing/changed sources (the ds-notice), and the
+  // library fetch fails (the ds-error-banner) — no seeded media needed.
+  await page.route('**/api/lan/datasets/health', async (route) => {
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ checked: 3, missing: 2, changed: 1 }) })
+  })
+  await page.route('**/api/lan/datasets/library', async (route) => {
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 't9 banner e2e: the library endpoint is down' }) })
+  })
+  await page.goto('/?datasets=1')
+
+  const notice = page.locator('[data-ds-notice]')
+  await expect(notice).toBeVisible({ timeout: 15_000 })
+  await expect(notice).toContainText('MISSING')
+  await expect(notice).toHaveAttribute('role', 'status')
+  await expect(notice).toHaveAttribute('aria-live', 'polite')
+  await expect(notice).toHaveClass(/notice-banner notice-banner--accent ds-notice/)
+
+  const errorBanner = page.locator('[data-ds-error]')
+  await expect(errorBanner).toBeVisible({ timeout: 15_000 })
+  await expect(errorBanner).toHaveAttribute('role', 'alert')
+  await expect(errorBanner).toHaveAttribute('aria-live', 'assertive')
+  await expect(errorBanner).toHaveClass(/notice-banner notice-banner--danger ds-error-banner/)
+
+  // The tone recipes are the paint authority: each banner's text color
+  // equals its token computed live (the PR-1 probe doctrine — both sides
+  // normalized through the browser's own pipeline).
+  const tones = await page.evaluate(() => {
+    const probeFor = (token: string) => {
+      const probe = document.createElement('span')
+      probe.style.color = `var(${token})`
+      document.body.append(probe)
+      const color = getComputedStyle(probe).color
+      probe.remove()
+      return color
+    }
+    return {
+      accent: probeFor('--accent'),
+      danger: probeFor('--danger'),
+      notice: getComputedStyle(document.querySelector('[data-ds-notice]')!).color,
+      error: getComputedStyle(document.querySelector('[data-ds-error]')!).color,
+    }
+  })
+  expect(tones.notice, 'the accent recipe paints the ds-notice').toBe(tones.accent)
+  expect(tones.error, 'the danger recipe paints the ds-error-banner').toBe(tones.danger)
+
+  // ONE dismiss contract: the banner body does nothing; the × dismisses.
+  await errorBanner.click()
+  await expect(errorBanner, 'clicking the banner body does not dismiss').toBeVisible()
+  await errorBanner.locator('button[aria-label="Dismiss"]').click()
+  await expect(errorBanner).toHaveCount(0)
+  await notice.locator('button[aria-label="Dismiss"]').click()
+  await expect(notice).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})

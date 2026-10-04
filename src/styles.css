@@ -17,7 +17,6 @@
   --danger: #ff7f7f;
   --warning: #f0bc66;
   --radius: 12px;
-  --sidebar: 218px;
   /* ---- Wave 2b design tokens ----------------------------------------------
    * Semantic color layer: the dark-palette literals collapsed into named
    * surfaces/lines/text plus the working accent families. Every value is the
@@ -122,41 +121,22 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.app-shell { display: grid; grid-template: 42px minmax(0, 1fr) / var(--sidebar) minmax(0, 1fr); height: 100%; background: var(--bg); transition: grid-template-columns .18s ease; }
-.titlebar { position: relative; grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 148px 0 14px; background:var(--surface); border-bottom: 1px solid #202622; user-select: none; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--danger); box-shadow:0 0 0 3px color-mix(in srgb, var(--danger) 8%, transparent); }
 
-.sidebar { grid-row: 2; display: flex; flex-direction: column; min-width: 0; padding:10px 9px var(--space-3); overflow: hidden; background: var(--surface); border-right: 1px solid var(--line); }
+/* (Component vocabulary task 9, k2q0n9s) The old app-shell/sidebar/nav
+   family above this point — .app-shell, .titlebar, .sidebar, .sidebar nav,
+   the .nav-button set, their 900px/680px blocks and spectrum variants, and
+   the orphaned --sidebar token — was deleted per the migration manifest §8
+   (canvas-ui-v1 §8 Phase 5's dead design record; the e2e absence
+   assertions still pin the DOM dead). Git history is the record now. */
 .icon-button { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
 .icon-button:hover { background: var(--surface-3); color: var(--text); }
-.sidebar nav { display: grid; gap:var(--space-1); }
-.nav-button { display: flex; align-items: center; gap:var(--space-3); min-height: 42px; width: 100%; padding:0 var(--space-3); border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap; overflow: hidden; }
-.nav-button svg { flex: 0 0 auto; }
-.nav-button span { overflow: hidden; text-overflow: ellipsis; }
-.nav-button em { min-width: 21px; margin-left: auto; padding: 2px 6px; border-radius: 999px; background: var(--surface-3); color: var(--text); font-size:var(--text-base); font-style: normal; text-align: center; }
-.nav-button:hover { background: var(--surface-2); color: var(--text); }
-.nav-button.active { background: var(--accent-soft); color: var(--accent); }
-.nav-button[data-item-type="character"] svg { color:var(--color-info); }
-.nav-button[data-item-type="wardrobe"] svg { color:var(--color-violet-mist); }
-.nav-button[data-item-type="location"] svg { color: #65d6c2; }
-.nav-button[data-item-type].active { color: var(--text); }
  .standard-page { width: min(1720px, 100%); min-height: 100%; margin: 0 auto; padding:var(--space-6) clamp(18px, 2.4vw, 38px) var(--space-10); }
 .page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap:var(--space-6); margin-bottom: 18px; }
 .eyebrow { margin: 0 0 7px !important; color: var(--accent) !important; font-size:var(--text-base) !important; font-weight: 700; letter-spacing: .16em; }
 .page-heading h1 { margin: 0; font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif; font-size: clamp(24px, 2.4vw, 34px); line-height: 1.2; letter-spacing: -.035em; }
 .page-heading p { margin: 7px 0 0; color: var(--muted); font-size:var(--text-xl); }
  .settings-section { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
-/* Wave 2b: Base UI Tabs.Root renders a wrapper div between the panel and
-   the strip, so this is a descendant (not child) selector now — the LTX
-   workspace's strip (still a direct child) matches it identically. */
-.mode-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; padding:var(--space-1); border-radius: 10px; background:var(--color-surface-sunken); }
-.mode-tabs button { display: flex; align-items: center; justify-content: center; gap:var(--space-2); min-width: 0; min-height: 50px; padding:7px var(--space-2); border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
-.mode-tabs button:hover { color: var(--text); }
-.mode-tabs button.selected { border-color: var(--line-strong); background: var(--surface-3); color: var(--text); box-shadow: 0 2px 10px rgba(0,0,0,.14); }
-.mode-tabs button svg { flex: 0 0 auto; }
-.mode-tabs button span { display: grid; min-width: 0; text-align: left; }
-.mode-tabs strong { font-size:var(--text-md); font-weight: 600; }
-.mode-tabs small { overflow: hidden; color: var(--muted-2); font-size:var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
 
 /* ACE-Step music workspace */
 
@@ -273,15 +253,6 @@ select { text-overflow: ellipsis; }
 @keyframes construction-float { 50% { transform: translateY(-4px); } }
 @keyframes construct-block { 0%,100% { height: 7px; opacity: .28; filter: hue-rotate(0deg); } 50% { height: 25px; opacity: 1; filter: hue-rotate(210deg); } }
 @keyframes rainbow-build { to { background-position: 300% 0; } }
-.progress { width: min(260px, 75%); height: 4px; margin-top:var(--space-4); overflow: hidden; border-radius: 999px; background: var(--surface-3); }
-.progress i { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .4s ease; }
-.progress.compact { width: 180px; height: 3px; margin-top:var(--space-2); }
-
-.notice { position: sticky; z-index:var(--z-sticky); top: 12px; display: flex; align-items: center; gap: 9px; width: min(600px, calc(100% - 32px)); min-height: 40px; margin:var(--space-3) auto 0; padding:var(--space-2) 9px var(--space-2) var(--space-3); border: 1px solid var(--line-strong); border-radius: 9px; background: rgba(25,31,27,.96); box-shadow: 0 12px 32px rgba(0,0,0,.3); font-size:var(--text-md); backdrop-filter: blur(12px); }
-.notice.success { border-color:color-mix(in srgb, var(--accent) 25%, transparent); color: var(--accent); }
-.notice.error { border-color:color-mix(in srgb, var(--danger) 30%, transparent); color: var(--danger); }
-.notice span { flex: 1; color: var(--text); }
-.notice button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 /* Wave 2d — filmstrip posters + pooled video leases: thumbnails are static
    sprite-sheet images; a <video> only exists while a pooled lease is live. */
 .pooled-video-card { position: relative; display: grid; aspect-ratio: 16 / 9; overflow: hidden; background: var(--color-surface-abyss); }
@@ -396,6 +367,43 @@ select { text-overflow: ellipsis; }
 .progressbar--local { background: color-mix(in srgb, var(--bar-tone, var(--accent)) 22%, transparent); }
 .progressbar--local .progressbar-fill { background: var(--bar-tone, var(--accent)); }
 @keyframes progressbar-sweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(320%); } }
+
+/* ---- Component vocabulary: toasts + notices (task 9, k2q0n9s) --------------
+ * ToastHost (src/ui/ToastHost.tsx, PURE PROPS — the store connection lives
+ * in src/canvas/toastAdapter.ts, the P07 adapter pattern) + NoticeBanner
+ * (src/ui/NoticeBanner.tsx).
+ *
+ * The toast recipes: the PLACEMENT values own the host's positioning —
+ * bottom-left is the canvas strip's historical absolute geometry, bottom-
+ * right the workbench corner (the retired .iw-toasts coordinates) — and the
+ * base owns the container mechanics + z. The consuming surface's container
+ * class composes LAST and keeps winning the cascade in its own later-
+ * loading sheet (canvas.css's .canvas-toasts overrides the column with its
+ * grid; routes that never load canvas.css — datasets, workbench — get the
+ * base column). The toast ITEM vocabulary is RETAINED, not migrated:
+ * canvas.css's .canvas-toast rules stay (the manifest §7 retained-geometry
+ * row), so the strip's look is unchanged where it always styled.
+ *
+ * The notice recipes follow the chip/button rule — the TONE classes carry
+ * color/background/border-color ONLY — with one recorded judgment call (the
+ * task-8 progressbar size-step precedent): the BASE owns the intrinsic
+ * notice geometry (flex / gap 10 / 6px 14px / --text-md) because all three
+ * migrated banners (the workbench note, ds-notice, ds-error-banner) shared
+ * it byte-identically; surfaces keep their true divergences — the border
+ * EDGE (top for the workbench note, bottom for the datasets banners) and
+ * the error banner's pre-wrap — in their own classes, split to border
+ * LONGHANDS per the C1 discipline (the tone recipes own border-color; a
+ * surface `border:` shorthand would reset it — the standing hazard net has
+ * a notice leg). The × button rule is shared (identical in all three
+ * retired rules). The class math that emits these lives in
+ * src/ui/noticeClasses.ts (node-tested against THIS block). */
+.toast-host { display: flex; flex-direction: column; gap: 8px; z-index: 60; }
+.toast-host--bottom-left { position: absolute; left: 14px; bottom: 44px; }
+.toast-host--bottom-right { position: fixed; bottom: 16px; right: 16px; }
+.notice-banner { display: flex; align-items: center; gap: 10px; padding: 6px 14px; font-size: var(--text-md); }
+.notice-banner--accent { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
+.notice-banner--danger { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+.notice-banner > button { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; }
 .connection-row { display: flex; align-items: flex-end; gap: 10px; padding:var(--space-4) 17px; }
 .field-group.grow { flex: 1; }
 .connection-row input { height: 38px; padding: 0 10px; }
@@ -479,21 +487,10 @@ select { text-overflow: ellipsis; }
 .experimental-settings .generation-defaults-grid { border-top:1px solid color-mix(in srgb, var(--warning) 15%, transparent); }
 
 @media (max-width: 900px) {
-  .app-shell { --sidebar: 66px; }
-  .sidebar .nav-button span, .sidebar .nav-button em { display: none; }
-  .sidebar .nav-button { justify-content: center; padding: 0; }
-  .mode-tabs { grid-template-columns: repeat(2, 1fr); }
   .generation-defaults-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 680px) {
-  .app-shell { grid-template-columns: 1fr; }
-  .titlebar { gap:var(--space-1); }
-  .titlebar { padding-inline:var(--space-2); }
-  .sidebar { position: fixed; z-index: 30; top: 42px; bottom: 0; left: 0; display: flex; width: min(286px, calc(100vw - 42px)); height: auto; padding:10px 9px max(var(--space-3), env(safe-area-inset-bottom)); overflow-y: auto; border-top: 0; border-right: 1px solid var(--line-strong); transform: translateX(0); box-shadow: 24px 0 70px rgba(0,0,0,.5); }
-  .sidebar nav { display: grid; overflow: visible; }
-   .sidebar .nav-button span, .sidebar .nav-button em { display: initial; }
-  .sidebar .nav-button { justify-content: flex-start; min-height: 42px; padding: 0 10px; }
    .standard-page { padding:var(--space-6) 14px var(--space-8); }
   .page-heading { align-items: flex-start; flex-direction: column; }
   .frame-grid { grid-template-columns: 1fr; }
@@ -536,20 +533,10 @@ select { text-overflow: ellipsis; }
 .page-heading h1 { text-wrap: balance; }
 .page-heading > div:first-child { min-width: 0; }
 
-.nav-button { position: relative; }
-.nav-button.active::before { content: ''; position: absolute; inset-block: 8px; left: 2px; width: 2px; border-radius: 999px; background: var(--spectrum); }
-.nav-button[data-item-type="character"].active { background:color-mix(in srgb, var(--spectrum-blue) 9%, transparent); }
-.nav-button[data-item-type="wardrobe"].active { background:color-mix(in srgb, var(--spectrum-violet) 8%, transparent); }
-.nav-button[data-item-type="location"].active { background:color-mix(in srgb, var(--spectrum-cyan) 8%, transparent); }
-
  .settings-section {
   box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 12px 34px rgba(0,0,0,.08);
 }
 .settings-section { border-top-color:color-mix(in srgb, var(--spectrum-amber) 25%, transparent); }
-.mode-tabs button:nth-child(1).selected { border-color:color-mix(in srgb, var(--spectrum-amber) 35%, transparent); box-shadow:inset 0 2px 0 color-mix(in srgb, var(--spectrum-amber) 50%, transparent); }
-.mode-tabs button:nth-child(2).selected { border-color:color-mix(in srgb, var(--spectrum-cyan) 35%, transparent); box-shadow:inset 0 2px 0 color-mix(in srgb, var(--spectrum-cyan) 50%, transparent); }
-.mode-tabs button:nth-child(3).selected { border-color:color-mix(in srgb, var(--spectrum-blue) 38%, transparent); box-shadow:inset 0 2px 0 color-mix(in srgb, var(--spectrum-blue) 55%, transparent); }
-.mode-tabs button:nth-child(4).selected { border-color:color-mix(in srgb, var(--spectrum-violet) 38%, transparent); box-shadow:inset 0 2px 0 color-mix(in srgb, var(--spectrum-violet) 55%, transparent); }
 
 .page-heading > .primary-button:not(:disabled), .settings-heading .primary-button:not(:disabled) {
   border-width: 1px;
@@ -609,8 +596,8 @@ select { text-overflow: ellipsis; }
 }
 
 /* Workspace composition refinements */
-.notice { position: fixed; z-index:var(--z-toast); top: 52px; left: 50%; width: min(600px, calc(100vw - 28px)); margin: 0; transform: translateX(-50%); animation: notice-enter .16s ease-out; }
-@keyframes notice-enter { from { opacity: 0; transform: translate(-50%, -6px); } }
+/* (The consumerless fixed .notice variant + its notice-enter keyframes were
+   deleted with the .notice family — manifest §8, task 9 k2q0n9s.) */
 
 /* Reference-mode character dialogue composer */
 
@@ -788,8 +775,10 @@ select { text-overflow: ellipsis; }
 /* ---- Canvas Phase 3 → 5: view retirement → deletion (canvas-ui-v1 §8) --------
    Phase 3 greyed the first trio out; Phase 5 DELETED all seven retired views
    together with the shell that carried them — these rules are historical
-   (no .nav-button / .retired-affordance elements exist anymore; the e2e
-   absence assertions pin that). Kept for the git-visible design record. */
+   (no .retired-affordance elements exist anymore; the e2e absence
+   assertions pin that). The SHELL's own rules were later deleted per the
+   component-vocabulary manifest §8 (task 9, k2q0n9s — the design record is
+   git history); these two remain pinned dead by the same assertions. */
 .retired-affordance { opacity: .55; }
 .retired-affordance:hover { opacity: .8; }
 

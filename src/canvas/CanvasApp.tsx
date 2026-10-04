@@ -33,7 +33,7 @@ import { Radar } from './Radar'
 import { SettingsDock } from './SettingsDock'
 import { LibraryDock } from '../components/LibraryDock'
 import { RemediationDock } from './RemediationDock'
-import { CanvasToasts } from './CanvasToasts'
+import { CanvasToastAdapter } from './toastAdapter'
 import { Substrate } from './Substrate'
 import { useCanvasStore } from './store'
 import { useJobsStore } from '../state/jobsStore'
@@ -235,7 +235,7 @@ export function CanvasApp() {
       <LibraryOverlay />
       <TimelineOverlay />
     </CanvasEngineHost>
-    <CanvasToasts />
+    <CanvasToastAdapter />
     <input
       ref={fileInputRef}
       type="file"

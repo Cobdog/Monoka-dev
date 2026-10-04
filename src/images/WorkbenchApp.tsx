@@ -17,6 +17,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { ImagePlus, Layers, LoaderCircle, Lock, Send, Settings, Sparkles, Wand2 } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { NoticeBanner } from '../ui/NoticeBanner'
+import { CanvasToastAdapter } from '../canvas/toastAdapter'
 import { useStudioSession } from '../hooks/useStudioSession'
 import { useGenerationQueue } from '../hooks/useGenerationQueue'
 import { useLivePreview } from '../lib/useLivePreview'
@@ -169,7 +171,6 @@ function WorkbenchSurface() {
   const phase = useCanvasStore((state) => state.phase)
   const activeProjectId = useCanvasStore((state) => state.activeProjectId)
   const documents = useCanvasStore((state) => state.documents)
-  const toasts = useCanvasStore((state) => state.toasts)
   const sessionState = useSessionStore()
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -1274,19 +1275,19 @@ function WorkbenchSurface() {
       )}
 
       {notice && (
-        <div className="iw-notice" role="status" data-iw-notice onClick={() => setNotice(null)}>
+        // Component vocabulary task 9 (k2q0n9s): the notice is NoticeBanner —
+        // the × OWNS the dismiss handler; the retired hand-rolled banner's
+        // banner-click dismissal died with it. The surface class carries the
+        // banner's local EDGE geometry (top border, split to longhands per
+        // the C1 discipline); tone and announcements ride the recipes.
+        <NoticeBanner tone="accent" role="status" className="iw-note" data-iw-note onDismiss={() => setNotice(null)}>
           <span>{notice}</span>
-          <button type="button" aria-label="Dismiss">×</button>
-        </div>
+        </NoticeBanner>
       )}
-      <div className="canvas-toasts iw-toasts" aria-live="polite">
-        {toasts.map((toast) => (
-          <div key={toast.id} className={`canvas-toast ${toast.tone}`} data-canvas-toast={toast.tone}>
-            <span>{toast.text}</span>
-            <button type="button" aria-label="Dismiss" onClick={() => useCanvasStore.getState().dismissToast(toast.id)}>×</button>
-          </div>
-        ))}
-      </div>
+      {/* Same task: the inline toast-strip copy is DELETED — this surface
+          mounts the shared adapter (the canvas store's toasts, timeouts,
+          and dismissal) placed bottom-right by the placement prop. */}
+      <CanvasToastAdapter placement="bottom-right" />
 
       <input ref={fileInput} type="file" accept="image/*" className="iw-file-input" onChange={(event) => { const file = event.target.files?.[0]; if (file) addFileRef(file); event.target.value = '' }} />
       <input ref={sourceInput} type="file" accept="image/*" className="iw-file-input" onChange={(event) => { const file = event.target.files?.[0]; if (file) void pickSource(file); event.target.value = '' }} />

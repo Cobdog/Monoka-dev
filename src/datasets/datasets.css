@@ -18,11 +18,14 @@
 /* (A10, Codex audit 2026-10-02) Decision-bearing helper/warning text rides
    --text-md (the ramp's real 11px step): the same dead var(--text-2xs, 11px)
    fallback the workbench shipped rendered these at 7px. Chips, eyebrows, and
-   control chrome keep their compact sizes. */
-.ds-notice, .ds-error-banner { display: flex; align-items: center; gap: 10px; padding: 6px 14px; font-size: var(--text-md); }
-.ds-notice { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent, var(--color-info)); border-bottom: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); }
-.ds-error-banner { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); border-bottom: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); white-space: pre-wrap; }
-.ds-notice button, .ds-error-banner button { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; }
+   control chrome keep their compact sizes.
+   (Component vocabulary task 9, k2q0n9s) Both banners are NoticeBanner now:
+   tone (bg/text/border-color) and the ≥11px font live in the .notice-banner
+   recipes in styles.css; these rules keep ONLY the banners' local EDGE
+   divergence — the BOTTOM border (they sit under the titlebar) — split to
+   longhands per the C1 discipline, plus the error banner's pre-wrap. */
+.ds-notice { border-bottom-width: 1px; border-bottom-style: solid; }
+.ds-error-banner { border-bottom-width: 1px; border-bottom-style: solid; white-space: pre-wrap; }
 
 .ds-main { display: flex; flex: 1; min-height: 0; }
 .ds-toolbar { width: 240px; flex: 0 0 auto; border-right: 1px solid color-mix(in srgb, var(--muted) 20%, transparent); padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }

@@ -18,9 +18,10 @@ import { useJobsStore } from '../state/jobsStore'
 import { SettingsDock } from '../canvas/SettingsDock'
 import { LibraryDock } from '../components/LibraryDock'
 import { CanvasSessionContext } from '../canvas/sessionContext'
-import { CanvasToasts } from '../canvas/CanvasToasts'
+import { CanvasToastAdapter } from '../canvas/toastAdapter'
 import { useCanvasStore } from '../canvas/store'
 import { SurfaceSwitcher } from '../surfaces/SurfaceSwitcher'
+import { NoticeBanner } from '../ui/NoticeBanner'
 import { CropEditor } from './CropEditor'
 import { CaptionPanel } from './CaptionPanel'
 import './datasets.css'
@@ -59,7 +60,7 @@ function DatasetsSessionHost({ children }: { children: React.ReactNode }) {
     {children}
     <SettingsDock />
     <LibraryDock />
-    <CanvasToasts />
+    <CanvasToastAdapter />
   </CanvasSessionContext.Provider>
 }
 
@@ -354,8 +355,14 @@ function DatasetsSurface() {
       </div>
     </header>
 
-    {notice && <div className="ds-notice" data-ds-notice>{notice}<button type="button" onClick={() => setNotice(null)}>×</button></div>}
-    {error && <div className="ds-error-banner" data-ds-error>{error}<button type="button" onClick={() => setError(null)}>×</button></div>}
+    {/* Component vocabulary task 9 (k2q0n9s): both banners are NoticeBanner —
+        roleless before, they now ANNOUNCE (role + the aria-live the role
+        implies); tone rides the recipes, the surface classes keep the
+        banners' local edge geometry (bottom border, split to longhands per
+        the C1 discipline) and the error banner's pre-wrap. The × owns the
+        ONE dismiss contract. */}
+    {notice && <NoticeBanner tone="accent" role="status" className="ds-notice" data-ds-notice onDismiss={() => setNotice(null)}>{notice}</NoticeBanner>}
+    {error && <NoticeBanner tone="danger" role="alert" className="ds-error-banner" data-ds-error onDismiss={() => setError(null)}>{error}</NoticeBanner>}
 
     {tab === 'library' && <div className="ds-main">
       <aside className="ds-toolbar">

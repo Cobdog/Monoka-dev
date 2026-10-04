@@ -140,9 +140,16 @@
 .iw-frame.scorer::after { content: '★'; position: absolute; top: 1px; right: 3px; font-size: 9px; color: var(--accent); text-shadow: 0 0 3px var(--color-surface-abyss, #000); }
 .iw-frame-evicted { font-size: 8px; color: var(--muted); }
 
-.iw-notice { display: flex; align-items: center; gap: 10px; padding: 6px 14px; background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); border-top: 1px solid color-mix(in srgb, var(--accent) 25%, transparent); font-size: var(--text-md); cursor: pointer; }
-.iw-notice button { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; }
-.iw-toasts { position: fixed; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 60; }
+/* (Component vocabulary task 9, k2q0n9s) The hand-rolled notice + toast
+   strip died: the notice is NoticeBanner (recipes in styles.css — tone,
+   announcements, the shared ×; the banner-click dismissal is gone: the ×
+   owns the handler), and the toast strip is the shared adapter placed
+   bottom-right by the placement prop (the .toast-host--bottom-right recipe
+   carries exactly the retired .iw-toasts coordinates). This surface keeps
+   ONLY the notice banner's local EDGE divergence — its TOP border (the
+   banner sits at the layout's foot), longhand-split per the C1 discipline
+   so the accent recipe's border-color survives the compose. */
+.iw-note { border-top-width: 1px; border-top-style: solid; }
 .iw-file-input { display: none; }
 
 .iw-dialog-backdrop { position: fixed; inset: 0; background: color-mix(in srgb, var(--color-surface-abyss, #000) 62%, transparent); display: flex; align-items: center; justify-content: center; z-index: 50; }

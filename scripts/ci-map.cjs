@@ -72,6 +72,7 @@ const SUITES = {
   launcher: { build: 'full', windows: false, python: false, ffmpeg: false },
   llm: { build: 'full', windows: false, python: false, ffmpeg: false },
   'manager-install': { build: 'full', windows: false, python: false, ffmpeg: false },
+  'notice-classes': { build: null, windows: false, python: false, ffmpeg: false },
   poserig: { build: null, windows: false, python: false, ffmpeg: false },
   'progressbar-classes': { build: null, windows: false, python: false, ffmpeg: false },
   realtime: { build: 'full', windows: false, python: false, ffmpeg: false },
@@ -125,9 +126,9 @@ const RULES = [
   },
   {
     match: ['eslint.config.mjs', 'stylelint.config.mjs', 'src/styles.css', '.gitattributes', '.gitignore'],
-    suites: ['stylelint-guard', 'chip-classes', 'button-classes', 'progressbar-classes'],
+    suites: ['stylelint-guard', 'chip-classes', 'button-classes', 'progressbar-classes', 'notice-classes'],
     lintAll: true,
-    reason: 'lint/config — the stylelint guard suite owns stylelint.config.mjs and the :root type ramp it parses out of src/styles.css (a ramp change can flip the guard); the chip-classes suite walks the same sheet\'s .chip recipe block (existence, tone-only properties, :root-defined tokens — task 6); the button-classes suite walks the sheet\'s .btn recipe block the same way (task 7); the progressbar-classes suite walks the sheet\'s .progressbar recipe block + the migrated fetch/tile dialect rules in styles.css and canvas.css (task 8); the full lint runs on any of these.',
+    reason: 'lint/config — the stylelint guard suite owns stylelint.config.mjs and the :root type ramp it parses out of src/styles.css (a ramp change can flip the guard); the chip-classes suite walks the same sheet\'s .chip recipe block (existence, tone-only properties, :root-defined tokens — task 6); the button-classes suite walks the sheet\'s .btn recipe block the same way (task 7); the progressbar-classes suite walks the sheet\'s .progressbar recipe block + the migrated fetch/tile dialect rules in styles.css and canvas.css (task 8); the notice-classes suite walks the sheet\'s .toast-host/.notice-banner recipe blocks + the §8 dead-CSS retirement pins (task 9); the full lint runs on any of these.',
   },
   {
     match: ['playwright.config.ts', 'e2e/**'],
@@ -352,6 +353,11 @@ const RULES = [
     match: ['src/ui/ProgressBar.tsx', 'src/ui/progressClasses.ts', 'src/canvas/canvas.css'],
     suites: ['progressbar-classes'],
     reason: 'the scalar progress bar\'s pure tone/state class + width/aria math (component vocabulary task 8): the progressbar-classes suite loads progressClasses.ts through the VM harness, pins the determinate width math byte-identical to the retired fetch expression, and walks the .progressbar recipe block in src/styles.css plus the migrated fetch/tile dialect rules (recipe lockstep both directions, tone+mechanics-only properties per P06, :root-defined tokens, retirement pins — canvas.css carries the tile row).',
+  },
+  {
+    match: ['src/ui/ToastHost.tsx', 'src/ui/NoticeBanner.tsx', 'src/ui/noticeClasses.ts', 'src/canvas/toastAdapter.tsx', 'src/images/workbench.css', 'src/datasets/datasets.css'],
+    suites: ['notice-classes'],
+    reason: 'the toast/notice family\'s pure placement/tone/aria class math + the P07 adapter\'s store-wiring pass-through (component vocabulary task 9): the notice-classes suite loads noticeClasses.ts through the VM harness, pins the retained canvas-toast item vocabulary byte-identical to the retired strip expression, walks the .toast-host/.notice-banner recipe blocks in src/styles.css (recipe lockstep both directions, property whitelists per P06, :root-defined tokens), re-runs the C1 net over every NoticeBanner-composed surface class, and pins the §7/§8 migrations (the workbench inline strip, the .iw-notice/.iw-toasts rules, the datasets banner tone rules, the manifest §8 dead-CSS families — workbench.css/datasets.css carry the retained edge rows).',
   },
   {
     match: [
