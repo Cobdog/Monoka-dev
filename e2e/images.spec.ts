@@ -1076,3 +1076,101 @@ test('the workbench toast strip is the adapter at bottom-right — the placement
     await page.request.post('/api/lan/settings', { data: { settings: original } }).catch(() => undefined)
   }
 })
+
+// Task 16 fix round 1 (I2): the StudioSelect wrap must FILL the .iw-row
+// labels. Pre-migration the tier and resolution-locked selects were
+// block-level width:100% children of their flexed labels (workbench.css's
+// .iw-controls select rule); the migration's inline wrap shrink-to-fit them
+// to content width until the .iw-row label .studio-select companion
+// restored the fill. This pin covers BOTH named sites: the boot-default
+// packet family renders the tier select, and the inpaint lane with a
+// painted/masked source renders the locked one. RED against the unfixed
+// wrap by construction (content width < 90% of the label on the tier site).
+test('the workbench row selects fill their labels (StudioSelect wrap geometry, task 16 fix I2)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  await seedSession(request)
+
+  // A REAL-sized canvas image for the masked-source lane: the seeded frames
+  // are 1x1 PNGs and the mask composite snaps to the 32-grid (a 1px source
+  // snaps to 0 — the use-mask path cannot run on it), so drop a 64x36
+  // image onto the canvas first; it lands in the session's active project
+  // and the workbench's canvas-source picker lists it.
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 64
+    canvas.height = 36
+    const context = canvas.getContext('2d')!
+    context.fillStyle = '#2b3a55'
+    context.fillRect(0, 0, 64, 36)
+    const dataUrl = canvas.toDataURL('image/png')
+    const binary = atob(dataUrl.split(',')[1])
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+    const transfer = new DataTransfer()
+    transfer.items.add(new File([bytes], 'fill-source.png', { type: 'image/png' }))
+    document.querySelector('[data-canvas-root]')!.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }))
+  })
+  await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 10_000 })
+
+  await page.goto('/?images=1')
+  await expect(page.locator('[data-iw-root]')).toBeVisible({ timeout: 15_000 })
+
+  // A row select FILLS its label, on its OWN line under the label text: the
+  // wrap's width:100% companion restores the pre-migration shape (a
+  // block-level width:100% select wraps below the label's span), while the
+  // unfixed inline wrap shrink-to-fits BESIDE the text — the stacking is the
+  // discriminator the width ratio alone cannot carry (the flexed label hugs
+  // its content either way).
+  const fillPin = async (selector: string, name: string) => {
+    const select = page.locator(selector)
+    await expect(select).toBeVisible()
+    const layout = await select.evaluate((element) => {
+      const label = element.closest('label')
+      const span = label?.querySelector('span')
+      if (!label || !(span instanceof HTMLElement)) return { select: -1, label: -1, ownLine: false }
+      const selectRect = element.getBoundingClientRect()
+      return {
+        select: selectRect.width,
+        label: label.getBoundingClientRect().width,
+        ownLine: selectRect.top >= span.getBoundingClientRect().bottom - 1,
+      }
+    })
+    expect(layout.label, `${name}: the select sits inside a labelled row`).toBeGreaterThan(0)
+    expect(layout.ownLine, `${name}: the filled select breaks to its own line under the label text`).toBe(true)
+    expect(layout.select, `${name}: select ${layout.select.toFixed(0)}px fills the label (${layout.label.toFixed(0)}px)`).toBeGreaterThanOrEqual(layout.label * 0.9)
+  }
+
+  // Site 1 — the boot-default packet family's tier row.
+  await fillPin('[data-iw-tier] select', 'the tier select')
+
+  // Site 2 — the inpaint lane's resolution-locked select: edit tab, the
+  // masked sub-lane, the DROPPED canvas image as source, paint + USE the
+  // mask (the lane refuses an empty mask — one stroke first).
+  await page.locator('[data-iw-mode="edit"] > button').click()
+  await page.locator('[data-iw-family-button="h3img.edit.inpaint"]').click()
+  await page.locator('[data-iw-source-pick-canvas]').click()
+  const picker = page.getByRole('dialog', { name: 'Use a canvas image as the source' })
+  await expect(picker).toBeVisible()
+  await picker.locator('[data-iw-canvas-ref][title*="fill-source"]').click()
+  await expect(page.locator('[data-iw-source-name]')).toContainText('fill-source')
+  await page.locator('[data-iw-paint-mask]').click()
+  const painter = page.getByRole('dialog', { name: 'Paint the region to regenerate' })
+  await expect(painter).toBeVisible()
+  await page.waitForFunction(() => {
+    const img = document.querySelector('.iw-mask-under')
+    return img instanceof HTMLImageElement && img.complete && img.naturalWidth > 1
+  })
+  const maskCanvas = painter.locator('[data-iw-mask-canvas]')
+  const canvasBox = (await maskCanvas.boundingBox())!
+  await page.mouse.move(canvasBox.x + canvasBox.width * 0.5, canvasBox.y + canvasBox.height * 0.5)
+  await page.mouse.down()
+  await page.mouse.move(canvasBox.x + canvasBox.width * 0.75, canvasBox.y + canvasBox.height * 0.75, { steps: 4 })
+  await page.mouse.up()
+  await painter.locator('[data-iw-mask-use]').click()
+  await expect(painter).toHaveCount(0)
+  await expect(page.locator('[data-iw-resolution-locked]')).toBeVisible()
+  await fillPin('[data-iw-resolution-locked]', 'the resolution-locked select')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})

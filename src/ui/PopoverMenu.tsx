@@ -45,7 +45,10 @@
  * the popup's surface class keeps its own geometry (absolute inside the
  * fixed wrapper — the exact shape the hand-rolled backdrop+menu pair had).
  * The dimmed backdrop is the canvas menus' retained look (the
- * .canvas-menu-backdrop geometry, now click-handled by Base UI).
+ * .canvas-menu-backdrop geometry, now click-handled by Base UI). The
+ * no-backdrop path is LATENT today (no consumer): the popup portals to
+ * body level with neither wrapper nor stacking — an in-panel consumer
+ * (the gap-menu shape) would need a portal-container extension first.
  */
 import { useCallback, useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode } from 'react'
 import { Dialog } from '@base-ui/react/dialog'

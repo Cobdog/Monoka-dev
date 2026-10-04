@@ -5632,6 +5632,15 @@ test('popover menu: one Escape closes topmost only; outside-press via Base UI', 
     return active instanceof HTMLElement && active.tagName === 'BUTTON' && active.closest('[data-canvas-endpoint-menu]') !== null
   })).toBe(true)
 
+  // The modal registration suspends the background chain (§0.2): B — a
+  // background single-letter key — does NOTHING over an open menu.
+  // Pre-migration B stacked a fork menu on top of this one (deviation pin:
+  // task 16's sanctioned behavior change, fix-round addition).
+  await page.keyboard.press('b')
+  await expect(page.locator('[data-canvas-fork-menu]')).toHaveCount(0)
+  await expect(menu).toBeVisible()
+  expect(await stackVia()).toBe('canvas-endpoint-menu')
+
   // ONE Escape closes exactly the TOPMOST layer: with the palette summoned
   // over the menu, the first press closes only the palette (the menu
   // survives), the second only the menu — no cascade, no deselect behind.
@@ -5712,5 +5721,63 @@ test('gap menu: a gap that stops resolving renders no menu and leaves no stale f
   await page.keyboard.press('Escape')
   await expect(timeline.locator('[data-canvas-gap-menu]')).toHaveCount(0)
   await expect(timeline).toBeVisible()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// The smart-insert menu's dismissal unification (task 16, manifest §9's
+// third live row — fix-round pin): while open the palette registers with
+// the layer registry, one Escape closes the menu ALONE, and the canvas
+// SELECTION survives the press. Pre-migration the same keystroke leaked
+// past the palette's own handler to CanvasApp's window chain and
+// DESELECTED the tile behind the editor — the no-deselect assertion below
+// is the leak fix itself, and it is RED BY CONSTRUCTION against the retired
+// shape (no registration existed; the deselect was unconditional). The
+// palette's OTHER keys (arrows, Enter-insert) stay its own local handlers.
+test('smart-insert menu: registered Escape closes the menu alone — the canvas selection survives; the palette keys still work', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=layers')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  const stackVia = () => page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })
+  await dropPng(page, 'smart-insert-source.png')
+  const mediaTile = page.locator('[data-canvas-tile]').first()
+  await expect(mediaTile).toBeVisible({ timeout: 10_000 })
+  await page.waitForTimeout(900) // fly-to settle before clicking
+  await mediaTile.click()
+  const panel = page.locator('[data-canvas-properties]')
+  await expect(panel).toBeVisible()
+
+  // Typing // opens the insert menu over the editor — and it REGISTERS.
+  const prompt = page.getByLabel('Chain prompt')
+  await prompt.fill('//')
+  const menu = page.locator('.smart-insert-menu')
+  await expect(menu).toBeVisible()
+  await expect.poll(stackVia).toBe('smart-insert-menu')
+
+  // ONE Escape closes ONLY the menu: focus returns to the editor, the
+  // properties panel (selection-driven) and the media-context bar both
+  // survive — pre-migration this press deselected the tile behind the
+  // editor and the panel died with the selection.
+  await page.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  await expect(prompt).toBeFocused()
+  await expect(panel).toBeVisible()
+  await expect(page.locator('[data-canvas-bottombar]')).toHaveAttribute('data-canvas-bar-context', 'media')
+
+  // The palette's own keys still work: reopen through the Insert affordance
+  // (focus lands in the search field), arrows walk the results locally,
+  // Enter inserts the walked preset into the editor.
+  await page.locator('.smart-prompt-footer button').filter({ hasText: 'Insert' }).click()
+  await expect(menu).toBeVisible()
+  await expect(page.getByLabel('Search production presets')).toBeFocused()
+  const before = await prompt.inputValue()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await expect(menu).toHaveCount(0)
+  expect(await prompt.inputValue(), 'Enter inserted the walked preset').not.toBe(before)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
