@@ -274,3 +274,9 @@ never resolved by tool authority alone.
 7. **GPU use:** 10.7 min total (9 renders ~63 s mean, 1 probe 21 s, 3
    cache no-ops); contention guard clean at every submit; final residency
    22679 MiB left for the controller's phasing.
+
+## Addendum — the maintainer's canary review: 8/8 TIES (2026-10-04)
+
+The expected-all-ties set read as all ties — every canary pair, across all four loading conditions (cold/warm/post-model-reload/repeat-warm, spanning runs r1–r9), called tie with zero notes. This is the strongest possible human confirmation of the zero-floor finding: the automated battery said SD = 0.0 on every endpoint; the maintainer's eye, through the rebuilt instrument, agrees at every pairing. Two independent instruments, one answer: **the base stack's execution noise is zero on this box.** The human track and the metric track are now calibrated to each other, both anchored to a null that passed.
+
+Consequence recorded: Set C's confirmatory thresholds may treat ANY visible difference on matched-config cells as signal (no noise floor to subtract); the MDE table's granularity note stands as the only resolution limit.
