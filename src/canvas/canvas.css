@@ -147,7 +147,13 @@
  * hover, selected/active, danger, primary→accent, disabled) moved to the
  * shared `.chip` block in src/styles.css; surfaces compose
  * `chip [chip--*] canvas-chip`. Border width/style stay here so pill
- * geometry is the surface's own. */
+ * geometry is the surface's own — as LONGHANDS, never the `border:`
+ * shorthand: the shorthand RESETS border-color to currentcolor and, at
+ * (0,1,0) — equal to .chip/.chip--* specificity — in this later-loading
+ * sheet, it beats the recipes, so the composed tone renders silently as
+ * the surface's own color (fix round 1's C1: the gap menu's selected
+ * option shipped exactly that way). tests/chip-classes.test.js (g) walks
+ * the TSX compositions and fails on any shorthand here. */
 .canvas-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-sm); cursor: pointer; }
 .canvas-launcher-resume { display: grid; gap: 8px; }
 .canvas-launcher-resume > header { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: var(--text-sm); letter-spacing: .06em; text-transform: uppercase; }
@@ -673,9 +679,10 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-gap-menu header { display: flex; align-items: center; gap: 8px; padding: 2px 4px 6px; color: var(--muted-2); font-size: var(--text-2xs); }
 .canvas-gap-menu header strong { color: var(--text); font-size: var(--text-sm); }
 .canvas-gap-menu header .icon-button { margin-left: auto; }
-.canvas-gap-option { display: grid; gap: 3px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--color-text-soft); cursor: pointer; text-align: left; }
-.canvas-gap-option:hover:not(:disabled) { border-color: var(--line-strong); }
-.canvas-gap-option.active { border-color: color-mix(in srgb, var(--accent) 48%, transparent); }
+/* Gap-option geometry only (fix round 1, C1 — this family rides the chip
+ * recipes though it sits outside the §5 census): border LONGHANDS, never
+ * the shorthand. */
+.canvas-gap-option { display: grid; gap: 3px; padding: 8px 10px; border-width: 1px; border-style: solid; border-radius: 9px; cursor: pointer; text-align: left; }
 .canvas-gap-option:disabled { opacity: .55; cursor: default; }
 .canvas-gap-option-head { display: flex; align-items: center; gap: 8px; }
 .canvas-gap-option-head strong { color: var(--text); font-size: var(--text-sm); }
