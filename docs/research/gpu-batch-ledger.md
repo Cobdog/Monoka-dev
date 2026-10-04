@@ -727,8 +727,7 @@ clause above is a place the total can and should shrink on evidence.
 
 ## 4. Amendment log for this ledger
 
-- (none yet — sets record their verdicts here as dated addenda, one per
-  set gate, per §1.1's between-sets re-planning rule.)
+- Amendments record dated verdicts and design changes, one per set gate, per §1.1's between-sets re-planning rule.
 
 ## Amendment 1 — the maintainer-review surface (standing rule, 2026-10-04: "my own eyes on test results... validate A/B testing as well as automated tools")
 
@@ -740,3 +739,65 @@ Every set that produces judged outputs ships, alongside its metrics doc:
 4. **The recorded verdict table** — the maintainer's calls and the automated metrics side-by-side in the set's results doc; disagreements are the protocol's escalation trigger (§1.4b), never resolved by tool authority alone.
 
 This extends §1.4's human-checkpoint list from "before verdicts are acted on" to "every judged set, by default" — the maintainer is a first-class judge, not a final approver. Set A's calibration set ships under the same surface (the corruption ladder must pass the maintainer's eye before the automated judge's floor counts).
+
+## Amendment 2 — Set A verdicts (dated 2026-10-04; the static/no-sampling set, executed per [gpu-batch-setA-results.md](gpu-batch-setA-results.md))
+
+**Design changes landed by A1's dedup + A2's relabel (the pre-registered
+< 0.05 max-|Δσ′| merge rule, code-true grids from the canonical install):**
+
+1. **X1 arm set 4 → 3.** `sgm_uniform/24` (X1-c) MERGES INTO `sgm_uniform/20`
+   (max-|Δσ′| = 0.0358 — identical-in-effect; 24 steps buys knot density the
+   rule counts as no treatment difference) → X1-c is DROPPED (−12 gens). The
+   w=0.5 uniform mixture MERGES INTO `Beta(2,4)/20` (0.0455) → **X1 arm-4 =
+   Beta(2,4)/20** (the simpler representative; directly expressible as the
+   stock `beta_scheduler(α=2, β=4)` quantile grid). Surviving separations:
+   simple/20 vs sgm/20 = 0.0521 (runs); beta(2,4) vs sgm/20 = 0.0792 (runs).
+   Mid-band (σ′∈[0.3,0.8]) knot counts: simple 5 · sgm 4 · beta(2,4) 7 — the
+   treatment dimension is spanned by the beta arm, confirming thesis §3.1's
+   "scheduler choice moves the floor, not the mid band" at s=12 in stronger
+   form (even steps 20→24 barely moves the grid).
+2. **Beta(0.8,3) RELABELED** boundary-peaked (fry-direction probe; α<1 ⇒ peak
+   at b→0, 8/20 knots below σ′=0.5, floor 0.098) — X3's optional exploratory
+   cell ONLY, never an X1 "mid-low" arm (audit triage #1 executed).
+3. **X6 verdict (manifest-vs-simple): the cells PARTIALLY collapse.**
+   `simple/8 ≡ sgm_uniform/8` (0.0211 → merged, one cell). The larryvrh-lineage
+   v4 CARD recipe is **Euler + Beta(0.6,0.6), 6–8 steps** (thesis §5.2 [DOC]) —
+   materially different from simple/8 (0.2067; floor 0.4249 vs 0.6316). X6 =
+   2 cells: {card-beta grid} vs {simple ≡ sgm}. FINDING: tranche-1's turbo
+   arms ran simple/8 — OFF the card recipe (its numbers remain valid as
+   shipping-path measurements; the batch's "manifest grid" cells mean the card
+   recipe).
+4. **§1.3 H3-turbo attachment row CORRECTED.** The row cited "[MEASURED,
+   tranche 1]" for MERGE, but tranche-1's graphs ran `MiniMaxH3TurboLoRA`
+   with `low_vram: False` = **BYPASS (runtime)**; the installed pack's own
+   doctrine says bypass is correct on quantized bases ("merge … softer on
+   quantized bases — the delta is partly rounded away", pack tooltip + issue
+   trail) — the same rationale as the DMD never-merge class. Corrected row:
+   **H3 turbo lineage attaches BYPASS (runtime, strength recorded); MERGE is
+   the OOM fallback only.** BOMs record mode per run either way.
+5. **Set E machinery note (not a design change — a construction finding):**
+   C2's audio rebasing is satisfied NATIVELY at the `SamplerCustomAdvanced`
+   output→input boundary: stage-1 leaves through `process_latent_out`
+   (audio ÷ audio_scale₁), stage-2 enters through `process_latent_in` (audio ×
+   audio_scale₂) — the scale-ratio rescale IS the boundary; σ_a is continuous
+   across the handoff by construction (both stages derive it from the shared
+   base position t via s_a=3). No custom audio-rescale node is needed; the
+   E-graphs compile with existing nodes + the new `ExpSetSigmas` local shim
+   (exact sigma passthrough — KJNodes CustomSigmas force-zeroes the terminal
+   value, which would corrupt truncation grids and stage legs). The mandatory
+   audio sub-endpoint on E-b stands unchanged as the measurement that catches
+   any residual error.
+6. **Fetch-schedule correction (A6):** the Viggle fetch set (pruned-int8
+   finetune, DMD r64/r128 LoRAs, frozen embed) and Fun-Control Union 6.8 GB
+   are ALREADY LOCAL (SHAs in the Set A results §A6); Set F needs no fetch
+   (one card check: int8 video VAE vs the local fp16/fp32). NEW gap found by
+   the A3 compile: Set E's 6/3 turbo stage wants the LightX2V **FL2VA**
+   768p-line turbo, of which only the REF2VA flavor is local — fetch-or-
+   substitute ruling at the Set E gate. Full schedule: results doc §A6.
+
+Thesis errata recorded by A1 (does not change any ledger design): the §3.1
+printed `sgm_uniform` row shifted endpoints — the code's grid INCLUDES the
+leading σ′=1.0 and floors at 0.6527 (N=8@s12) / 0.4392 (N=20) / 0.4020 (N=24);
+the printed 0.1260 floor was the dropped-endpoint variant, and §3.2's s=32
+sgm floor is ≈0.85 code-true (claimed 0.506). Qualitative claims (sgm floors
+deeper than simple; separation grows with shift) hold; magnitudes corrected.

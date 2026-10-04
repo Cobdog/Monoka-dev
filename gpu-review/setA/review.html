@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>GPU batch Set A — maintainer review</title>
+<style>
+ body{font-family:system-ui,sans-serif;background:#141414;color:#ddd;margin:0;padding:24px;max-width:1400px;margin:auto}
+ h1{font-size:20px} h2{font-size:15px;color:#999;margin-top:36px}
+ .row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:18px 0;padding:14px;background:#1e1e1e;border-radius:8px}
+ .side{text-align:center} .side video{width:100%;border-radius:6px;background:#000}
+ .side .tag{font-size:12px;color:#888;margin-top:4px}
+ .meta{grid-column:1/3;font-size:13px;color:#aaa}
+ .resp{grid-column:1/3;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:13px}
+ .resp label{cursor:pointer}.resp input{margin-right:4px}
+ textarea{width:100%;box-sizing:border-box;background:#111;color:#ccc;border:1px solid #333;border-radius:4px;font-size:12px;padding:6px}
+ button{background:#3b6ea5;color:#fff;border:0;border-radius:6px;padding:8px 16px;font-size:14px;cursor:pointer;margin-top:18px}
+ .hint{font-size:12px;color:#777}
+</style></head><body>
+<h1>GPU batch — Set A review (corruption ladder + decode nulls)</h1>
+<p class="hint">8 blinded pairs. For each row: which side is BETTER quality (left / right / tie / cannot assess)?
+Ties are valid results. For p07 the scientifically correct answer is a TIE — call it as you see it.
+Your calls are stored in this browser (localStorage) and exported with the button — no server involved.</p>
+<div id="rows"></div>
+<button id="export">Download review-responses.json</button>
+<span class="hint" id="status"></span>
+<script>
+const PAIRS = [{"id": "p01", "name": "c1_vaereencode", "note": "H3 video VAE encode->decode of the clean frames (GPU, fp16 VAE)"}, {"id": "p02", "name": "c2_gainL2", "note": "+2 L* on every frame (Lab L channel, uniform)"}, {"id": "p03", "name": "c3_1frame_jitter", "note": "adjacent frames 61<->62 swapped (single-frame temporal reversal)"}, {"id": "p04", "name": "c4_crossblend_seam", "note": "frames 62..78 cross-blended with frames 100..116 on a linear ramp (17-frame ghost window; hard edge back to clean at 79)"}, {"id": "p05", "name": "c5_identity_swap", "note": "face region replaced each frame by a DIFFERENT identity's face crop (blonde donor from the efc1 contact sheet), feathered paste"}, {"id": "p06", "name": "c6_halfres", "note": "864x480 -> 432x240 (area) -> 864x480 (bilinear)"}, {"id": "p07", "name": "a4-holddecode (latent-hold decode stability)", "note": "same latent decoded across two load states"}, {"id": "p08", "name": "a4-VAE-roundtrip (decode/encode floor)", "note": "243f clean render vs its VAE encode->decode"}];
+const LS = 'gpu-review-setA-responses';
+let responses = {};
+try { responses = JSON.parse(localStorage.getItem(LS) || '{}'); } catch(e) {}
+const rowsEl = document.getElementById('rows');
+PAIRS.forEach(p => {
+  const row = document.createElement('div'); row.className = 'row';
+  row.innerHTML = `
+    <div class="side"><video src="pairs/${p.id}_L.mp4" controls loop muted autoplay playsinline></video><div class="tag">LEFT</div></div>
+    <div class="side"><video src="pairs/${p.id}_R.mp4" controls loop muted autoplay playsinline></video><div class="tag">RIGHT</div></div>
+    <div class="meta"><b>${p.id}</b> — ${p.name}<br><span class="hint">${p.note}</span></div>
+    <div class="resp">
+      ${['left','right','tie','cannot-assess'].map(o =>
+        `<label><input type="radio" name="${p.id}" value="${o}"> ${o}</label>`).join('')}
+      <textarea data-note="${p.id}" placeholder="optional note" rows="1"></textarea>
+    </div>`;
+  rowsEl.appendChild(row);
+});
+rowsEl.addEventListener('change', e => {
+  if (e.target.type === 'radio') {
+    responses[e.target.name] = Object.assign(responses[e.target.name] || {}, {call: e.target.value});
+    save();
+  }
+});
+rowsEl.addEventListener('input', e => {
+  if (e.target.tagName === 'TEXTAREA') {
+    responses[e.target.dataset.note] = Object.assign(responses[e.target.dataset.note] || {}, {note: e.target.value});
+    save();
+  }
+});
+function save(){
+  localStorage.setItem(LS, JSON.stringify(responses));
+  document.getElementById('status').textContent = ' saved ' + new Date().toLocaleTimeString();
+}
+const savedNotes = JSON.parse(localStorage.getItem(LS) || '{}');
+Object.entries(savedNotes).forEach(([id, v]) => {
+  const r = document.querySelector(`input[name="${id}"][value="${v.call}"]`);
+  if (r) r.checked = true;
+  const t = document.querySelector(`textarea[data-note="${id}"]`);
+  if (t && v.note) t.value = v.note;
+});
+document.getElementById('export').onclick = () => {
+  const blob = new Blob([JSON.stringify({set:'A', exported:new Date().toISOString(), responses}, null, 1)],
+                        {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'review-responses.json'; a.click();
+};
+</script></body></html>
