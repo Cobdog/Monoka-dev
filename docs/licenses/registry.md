@@ -146,6 +146,7 @@ READMEs, not legal advice.
 | `fasth3-vae-w4a8` (jacokon) | `minimax-h3-community-license-agreement` + **HF dataset gate** (per-account acceptance; anonymous fetch fails honestly 401) `[API-2026-09-15]` | fetch-consent |
 | `matlowai-fused-turbo-int8-convrot` (`matlowai-fused-turbo-int8` catalog id) | merged weights stay MiniMax-H3 derivatives (folded turbo/base conversion are Apache-2.0 sides) `[API-2026-09-15]` | fetch-consent |
 | `taeh3-preview-decoder` (Kijai) | **Apache-2.0 repo**; the weights are a MiniMax-H3 derivative trained by Kijai `[API-2026-09-18]` | fetch-consent |
+| `minimax_h3_pdmd_4nfe_comfyui_v6` (Iwannapose conversion of pdmd2026/pdmd_4NFE_lora — the PDMD 4-NFE student, arXiv 2609.35768) | Apache-2.0 upstream AND conversion `[API-2026-10-04]` — an H3-33B-derived distill; sha-verified at fetch (1.96 GB) | fetch-consent |
 | Viggle/Viggle-Animate; t8star Vdn-Minimax-H3-Comfy; FastVideo FastH3; Tutu 20→8 NFE LoRA | `minimax-h3-community-license` class `[API]`/`[DOC]` | watch tier |
 
 ### 5b. The Krea 2 community-license family
