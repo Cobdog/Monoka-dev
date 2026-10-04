@@ -1,7 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>GPU review — blinded A/B</title>
 <style>
   :root { --bg:#0b0e0d; --surface:#101412; --surface2:#151a17; --line:#252c28; --text:#edf3ef; --muted:#8f9b94; --accent:#c6ff63; --danger:#ff7f7f; }
@@ -19,9 +17,9 @@
   .mode-btns button.on { color:#142000; background:var(--accent); border-color:var(--accent); font-weight:600; }
   .stage { position:relative; background:#000; user-select:none; }
   .stage video, .stage canvas { display:block; width:100%; }
-  .stage.sbs { display:grid; grid-template-columns:1fr 1fr; gap:2px; }
+  .stage.sbs { display:block; }
   .stage.slider { cursor:ew-resize; }
-  .stage.slider .v-top { position:absolute; inset:0; clip-path:inset(0 calc(100% - var(--split,50%)) 0 0); }
+
   .stage .divider { position:absolute; top:0; bottom:0; width:3px; background:var(--accent); left:var(--split,50%); transform:translateX(-1.5px); pointer-events:none; box-shadow:0 0 8px rgba(198,255,99,.5); }
   .stage .divider::after { content:'⇔'; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--accent); color:#142000; font-size:13px; padding:2px 6px; border-radius:8px; font-weight:700; }
   .stage .tag { position:absolute; top:8px; font-size:11px; background:rgba(0,0,0,.65); padding:2px 8px; border-radius:4px; color:var(--muted); }
@@ -58,406 +56,227 @@
   .stage:fullscreen video, .stage:fullscreen canvas { max-height:100vh; width:auto; max-width:100%; }
   .hidden { display:none !important; }
 </style>
-</head>
-<body>
-<header>
-  <h1>GPU review — blinded A/B</h1>
-  <div class="sub" id="hdr-sub">Left/right assignments are randomized per pair; the key is escrowed (calls recorded before reveal); ties are valid. Blink decodes both sides to frame caches on first entry — the two videos then play from the SAME frame index by construction, so any visible blink difference is real content, never sync.</div>
-</header>
+<style>
+.stage { aspect-ratio:9/5; display:flex; align-items:center; justify-content:center; }
+.stage.sbs { aspect-ratio:18/5; }
+.stage canvas { width:100%; height:auto; }
+.stage:fullscreen, .stage.sbs:fullscreen { display:flex; aspect-ratio:auto; }
+.stage:fullscreen canvas { width:100%; height:100%; object-fit:contain; max-width:none; }
+.stage.slider { touch-action:none; }
+.stage.blink { cursor:pointer; }
+.stage:focus-visible { outline:2px solid var(--accent); }
+.stage .tag { pointer-events:none; }
+.empty { padding:30px; color:var(--muted); }
+.transport select { background:var(--surface2); color:var(--text); border:1px solid var(--line); padding:4px; }
+</style>
+</head><body>
+<header><h1>GPU review — blinded A/B</h1><div class="sub">Matched presentation frames in every mode. Blink rate is full L/R cycles per second; pause freezes content while automatic blink continues. Choose Manual to tap or press B to flip. Space plays; arrows step. Calls reveal per-side metadata.</div></header>
 <main id="pairs"></main>
-<footer>
-  <span class="count" id="count"></span>
-  <span style="flex:1"></span>
-  <button id="export">Export responses JSON</button>
-</footer>
-<template id="pair-tpl">
-  <section class="pair" data-pair="">
-    <div class="pair-head">
-      <span class="pid"></span>
-      <div class="mode-btns">
-        <button data-mode="sbs" class="on">Side-by-side</button>
-        <button data-mode="slider">Slider</button>
-        <button data-mode="blink">Blink</button>
-        <button class="fs" title="Fullscreen (current mode)">⛶</button>
-      </div>
-    </div>
-    <div class="stage sbs">
-      <video class="v-base" playsinline preload="auto"></video>
-      <video class="v-top" playsinline preload="auto"></video>
-      <canvas class="blink-canvas hidden"></canvas>
-      <div class="divider hidden"></div>
-      <span class="tag l hidden">L</span><span class="tag r hidden">R</span>
-      <div class="probe hidden"><span class="probe-msg">decoding frames…</span><progress max="100" value="0"></progress></div>
-    </div>
-    <div class="transport">
-      <button class="play">⏯ Play/Pause</button>
-      <button class="stepb">⟨ frame</button><button class="stepf">frame ⟩</button>
-      <button class="restart">⟲ Restart</button>
-      <span class="spacer"></span>
-      <label class="blink-only hidden">blink <input type="range" class="hz" min="0.5" max="8" step="0.5" value="2"> Hz</label>
-      <span class="blink-only hidden">speed
-        <button class="spd" data-spd="0.25">¼×</button><button class="spd" data-spd="0.5">½×</button><button class="spd on" data-spd="1">1×</button>
-      </span>
-      <span class="t">0.00s / 0f</span>
-    </div>
-    <div class="meta">
-      <div class="meta-shared"></div>
-      <div class="meta-sides hidden"></div>
-    </div>
-    <div class="calls">
-      <button class="win" data-call="left">◀ Left is better</button>
-      <button class="win" data-call="right">Right is better ▶</button>
-      <button class="tie" data-call="tie">Tie</button>
-      <button class="na" data-call="cannot-assess">Cannot assess</button>
-      <input class="note" placeholder="note (optional)">
-      <span class="saved"></span>
-    </div>
-  </section>
-</template>
+<footer><span class="count" id="count"></span><span style="flex:1"></span><button id="export">Export responses JS</button></footer>
+<template id="pair-tpl"><section class="pair">
+<div class="pair-head"><span class="pid"></span><div class="mode-btns">
+<button data-mode="sbs" class="on">Side-by-side</button><button data-mode="slider">Slider</button><button data-mode="blink">Blink</button><button class="fs" title="Fullscreen stage">⛶</button></div></div>
+<div class="stage sbs" tabindex="0" aria-label="Comparison stage"><canvas></canvas><span class="tag l">L</span><span class="tag r">R</span><div class="probe"><span class="probe-msg">Loading matched frames…</span></div></div>
+<div class="transport"><button class="play">▶ Play</button><button class="stepb">⟨ frame</button><button class="stepf">frame ⟩</button><button class="restart">⟲ Restart</button>
+<label>frame <input class="scrub" type="range" min="0" value="0" step="1"></label><span class="t"></span><span class="spacer"></span>
+<label class="blink-only hidden"><select class="blink-control" aria-label="Blink mode"><option value="auto">Automatic</option><option value="manual">Manual (tap to flip)</option></select></label>
+<label class="blink-only hidden">blink <input class="hz" type="range" min="0.5" max="8" step="0.5" value="2"><output class="hz-value">2 Hz</output></label>
+<button class="flip blink-only hidden">Flip L/R</button>
+<label>speed <select class="speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option></select></label></div>
+<div class="meta"><div class="meta-shared"></div><div class="meta-sides hidden"></div></div>
+<div class="calls"><button class="win" data-call="left">◀ Left is better</button><button class="win" data-call="right">Right is better ▶</button><button class="tie" data-call="tie">Tie</button><button class="na" data-call="cannot-assess">Cannot assess</button><input class="note" placeholder="note (optional)" aria-label="Pair note"><span class="saved"></span></div>
+</section></template>
 <script src="pairs-metadata.js" onerror="window.PAIR_META=null"></script>
+<script src="pairs-frames.js" onerror="window.REVIEW_FRAMES=null"></script>
 <script>
-(function () {
-  var params = new URLSearchParams(location.search);
-  var pairList = (params.get('pairs') || 'auto').split(',').filter(Boolean);
-  var ext = params.get('ext') || 'mp4';
-  var FPS = parseFloat(params.get('fps') || '24');
-  var MAX_BLINK_FRAMES = parseInt(params.get('maxblink') || '600', 10);
-  var storeKey = 'gpu-review-' + (params.get('set') || 'A') + '-responses';
-  var responses = {};
-  try { responses = JSON.parse(localStorage.getItem(storeKey) || '{}'); } catch (e) { responses = {}; }
-
-  /* ======================================================================
-     FrameCache — decode ONE <video> into an in-memory sprite-sheet canvas
-     by seeking frame-by-frame at load. Blink presents ONLY from these
-     caches: both sides render the same frame index from the same clock, so
-     synchronization is by construction (no live decode, no seeks, no drift).
-     ====================================================================== */
-  var ROW = 12;
-  function FrameCache(video, onProgress) {
-    var self = this;
-    self.frames = 0; self.w = 0; self.h = 0; self.sheet = null;
-
-    self.decode = function () {
-      return new Promise(function (resolve, reject) {
-        function go() {
-          var dur = video.duration;
-          if (!isFinite(dur) || dur <= 0) return reject(new Error('unreadable duration'));
-          var total = Math.round(dur * FPS);
-          if (total > MAX_BLINK_FRAMES) return reject(new Error('video exceeds the blink cache limit (' + total + 'f > ' + MAX_BLINK_FRAMES + 'f) — use slider or side-by-side'));
-          self.w = video.videoWidth; self.h = video.videoHeight;
-          var rows = Math.max(1, Math.ceil(total / ROW));
-          self.sheet = document.createElement('canvas');
-          self.sheet.width = self.w * ROW;
-          self.sheet.height = self.h * rows;
-          var ctx = self.sheet.getContext('2d');
-          var i = 0, stalled = null;
-          function finish() { self.frames = total; resolve(self); }
-          function onSeek() {
-            video.removeEventListener('seeked', onSeek);
-            clearTimeout(stalled);
-            ctx.drawImage(video, (i % ROW) * self.w, Math.floor(i / ROW) * self.h);
-            i++;
-            if (onProgress) onProgress(i, total);
-            next();
-          }
-          function next() {
-            if (i >= total) return finish();
-            var t = Math.min(i / FPS, Math.max(0, dur - 0.001));
-            stalled = setTimeout(onSeek, 3000); // a seek that never lands skips ahead, never hangs
-            video.addEventListener('seeked', onSeek);
-            try { video.currentTime = t; } catch (e) { onSeek(); }
-          }
-          video.pause();
-          next();
-        }
-        if (video.readyState >= 1) go();
-        else {
-          video.addEventListener('loadedmetadata', go, { once: true });
-          video.addEventListener('error', function () { reject(new Error('video failed to load')); }, { once: true });
-        }
+'use strict';
+(() => {
+  const params = new URLSearchParams(location.search);
+  const set = (params.get('set') || location.pathname.split('/').slice(-2,-1)[0] || 'review').replace(/^set/, '');
+  const storeKey = 'gpu-review-' + set.replace(/^set/, '') + '-responses';
+  const validCalls = ['left','right','tie','cannot-assess'];
+  let responses = {}, storageError = '';
+  try { responses = JSON.parse(localStorage.getItem(storeKey) ?? localStorage.getItem('gpu-review-set' + set + '-responses') ?? '{}'); if (!responses || typeof responses !== 'object' || Array.isArray(responses)) responses = {}; }
+  catch (e) { storageError = 'Storage unavailable — export before closing.'; }
+  const manifest = window.REVIEW_FRAMES;
+  const controllers = [];
+  let active = null;
+  const main = document.querySelector('#pairs');
+  const ids = manifest && manifest.version === 1 ? Object.keys(manifest.pairs) : [];
+  const wanted = params.get('pairs');
+  if (!ids.length) {
+    const message = document.createElement('p'); message.className = 'empty';
+    message.textContent = 'No matched frame assets found. After generating pairs, run: python3 scripts/gpu-review/extract-review-frames.py <set-directory>. Then reopen this page.';
+    main.append(message);
+  }
+  function count() {
+    document.querySelector('#count').textContent = controllers.filter(c => validCalls.includes(responses[c.id]?.call)).length + ' / ' + controllers.length + ' called';
+  }
+  // At most two strips per side per pair are retained. Frames are loaded in pairs,
+  // and a single synchronous canvas draw commits both sides at the same index.
+  function wire(id, data) {
+    const node = document.querySelector('#pair-tpl').content.firstElementChild.cloneNode(true);
+    node.dataset.pair = id; node.querySelector('.pid').textContent = id; main.append(node);
+    const $ = s => node.querySelector(s);
+    const stage = $('.stage'), canvas = $('canvas'), ctx = canvas.getContext('2d');
+    const probe = $('.probe'), label = $('.t'), scrub = $('.scrub');
+    const caches = {L:new Map(), R:new Map()};
+    const state = {frame:0, mode:'sbs', playing:false, side:'L', automatic:true, hz:2, speed:1, split:.5, ready:false};
+    let images = null, pending = false, requested = null, raf = 0, last = 0, elapsed = 0, blinkElapsed = 0, failure = false;
+    const ctl = {id, pause:() => {state.playing=false; $('.play').textContent='▶ Play';}, state};
+    controllers.push(ctl);
+    scrub.max = data.count - 1;
+    function load(side, index) {
+      const cache = caches[side];
+      if (cache.has(index)) return cache.get(index);
+      const promise = new Promise((resolve,reject) => {
+        const image = new Image();
+        image.onload = async () => {
+          try {
+            if (image.decode) await image.decode();
+            if (image.naturalWidth !== data.width || image.naturalHeight !== data.height * manifest.strip) throw new Error('Frame strip geometry mismatch');
+            resolve(image);
+          } catch(e) { reject(e); }
+        };
+        image.onerror = () => reject(new Error('Missing or unreadable frame strip. Regenerate this set.'));
+        image.src = data[side][index];
       });
+      cache.set(index,promise);
+      while(cache.size > 2) cache.delete(cache.keys().next().value);
+      return promise;
+    }
+    function draw() {
+      if (!images) return;
+      const w=data.width, h=data.height, y=(state.frame % manifest.strip)*h;
+      const targetWidth=state.mode==='sbs'?w*2:w;
+      if(canvas.width!==targetWidth || canvas.height!==h) {canvas.width=targetWidth;canvas.height=h;}
+      const blit=(side,x=0)=>ctx.drawImage(images[side],0,y,w,h,x,0,w,h);
+      if(state.mode==='sbs') {blit('L');blit('R',w);}
+      else if(state.mode==='slider') {
+        blit('R');ctx.save();ctx.beginPath();ctx.rect(0,0,w*state.split,h);ctx.clip();blit('L');ctx.restore();
+        ctx.fillStyle='#c6ff63';ctx.fillRect(Math.round(w*state.split)-1,0,2,h);
+      } else blit(state.side);
+      stage.dataset.frame=state.frame; stage.dataset.side=state.mode==='blink'?state.side:'both';
+      label.textContent=`${data.pts[state.frame].toFixed(3)}s · frame ${state.frame} / ${data.count-1}${state.mode==='blink'?' · '+state.side:''}`;
+      scrub.value=state.frame;
+      $('.tag.l').classList.toggle('hidden',state.mode==='blink');
+      $('.tag.r').classList.toggle('hidden',state.mode==='blink');
+    }
+    async function show(frame) {
+      requested = Math.max(0,Math.min(data.count-1,frame));
+      if(pending || failure) return;
+      pending=true;
+      try {
+        while(requested!==null) {
+          const next=requested;requested=null;
+          const index=Math.floor(next/manifest.strip);
+          const pair=await Promise.all([load('L',index),load('R',index)]);
+          if(requested!==null) continue;
+          images={L:pair[0],R:pair[1]};state.frame=next;state.ready=true;draw();probe.classList.add('hidden');
+          const future=(index+1)%data.L.length;
+          // Decode next strips in advance; errors surface if those frames are requested.
+          if(active===ctl) {load('L',future).catch(()=>{});load('R',future).catch(()=>{});}
+        }
+      } catch(e) {
+        failure=true;ctl.pause();probe.classList.remove('hidden');$('.probe-msg').textContent=e.message;
+        stage.dataset.error=e.message;
+      } finally {pending=false;}
+    }
+    function animate(now) {
+      raf=0;
+      if(active!==ctl || document.hidden) return;
+      const dt=Math.min(100, now-last);last=now;
+      if(state.mode==='blink' && state.automatic && state.ready) {
+        blinkElapsed+=dt;
+        const halfPeriod=1000/(2*state.hz);
+        const flips=Math.floor(blinkElapsed/halfPeriod);
+        if(flips) {blinkElapsed%=halfPeriod;if(flips%2) state.side=state.side==='L'?'R':'L';draw();}
+      }
+      if(state.playing && state.ready && !pending) {
+        elapsed+=dt*state.speed;
+        if(elapsed>=1000/data.fps) {
+          // Never skip content frames: if storage is slow, hold BOTH sides.
+          elapsed%=1000/data.fps;show((state.frame+1)%data.count);
+        }
+      }
+      raf=requestAnimationFrame(animate);
+    }
+    function activate() {
+      if(active!==ctl) {controllers.forEach(c=>c.pause());active=ctl;elapsed=0;blinkElapsed=0;}
+      if(!raf) {last=performance.now();raf=requestAnimationFrame(animate);}
+    }
+    function play() {activate();state.playing=!state.playing;elapsed=0;$('.play').textContent=state.playing?'⏸ Pause':'▶ Play';}
+    function step(delta) {activate();ctl.pause();elapsed=0;show((requested??state.frame)+delta);}
+    function flip() {activate();state.side=state.side==='L'?'R':'L';blinkElapsed=0;draw();}
+    node.querySelectorAll('[data-mode]').forEach(button=>button.onclick=()=>{
+      activate();state.mode=button.dataset.mode;stage.className='stage '+state.mode;
+      node.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('on',b===button));
+      node.querySelectorAll('.blink-only').forEach(e=>e.classList.toggle('hidden',state.mode!=='blink'));
+      blinkElapsed=0;draw();
+    });
+    $('.play').onclick=play;$('.stepb').onclick=()=>step(-1);$('.stepf').onclick=()=>step(1);
+    $('.restart').onclick=()=>{activate();elapsed=0;show(0);};
+    scrub.oninput=()=>{activate();ctl.pause();elapsed=0;show(Number(scrub.value));};
+    $('.hz').oninput=()=>{state.hz=Number($('.hz').value);$('.hz-value').textContent=state.hz+' Hz';blinkElapsed=0;};
+    $('.speed').onchange=()=>{state.speed=Number($('.speed').value);};
+    $('.blink-control').onchange=()=>{activate();state.automatic=$('.blink-control').value==='auto';blinkElapsed=0;};
+    $('.flip').onclick=flip;
+    let dragging=false;
+    function split(event) {
+      const rect=canvas.getBoundingClientRect();
+      // Fullscreen uses contain: account for letterboxing in pointer coordinates.
+      const scale=Math.min(rect.width/canvas.width,rect.height/canvas.height);
+      const width=canvas.width*scale, left=rect.left+(rect.width-width)/2;
+      state.split=Math.max(0,Math.min(1,(event.clientX-left)/width));draw();
+    }
+    stage.onpointerdown=event=>{activate();stage.focus();if(state.mode==='blink') flip();if(state.mode==='slider'){dragging=true;stage.setPointerCapture(event.pointerId);split(event);}};
+    stage.onpointermove=event=>{if(dragging)split(event);};
+    stage.onpointerup=stage.onpointercancel=()=>{dragging=false;};
+    node.onfocusin=activate;
+    stage.onkeydown=event=>{
+      if(event.code==='Space'){event.preventDefault();play();}
+      if(event.key==='ArrowRight'){event.preventDefault();step(1);}
+      if(event.key==='ArrowLeft'){event.preventDefault();step(-1);}
+      if(event.key.toLowerCase()==='b' && state.mode==='blink'){event.preventDefault();flip();}
     };
-  }
-  FrameCache.prototype.blit = function (ctx, i, dw, dh) {
-    var sx = (i % ROW) * this.w, sy = Math.floor(i / ROW) * this.h;
-    ctx.drawImage(this.sheet, sx, sy, this.w, this.h, 0, 0, dw, dh);
-  };
-
-  /* ============================ pair wiring ============================ */
-  var ids = [];
-  var wanted = pairList[0] === 'auto' ? null : pairList;
-  for (var n = 1; n <= (wanted ? 99 : 40); n++) {
-    var id = 'p' + (n < 10 ? '0' + n : n);
-    if (!wanted || wanted.indexOf(id) >= 0) ids.push(id);
-  }
-  var main = document.getElementById('pairs');
-  var tpl = document.getElementById('pair-tpl');
-
-  function fmt(t) { return (Math.round(t * 100) / 100).toFixed(2) + 's'; }
-
-  ids.forEach(function (id) {
-    var node = tpl.content.firstElementChild.cloneNode(true);
-    node.setAttribute('data-pair', id);
-    node.querySelector('.pid').textContent = id;
-    var base = node.querySelector('.v-base'), top = node.querySelector('.v-top');
-    base.src = 'pairs/' + id + '_L.' + ext;
-    top.src = 'pairs/' + id + '_R.' + ext;
-    var dropped = false;
-    function kill() { if (!dropped) { dropped = true; node.remove(); refreshCount(); } }
-    base.addEventListener('error', kill); top.addEventListener('error', kill);
-    base.addEventListener('loadedmetadata', function () { if (!dropped) { wire(node, id, base, top); refreshCount(); } });
-    main.appendChild(node);
-  });
-
-  function wire(node, id, base, top) {
-    var stage = node.querySelector('.stage'), canvas = node.querySelector('.blink-canvas');
-    var divider = node.querySelector('.divider'), tagL = node.querySelector('.tag.l'), tagR = node.querySelector('.tag.r');
-    var probe = node.querySelector('.probe'), probeMsg = node.querySelector('.probe-msg'), prog = node.querySelector('progress');
-    var tEl = node.querySelector('.t'), hzEl = node.querySelector('.hz');
-    var mode = 'sbs';
-    var FRAME = 1 / FPS;
-
-    /* ---- native-video path (side-by-side + slider): gated start, rVFC lock ---- */
-    var syncing = false;
-    function alignTop() {
-      if (syncing) return;
-      syncing = true;
-      try { top.currentTime = base.currentTime; } catch (e) {}
-      var clear = function () { syncing = false; top.removeEventListener('seeked', clear); };
-      top.addEventListener('seeked', clear);
-      setTimeout(clear, 150);
-    }
-    function checkSync() { if (!base.paused && Math.abs(top.currentTime - base.currentTime) > FRAME * 0.5 && !syncing) alignTop(); }
-    if (base.requestVideoFrameCallback) { (function rv() { checkSync(); base.requestVideoFrameCallback(rv); })(); }
-    function restartNative() {
-      base.pause(); top.pause();
-      var pending = 2;
-      function go() { if (--pending === 0 && mode !== 'blink') { alignTop(); base.play(); top.play(); } }
-      [base, top].forEach(function (v) {
-        v.addEventListener('seeked', function h() { v.removeEventListener('seeked', h); go(); });
-        try { v.currentTime = 0; } catch (e) { go(); }
-      });
-    }
-    base.addEventListener('ended', restartNative);
-    function playNative() { base.play(); top.play(); }
-    function pauseNative() { base.pause(); top.pause(); }
-
-    /* ---- blink engine: a single frame clock driving both caches ---- */
-    var cacheB = null, cacheT = null, blinkReady = false, blinkFailed = false;
-    var clock = { playing: false, frame: 0, acc: 0, blinkAcc: 0, last: 0, speed: 1, hz: 2, phase: false, raf: null };
-    var bctx = canvas.getContext('2d');
-
-    function ensureBlinkCache() {
-      if (blinkReady || blinkFailed) return Promise.resolve(blinkReady);
-      pauseNative();
-      probe.classList.remove('hidden');
-      probeMsg.textContent = 'decoding both videos to frame caches (first blink only — cached after)…';
-      var pb = new FrameCache(base, function (i, n) { prog.value = Math.round(50 * i / n); });
-      var pt = new FrameCache(top, function (i, n) { prog.value = 50 + Math.round(50 * i / n); });
-      return pb.decode().then(function (b) { cacheB = b; return pt.decode(); }).then(function (t) {
-        cacheT = t;
-        canvas.width = cacheB.w; canvas.height = cacheB.h;
-        if (cacheT.w !== cacheB.w || cacheT.h !== cacheB.h) {
-          throw new Error('side resolutions differ (' + cacheB.w + 'x' + cacheB.h + ' vs ' + cacheT.w + 'x' + cacheT.h + ') — blink needs matched geometry');
-        }
-        blinkReady = true;
-        probe.classList.add('hidden');
-        return true;
-      }).catch(function (err) {
-        blinkFailed = true;
-        probe.classList.remove('hidden');
-        probeMsg.textContent = 'blink unavailable for this pair: ' + err.message;
-        prog.value = 0;
-        return false;
-      });
-    }
-
-    function maxFrame() { return Math.min(cacheB.frames, cacheT.frames); }
-    function present() {
-      var f = Math.min(clock.frame, maxFrame() - 1);
-      (clock.phase ? cacheT : cacheB).blit(bctx, f, canvas.width, canvas.height);
-      tEl.textContent = fmt(f / FPS) + ' / ' + f + 'f';
-    }
-    function loop(now) {
-      if (mode !== 'blink' || !blinkReady) { clock.raf = null; return; }
-      var dt = Math.min(100, now - clock.last); // clamp background-tab jumps
-      clock.last = now;
-      if (clock.playing) {
-        clock.acc += dt * clock.speed;
-        var fd = 1000 / FPS;
-        while (clock.acc >= fd) { clock.acc -= fd; clock.frame = (clock.frame + 1) % maxFrame(); }
-        var bp = 1000 / (2 * clock.hz);
-        clock.blinkAcc += dt;
-        while (clock.blinkAcc >= bp) { clock.blinkAcc -= bp; clock.phase = !clock.phase; }
-      }
-      present();
-      clock.raf = requestAnimationFrame(loop);
-    }
-    function startLoop() { if (!clock.raf) { clock.last = performance.now(); clock.raf = requestAnimationFrame(loop); } }
-
-    /* ---- modes ---- */
-    function setMode(m) {
-      var requested = m;
-      if (m === 'blink' && blinkFailed) m = 'sbs';
-      mode = m;
-      node.querySelectorAll('.mode-btns [data-mode]').forEach(function (b) {
-        b.classList.toggle('on', b.getAttribute('data-mode') === (requested === 'blink' && blinkFailed ? 'sbs' : m));
-      });
-      stage.className = 'stage ' + m;
-      divider.classList.toggle('hidden', m !== 'slider');
-      tagL.classList.toggle('hidden', m === 'sbs');
-      tagR.classList.toggle('hidden', m === 'sbs');
-      canvas.classList.toggle('hidden', m !== 'blink');
-      node.querySelectorAll('.blink-only').forEach(function (el) { el.classList.toggle('hidden', m !== 'blink'); });
-      if (m === 'slider') setSplit(split);
-      if (m === 'blink') {
-        ensureBlinkCache().then(function (ok) { if (ok && mode === 'blink') { clock.playing = true; startLoop(); } });
-      } else {
-        clock.playing = false;
-        if (clock.raf) { cancelAnimationFrame(clock.raf); clock.raf = null; }
-        if (base.readyState >= 3 && top.readyState >= 3 && base.paused) { alignTop(); playNative(); }
+    $('.fs').onclick=async()=>{try {if(document.fullscreenElement)await document.exitFullscreen();else await stage.requestFullscreen();}catch(e){label.textContent='Fullscreen unavailable: '+e.message;}};
+    const pm=window.PAIR_META?.[id];
+    function fields(parent, values) {
+      for(const [key,value] of Object.entries(values||{})) {
+        const span=document.createElement('span'), k=document.createElement('span');k.className='k';k.textContent=key+' ';span.append(k,document.createTextNode(typeof value==='object'?JSON.stringify(value):String(value)));parent.append(span,document.createTextNode(' '));
       }
     }
-    node.querySelectorAll('.mode-btns [data-mode]').forEach(function (b) {
-      b.addEventListener('click', function () { setMode(b.getAttribute('data-mode')); });
-    });
-
-    /* ---- slider drag ---- */
-    var split = 0.5;
-    function setSplit(f) { split = Math.max(0.02, Math.min(0.98, f)); stage.style.setProperty('--split', (split * 100) + '%'); }
-    function onDrag(ev) { var r = stage.getBoundingClientRect(); setSplit((ev.clientX - r.left) / r.width); ev.preventDefault(); }
-    var dragging = false;
-    stage.addEventListener('pointerdown', function (ev) {
-      if (mode === 'blink') { clock.phase = !clock.phase; return; } // tap = manual flip
-      if (mode === 'slider') { dragging = true; stage.setPointerCapture(ev.pointerId); onDrag(ev); }
-    });
-    stage.addEventListener('pointermove', function (ev) { if (dragging) onDrag(ev); });
-    stage.addEventListener('pointerup', function () { dragging = false; });
-    stage.addEventListener('pointercancel', function () { dragging = false; });
-
-    /* ---- transport (mode-aware) ---- */
-    node.querySelector('.play').addEventListener('click', function () {
-      if (mode === 'blink') { if (blinkReady) { clock.playing = !clock.playing; clock.last = performance.now(); } }
-      else { base.paused ? playNative() : pauseNative(); }
-    });
-    node.querySelector('.restart').addEventListener('click', function () {
-      if (mode === 'blink') { clock.frame = 0; clock.acc = 0; clock.playing = true; if (blinkReady) present(); }
-      else { restartNative(); }
-    });
-    function step(frames) {
-      if (mode === 'blink') {
-        if (!blinkReady) return;
-        clock.playing = false;
-        clock.frame = Math.max(0, Math.min(maxFrame() - 1, clock.frame + frames));
-        present();
-      } else {
-        pauseNative();
-        var t = Math.max(0, Math.min(base.duration || 1e9, base.currentTime + frames / FPS));
-        base.currentTime = t; top.currentTime = t;
-        tEl.textContent = fmt(t) + ' / ' + Math.round(t * FPS) + 'f';
-      }
+    fields($('.meta-shared'),pm?.shared);
+    if(!pm) $('.meta-shared').textContent='No generation metadata supplied.';
+    function reveal() {
+      const sides=$('.meta-sides');sides.replaceChildren();
+      if(!validCalls.includes(responses[id]?.call)) {sides.classList.add('hidden');return;}
+      sides.classList.remove('hidden');
+      for(const side of ['L','R']) {const div=document.createElement('div');div.className='side';const badge=document.createElement('b');badge.className='badge';badge.textContent=side;div.append(badge);fields(div,pm?.[side]);sides.append(div);}
+      if(pm?.note) {const note=document.createElement('div');note.className='rev-note';note.textContent=pm.note;sides.append(note);}
     }
-    node.querySelector('.stepf').addEventListener('click', function () { step(1); });
-    node.querySelector('.stepb').addEventListener('click', function () { step(-1); });
-    hzEl.addEventListener('input', function () { clock.hz = parseFloat(hzEl.value); });
-    node.querySelectorAll('.spd').forEach(function (b) {
-      b.addEventListener('click', function () {
-        node.querySelectorAll('.spd').forEach(function (x) { x.classList.remove('on'); });
-        b.classList.add('on');
-        clock.speed = parseFloat(b.getAttribute('data-spd'));
-      });
-    });
-
-    /* ---- fullscreen ---- */
-    node.querySelector('.fs').addEventListener('click', function () {
-      if (document.fullscreenElement) document.exitFullscreen(); else stage.requestFullscreen();
-    });
-
-    /* ---- hover keyboard ---- */
-    node.addEventListener('mouseenter', function () { window.__activePair = node; });
-    node.addEventListener('mouseleave', function () { if (window.__activePair === node) window.__activePair = null; });
-
-    /* ---- metadata bar ---- */
-    var metaShared = node.querySelector('.meta-shared'), metaSides = node.querySelector('.meta-sides');
-    var pm = (window.PAIR_META || {})[id];
-    function renderMeta(reveal) {
-      if (!pm) { metaShared.innerHTML = '<span class="rev-note">no pairs-metadata.js emitted for this set</span>'; return; }
-      var sh = pm.shared || {};
-      metaShared.innerHTML = Object.keys(sh).map(function (k) { return '<span><span class="k">' + k + '</span> ' + sh[k] + '</span>'; }).join('');
-      if (!reveal) { metaSides.classList.add('hidden'); metaSides.innerHTML = '<span class="rev-note">per-side details reveal after your call</span>'; return; }
-      metaSides.classList.remove('hidden');
-      function side(label, d) {
-        if (!d) return '';
-        return '<span class="side"><span class="badge">' + label + '</span>' + Object.keys(d).map(function (k) { return '<span class="k">' + k + '</span> ' + d[k] + '</span>'; }).join(' ') + '</span>';
-      }
-      metaSides.innerHTML = side('L', pm.L) + side('R', pm.R) + (pm.note ? '<span class="rev-note">' + pm.note + '</span>' : '');
-    }
-    renderMeta(false);
-
-    /* ---- calls ---- */
-    var savedEl = node.querySelector('.saved');
     function save() {
-      responses[id] = responses[id] || {};
-      localStorage.setItem(storeKey, JSON.stringify(responses));
-      savedEl.textContent = 'saved';
-      setTimeout(function () { savedEl.textContent = ''; }, 1200);
-      refreshCount();
+      try {localStorage.setItem(storeKey,JSON.stringify(responses));$('.saved').textContent='saved locally';}
+      catch(e) {$('.saved').textContent='Storage failed — export before closing.';}
+      count();
     }
-    node.querySelectorAll('.calls [data-call]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        node.querySelectorAll('.calls [data-call]').forEach(function (x) { x.classList.remove('sel'); });
-        b.classList.add('sel');
-        responses[id] = responses[id] || {};
-        responses[id].call = b.getAttribute('data-call');
-        responses[id].ts = new Date().toISOString();
-        renderMeta(true);
-        save();
-      });
+    node.querySelectorAll('[data-call]').forEach(button=>button.onclick=()=>{
+      responses[id]={...responses[id],call:button.dataset.call,ts:new Date().toISOString()};
+      save();node.querySelectorAll('[data-call]').forEach(b=>b.classList.toggle('sel',b===button));reveal();
     });
-    node.querySelector('.note').addEventListener('input', function () {
-      responses[id] = responses[id] || {};
-      responses[id].note = this.value;
-      save();
-    });
-    var prior = responses[id];
-    if (prior) {
-      if (prior.call) { var b = node.querySelector('.calls [data-call="' + prior.call + '"]'); if (b) b.classList.add('sel'); renderMeta(true); }
-      if (prior.note) node.querySelector('.note').value = prior.note;
-    }
-
-    /* ---- native start: only when BOTH sides are ready, aligned ---- */
-    base.muted = top.muted = true;
-    var readyB = false, readyT = false;
-    function tryStart() { if (readyB && readyT && base.paused && mode !== 'blink') { alignTop(); playNative(); } }
-    base.addEventListener('canplay', function () { readyB = true; tryStart(); });
-    top.addEventListener('canplay', function () { readyT = true; tryStart(); });
+    $('.note').oninput=()=>{responses[id]={...responses[id],note:$('.note').value};save();};
+    const prior=responses[id];
+    node.querySelectorAll('[data-call]').forEach(b=>b.classList.toggle('sel',b.dataset.call===prior?.call));
+    $('.note').value=prior?.note||'';$('.saved').textContent=storageError;reveal();
+    show(0);
   }
-
-  /* ---- global keyboard on the hovered pair ---- */
-  window.addEventListener('keydown', function (ev) {
-    var node = window.__activePair;
-    if (!node || ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA') return;
-    if (ev.code === 'Space') { ev.preventDefault(); node.querySelector('.play').click(); }
-    if (ev.key === 'ArrowRight') { ev.preventDefault(); node.querySelector('.stepf').click(); }
-    if (ev.key === 'ArrowLeft') { ev.preventDefault(); node.querySelector('.stepb').click(); }
-  });
-
-  function refreshCount() {
-    var total = document.querySelectorAll('.pair').length, done = 0;
-    document.querySelectorAll('.pair').forEach(function (n) { if (responses[n.getAttribute('data-pair')] && responses[n.getAttribute('data-pair')].call) done++; });
-    document.getElementById('count').textContent = done + ' / ' + total + ' called';
-  }
-  refreshCount();
-
-  document.getElementById('export').addEventListener('click', function () {
-    var blob = new Blob([JSON.stringify({ set: params.get('set') || 'A', exported: new Date().toISOString(), responses: responses }, null, 2)], { type: 'application/json' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'review-responses.json';
-    a.click();
-    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
-  });
+  for(const id of ids) if(!wanted || wanted.split(',').includes(id)) wire(id,manifest.pairs[id]);
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)controllers.forEach(c=>c.pause());});
+  count();
+  document.querySelector('#export').onclick=()=>{
+    const payload={set,exported:new Date().toISOString(),responses};
+    const blob=new Blob(['window.REVIEW_RESPONSES = '+JSON.stringify(payload,null,2)+';\n'],{type:'text/javascript'});
+    const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='review-responses.js';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
+  };
 })();
-</script>
-</body>
-</html>
+</script></body></html>

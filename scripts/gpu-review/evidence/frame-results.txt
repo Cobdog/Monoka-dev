@@ -1,0 +1,8 @@
+p01: 124 frames/side pixel-exact; 124 L/R differences
+p02: 124 frames/side pixel-exact; 124 L/R differences
+p03: 124 frames/side pixel-exact; 88 L/R differences
+p04: 124 frames/side pixel-exact; 99 L/R differences
+p05: 124 frames/side pixel-exact; 124 L/R differences
+p06: 124 frames/side pixel-exact; 124 L/R differences
+p07: 39 frames/side pixel-exact; 0 L/R differences
+p08: 243 frames/side pixel-exact; 243 L/R differences

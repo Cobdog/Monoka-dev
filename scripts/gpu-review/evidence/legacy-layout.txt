@@ -1,0 +1,8 @@
+{
+  stageHeight: 2063.296875,
+  elements: [
+    { tag: 'VIDEO', display: 'block', height: 687.765625 },
+    { tag: 'VIDEO', display: 'block', height: 687.765625 },
+    { tag: 'CANVAS', display: 'block', height: 687.765625 }
+  ]
+}
