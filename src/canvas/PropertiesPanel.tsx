@@ -561,15 +561,24 @@ export function PropertiesPanel() {
       ackedRef.current = { chainId: chain.id, settings: serverSettings, subjectText: incomingSubject, strength: incomingStrength }
       setDraft(settings)
       setFreeRatio(false)
-      setSubjectText(incomingSubject)
-      setStrength(incomingStrength)
+      // (I-R5, round 6) The identity adoption is gated on NON-DIVERGENCE —
+      // the else-if branch's own guard, mirrored here. The panel's OWN
+      // settings commit changes the persisted raw (the raw comparison above
+      // sees it on the post-save reload), and an unguarded rollback used to
+      // wipe a mid-debounce identity edit whose eventual commit then
+      // no-op'd at the acked gate — a silent drop. A diverging local
+      // identity draft is the user's newer truth; its own commit lands
+      // momentarily. A chain SWITCH still resets unconditionally (the
+      // locals belong to the previous chain).
+      if (chainSwitched || !known || known.subjectText === subjectText) setSubjectText(incomingSubject)
+      if (chainSwitched || !known || Math.abs(known.strength - strength) < 1e-9) setStrength(incomingStrength)
     } else if (known && (known.subjectText !== incomingSubject || Math.abs(known.strength - incomingStrength) > 1e-9) && known.subjectText === subjectText) {
       knownRef.current = { chainId: chain.id, settings: known.settings, rawSettings: rawServerSettings, subjectText: incomingSubject, strength: incomingStrength }
       ackedRef.current = { chainId: chain.id, ...(ackedRef.current?.chainId === chain.id ? ackedRef.current : {}), subjectText: incomingSubject, strength: incomingStrength }
       setSubjectText(incomingSubject)
       setStrength(incomingStrength)
     }
-  }, [chain, draft, subjectText])
+  }, [chain, draft, subjectText, strength])
 
   // (A02) The draft's save seam: every save reports saving/saved/failed
   // beside Generate, and a FAILED save returns false so no caller submits
