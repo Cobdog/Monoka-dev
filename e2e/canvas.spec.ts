@@ -5505,3 +5505,82 @@ test('overlay hook: the projections register, focus settles in, V flips the fami
   await expect(timeline).toHaveCount(0)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
+
+test('overlay hook: Escape over the index trash confirm cancels the CONFIRM alone — the palette survives (§0.2, deviation pin)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=layers')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('a solitary lighthouse beam sweeping the shoals')
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 10_000 })
+
+  const stackVia = () => page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })
+  // Park the mouse clear of the centered panel (the palette-keys test's
+  // convention): the rows follow the pointer on hover, and boundary
+  // mouseenter fires without movement when the panel renders under a
+  // stationary cursor. The shared home accumulates other sessions' project
+  // rows (the 7ypp8c2 class) — filter to THIS session's chain so its row
+  // (and its delete affordance) is at the top, not below the fold.
+  await page.mouse.move(20, 540)
+  await page.keyboard.press('ControlOrMeta+k')
+  const palette = page.locator('[data-canvas-index]')
+  await expect(palette).toBeVisible()
+  await page.locator('[data-canvas-index-input]').fill('shoals')
+  await expect(palette.locator('[data-canvas-index-delete]')).toHaveCount(1)
+  await expect.poll(stackVia).toBe('canvas-index')
+
+  // The scene's delete affordance opens the NESTED confirm — registered
+  // ABOVE the palette (pre-migration, Escape closed the whole palette).
+  await palette.locator('[data-canvas-index-delete]').first().click()
+  const confirm = page.locator('[data-canvas-index-confirm]')
+  await expect(confirm).toBeVisible()
+  expect(await stackVia()).toBe('canvas-index|canvas-index-confirm')
+
+  // ONE Escape cancels the confirm alone; the palette stays open, still
+  // registered, still holding the keyboard.
+  await page.keyboard.press('Escape')
+  await expect(confirm).toHaveCount(0)
+  await expect(palette).toBeVisible()
+  expect(await stackVia()).toBe('canvas-index')
+
+  // "Keep it" is the same unwind by click (the confirm's own affordance).
+  await palette.locator('[data-canvas-index-delete]').first().click()
+  await expect(confirm).toBeVisible()
+  await confirm.locator('[data-canvas-index-confirm-cancel]').click()
+  await expect(confirm).toHaveCount(0)
+  await expect(palette).toBeVisible()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('overlay hook: V is dead over a modal dialog — the projection cannot flip behind one (§0.2, deviation pin)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=layers')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('a night ferry crossing still water')
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 10_000 })
+
+  // A modal dialog holds the layer: V (the flip family's summon key, a
+  // background-chain key) must do NOTHING — pre-migration the projection
+  // flipped behind the open modal.
+  const panelLibraryButton = page.locator('[data-canvas-prompt-library]')
+  await panelLibraryButton.click()
+  const dialog = page.locator('.prompt-library-modal')
+  await expect(dialog).toBeVisible({ timeout: 10_000 })
+  await page.keyboard.press('v')
+  await expect(page.locator('[data-canvas-timeline]')).toHaveCount(0)
+  await expect(page.locator('[data-canvas-library]')).toHaveCount(0)
+  await expect(dialog).toBeVisible()
+
+  // The gate, not the key: with the dialog gone, V summons the timeline.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await page.keyboard.press('v')
+  await expect(page.locator('[data-canvas-timeline]')).toBeVisible()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
