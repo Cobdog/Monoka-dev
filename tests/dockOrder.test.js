@@ -95,9 +95,13 @@ test('(b) raiseDock moves only the raised id; relative order of the rest is pres
 // ---- (c) 50 raises: the band math ---------------------------------------------
 
 test('(c) 50 raises keep the ranks consecutive and bounded (renormalization, not a counter)', () => {
-  // A fixed deterministic sequence (no randomness in a suite): the cycle
-  // below hits raises of the current top (idempotent re-top), the current
-  // bottom (the full re-rank), and the middle.
+  // A fixed deterministic sequence (no randomness in a suite). 7 ≡ 1 (mod 3),
+  // so the cycle raises the ids in rotation — and because each raise tops
+  // its target, the next id in the rotation is always the CURRENT BOTTOM at
+  // its turn: every one of the 50 is a bottom raise (the full re-rank, the
+  // maximum-churn case). The idempotent re-top is deliberately NOT exercised
+  // here — it is a no-op by construction, and the e2e closing move grabs the
+  // bottom for the same discriminating reason.
   const ids = ['inspector', 'settings', 'audio']
   const sequence = []
   for (let index = 0; index < 50; index += 1) sequence.push(ids[(index * 7) % 3])

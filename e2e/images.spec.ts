@@ -43,8 +43,10 @@ type Seeded = { projectId: string; chainId: string; outputId: string; takeId: st
 /** Seeds one workbench session with one landed packet take, the exact shape
  *  the landing loop writes (frame artifacts + scorer verdict + canonical
  *  pointer in metrics.h3img). `options.refs` seeds reference slots into the
- *  session settings (default none) — the ref-strip tests' starting state. */
-async function seedSession(request: APIRequestContext, options?: { refs?: Array<Record<string, unknown>> }): Promise<Seeded> {
+ *  session settings (default none) — the ref-strip tests' starting state.
+ *  `options.extraCanvasImages` adds further image chains (outputs + takes)
+ *  to the same project — the canvas-picker rows for the long-content case. */
+async function seedSession(request: APIRequestContext, options?: { refs?: Array<Record<string, unknown>>; extraCanvasImages?: number }): Promise<Seeded> {
   const project = await (await request.post('/api/lan/documents/projects', { data: { name: 'IW e2e' } })).json()
   const chain = await (await request.post('/api/lan/documents/chains', {
     data: {
@@ -101,7 +103,26 @@ async function seedSession(request: APIRequestContext, options?: { refs?: Array<
     },
   })).json()
   await request.post('/api/lan/documents/session', { data: { openProjects: [project.project.id], activeProject: project.project.id } })
-  return { projectId: project.project.id, chainId: chain.chain.id, outputId: output.output.id, takeId: take.take.id, artifactPaths }
+  const seeded = { projectId: project.project.id, chainId: chain.chain.id, outputId: output.output.id, takeId: take.take.id, artifactPaths }
+  for (let index = 0; index < (options?.extraCanvasImages ?? 0); index += 1) {
+    const extraChain = await (await request.post('/api/lan/documents/chains', {
+      data: {
+        projectId: project.project.id,
+        kind: 'h3img',
+        settings: { family: 'h3img.generate.packet', intent: `picker row ${index + 2}`, tier: 5, keepDial: 0.55, seed: 4242, resolution: '1344x768', loras: [], refs: [], semanticOverflow: false, framePicks: {}, refineEngine: '', poserigInbox: null },
+      },
+    })).json()
+    const extraOutput = await (await request.post('/api/lan/documents/outputs', { data: { chainId: extraChain.chain.id, substrates: ['decoded'] } })).json()
+    await request.post('/api/lan/documents/takes', {
+      data: {
+        outputId: extraOutput.output.id,
+        jobId: null,
+        artifacts: [artifactPaths[0]],
+        metrics: { kind: 'image', duration: 0, width: 1344, height: 768, sourcePath: artifactPaths[0] },
+      },
+    })
+  }
+  return seeded
 }
 
 test.beforeEach(async ({ page }) => {
@@ -253,7 +274,7 @@ test('the exit dialog is consent-gated and names the hybrid limitation honestly'
   await seedSession(request)
   await page.goto('/?images=1')
   await page.locator('[data-iw-exit]').click()
-  const dialog = page.locator('[data-iw-exit-dialog]')
+  const dialog = page.getByRole('dialog', { name: 'Start-frame exit' })
   await expect(dialog).toBeVisible()
   await expect(dialog).toContainText('created and selected, never submitted')
   // No hybrid loader (engine offline) → the stock limitation is NAMED.
@@ -272,13 +293,205 @@ test('the exit dialog is consent-gated and names the hybrid limitation honestly'
   await page.locator('[data-iw-exit-confirm]').click()
   // The exit seeds: the pinned media chain + the anchored video chain land
   // on the project (created, never submitted — no job appears).
-  await expect(page.locator('[data-iw-exit-dialog]')).not.toBeVisible()
+  await expect(dialog).not.toBeVisible()
   await expect.poll(async () => {
     const doc = await (await page.request.get(`/api/lan/documents/project?id=${(await (await page.request.get('/api/lan/documents/session')).json()).session.activeProject}`)).json()
     return doc.chains.filter((chain: { kind: string }) => chain.kind === 'media' || chain.kind === 'generate').length
   }, { timeout: 10_000 }).toBeGreaterThanOrEqual(2)
   const problemsAfter = problems.filter((entry) => !environmental(entry))
   expect(problemsAfter).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// Component vocabulary task 12 (k2q0n9s) — IwDialog is DELETED: the three
+// workbench dialogs are StudioDialogLayered (Base UI portal + the §0.2 layer
+// registry). What that means, pinned here at the exit dialog:
+//   - CV13's portal geometry: the retired backdrop nested the popup and owned
+//     the flex centering; Base UI portals Backdrop/Popup as SIBLINGS, so the
+//     .modal-backdrop/.ui-dialog-center recipe pair carries the layering and
+//     the popup keeps .iw-dialog;
+//   - §0.2: the open dialog REGISTERS ('iw-exit') — Escape routes through the
+//     ONE window-capture listener (Base UI's own dismissal suppressed for the
+//     routed keystroke: one keystroke, one dismissal path);
+//   - the × owns its handler — the retired markup had no close button at all,
+//     so pointer dismissal leaned entirely on the backdrop's
+//     target-identity pointerdown check;
+//   - the trap/restore pair is Base UI's FocusManager, not the hand-rolled
+//     Tab wrap the (W1) sweep backported.
+test('the start-frame exit dialog is a registry-participating StudioDialog: trap, restore, routed Escape, the × owns its close (k2q0n9s)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  await seedSession(request)
+  await page.goto('/?images=1&probe=layers')
+  await expect(page.locator('[data-iw-root]')).toBeVisible()
+  const trigger = page.locator('[data-iw-exit]')
+  await expect(trigger).toBeEnabled()
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: 'Start-frame exit' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toHaveAccessibleName('Start-frame exit')
+  await expect(dialog).toHaveAttribute('aria-modal', 'true')
+  // CV13 — the portal structure: the popup keeps .iw-dialog; the backdrop and
+  // center classes carry what the retired flex-centering backdrop owned.
+  await expect(dialog).toHaveClass(/(^|\s)iw-dialog(\s|$)/)
+  await expect(page.locator('.modal-backdrop.iw-dialog-backdrop')).toBeVisible()
+  await expect(page.locator('.ui-dialog-center.iw-dialog-center')).toBeVisible()
+
+  // §0.2 — the open dialog IS a registered layer (the probe's idiom, task 10).
+  const stackVia = () => page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })
+  await expect.poll(stackVia).toBe('iw-exit')
+
+  // The trap: focus starts on the first tabbable (the header ×)…
+  const close = dialog.getByRole('button', { name: 'Close the start-frame exit' })
+  await expect(close).toBeFocused()
+  // …Tab never RESTS outside the popup (the wrap's refocus lands a tick
+  // after the keystroke — assert the settled state, 8 presses = 2 full
+  // cycles including both wrap edges)…
+  for (let index = 0; index < 8; index += 1) {
+    await page.keyboard.press('Tab')
+    await expect.poll(() => dialog.evaluate((node) => {
+      const active = document.activeElement
+      return active !== null && (node === active || node.contains(active))
+    }), `Tab #${index + 1} settles inside the dialog`).toBe(true)
+  }
+  // …and wraps: Shift+Tab from the FIRST tabbable (the ×) lands on the LAST
+  // (the footer Cancel — the confirm starts disabled with no plan chosen).
+  await close.focus()
+  await page.keyboard.press('Shift+Tab')
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
+
+  // Routed Escape closes the dialog, focus restores to the trigger, and the
+  // layer unregisters on close.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  await expect.poll(stackVia).toBe('')
+
+  // The × owns its handler — the button alone dismisses…
+  await trigger.click()
+  await expect(dialog).toBeVisible()
+  await close.click()
+  await expect(dialog).toHaveCount(0)
+  // …a click on the dialog BODY never does (only ×, Escape, or the backdrop)…
+  await trigger.click()
+  await expect(dialog).toBeVisible()
+  await dialog.locator('p').first().click({ position: { x: 4, y: 4 } })
+  await expect(dialog).toBeVisible()
+  // …and the backdrop press still dismisses (Base UI's outside-press path,
+  // never the registry's business).
+  await page.mouse.click(8, 300)
+  await expect(dialog).toHaveCount(0)
+
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// Review Focus #1's mechanism at the SECOND real registry consumer: the
+// canvas-ref picker is the workbench's nested case (the Caption→VLM-shaped
+// stack — task 13 lands the datasets' own). A registered overlay ABOVE the
+// open picker: ONE Escape closes ONLY the overlay — the window-capture stop
+// keeps Base UI's document-level dismissal from also closing the dialog
+// underneath — and the next Escape belongs to the picker, focus restoring to
+// its trigger.
+test('the canvas-ref picker unwinds topmost-first under a registered overlay (§0.2, k2q0n9s)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  await seedSession(request)
+  await page.goto('/?images=1&probe=layers')
+  await expect(page.locator('[data-iw-root]')).toBeVisible()
+  const trigger = page.locator('[data-iw-ref-add-canvas]')
+  await trigger.click()
+  const picker = page.getByRole('dialog', { name: 'Use a canvas image as a reference' })
+  await expect(picker).toBeVisible()
+  await expect(picker).toHaveAttribute('aria-modal', 'true')
+
+  const stackVia = () => page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })
+  await expect.poll(stackVia).toBe('iw-canvas-picker')
+
+  // The stand-in overlay (task 10's probe seam — the hook-overlay class that
+  // task 14 migrates), registered ABOVE the open picker.
+  const standIn = page.locator('[data-e2e-stand-in-layer]')
+  const registered = await page.evaluate(() => {
+    const probe = (window as unknown as {
+      __studioLayerProbe?: {
+        layerIds(): string[]
+        registerLayer(registration: { id: string; modal?: boolean; onEscape(event: KeyboardEvent): void }): () => void
+      }
+    }).__studioLayerProbe
+    if (!probe) return '(probe not bound)'
+    const overlay = document.createElement('div')
+    overlay.setAttribute('data-e2e-stand-in-layer', 'hook-overlay')
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.35)'
+    document.body.appendChild(overlay)
+    let unregister = () => {}
+    unregister = probe.registerLayer({ id: 'e2e-hook-overlay', modal: true, onEscape: () => { overlay.remove(); unregister() } })
+    return probe.layerIds().join('|')
+  })
+  expect(registered).toBe('iw-canvas-picker|e2e-hook-overlay')
+  await expect(standIn).toHaveCount(1)
+
+  // ONE Escape: the topmost layer takes it, the picker underneath stays.
+  await page.keyboard.press('Escape')
+  await expect(standIn).toHaveCount(0)
+  await expect(picker).toBeVisible()
+  expect(await stackVia()).toBe('iw-canvas-picker')
+
+  // The next Escape belongs to the picker — and restores focus to its trigger.
+  await page.keyboard.press('Escape')
+  await expect(picker).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// CV13's containment clauses, driven for real: the picker's grid grows past
+// any viewport's 80vh cap (13 canvas image rows here), so the POPUP must own
+// the scroll (max-height 80vh + overflow auto — content taller than the cap
+// scrolls INSIDE the dialog, never the page), and on a narrow viewport the
+// popup fits the 18px-padded center (width min(560px, 100%) — the retired
+// 92vw could overflow the portal center's padding).
+test('the picker owns its scroll: long content scrolls inside the popup, never the page; narrow viewports fit (CV13, k2q0n9s)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  await seedSession(request, { extraCanvasImages: 16 })
+  await page.setViewportSize({ width: 480, height: 700 })
+  await page.goto('/?images=1')
+  await expect(page.locator('[data-iw-root]')).toBeVisible()
+  await page.locator('[data-iw-ref-add-canvas]').click()
+  const picker = page.getByRole('dialog', { name: 'Use a canvas image as a reference' })
+  await expect(picker).toBeVisible()
+  await expect(picker.locator('[data-iw-canvas-ref]')).toHaveCount(17, { timeout: 15_000 })
+  // The portal's centering wrapper owns the geometry the retired backdrop
+  // carried when the popup was its DOM child (CV13).
+  await expect(page.locator('.ui-dialog-center.iw-dialog-center')).toBeVisible()
+
+  // Containment: the popup is the scroll container, and the 17-row grid
+  // exceeds the 80vh cap (560px at this viewport).
+  const metrics = await picker.evaluate((node) => ({
+    overflowY: getComputedStyle(node).overflowY,
+    scrollHeight: node.scrollHeight,
+    clientHeight: node.clientHeight,
+  }))
+  expect(metrics.overflowY, 'the popup is the scroll container').toBe('auto')
+  expect(metrics.scrollHeight, 'the 17-row grid exceeds the 80vh cap at this viewport').toBeGreaterThan(metrics.clientHeight)
+  const scrolled = await picker.evaluate((node) => {
+    node.scrollTop = 60
+    return node.scrollTop
+  })
+  expect(scrolled, 'the internal scroll actually moves').toBe(60)
+
+  // Narrow viewport: the popup fits inside the viewport horizontally and the
+  // document does not overflow (no page scrollbar behind the dialog).
+  const box = await picker.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(480)
+  const docOverflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(docOverflow, 'no horizontal document overflow behind the dialog').toBeLessThanOrEqual(0)
+
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
 test('the canvas tile names the workbench packet and links to the pick surface', async ({ page, request }) => {
@@ -493,12 +706,12 @@ test('T=1 lane: the badge names the ready machinery; single frames land with lan
     await expect(page.locator('.toast-host--bottom-right [data-canvas-toast="success"]', { hasText: 'frame landed' }).first()).toBeVisible({ timeout: 15_000 })
 
     // (W1) The start-frame exit dialog carries dialog semantics and answers
-    // Escape.
+    // Escape (task 12: the role/name wiring rides StudioDialog's labelledBy).
     await page.locator('[data-iw-exit]').click()
-    const exitDialog = page.locator('[data-iw-exit-dialog]')
+    const exitDialog = page.getByRole('dialog', { name: 'Start-frame exit' })
     await expect(exitDialog).toBeVisible()
-    await expect(exitDialog.locator('[role="dialog"]')).toHaveAttribute('aria-modal', 'true')
-    await expect(exitDialog.locator('[role="dialog"]')).toHaveAttribute('aria-label', 'Start-frame exit')
+    await expect(exitDialog).toHaveAttribute('aria-modal', 'true')
+    await expect(exitDialog).toHaveAccessibleName('Start-frame exit')
     await page.keyboard.press('Escape')
     await expect(exitDialog).toHaveCount(0)
 
@@ -511,9 +724,9 @@ test('T=1 lane: the badge names the ready machinery; single frames land with lan
     await page.locator('[data-iw-family-button="h3img.edit.instruct"]').click()
     await expect(page.locator('[data-iw-source-pick-canvas]')).toBeVisible()
     await page.locator('[data-iw-source-pick-canvas]').click()
-    const picker = page.locator('[data-iw-canvas-picker="source"]')
+    const picker = page.getByRole('dialog', { name: 'Use a canvas image as the source' })
     await expect(picker).toBeVisible()
-    await expect(picker.locator('[role="dialog"]')).toHaveAttribute('aria-modal', 'true')
+    await expect(picker).toHaveAttribute('aria-modal', 'true')
     const refCard = picker.locator('[data-iw-canvas-ref]').first()
     // kind + ordinal — the canvas tile's own convention for this object.
     await expect(refCard).toContainText(/^h3img 1$/)
@@ -725,7 +938,7 @@ test('the start-frame exit reports a failed chain creation (A05): step notice, n
     await route.continue()
   })
   await page.locator('[data-iw-exit]').click()
-  const dialog = page.locator('[data-iw-exit-dialog]')
+  const dialog = page.getByRole('dialog', { name: 'Start-frame exit' })
   await expect(dialog).toBeVisible()
   await page.locator('[data-iw-exit-choice="anchor"]').click()
   await page.locator('[data-iw-exit-confirm]').click()
@@ -749,7 +962,7 @@ test('the start-frame exit reports a failed chain creation (A05): step notice, n
   await expect(page.locator('[data-iw-exit-confirm]')).toBeEnabled()
   // Close the exit dialog so the banner beneath is reachable by pointer.
   await page.keyboard.press('Escape')
-  await expect(page.locator('[data-iw-exit-dialog]')).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'Start-frame exit' })).toHaveCount(0)
   // Task 9 (k2q0n9s): ONE dismiss contract — the × owns its handler. The
   // banner body never dismisses (the retired hand-rolled banner's
   // banner-click dismissal died with it); the button alone clears it.

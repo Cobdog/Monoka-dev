@@ -80,8 +80,20 @@
    * modal (the pre-contract order, kept). --z-modal revalued 50 → 70 the
    * day the contract landed: at 50 every dialog rendered UNDER the docks —
    * the exact bug the fetch-consent's old --z-dialog-top workaround papered
-   * over. The unused reserved slots (--z-modal-raised, --z-overlay,
-   * --z-overlay-raised, --z-max) keep their historical values. */
+   * over.
+   *
+   * The unused reserved slots (--z-modal-raised, --z-overlay,
+   * --z-overlay-raised, --z-dialog-top, --z-max) keep their historical
+   * values, but they now TIE active tiers numerically: --z-modal-raised:60
+   * equals the dock-band floor and --z-overlay:70 equals --z-modal — a NAME
+   * is not an order (--z-modal-raised sits BELOW --z-modal despite reading
+   * above it), so REVALUE any reserved slot before its first real consumer
+   * instead of adopting the tied value. --z-dialog-top:90 is consumerless
+   * since the consent tier was renamed to --z-consent (task 11) and ties it
+   * numerically. One more tie to know: --z-modal:70 equals the canvas bench
+   * panel's z-70 (.canvas-bench-panel) — the modal wins that tie only by
+   * portal order (dialogs portal to body, after the canvas tree), a
+   * coincidence worth remembering if the bench ever re-stacks. */
   --z-sticky: 10;
   --z-dropdown: 40;
   --z-dock-base: 60;

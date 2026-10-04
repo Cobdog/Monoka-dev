@@ -15,9 +15,10 @@
  * through the shared landing loop; nothing here re-implements queueing.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { ImagePlus, Layers, LoaderCircle, Lock, Send, Settings, Sparkles, Wand2 } from 'lucide-react'
+import { ImagePlus, Layers, LoaderCircle, Lock, Send, Settings, Sparkles, Wand2, X } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { NoticeBanner } from '../ui/NoticeBanner'
+import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 import { CanvasToastAdapter } from '../canvas/toastAdapter'
 import { useStudioSession } from '../hooks/useStudioSession'
 import { useGenerationQueue } from '../hooks/useGenerationQueue'
@@ -1227,7 +1228,6 @@ function WorkbenchSurface() {
           body={canvasPickerMode === 'source'
             ? 'The pick is the consent: the take becomes this lane\'s anchored source (its bytes never move).'
             : 'The pick is the consent: the take becomes a reference slot (its bytes never move).'}
-          backdropData={{ 'data-iw-canvas-picker': canvasPickerMode }}
           onClose={() => setCanvasPickerOpen(false)}
           onPick={async (outputId, takeId, preview) => {
             if (canvasPickerMode === 'source') {
@@ -1255,8 +1255,29 @@ function WorkbenchSurface() {
       )}
 
       {exitOpen && (
-        <IwDialog label="Start-frame exit" backdropData={{ 'data-iw-exit-dialog': 'true' }} onClose={() => { setExitOpen(false); setExitPlan(null) }}>
-          <h3>Start-frame exit</h3>
+        /* Component vocabulary task 12 (k2q0n9s): the hand-rolled local
+           dialog wrapper is deleted — the workbench's three dialogs are
+           StudioDialogLayered (Base UI portal
+           + the §0.2 layer registry: Escape routes to the TOPMOST registered
+           layer, one dismissal path — the hand-rolled Tab wrap, node-level
+           Escape listener, and focus-restore ref the W1 sweep backported all
+           retire into the shared wrapper). The × owns its handler (the retired
+           markup had no close button; pointer dismissal leaned on the
+           backdrop's target-identity check); the geometry classes sit on the
+           portal's backdrop/center/popup slots per CV13 (see workbench.css). */
+        <StudioDialogLayered
+          layerId="iw-exit"
+          open
+          onClose={() => { setExitOpen(false); setExitPlan(null) }}
+          backdropClassName="iw-dialog-backdrop"
+          centerClassName="iw-dialog-center"
+          popupClassName="iw-dialog"
+          labelledBy="iw-exit-title"
+        >
+          <div className="iw-dialog-head">
+            <h3 id="iw-exit-title">Start-frame exit</h3>
+            <Button variant="icon" className="iw-dialog-close" aria-label="Close the start-frame exit" onClick={() => { setExitOpen(false); setExitPlan(null) }}><X size={14} /></Button>
+          </div>
           <p>Seed a video chain from the picked frame — <strong>created and selected, never submitted</strong>. The frame rides the FL2VA first-frame anchor (the measured strongest concrete anchor).</p>
           <div className="iw-exit-choices">
             <button type="button" data-iw-exit-choice="anchor" onClick={() => setExitPlan('anchor')} disabled={busy}>Anchor only (first frame)</button>
@@ -1271,7 +1292,7 @@ function WorkbenchSurface() {
             <button type="button" className="secondary" onClick={() => { setExitOpen(false); setExitPlan(null) }}>Cancel</button>
             <button type="button" className="primary" data-iw-exit-confirm disabled={!exitPlan || busy} onClick={() => void runExit()}><Send size={12} /> Seed the chain</button>
           </footer>
-        </IwDialog>
+        </StudioDialogLayered>
       )}
 
       {notice && (
@@ -1311,13 +1332,12 @@ async function addToneLockOp(chain: DocumentChain): Promise<void> {
  *  filename and prompt riding as the tooltip (the hash only on demand);
  *  the old raw-filename captions were 64-char hashes that collided across
  *  cards. */
-function CanvasRefPicker({ doc, onClose, onPick, title, body, backdropData }: {
+function CanvasRefPicker({ doc, onClose, onPick, title, body }: {
   doc: { chains: DocumentChain[] }
   onClose: () => void
   onPick: (outputId: string, takeId: string | null, previewUrl: string | null) => void
   title: string
   body: string
-  backdropData?: Record<string, string>
 }) {
   const entries = useMemo(() => {
     const index = buildOutputIndex(doc)
@@ -1330,8 +1350,21 @@ function CanvasRefPicker({ doc, onClose, onPick, title, body, backdropData }: {
     })
   }, [doc])
   return (
-    <IwDialog label={title} onClose={onClose} backdropData={backdropData}>
-      <h3>{title}</h3>
+    /* Task 12 (k2q0n9s): the picker is the registry's nested case — a layer
+       above it owns Escape until it closes (unwinds topmost-first). */
+    <StudioDialogLayered
+      layerId="iw-canvas-picker"
+      open
+      onClose={onClose}
+      backdropClassName="iw-dialog-backdrop"
+      centerClassName="iw-dialog-center"
+      popupClassName="iw-dialog"
+      labelledBy="iw-canvas-picker-title"
+    >
+      <div className="iw-dialog-head">
+        <h3 id="iw-canvas-picker-title">{title}</h3>
+        <Button variant="icon" className="iw-dialog-close" aria-label="Close the canvas picker" onClick={onClose}><X size={14} /></Button>
+      </div>
       <p>{body}</p>
       <div className="iw-canvas-refs">
         {entries.length === 0 && <span className="iw-takes-empty">No image takes on this canvas yet.</span>}
@@ -1345,7 +1378,7 @@ function CanvasRefPicker({ doc, onClose, onPick, title, body, backdropData }: {
       <footer>
         <button type="button" className="secondary" onClick={onClose}>Cancel</button>
       </footer>
-    </IwDialog>
+    </StudioDialogLayered>
   )
 }
 
@@ -1497,8 +1530,21 @@ function MaskPainterDialog({ file, onCancel, onUse }: {
   }
 
   return (
-    <IwDialog label="Paint the region to regenerate" dialogClassName="iw-mask-dialog" backdropData={{ 'data-iw-mask-painter': 'true' }} onClose={onCancel}>
-      <h3>Paint the region to regenerate</h3>
+    /* Task 12 (k2q0n9s): StudioDialogLayered — the painter's Escape is the
+       registry's while it is topmost; .iw-mask-dialog keeps its width. */
+    <StudioDialogLayered
+      layerId="iw-mask-painter"
+      open
+      onClose={onCancel}
+      backdropClassName="iw-dialog-backdrop"
+      centerClassName="iw-dialog-center"
+      popupClassName="iw-dialog iw-mask-dialog"
+      labelledBy="iw-mask-painter-title"
+    >
+      <div className="iw-dialog-head">
+        <h3 id="iw-mask-painter-title">Paint the region to regenerate</h3>
+        <Button variant="icon" className="iw-dialog-close" aria-label="Close the mask painter" onClick={onCancel}><X size={14} /></Button>
+      </div>
       <p>Everything you paint regenerates from the instruction; the rest of the image is restored pixel-exactly after the render. Transparent pixels ARE the mask (the Mask-Editor convention).</p>
       <div className="iw-mask-stage">
         {file.preview ? <img ref={imgRef} src={file.preview} alt="source" className="iw-mask-under" /> : <span className="iw-frame-evicted">no preview</span>}
@@ -1522,7 +1568,7 @@ function MaskPainterDialog({ file, onCancel, onUse }: {
         <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
         <button type="button" className="primary" data-iw-mask-use disabled={busy} onClick={() => void applyMask()}>Use the masked source</button>
       </footer>
-    </IwDialog>
+    </StudioDialogLayered>
   )
 }
 
@@ -1531,59 +1577,4 @@ function chainPromptOf(chain: { inputSpec: Record<string, unknown>; settings: Re
   if (fresh && typeof fresh.prompt === 'string' && fresh.prompt) return fresh.prompt
   if (typeof chain.settings.prompt === 'string') return chain.settings.prompt
   return 'canvas take'
-}
-
-/** (W1, perfect-state sweep 2026-09-27) The workbench's dialogs carry dialog
- *  semantics: role=dialog + aria-modal + an accessible name, Escape and
- *  backdrop-click dismissal, a Tab focus trap, and focus restore on close —
- *  the wizard's pattern backported onto the iw-dialog markup. Before this,
- *  the canvas-ref picker and the start-frame exit were semantic voids absent
- *  from the accessibility tree entirely. */
-function IwDialog({ label, onClose, dialogClassName = '', backdropData, children }: {
-  label: string
-  onClose(): void
-  dialogClassName?: string
-  backdropData?: Record<string, string>
-  children: ReactNode
-}) {
-  const popup = useRef<HTMLDivElement | null>(null)
-  const restoreFocus = useRef<HTMLElement | null>(null)
-  useEffect(() => {
-    restoreFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const node = popup.current
-    if (!node) return
-    const focusables = () => Array.from(node.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter((element) => !element.hasAttribute('disabled'))
-    ;(focusables()[0] ?? node).focus()
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation()
-        onClose()
-        return
-      }
-      if (event.key !== 'Tab') return
-      const items = focusables()
-      if (!items.length) return
-      const first = items[0]!
-      const last = items[items.length - 1]!
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    node.addEventListener('keydown', onKeyDown)
-    return () => {
-      node.removeEventListener('keydown', onKeyDown)
-      restoreFocus.current?.focus()
-    }
-  }, [onClose])
-  return (
-    <div className="iw-dialog-backdrop" {...backdropData} onPointerDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <div className={`iw-dialog ${dialogClassName}`.trim()} role="dialog" aria-modal="true" aria-label={label} ref={popup}>
-        {children}
-      </div>
-    </div>
-  )
 }
