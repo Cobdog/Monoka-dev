@@ -250,7 +250,7 @@ export function TimelineOverlay() {
               key={entry.kind}
               type="button"
               role="menuitem"
-              className={`canvas-gap-option ${openGap.kind === entry.kind ? 'chip--selected' : ''}`}
+              className={`chip canvas-gap-option ${openGap.kind === entry.kind ? 'chip--selected' : ''}`}
               data-canvas-gap-option={entry.kind}
               disabled={disabled}
               title={reason ?? entry.verdict}

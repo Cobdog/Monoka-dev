@@ -2597,6 +2597,26 @@ test('the measured gap menu: five entries with honest verdicts; the FLF splice w
   await expect(menu.locator('[data-canvas-gap-option="black"]')).toBeDisabled()
   await expect(menu.locator('[data-canvas-gap-option="bridge"]')).toContainText(/engine work/i)
 
+  // Fix round 1 (C1): the CURRENTLY-SELECTED transition option must RENDER
+  // the selected tone, not merely carry the class — the surface rule's
+  // border shorthand + background/color sat at equal specificity in the
+  // later-loading sheet and silently beat the recipe, so the selection was
+  // invisible. Computed style is the proof.
+  const selectedOption = menu.locator('[data-canvas-gap-option].chip--selected')
+  await expect(selectedOption).toHaveCount(1)
+  const gapTone = await selectedOption.evaluate((element) => ({ border: getComputedStyle(element).borderTopColor, background: getComputedStyle(element).backgroundColor }))
+  const expectedTone = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.style.borderTopColor = 'color-mix(in srgb, var(--accent) 48%, transparent)'
+    probe.style.backgroundColor = 'var(--accent-soft)'
+    document.body.appendChild(probe)
+    const computed = { border: getComputedStyle(probe).borderTopColor, background: getComputedStyle(probe).backgroundColor }
+    probe.remove()
+    return computed
+  })
+  expect(gapTone.border).toBe(expectedTone.border)
+  expect(gapTone.background).toBe(expectedTone.background)
+
   // FLF EXECUTES (the Phase-5 toast-note handoff, now gap machinery): the
   // prior segment's FINAL frame is extracted and wired as the next
   // segment's first frame — real document state, not a toast.

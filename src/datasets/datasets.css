@@ -96,6 +96,10 @@
 .ds-field input { width: 100%; background: none; border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 8px; color: inherit; padding: 5px 8px; font-size: var(--text-2xs); }
 .ds-aspect-strip { display: flex; flex-wrap: wrap; gap: 4px; }
 .ds-aspect-chip { padding: 3px 10px; border-radius: 8px; border-width: 1px; border-style: solid; cursor: pointer; font-size: var(--text-2xs); }
+/* The selected aspect keeps its SURFACE bold (fix round 1, I1): font is P06
+ * surface territory — the state recipe owns tone, the surface keys its own
+ * weight off the state class. */
+.ds-aspect-chip.chip--selected { font-weight: 700; }
 .ds-aspect-chip.custom { border-style: dashed; }
 .ds-hint { font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 0; }
 .ds-status { font-size: 10px; color: var(--accent); margin: 0; }

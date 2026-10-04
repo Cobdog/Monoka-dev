@@ -239,3 +239,166 @@ test('(f) every var() the recipes reference is :root-defined', () => {
     ok(ROOT_VARS.has(name), `recipe token "${name}" is DEFINED in src/styles.css :root (parsed at run time — no new literals, P02)`)
   }
 })
+
+// ---- (g) the border-shorthand hazard net (fix round 1, C1/I2) ---------------
+//
+// THE FAILURE MODE this net exists for: a surface rule declaring the
+// `border:` SHORTHAND (or a per-edge shorthand like `border-top:`) RESETS
+// border-color to currentcolor — and at (0,1,0), EQUAL to .chip/.chip--*
+// specificity, in a sheet that loads AFTER src/styles.css (canvas.css,
+// datasets.css, workbench.css), it beats the recipes. The composed tone then
+// renders silently as the surface's own color: C1 shipped exactly this way —
+// the gap menu's selected option carried `chip--selected` while
+// `.canvas-gap-option`'s shorthand + background/color kept winning, so the
+// selection was invisible and the old `.active` rule died unread.
+//
+// stylelint cannot catch this (it lints one sheet at a time and knows
+// nothing about WHICH elements compose `chip` — the composition lives in
+// the TSX), which is why the net lives HERE: walk every chip-composed
+// element's SURFACE class tokens out of the TSX, then fail on any rule in
+// the src sheets that references such a token and declares a border
+// shorthand. Surface geometry rules must use the border-width/border-style
+// LONGHANDS (the migration discipline recorded in canvas.css).
+
+/** Every top-level rule (selector text + declarations) in a CSS sheet. */
+function collectRules(css) {
+  const rules = []
+  let index = 0
+  while (index < css.length) {
+    const open = css.indexOf('{', index)
+    if (open === -1) break
+    let depth = 1
+    let end = open + 1
+    while (depth > 0 && end < css.length) {
+      if (css[end] === '{') depth += 1
+      if (css[end] === '}') depth -= 1
+      end += 1
+    }
+    const selectorText = css.slice(index, open)
+    const body = css.slice(open + 1, end - 1)
+    if (!selectorText.trimStart().startsWith('@')) rules.push({ selectorText, body })
+    index = end
+  }
+  return rules
+}
+
+/** All className attribute values (static strings AND brace-matched template
+ *  expressions, ternary branches included) in one TSX file's source. */
+function collectClassNameExpressions(source) {
+  const expressions = []
+  let at = 0
+  for (;;) {
+    const start = source.indexOf('className=', at)
+    if (start === -1) break
+    const valueStart = start + 'className='.length
+    if (source[valueStart] === '"') {
+      const close = source.indexOf('"', valueStart + 1)
+      if (close === -1) break
+      expressions.push(source.slice(valueStart + 1, close))
+      at = close + 1
+      continue
+    }
+    if (source[valueStart] === '{') {
+      // Brace-match the expression (template literals may nest braces).
+      let depth = 1
+      let cursor = valueStart + 1
+      while (depth > 0 && cursor < source.length) {
+        const char = source[cursor]
+        if (char === '{') depth += 1
+        else if (char === '}') depth -= 1
+        cursor += 1
+      }
+      expressions.push(source.slice(valueStart + 1, cursor - 1))
+      at = cursor
+      continue
+    }
+    at = valueStart
+  }
+  return expressions
+}
+
+function walkFiles(dir, suffix, into) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'dist-server') continue
+      walkFiles(full, suffix, into)
+    } else if (entry.name.endsWith(suffix)) {
+      into.push(full)
+    }
+  }
+  return into
+}
+
+/** Class TOKENS of one className expression: static text fully; inside
+ *  ${…} interpolations only QUOTED STRING LITERALS count (ternary branches
+ *  like 'chip--selected' are class tokens; bare identifiers like
+ *  chip.status are NOT — the node-pack rows' `${chip.status}` must not read
+ *  as chip composition). */
+function classTokensOf(expression) {
+  let text = ''
+  let at = 0
+  for (;;) {
+    const open = expression.indexOf('${', at)
+    if (open === -1) {
+      text += ` ${expression.slice(at)} `
+      break
+    }
+    text += ` ${expression.slice(at, open)} `
+    let depth = 1
+    let cursor = open + 2
+    while (depth > 0 && cursor < expression.length) {
+      if (expression[cursor] === '{') depth += 1
+      else if (expression[cursor] === '}') depth -= 1
+      cursor += 1
+    }
+    const inner = expression.slice(open + 2, cursor - 1)
+    const quoted = inner.match(/'[^']*'|"[^"]*"/g) ?? []
+    for (const literal of quoted) text += ` ${literal.slice(1, -1)} `
+    at = cursor
+  }
+  return text.split(/[^a-zA-Z0-9_-]+/).filter(Boolean)
+}
+
+test('(g) no chip-composed surface class is styled by a border shorthand', () => {
+  const srcRoot = path.resolve(__dirname, '..', 'src')
+  // 1. The surface tokens: every class token that shares a className value
+  //    with `chip` or a `chip--*` modifier anywhere in the TSX.
+  const surfaceTokens = new Set()
+  const tsxFiles = walkFiles(srcRoot, '.tsx', [])
+  ok(tsxFiles.length > 20, `the TSX walk found the source tree (${tsxFiles.length} files)`)
+  for (const file of tsxFiles) {
+    const source = fs.readFileSync(file, 'utf8')
+    for (const expression of collectClassNameExpressions(source)) {
+      const tokens = classTokensOf(expression)
+      const composesChip = tokens.some((token) => token === 'chip' || token.startsWith('chip--'))
+      if (!composesChip) continue
+      for (const token of tokens) {
+        if (token !== 'chip' && !token.startsWith('chip--')) surfaceTokens.add(token)
+      }
+    }
+  }
+  ok(surfaceTokens.has('canvas-chip'), 'the walk sees the census surface tokens (parse sanity: canvas-chip)')
+  ok(surfaceTokens.has('canvas-gap-option'), 'the walk sees the C1 token (parse sanity: canvas-gap-option)')
+
+  // 2. Any rule in the src sheets referencing a surface token that declares
+  //    a border shorthand (whole or per-edge) — the hazard at equal-or-higher
+  //    specificity than the recipes.
+  const cssFiles = walkFiles(srcRoot, '.css', [])
+  const violations = []
+  for (const file of cssFiles) {
+    for (const rule of collectRules(fs.readFileSync(file, 'utf8'))) {
+      const referencesSurfaceToken = Array.from(surfaceTokens).some((token) => new RegExp(`\\.${token}(?![a-zA-Z0-9_-])`).test(rule.selectorText))
+      if (!referencesSurfaceToken) continue
+      for (const declaration of rule.body.split(';')) {
+        const colon = declaration.indexOf(':')
+        if (colon === -1) continue
+        const prop = declaration.slice(0, colon).trim().toLowerCase()
+        if (prop === 'border' || /^(border-(top|right|bottom|left))$/.test(prop)) {
+          violations.push(`${path.relative(srcRoot, file)}: "${rule.selectorText.trim().replace(/\s+/g, ' ').slice(0, 60)}" declares ${prop}: — the shorthand resets border-color to currentcolor and, at (0,1,0) in a later-loading sheet, beats the .chip recipes (split to border-width/border-style longhands)`)
+        }
+      }
+    }
+  }
+  eq(violations.length, 0, `zero border shorthands on chip-composed surface classes (found: ${violations.length})\n    ${violations.join('\n    ')}`)
+})

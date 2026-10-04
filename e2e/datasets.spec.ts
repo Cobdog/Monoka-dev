@@ -126,6 +126,23 @@ test('the stamp-crop editor: aspect spectrum, hard-stop hint, 32-grid crop, save
   for (const label of ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16']) {
     await expect(strip.getByRole('button', { name: label, exact: true })).toBeVisible()
   }
+  // Fix round 1 (I1): the selected aspect chip keeps its SURFACE bold —
+  // font is P06 surface territory, so the state fold that deleted
+  // .ds-aspect-chip.active must not lose it — and the selected TONE renders
+  // through the recipe (computed style, both).
+  const selectedAspect = strip.locator('button.chip--selected')
+  await expect(selectedAspect).toHaveCount(1)
+  const aspectRender = await selectedAspect.evaluate((element) => ({ weight: getComputedStyle(element).fontWeight, border: getComputedStyle(element).borderTopColor }))
+  const expectedAspectTone = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.style.borderTopColor = 'color-mix(in srgb, var(--accent) 48%, transparent)'
+    document.body.appendChild(probe)
+    const border = getComputedStyle(probe).borderTopColor
+    probe.remove()
+    return border
+  })
+  expect(aspectRender.weight).toBe('700')
+  expect(aspectRender.border).toBe(expectedAspectTone)
   // Default is 16:9-class; the crop readout shows 32-grid values.
   await expect(page.locator('.ds-crop-readout')).toContainText(/w \d+ · h \d+/)
   // shift+scroll at the BOTTOM edge: the hard-stop hint appears (the

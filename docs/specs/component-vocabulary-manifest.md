@@ -170,7 +170,7 @@ Selection-contract sites (spec §0.3) enumerated — roles declared, roving tabi
 - Speed-tier chips — `src/canvas/PropertiesPanel.tsx:1117-1123`
 - VDN-rung chips — `src/canvas/PropertiesPanel.tsx:1141-1147`
 - Prompt-mode radios — `src/canvas/PropertiesPanel.tsx:1006-1008`
-- Independent toggles (render as pressed buttons post-migration): tier-selected buttons `src/views/SettingsView.tsx:303-304,599`; library-filter chips (IndexOverlay/LibraryOverlay); mode toggles in StructuredPromptEditor.
+- Independent toggles (render as pressed buttons post-migration): tier-selected buttons `src/views/SettingsView.tsx:303-304,599`; library-filter chips (IndexOverlay/LibraryOverlay); ~~mode toggles in StructuredPromptEditor~~ (**no target at HEAD** — task 6 fix round 1: the structured editor's chips row is insert ACTIONS and its box headers are `aria-expanded` disclosures; no mode-toggle exists there. Planning-time approximation, annotated rather than silently dropped.)
 
 - **retired selectors (tone rules):** `grep -nE "\.canvas-chip\.(active|danger|primary)|\.canvas-chip:(hover|disabled)" src/canvas/canvas.css` → currently **8** (`:145,146,499-501,749-751`); target **0** (→ `.chip--{tone}` recipes). Same shape per family: `.ds-btn.(primary|danger|ghost)`, `.health-pill.online`, etc.
 - **retained geometry (shape rules):** `grep -n "^\.canvas-chip {" src/canvas/canvas.css` → PRESENT (the pill's padding/radius/gap), plus `.canvas-properties-tiers .canvas-chip` (canvas.css:326) and `.canvas-library-filters .canvas-chip` (canvas.css:627); `.ds-aspect-chip`'s dashed border treatment stays; iw tags keep rectangle geometry. **NO padding/radius/font in the shared chip classes** (P06).
