@@ -910,3 +910,9 @@ across the whole set; the canary-stop rule never fired.
    pending the maintainer's checkpoint and the surface calls. X1/X2 produced
    no winners to extend (falsification and flat verdicts are the results).
 
+
+## COMPACT-HANDOFF NOTE (2026-10-04, maintainer taking GPU)
+- Testbed 8189 DOWN (POST /free → SIGINT → 302 MiB baseline verified). GPU is the maintainer's.
+- Set D downloads RUNNING in background: SCAIL-2 int8 (→/home/agent/models/scail2-dl/) + Wan-Animate-2 int8 (→/home/agent/models/wan-animate2-dl/). VERIFY SIZES (~16.7GB + engine model) + consent/license rows BEFORE Set D dispatch. D1/D3/D4 run local already.
+- Set D staged: D1 (30 imgs, Krea falsifier), D2 (18 gens, needs the downloads), D3 (18, IR-gap), D4 (16, preset ladder). ~30-36 review pairs. Dispatch per ledger Set D spec on the maintainer's return.
+- Set C CLOSED (46f00d9): X1 falsified (beta eye-preference counter-signal recorded), X3 binary, X6 simple/8, X2 cliff+inversion human-confirmed. Sets A/B/C complete; D-J queued.
