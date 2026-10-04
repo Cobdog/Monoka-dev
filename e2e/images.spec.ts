@@ -443,12 +443,13 @@ test('the canvas-ref picker unwinds topmost-first under a registered overlay (§
   await page.keyboard.press('Escape')
   await expect(picker).toHaveCount(0)
   await expect(trigger).toBeFocused()
+  await expect.poll(stackVia).toBe('')
 
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
 // CV13's containment clauses, driven for real: the picker's grid grows past
-// any viewport's 80vh cap (13 canvas image rows here), so the POPUP must own
+// any viewport's 80vh cap (17 canvas image rows here — 1 seeded + 16 extra), so the POPUP must own
 // the scroll (max-height 80vh + overflow auto — content taller than the cap
 // scrolls INSIDE the dialog, never the page), and on a narrow viewport the
 // popup fits the 18px-padded center (width min(560px, 100%) — the retired
