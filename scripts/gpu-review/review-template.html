@@ -56,6 +56,12 @@
   footer button { font:inherit; padding:6px 14px; border-radius:8px; border:1px solid var(--accent); background:transparent; color:var(--accent); cursor:pointer; font-weight:600; }
   .fullscreen-stage:fullscreen { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; background:#000; }
   .fullscreen-stage:fullscreen video { max-height:100vh; width:auto; max-width:100%; }
+  .stage .blink-canvas { display:block; width:100%; background:#000; }
+  .stage .blink-canvas.hidden { display:none; }
+  .stage.blink video { visibility:hidden; }
+  .drift { font-size:11px; font-variant-numeric:tabular-nums; padding:2px 8px; border-radius:4px; border:1px solid var(--line); color:var(--muted); }
+  .drift.ok { color:var(--accent); border-color:var(--accent); }
+  .drift.warn { color:var(--danger); border-color:var(--danger); }
   .hidden { display:none; }
 </style>
 </head>
@@ -84,6 +90,7 @@
     <div class="stage sbs">
       <video class="v-base" playsinline></video>
       <video class="v-top" playsinline></video>
+      <canvas class="blink-canvas hidden"></canvas>
       <div class="divider hidden"></div>
       <span class="tag l hidden">L</span><span class="tag r hidden">R</span>
     </div>
@@ -94,6 +101,7 @@
       <span class="spacer"></span>
       <span class="rate hidden">blink: <input type="range" min="1" max="8" step="1" value="3"> Hz</span>
       <span class="t">0.00s</span>
+      <span class="drift" title="inter-video time offset">Δ --</span>
     </div>
     <div class="meta">
       <div class="meta-shared"></div>
@@ -153,15 +161,64 @@
     var mode = 'sbs', blinkTimer = null, blinkOn = false;
     var syncClock = base; // base is the master; top follows
 
-    // ---- sync: top follows base (t start aligned on restart/play)
-    function alignTop() { try { top.currentTime = base.currentTime; } catch (e) {} }
-    base.addEventListener('timeupdate', function () {
+    // ---- frame-accurate master/slave sync (rVFC where available, rAF fallback)
+    var FRAME = 1 / 24, syncing = false;
+    var driftEl = node.querySelector('.drift');
+    function alignTop() {
+      if (syncing) return;
+      syncing = true;
+      try { top.currentTime = base.currentTime; } catch (e) {}
+      var clear = function () { syncing = false; top.removeEventListener('seeked', clear); };
+      top.addEventListener('seeked', clear);
+      setTimeout(clear, 120); // safety: don't lock the corrector on a stuck seek
+    }
+    function checkSync() {
+      var d = Math.abs(top.currentTime - base.currentTime);
+      driftEl.textContent = 'Δ ' + Math.round(d * 1000) + 'ms';
+      driftEl.classList.toggle('ok', d <= FRAME * 0.6);
+      driftEl.classList.toggle('warn', d > FRAME * 0.6);
+      if (d > FRAME * 0.5 && !syncing) alignTop();
       tEl.textContent = fmt(base.currentTime);
-      if (Math.abs(top.currentTime - base.currentTime) > 0.034) alignTop();
-    });
-    base.addEventListener('ended', function () { base.currentTime = 0; top.currentTime = 0; if (!base.paused) { base.play(); top.play(); } });
+    }
+    if (base.requestVideoFrameCallback) {
+      var rvfc;
+      (rvfc = function () { checkSync(); base.requestVideoFrameCallback(rvfc); })();
+    } else {
+      (function raf() { if (document.contains(node)) { checkSync(); requestAnimationFrame(raf); } })();
+    }
+    // synchronized restart: BOTH must land on 0 before either plays again
+    function restartBoth() {
+      pauseBoth();
+      var pending = 2;
+      function go() { if (--pending === 0) playBoth(); }
+      [base, top].forEach(function (v) {
+        v.addEventListener('seeked', function h() { v.removeEventListener('seeked', h); go(); });
+        try { v.currentTime = 0; } catch (e) { go(); }
+      });
+    }
+    base.addEventListener('ended', restartBoth);
     function playBoth() { base.play(); top.play(); }
     function pauseBoth() { base.pause(); top.pause(); }
+
+    // ---- blink: single-canvas compositing at vsync cadence
+    var canvas = node.querySelector('.blink-canvas'), ctx = canvas.getContext('2d');
+    var blinkAcc = 0, blinkLast = 0, blinkHz = 3;
+    function sizeCanvas() {
+      if (base.videoWidth) { canvas.width = base.videoWidth; canvas.height = base.videoHeight; }
+    }
+    base.addEventListener('loadedmetadata', sizeCanvas);
+    function startBlink(hz) {
+      blinkHz = hz; blinkAcc = 0; blinkLast = performance.now();
+      (function loop(now) {
+        if (mode !== 'blink') return;
+        var dt = now - blinkLast; blinkLast = now; blinkAcc += dt;
+        var period = 1000 / (2 * blinkHz);
+        while (blinkAcc >= period) { blinkAcc -= period; blinkOn = !blinkOn; }
+        var src = blinkOn ? top : base;
+        try { if (src.videoWidth) ctx.drawImage(src, 0, 0, canvas.width, canvas.height); } catch (e) {}
+        blinkTimer = requestAnimationFrame(loop);
+      })(performance.now());
+    }
 
     // ---- modes
     function setMode(m) {
@@ -172,15 +229,13 @@
       tagL.classList.toggle('hidden', m === 'sbs');
       tagR.classList.toggle('hidden', m === 'sbs');
       rateWrap.classList.toggle('hidden', m !== 'blink');
-      if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null; }
+      if (blinkTimer) { cancelAnimationFrame(blinkTimer); blinkTimer = null; }
+      canvas.classList.toggle('hidden', m !== 'blink');
       if (m === 'slider') { setSplit(split); }
       if (m === 'blink') {
-        var hz = parseFloat(rateEl.value);
-        blinkTimer = setInterval(function () {
-          blinkOn = !blinkOn;
-          stage.classList.toggle('show-top', blinkOn);
-        }, 1000 / (2 * hz));
-      } else { stage.classList.remove('show-top'); }
+        stage.classList.remove('show-top');
+        startBlink(parseFloat(rateEl.value));
+      }
     }
     node.querySelectorAll('.mode-btns [data-mode]').forEach(function (b) {
       b.addEventListener('click', function () { setMode(b.getAttribute('data-mode')); });
@@ -201,10 +256,7 @@
     stage.addEventListener('pointerdown', function (ev) {
       if (mode === 'sbs') return;
       if (mode === 'slider') { dragging = true; stage.setPointerCapture(ev.pointerId); onDrag(ev); }
-      if (mode === 'blink') { // tap flips instantly (manual blink)
-        stage.classList.toggle('show-top');
-        if (blinkTimer) { clearInterval(blinkTimer); blinkTimer = null; rateWrap.querySelector('span').textContent = 'blink: manual (tap to flip) — '; }
-      }
+      if (mode === 'blink') { blinkOn = !blinkOn; } // manual phase flip (canvas redraws next rAF)
     });
     stage.addEventListener('pointermove', function (ev) { if (dragging) onDrag(ev); });
     stage.addEventListener('pointerup', function () { dragging = false; });
@@ -221,9 +273,8 @@
     }
     rateEl.addEventListener('input', function () {
       if (mode !== 'blink' || blinkTimer === null) return;
-      clearInterval(blinkTimer);
-      var hz = parseFloat(rateEl.value);
-      blinkTimer = setInterval(function () { blinkOn = !blinkOn; stage.classList.toggle('show-top', blinkOn); }, 1000 / (2 * hz));
+      cancelAnimationFrame(blinkTimer);
+      startBlink(parseFloat(rateEl.value));
     });
 
     // ---- fullscreen (stage only)
@@ -286,10 +337,12 @@
       if (prior.call) { var b = node.querySelector('.calls [data-call="' + prior.call + '"]'); if (b) b.classList.add('sel'); renderMeta(true); }
       if (prior.note) node.querySelector('.note').value = prior.note;
     }
-    // default: videos autostart muted+looping, synced
+    // default: videos start ONLY when BOTH are ready (aligned start kills the canplay-race desync)
     base.muted = top.muted = true;
-    base.addEventListener('canplay', function () { if (base.paused && base.readyState >= 3) playBoth(); });
-    top.addEventListener('canplay', function () { if (!base.paused) top.play(); });
+    var readyB = false, readyT = false;
+    function tryStart() { if (readyB && readyT && base.paused) { alignTop(); playBoth(); } }
+    base.addEventListener('canplay', function () { readyB = true; tryStart(); });
+    top.addEventListener('canplay', function () { readyT = true; tryStart(); });
     setMode('sbs');
   }
 
