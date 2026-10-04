@@ -1,3 +1,4 @@
+/* global window */
 // Retroactive metadata for Set A's corruption ladder (calls already recorded; key already opened).
 // Shared config + per-side identity + the pre-registered expectation as the pair note.
 window.PAIR_META = {

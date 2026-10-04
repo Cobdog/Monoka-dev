@@ -5,6 +5,7 @@ tag assignment — file:// loads script tags but blocks fetch, so JSON files
 cannot be read by the page):
 
 ```js
+/* global window */
 window.PAIR_META = {
   p01: {
     shared:  { board: "director-low", width: 864, height: 480, fps: 24,
@@ -25,3 +26,10 @@ maintainer records a call for that pair (the template enforces this), so
 the quality call stays blind and the economic overlay (e.g. "L barely
 better but 2× the wall clock") happens post-call. The escrowed pairs/.key
 stays the authority on arm identity; this file carries measurements.
+
+The shared and post-call reveal contract above is unchanged. Review media now
+also requires a separate blind `pairs-frames.js` and lossless `frames/` assets;
+see [FRAME-ASSETS-SPEC.md](FRAME-ASSETS-SPEC.md) for generation, validation,
+playback semantics, and response JS export. Treatment metadata and pair notes
+must never be placed in the frame manifest. Pair notes reveal only after a valid
+call, just like L/R metadata. Metadata values render as text, never HTML.
