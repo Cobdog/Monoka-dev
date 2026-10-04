@@ -10,7 +10,7 @@ import { Button } from '../ui/Button'
 import type { PromptLibraryItem } from '../types'
 import { PROMPT_LIBRARY_EVENT, deletePromptEntry, loadPromptLibrary, savePromptEntry, type SavedPromptEntry } from '../lib/promptLibraryStorage'
 import { deleteServerPromptEntry, saveServerPromptEntries, searchSavedPrompts } from '../lib/serverStorage'
-import { StudioDialog } from '../ui/StudioDialog'
+import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 import { StudioTab, StudioTabs } from '../ui/StudioTabs'
 
 const SORTS = ['Most Reactions', 'Most Comments', 'Newest', 'Oldest']
@@ -76,6 +76,10 @@ export function PromptLibraryBrowser({ onClose, onInsert, finalFocusRef }: { onC
   // Wave 2b: Escape handling, focus trapping and focus restore moved into
   // StudioDialog (Base UI) — this component previously had NO focus trap at
   // all, so Tab could escape the dialog and focus was never restored.
+  // Component vocabulary task 10: the dialog participates in the layer
+  // registry (StudioDialogLayered) — Escape routes to the TOPMOST layer
+  // only, so an overlay above (a hook overlay, a popover) owns the keystroke
+  // until it closes.
 
   const flash = (id: string) => {
     setInsertedId(id)
@@ -116,7 +120,7 @@ export function PromptLibraryBrowser({ onClose, onInsert, finalFocusRef }: { onC
     : library
 
   return (
-    <StudioDialog open onClose={onClose} popupClassName="prompt-library-modal" labelledBy="prompt-library-title" finalFocus={finalFocusRef}>
+    <StudioDialogLayered layerId="prompt-library" open onClose={onClose} popupClassName="prompt-library-modal" labelledBy="prompt-library-title" finalFocus={finalFocusRef}>
         <header>
           <div><span><Sparkles size={18} /></span><div><small>PROMPT LIBRARY</small><strong id="prompt-library-title">Community &amp; saved prompts</strong><p>Harvest public Civitai generation metadata through the local server, study its settings, and keep what works. Technique starters included.</p></div></div>
           <button type="button" aria-label="Close prompt library" onClick={onClose}><X size={18} /></button>
@@ -189,6 +193,6 @@ export function PromptLibraryBrowser({ onClose, onInsert, finalFocusRef }: { onC
             </div>
           </>
         )}
-    </StudioDialog>
+    </StudioDialogLayered>
   )
 }

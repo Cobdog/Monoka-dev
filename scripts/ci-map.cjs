@@ -69,6 +69,7 @@ const SUITES = {
   filmstrip: { build: 'full', windows: false, python: false, ffmpeg: true },
   h3img: { build: null, windows: false, python: false, ffmpeg: false },
   instance: { build: 'full', windows: true, python: false, ffmpeg: false },
+  layerRegistry: { build: null, windows: false, python: false, ffmpeg: false },
   launcher: { build: 'full', windows: false, python: false, ffmpeg: false },
   llm: { build: 'full', windows: false, python: false, ffmpeg: false },
   'manager-install': { build: 'full', windows: false, python: false, ffmpeg: false },
@@ -358,6 +359,12 @@ const RULES = [
     match: ['src/ui/ToastHost.tsx', 'src/ui/NoticeBanner.tsx', 'src/ui/noticeClasses.ts', 'src/canvas/toastAdapter.tsx', 'src/images/workbench.css', 'src/datasets/datasets.css'],
     suites: ['notice-classes'],
     reason: 'the toast/notice family\'s pure placement/tone/aria class math + the P07 adapter\'s store-wiring pass-through (component vocabulary task 9): the notice-classes suite loads noticeClasses.ts through the VM harness, pins the retained canvas-toast item vocabulary byte-identical to the retired strip expression, walks the .toast-host/.notice-banner recipe blocks in src/styles.css (recipe lockstep both directions, property whitelists per P06, :root-defined tokens), re-runs the C1 net over every NoticeBanner-composed surface class, and pins the §7/§8 migrations (the workbench inline strip, the .iw-notice/.iw-toasts rules, the datasets banner tone rules, the manifest §8 dead-CSS families — workbench.css/datasets.css carry the retained edge rows).',
+  },
+  {
+    match: ['src/ui/layerRegistry.ts', 'src/ui/StudioDialogLayered.tsx', 'src/components/PromptLibraryBrowser.tsx'],
+    suites: ['layerRegistry'],
+    forceE2e: true,
+    reason: 'the layer-ownership registry + the StudioDialog wrapper every registry-participating dialog uses (component vocabulary task 10, spec §0.2): the layerRegistry suite loads the module through the VM harness and proves the pure mechanics (push order, identity-keyed NON-TOP removal, topmost-only routing, the ONE window-capture listener, the routed-Escape suppression contract) against a fake window. HONEST LIMIT: the wrapper\'s real behavior — registering on open, Base UI suppression against the live Dialog, topmost-first unwind at the real consumer — only executes in a browser, so these diffs force the e2e leg (e2e/app.spec.ts drives PromptLibraryBrowser + a registry-API stand-in overlay).',
   },
   {
     match: [
