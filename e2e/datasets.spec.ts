@@ -654,6 +654,7 @@ test('button busy: the caption save announces aria-busy and disables while held'
   await expect(save).toHaveClass(/(^|\s)btn btn--primary btn--busy ds-btn(\s|$)/)
 
   release()
+  // (presence form — the object is options, not an expected value: the flag is GONE)
   await expect(save).not.toHaveAttribute('aria-busy', { timeout: 10_000 })
   await expect(save).toBeEnabled()
   await expect(save.locator('.spin')).toHaveCount(0)
@@ -838,6 +839,7 @@ test('the uniform busy guard: while the caption save is in flight Escape, outsid
   // The save lands (its outcome belongs on screen) — then all three paths
   // dismiss again. Arm 1: Escape.
   release()
+  // (presence form — the object is options, not an expected value: the flag is GONE)
   await expect(save).not.toHaveAttribute('aria-busy', { timeout: 10_000 })
   await expect(page.locator('.ds-status', { hasText: 'Saved' })).toBeVisible()
   await page.keyboard.press('Escape')
@@ -879,6 +881,9 @@ test('the crop editor joins the dialog stack; its in-flight save defers dismissa
   await page.locator('[data-ds-save-layer]').click()
   await expect(page.locator('[data-ds-save-layer]')).toBeDisabled()
   await page.keyboard.press('Escape')
+  await expect(editor).toBeVisible()
+  // …the outside-press (the shared stack's third path — the backdrop)…
+  await page.mouse.click(8, 300)
   await expect(editor).toBeVisible()
   await editor.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(editor).toBeVisible()

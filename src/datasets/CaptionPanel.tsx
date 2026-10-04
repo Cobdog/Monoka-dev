@@ -60,13 +60,15 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
   }, [text])
 
   // C1's guarded closes: the caption save / the VLM recaption run are the
-  // protected actions; every dismissal path above lands here.
+  // protected actions; every dismissal path above lands here. The VLM also
+  // declines while a chat reply is pending — dropping it mid-flight is the
+  // silent-loss class the guard exists to prevent.
   const closeCaption = () => {
     if (busy) return
     onClose()
   }
   const closeVlm = () => {
-    if (vlmBusy) return
+    if (vlmBusy || chatBusy) return
     setVlmOpen(false)
   }
 
@@ -197,7 +199,7 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
         <div className="ds-dialog-flow" data-ds-vlm>
           <header>
             <h3 id="ds-vlm-title"><MessageSquareText size={14} /> Local VLM — caption this clip, or discuss it</h3>
-            <Button variant="icon" className="ds-vlm-close" aria-label="Close the VLM dialog" onClick={closeVlm}><X size={14} /></Button>
+            <Button variant="icon" className="ds-vlm-close" aria-label="Close the VLM dialog" onClick={closeVlm} disabled={vlmBusy || chatBusy}><X size={14} /></Button>
           </header>
           <section>
             <h4>Caption / recaption (dense → condense, on the llama.cpp router)</h4>
