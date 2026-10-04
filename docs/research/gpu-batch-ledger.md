@@ -848,3 +848,7 @@ Standing rules for EVERY set executor from Set C onward:
 2. **Frame extraction is a generator obligation**: ffmpeg sequential extraction (`-vsync 0`, matched presentation indices, lossless WebP strips) runs as part of every set's output assembly — new or replaced videos require re-extraction. Budget ~220 MiB/set. The offline contract + limitations live in scripts/gpu-review/ (VERIFICATION.md + the spec).
 3. **The p-null check ships with every set**: each set's expected-tie or null pair (canaries, controls) must pass the pixel-identity verification before the set's review counts — the instrument's own calibration rides every delivery.
 4. The setA/setB retrofits are the reference implementations of the contract.
+
+## Amendment 5 — the 3.4 ruling: SINGLE-SEED with the canary-stop rule (maintainer's "Go", 2026-10-04)
+
+Set C onward runs one seed per cell. The insurance: the environment-stop canary rule stays intact in force — a canary placed at set start, mid, and end; if a canary ever diffs (pixel-identity check per the instrument contract), the affected block re-runs at FULL replication and the zero-floor finding is re-examined. Savings ~25–40% of planned gens. Basis: Set B's dual-track zero (SD=0.0 × 8/8 maintainer ties).
