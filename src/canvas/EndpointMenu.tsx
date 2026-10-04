@@ -6,12 +6,18 @@
  * media kinds, availability-aware (registry/LSX-2.3 detection + install
  * guidance), with the parameter hints in-menu. L19: category visible, the
  * type-natural generation routes lead.
+ *
+ * Component vocabulary task 16: the menu rides PopoverMenu — the ONE
+ * dismissal idiom (registry Escape + Base UI outside-press), focus into the
+ * surface on open, the local arrow walk over the rows, and the F8 viewport
+ * clamp (the measured-height lift this menu pioneered, now the component's).
  */
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import { useCanvasStore } from './store'
 import { dbg } from '../lib/dbg'
 import { endpointOptions, type SourceKind } from './options'
 import { readChainSettings } from './generation'
+import { PopoverMenu } from '../ui/PopoverMenu'
 import type { DocumentChain } from './derive'
 
 /** The source media kinds an output tile carries (its canonical take). */
@@ -31,12 +37,6 @@ export function EndpointMenu() {
   const setEndpointMenu = useCanvasStore((state) => state.setEndpointMenu)
   const runEndpointAction = useCanvasStore((state) => state.runEndpointAction)
   const optionAvailability = useCanvasStore((state) => state.optionAvailability)
-  const ref = useRef<HTMLDivElement>(null)
-  const [clampedTop, setClampedTop] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (menu && ref.current) ref.current.focus()
-  }, [menu])
 
   const context = useMemo(() => {
     if (!menu) return null
@@ -50,23 +50,6 @@ export function EndpointMenu() {
     return { chain, tile, sourceChainId, kinds }
   }, [activeProjectId, documents, menu, selection.tileIds, tiles])
 
-  // F8 (judge-confirmed twice, cleanup wave twmpu4m): menus opened on a tile
-  // near the viewport bottom extended below the fold — rows and the footer
-  // were unreachable. After the menu renders, measure its REAL height and
-  // clamp the top so the whole menu sits inside the viewport (the body's
-  // internal scroll covers a menu taller than the viewport). Runs before
-  // paint, so the clamped position is what the user sees on open.
-  useLayoutEffect(() => {
-    if (!menu || !ref.current) {
-      setClampedTop(null)
-      return
-    }
-    const margin = 12
-    const rect = ref.current.getBoundingClientRect()
-    const overflow = rect.bottom - (window.innerHeight - margin)
-    setClampedTop(overflow > 0 ? Math.max(margin, rect.top - overflow) : null)
-  }, [menu, context, optionAvailability])
-
   if (!menu || !context) return null
   // The consume menu opens on THIS chain's head — its media type gates the
   // video-only input roles (tmz8vh7 / audit P1-2).
@@ -75,39 +58,38 @@ export function EndpointMenu() {
   const naturalLeft = Math.min(Math.max(16, (context.tile?.x ?? 0) + (menu.direction === 'consume' ? -180 : (context.tile?.w ?? 0) - 40)), window.innerWidth - 300)
   const naturalTop = Math.max(64, (context.tile?.y ?? 0) + 24)
 
-  return <div className="canvas-menu-backdrop" onClick={() => setEndpointMenu(null)}>
-    <div
-      ref={ref}
-      className="canvas-endpoint-menu"
-      data-canvas-endpoint-menu={menu.direction}
-      tabIndex={-1}
-      role="dialog"
-      aria-label={menu.direction === 'consume' ? 'Consume-from options' : 'Produce-into options'}
-      style={{ left: naturalLeft, top: clampedTop ?? naturalTop }}
-      onClick={(event) => event.stopPropagation()}
-      onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setEndpointMenu(null) } }}
-    >
-      <header>
-        <strong>{context.tile?.title ?? menu.chainId.slice(0, 8)}</strong>
-        <span>{menu.direction === 'consume' ? 'consume from — inputs' : 'produce into — extensions'}</span>
-      </header>
-      <div className="canvas-menu-groups">
-        {['generate', 'input', 'control', 'utility', 'fork'].map((group) => {
-          const rows = options.filter((option) => option.group === group)
-          if (!rows.length) return null
-          return <div key={group} className="canvas-menu-group" data-canvas-menu-group={group}>
-            <span className="canvas-menu-group-label">{group === 'generate' ? 'generate' : group === 'input' ? 'inputs' : group === 'control' ? 'control inputs' : group === 'utility' ? 'utilities' : 'fork'}</span>
-            {rows.map((option) => {
-              // (R-22) Consume rows are GATED on a selected source — the menu
-              // enforces instead of teaching: without a source the rows say so
-              // and refuse, the dead-end footer is gone.
-              // Input roles consume a source; CONTROL rows (the pose rig —
-              // a from-scratch input) never do.
-              const needsSource = menu.direction === 'consume' && option.group === 'input' && !context.sourceChainId
-              const gated = !option.available || needsSource
-              if (gated) dbg('menu.gate', { option: option.id, direction: menu.direction, because: needsSource ? 'no-source-chain' : (option.reason ?? 'unavailable') })
-              const gateReason = needsSource ? 'Select the object to consume from first — click it, then open this menu.' : option.reason
-              return (
+  return <PopoverMenu
+    layerId="canvas-endpoint-menu"
+    open
+    onClose={() => setEndpointMenu(null)}
+    position={{ left: naturalLeft, top: naturalTop }}
+    className="canvas-endpoint-menu"
+    backdrop
+    data-canvas-endpoint-menu={menu.direction}
+    role="dialog"
+    aria-label={menu.direction === 'consume' ? 'Consume-from options' : 'Produce-into options'}
+  >
+    <header>
+      <strong>{context.tile?.title ?? menu.chainId.slice(0, 8)}</strong>
+      <span>{menu.direction === 'consume' ? 'consume from — inputs' : 'produce into — extensions'}</span>
+    </header>
+    <div className="canvas-menu-groups">
+      {['generate', 'input', 'control', 'utility', 'fork'].map((group) => {
+        const rows = options.filter((option) => option.group === group)
+        if (!rows.length) return null
+        return <div key={group} className="canvas-menu-group" data-canvas-menu-group={group}>
+          <span className="canvas-menu-group-label">{group === 'generate' ? 'generate' : group === 'input' ? 'inputs' : group === 'control' ? 'control inputs' : group === 'utility' ? 'utilities' : 'fork'}</span>
+          {rows.map((option) => {
+            // (R-22) Consume rows are GATED on a selected source — the menu
+            // enforces instead of teaching: without a source the rows say so
+            // and refuse, the dead-end footer is gone.
+            // Input roles consume a source; CONTROL rows (the pose rig —
+            // a from-scratch input) never do.
+            const needsSource = menu.direction === 'consume' && option.group === 'input' && !context.sourceChainId
+            const gated = !option.available || needsSource
+            if (gated) dbg('menu.gate', { option: option.id, direction: menu.direction, because: needsSource ? 'no-source-chain' : (option.reason ?? 'unavailable') })
+            const gateReason = needsSource ? 'Select the object to consume from first — click it, then open this menu.' : option.reason
+            return (
               <div key={option.id} className="canvas-menu-rowwrap">
                 <button
                   type="button"
@@ -122,16 +104,15 @@ export function EndpointMenu() {
                   {option.hint && !gated && <span className="canvas-menu-row-hint">{option.hint}</span>}
                 </button>
               </div>
-              )
-            })}
-          </div>
-        })}
-      </div>
-      <footer>
-        {menu.direction === 'produce' && !hasOutput && 'This object has no output yet — generate or drop media first.'}
-        {menu.direction === 'consume' && !context.sourceChainId && 'Pick the source object first — every input row unlocks once one is selected.'}
-        {((menu.direction === 'produce' && hasOutput) || (menu.direction === 'consume' && context.sourceChainId)) && 'Esc closes · hints show the parameter contracts'}
-      </footer>
+            )
+          })}
+        </div>
+      })}
     </div>
-  </div>
+    <footer>
+      {menu.direction === 'produce' && !hasOutput && 'This object has no output yet — generate or drop media first.'}
+      {menu.direction === 'consume' && !context.sourceChainId && 'Pick the source object first — every input row unlocks once one is selected.'}
+      {((menu.direction === 'produce' && hasOutput) || (menu.direction === 'consume' && context.sourceChainId)) && 'Esc closes · hints show the parameter contracts'}
+    </footer>
+  </PopoverMenu>
 }

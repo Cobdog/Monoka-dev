@@ -90,18 +90,15 @@ export function CanvasApp() {
       }
       if (event.key === 'Escape') {
         // App-tour wave (d6iy68r, review m1, decided 2026-09-19): ONE action
-        // per press. Since task 10/14 every REGISTERED layer (the dialogs
+        // per press. Since task 10/14/16 every REGISTERED layer (the dialogs
         // via StudioDialogLayered, the command overlays via
-        // useOverlayBehavior) routes its Escape through the layer registry —
-        // the routed keystroke is consumed at window-capture and this chain
-        // never runs for it. This handler stays the owner for the
-        // unregistered rest: the canvas menus (endpoint/fork — task 16's
-        // PopoverMenu migration) and the base deselect.
+        // useOverlayBehavior, the canvas menus via PopoverMenu) routes its
+        // Escape through the layer registry — the routed keystroke is
+        // consumed at window-capture and this chain never runs for it. This
+        // handler stays the owner for the unregistered rest: the diagnostics
+        // dock and the base deselect.
         const state = useCanvasStore.getState()
-        if (state.endpointMenu || state.forkMenu) {
-          state.setEndpointMenu(null)
-          state.setForkMenu(null)
-        } else if (state.diagnosticsDock) state.setDiagnosticsDock(false)
+        if (state.diagnosticsDock) state.setDiagnosticsDock(false)
         else select(null)
         return
       }

@@ -212,6 +212,24 @@ textarea::placeholder, input::placeholder { color: #58615c; }
 .select-wrap select { appearance: none; height: 38px; padding: 0 34px 0 10px; text-overflow: ellipsis; }
 select { text-overflow: ellipsis; }
 .select-wrap svg { position: absolute; top: 50%; right: 10px; pointer-events: none; transform: translateY(-50%); color: var(--muted); }
+/* StudioSelect recipes (component vocabulary task 16, spec §2.1): the
+   affordance — appearance:none (the chevron replaces the platform arrow),
+   ellipsis overflow for long option text, and the wrap's chevron slot.
+   Geometry stays with the surfaces (P06): heights, widths, the other
+   paddings, borders and backgrounds ride the surface select rules
+   (.canvas-properties-row select, .camera-path-field select, …, which load
+   after this sheet and win the cascade) or the retained .select-wrap house
+   form rows (wrapClassName="select-wrap"). The ONE geometry the affordance
+   claims is the chevron's room: .studio-select-input's padding-right
+   outranks the surface paddings by specificity, so no migrated select's
+   text runs under its chevron. */
+.studio-select { position: relative; display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
+.studio-select .studio-select-input { flex: 1; min-width: 0; appearance: none; text-overflow: ellipsis; padding-right: 24px; }
+.studio-select > svg { position: absolute; top: 50%; right: 8px; pointer-events: none; transform: translateY(-50%); color: var(--muted); }
+/* The house form tier (the retained .select-wrap geometry): block-level
+   fill like the div those rows used to wrap, with .select-wrap's own
+   height/padding rules reaching the select through the wrap class. */
+.studio-select.select-wrap { display: flex; }
 
 .frame-grid { display: grid; grid-template-columns: 1fr 1fr; gap:var(--space-3); margin-top: 15px; }
 .frame-grid.single { grid-template-columns: 1fr; }

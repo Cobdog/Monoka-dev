@@ -1,9 +1,10 @@
 /** overlayBehavior — the pure key-derivation model behind
  *  src/ui/useOverlayBehavior.ts (component vocabulary task 14, spec §0.2
- *  keyboard ownership). Which keydowns an open command surface keeps LOCAL,
- *  which belong to the app chrome above every layer, and the Tab-cycle wrap
- *  math that keeps focus contained in the panel — predicate math over plain
- *  event-shaped seeds, no DOM and no React (node-testable per P04:
+ *  keyboard ownership) and src/ui/PopoverMenu.tsx's local arrow walk (task
+ *  16). Which keydowns an open command surface keeps LOCAL, which belong to
+ *  the app chrome above every layer, and the Tab-cycle wrap math that keeps
+ *  focus contained in the panel — predicate math over plain event-shaped
+ *  seeds, no DOM and no React (node-testable per P04:
  *  tests/overlay-behavior.test.js loads this module through the VM harness;
  *  the DOM behavior lives in the hook and is e2e-owned). */
 
@@ -52,4 +53,19 @@ export function tabCycleTarget(count: number, activeIndex: number, backwards: bo
   if (activeIndex < 0) return backwards ? count - 1 : 0
   if (backwards) return activeIndex === 0 ? count - 1 : null
   return activeIndex === count - 1 ? 0 : null
+}
+
+/** The anchored menu's arrow walk (task 16, PopoverMenu): the row index an
+ *  ArrowUp/ArrowDown/Home/End keydown should focus, or null when the key is
+ *  not the walk's. Rows wrap at the ends; `activeIndex` -1 (focus on the
+ *  panel itself, the open state) enters at the matching end. Escape is
+ *  NEVER the walk's — the registry owns Escape-class dismissal (the T14
+ *  doctrine: the menu's own keys are navigation only). */
+export function arrowRowTarget(count: number, activeIndex: number, key: string): number | null {
+  if (count <= 0) return null
+  if (key === 'Home') return 0
+  if (key === 'End') return count - 1
+  if (key === 'ArrowDown') return activeIndex < 0 ? 0 : (activeIndex + 1) % count
+  if (key === 'ArrowUp') return activeIndex < 0 ? count - 1 : (activeIndex - 1 + count) % count
+  return null
 }

@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Rnd } from 'react-rnd'
 import { Captions, Clock3, Dices, Play, Sparkles, Square, Star, Volume2, WandSparkles, X } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { StudioSelect } from '../ui/StudioSelect'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { SmartPromptEditor, type SmartPromptEditorHandle } from '../components/SmartPromptEditor'
 import { StructuredPromptEditor } from '../components/StructuredPromptEditor'
@@ -325,7 +326,7 @@ function LoraTimelineSection(props: {
               const entry = range.loras[slot]
               const disabled = slot > 0 && !range.loras[slot - 1]
               return <span className="canvas-lora-slot" key={slot}>
-                <select
+                <StudioSelect
                   data-canvas-lora-name={slot}
                   aria-label={`Range ${index + 1} LoRA ${slot + 1}`}
                   value={entry?.name ?? ''}
@@ -340,7 +341,7 @@ function LoraTimelineSection(props: {
                   }}
                 >
                   {loraOptions.map((name) => <option key={name || 'none'} value={name}>{name || `LoRA ${slot + 1}…`}</option>)}
-                </select>
+                </StudioSelect>
                 {entry && <input
                   type="number" min={0} max={2} step={0.05}
                   data-canvas-lora-strength={slot}
@@ -382,10 +383,10 @@ function LoraTimelineSection(props: {
         const gap = segment.gapAfter!
         return <div className="canvas-lora-gap" data-canvas-lora-gap={index} key={segment.id}>
           <span className="canvas-lora-gap-label" title={`${segment.title} → ${compile.segments[index + 1].title}`}>{segment.title} →</span>
-          <select data-canvas-lora-gap-kind aria-label={`Transition after segment ${index + 1}`} value={gap.kind}
+          <StudioSelect data-canvas-lora-gap-kind aria-label={`Transition after segment ${index + 1}`} value={gap.kind}
             onChange={(event) => setGap(segment.rangeId, event.target.value, Math.round(DEFAULT_TRANSITION_WINDOW[event.target.value as keyof typeof DEFAULT_TRANSITION_WINDOW] * 100) / 100)}>
             {GAP_KINDS.map((kind) => <option key={kind} value={kind}>{GAP_LABEL[kind]}</option>)}
-          </select>
+          </StudioSelect>
           <input type="number" min={0} max={3} step={0.05} data-canvas-lora-gap-width aria-label={`Transition window seconds after segment ${index + 1}`}
             value={gap.widthSeconds} disabled={gap.kind === 'cut'}
             onChange={(event) => { const value = Number(event.target.value); if (Number.isFinite(value) && value >= 0) setGap(segment.rangeId, gap.kind, Math.min(3, value)) }} />
@@ -1197,12 +1198,12 @@ export function PropertiesPanel() {
         {engineFamily.panel.turboFamily && (
           <div className="canvas-properties-row">
             <label htmlFor="canvas-turbo-family">turbo family</label>
-            <select id="canvas-turbo-family" data-canvas-family value={draft.turboFamily} onChange={(event) => patch({ turboFamily: event.target.value })}>
+            <StudioSelect id="canvas-turbo-family" data-canvas-family value={draft.turboFamily} onChange={(event) => patch({ turboFamily: event.target.value })}>
               <option value="">auto — registry-ranked</option>
               {turboFamilies.map(({ entry, detection }) => (
                 <option key={entry.id} value={entry.id}>{entry.label}{detection.available ? '' : ' (not installed)'}</option>
               ))}
-            </select>
+            </StudioSelect>
             {/* (R-19 → journey sweep #7, audit F10) "not installed" is never
                 a dead end at the choice point — and never a false promise
                 either: the affordance counts only families the fetch catalog
@@ -1242,7 +1243,7 @@ export function PropertiesPanel() {
             const outcome = (value || globalPick) ? overridePickOutcome(modelFamilyId, slot, value || globalPick || '', models) : null
             return <div className="canvas-properties-row" key={slot} data-canvas-model-override={slot}>
               <label htmlFor={`canvas-model-${slot}`}>{SLOT_LABELS[slot]}</label>
-              <select id={`canvas-model-${slot}`} data-canvas-model-override-select={slot} value={value} onChange={(event) => setChainModelOverride(slot, event.target.value)}>
+              <StudioSelect id={`canvas-model-${slot}`} data-canvas-model-override-select={slot} value={value} onChange={(event) => setChainModelOverride(slot, event.target.value)}>
                 <option value="">{globalPick ? `auto — global: ${globalPick}` : autoFile ? `auto — ${autoFile}` : 'auto — nothing detected'}</option>
                 {/* (M3, perfect-state sweep 2026-09-27) Options carry their
                     CLASS at the choice point — same heuristics the
@@ -1251,7 +1252,7 @@ export function PropertiesPanel() {
                   const hint = modelClassHint(kind, model.name)
                   return <option key={model.name} value={model.name}>{hint ? `${model.name} · ${hint}` : model.name}</option>
                 })}
-              </select>
+              </StudioSelect>
               {outcome?.state === 'refused' && <p className="canvas-properties-warning" data-canvas-model-override-problem role="alert">Refused {layer === 'global' ? '(the global Settings pick — clear it in Settings → Model overrides)' : '(this chain\'s pick — clear it to render on auto)'} — {outcome.reason}</p>}
               {outcome?.state === 'degraded' && <p className="canvas-properties-warning" data-canvas-model-override-problem role="status">{layer === 'global' ? 'The global Settings pick ' : 'This chain\'s pick '}{outcome.warning}</p>}
               {outcome?.state === 'applied' && outcome.warning && <p className="canvas-properties-warning" data-canvas-model-override-problem role="status">{layer === 'global' ? 'The global Settings pick ' : 'This chain\'s pick '}{outcome.warning}</p>}
@@ -1267,7 +1268,7 @@ export function PropertiesPanel() {
             </>)}
             {engineFamily.panel.resolution && (<>
               <label htmlFor="canvas-aspect">ratio</label>
-              <select id="canvas-aspect" data-canvas-aspect value={freeRatio ? 'free' : ratioKeyOf(draft.resolution)} onChange={(event) => {
+              <StudioSelect id="canvas-aspect" data-canvas-aspect value={freeRatio ? 'free' : ratioKeyOf(draft.resolution)} onChange={(event) => {
                 const next = event.target.value as ReturnType<typeof ratioKeyOf>
                 setFreeRatio(next === 'free')
                 // Switching ratio lands on ITS optimal pick (the natural
@@ -1279,7 +1280,7 @@ export function PropertiesPanel() {
               }}>
                 {ASPECT_RATIOS.map((ratio) => <option key={ratio.id} value={ratio.id}>{ratio.label}</option>)}
                 <option value="free">free</option>
-              </select>
+              </StudioSelect>
             </>)}
             {engineFamily.panel.resolution && (freeRatio || ratioKeyOf(draft.resolution) === 'free' ? (
               <FreeResolutionInput value={draft.resolution} onCommit={(resolution) => patch({ resolution })} />
@@ -1290,15 +1291,15 @@ export function PropertiesPanel() {
               // machinery — canvas images most often feed video chains as
               // starter frames or references, so the starter-frame group
               // leads here.
-              <select id="canvas-resolution" data-canvas-resolution value={draft.resolution} onChange={(event) => patch({ resolution: event.target.value })}>
+              <StudioSelect id="canvas-resolution" data-canvas-resolution value={draft.resolution} onChange={(event) => patch({ resolution: event.target.value })}>
                 {tieredResolutionGroups(ratioKeyOf(draft.resolution), { machinery: imageTierMachinery }).flatMap((group) => group.options.map((option) => (
                   <option key={option.value} value={option.value}>{`${group.tier.label} · ${option.value.replace('x', ' × ')}${option.optimal ? ' — optimal' : ''}`}</option>
                 )))}
-              </select>
+              </StudioSelect>
             ) : (
-              <select id="canvas-resolution" data-canvas-resolution value={draft.resolution} onChange={(event) => patch({ resolution: event.target.value })}>
+              <StudioSelect id="canvas-resolution" data-canvas-resolution value={draft.resolution} onChange={(event) => patch({ resolution: event.target.value })}>
                 {resolutionsForRatio(ratioKeyOf(draft.resolution)).map((option) => <option key={option.value} value={option.value}>{option.value.replace('x', ' × ')}{option.optimal ? ' — optimal' : ''}</option>)}
-              </select>
+              </StudioSelect>
             ))}
           </div>
         )}
@@ -1368,7 +1369,7 @@ export function PropertiesPanel() {
         {libraries.characters.length > 0 && (
           <div className="canvas-properties-row">
             <label htmlFor="canvas-ref-character">character library</label>
-            <select
+            <StudioSelect
               id="canvas-ref-character"
               data-canvas-ref-character
               value=""
@@ -1378,13 +1379,13 @@ export function PropertiesPanel() {
               {libraries.characters.map((character) => (
                 <option key={character.id} value={character.id}>{character.name}{draft.referenceCharacterIds.includes(character.id) ? ' ✓' : ''}</option>
               ))}
-            </select>
+            </StudioSelect>
           </div>
         )}
         {libraries.locations.length > 0 && (
           <div className="canvas-properties-row">
             <label htmlFor="canvas-ref-location">location library</label>
-            <select
+            <StudioSelect
               id="canvas-ref-location"
               data-canvas-ref-location
               value=""
@@ -1394,7 +1395,7 @@ export function PropertiesPanel() {
               {libraries.locations.map((location) => (
                 <option key={location.id} value={location.id}>{location.name}{draft.referenceLocationIds.includes(location.id) ? ' ✓' : ''}</option>
               ))}
-            </select>
+            </StudioSelect>
           </div>
         )}
         {/* Phase 4 (§2 asset, F3): the GLOBAL asset store — the first bind of
@@ -1403,7 +1404,7 @@ export function PropertiesPanel() {
         {assets.length > 0 && (
           <div className="canvas-properties-row">
             <label htmlFor="canvas-ref-asset">global assets</label>
-            <select
+            <StudioSelect
               id="canvas-ref-asset"
               data-canvas-ref-asset
               value=""
@@ -1414,7 +1415,7 @@ export function PropertiesPanel() {
               {assets.map((asset) => (
                 <option key={asset.id} value={asset.id}>{asset.kind === 'location' ? 'Location' : 'Character'} · {asset.label}{draft.referenceAssetIds.includes(asset.id) ? ' ✓' : ''}</option>
               ))}
-            </select>
+            </StudioSelect>
           </div>
         )}
         {draft.referenceAssetIds.length > 0 && (
@@ -1426,11 +1427,11 @@ export function PropertiesPanel() {
         )}
         <div className="canvas-properties-row">
           <label htmlFor="canvas-clothing">clothing policy</label>
-          <select id="canvas-clothing" data-canvas-clothing value={draft.clothingPolicy} onChange={(event) => patch({ clothingPolicy: event.target.value as CanvasChainSettings['clothingPolicy'] })}>
+          <StudioSelect id="canvas-clothing" data-canvas-clothing value={draft.clothingPolicy} onChange={(event) => patch({ clothingPolicy: event.target.value as CanvasChainSettings['clothingPolicy'] })}>
             <option value="wardrobe">assigned wardrobe</option>
             <option value="underwear">identity underwear</option>
             <option value="unrestricted">scene prompt decides</option>
-          </select>
+          </StudioSelect>
         </div>
       </section>
 

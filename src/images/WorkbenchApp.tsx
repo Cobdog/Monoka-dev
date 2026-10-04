@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { ImagePlus, Layers, LoaderCircle, Lock, Send, Settings, Sparkles, Wand2, X } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { StudioSelect } from '../ui/StudioSelect'
 import { NoticeBanner } from '../ui/NoticeBanner'
 import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 import { CanvasToastAdapter } from '../canvas/toastAdapter'
@@ -1002,7 +1003,7 @@ function WorkbenchSurface() {
                   <div className="iw-ref-thumb">
                     {slot.source.kind === 'canvas' ? <span className="iw-canvas-tag" title="canvas reference"><Layers size={14} /></span> : slot.source.kind === 'refmod' ? <span className="iw-refmod-tag">RefMod</span> : slot.source.kind === 'poserig' ? <span className="iw-poserig-tag">rig</span> : null}
                   </div>
-                  <select value={slot.role} data-iw-ref-role={index} onChange={(event) => {
+                  <StudioSelect value={slot.role} data-iw-ref-role={index} onChange={(event) => {
                     // The choice is captured EAGERLY: a functional patch runs
                     // at flush time, after React has restored the controlled
                     // select to its (pre-write) prop value — dereferencing
@@ -1015,15 +1016,15 @@ function WorkbenchSurface() {
                     void patchSettings((current) => ({ refs: current.refs.map((entry) => entry.id === slot.id ? { ...entry, role: value } : entry) }))
                   }} aria-label={`Reference ${index + 1} role`}>
                     {ROLES.map((role) => <option key={role} value={role}>{role}</option>)}
-                  </select>
-                  <select value={slot.transport ?? 'auto'} data-iw-ref-transport={index} onChange={(event) => {
+                  </StudioSelect>
+                  <StudioSelect value={slot.transport ?? 'auto'} data-iw-ref-transport={index} onChange={(event) => {
                     const value = event.target.value
                     void patchSettings((current) => ({ refs: current.refs.map((entry) => entry.id === slot.id ? { ...entry, transport: value === 'auto' ? null : value as 'native' | 'semantic', transportOverride: value !== 'auto' } : entry) }))
                   }} aria-label={`Reference ${index + 1} transport`}>
                     <option value="auto">auto ({TRANSPORT_FOR_ROLE[slot.role]})</option>
                     <option value="native">native</option>
                     <option value="semantic">semantic</option>
-                  </select>
+                  </StudioSelect>
                   <input
                     className="iw-ref-keep"
                     type="number"
@@ -1063,13 +1064,13 @@ function WorkbenchSurface() {
             <small data-iw-lora-crossform>Slot 1 rides the form adapter first (cross-form safety) when its node pack is installed.</small>
             {settings.loras.map((lora, index) => (
               <div className="iw-lora-slot" key={index} data-iw-lora-slot={index}>
-                <select value={lora.name} data-iw-lora-name={index} onChange={(event) => {
+                <StudioSelect value={lora.name} data-iw-lora-name={index} onChange={(event) => {
                   const value = event.target.value
                   void patchSettings((current) => ({ loras: current.loras.map((entry, i) => i === index ? { ...entry, name: value } : entry) }))
                 }} aria-label={`LoRA ${index + 1}`}>
                   <option value="">— none —</option>
                   {sessionState.models.filter((model) => model.kind === 'loras').map((model) => <option key={model.name} value={model.name}>{model.name}</option>)}
-                </select>
+                </StudioSelect>
                 <input type="number" min={0} max={2} step={0.05} value={lora.strength} data-iw-lora-strength={index} onChange={(event) => {
                   const value = event.target.value
                   void patchSettings((current) => ({ loras: current.loras.map((entry, i) => i === index ? { ...entry, strength: Number(value) } : entry) }))
@@ -1083,7 +1084,7 @@ function WorkbenchSurface() {
             {(family?.profile === 'packet' || family?.profile === 'sharp') && family.kind !== 'generate-directed' && (
               <label className="iw-tier" data-iw-tier>
                 <span>{family?.profile === 'sharp' ? 'Context tier' : 'Packet tier'}</span>
-                <select value={settings.tier} title={family?.profile === 'sharp'
+                <StudioSelect value={settings.tier} title={family?.profile === 'sharp'
                   ? 'The fast-sharp profile samples this many frames for temporal context, then decodes ONE latent slice through the T=1 image VAE.'
                   : (STOCK_SAMPLED_FRAMES[settings.tier] !== undefined && STOCK_SAMPLED_FRAMES[settings.tier] !== settings.tier
                     ? (studioPackOnEngine
@@ -1091,15 +1092,15 @@ function WorkbenchSurface() {
                       : `Stock nodes snap this tier to a ${STOCK_SAMPLED_FRAMES[settings.tier]}-frame sample (the engine’s 5/22/39… frame grid) — only 5 and 39 are native grid points. Exact 9/13 needs the H3 Image Studio pack's latent ladder.`)
                     : undefined)} onChange={(event) => void patchSettings({ tier: Number(event.target.value) as 5 | 9 | 13 | 39 })}>
                   {[5, 9, 13].map((tier) => <option key={tier} value={tier}>{packetTierLabel(tier, studioPackOnEngine)}</option>)}
-                </select>
+                </StudioSelect>
               </label>
             )}
             <label className="iw-resolution" data-iw-resolution>
               <span>Resolution</span>
               {family?.id === 'h3img.edit.inpaint' && sourceFile?.masked ? (
-                <select value={settings.resolution} disabled data-iw-resolution-locked title="The inpaint canvas follows the masked source's own 32-grid dimensions — the prefill/restore composites align without resampling. Re-add or repaint the source to change it.">
+                <StudioSelect value={settings.resolution} disabled data-iw-resolution-locked title="The inpaint canvas follows the masked source's own 32-grid dimensions — the prefill/restore composites align without resampling. Re-add or repaint the source to change it.">
                   <option value={settings.resolution}>{settings.resolution} · pinned to the masked source</option>
-                </select>
+                </StudioSelect>
               ) : freeRatio || ratioKeyOf(settings.resolution) === 'free' ? (
                 <span className="iw-free-resolution" data-iw-free-resolution>
                   <FreeResolutionFields key={settings.resolution} value={settings.resolution} onCommit={(resolution) => void patchSettings({ resolution })} />
@@ -1134,9 +1135,9 @@ function WorkbenchSurface() {
             <div className="iw-machinery" data-iw-machinery>
               <label className="iw-machinery-select" title="Which machinery renders this single frame — the E-FS1 experiment axis, now a real choice (the default stays Image Studio until the bake-off reports)">
                 <span>T=1 machinery <em>experimental</em></span>
-                <select value={t1Machinery} data-iw-machinery-value onChange={(event) => void setT1Machinery(event.target.value as H3ImgT1Settings)}>
+                <StudioSelect value={t1Machinery} data-iw-machinery-value onChange={(event) => void setT1Machinery(event.target.value as H3ImgT1Settings)}>
                   {T1_MACHINERY_CHOICES.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
-                </select>
+                </StudioSelect>
               </label>
               <p className="iw-machinery-note" data-iw-machinery-note>
                 {t1Machinery === 'image-studio'
@@ -1397,11 +1398,11 @@ function TieredResolutionPicker({ resolution, machinery, onRatio, onPick }: {
   const offered = new Set(groups.flatMap((group) => group.options.map((option) => option.value)))
   return (
     <span className="iw-tiered-resolution" data-iw-tiered-resolution>
-      <select value={ratio} aria-label="Aspect ratio" data-iw-ratio onChange={(event) => onRatio(event.target.value)}>
+      <StudioSelect value={ratio} aria-label="Aspect ratio" data-iw-ratio onChange={(event) => onRatio(event.target.value)}>
         {ASPECT_RATIOS.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
         <option value="free">free</option>
-      </select>
-      <select value={resolution} aria-label="Resolution" data-iw-resolution-select title={groups.map((group) => `${group.tier.label}: ${group.tier.hint}`).join('\n\n')} onChange={(event) => onPick(event.target.value)}>
+      </StudioSelect>
+      <StudioSelect value={resolution} aria-label="Resolution" data-iw-resolution-select title={groups.map((group) => `${group.tier.label}: ${group.tier.hint}`).join('\n\n')} onChange={(event) => onPick(event.target.value)}>
         {!offered.has(resolution) && <option value={resolution}>{resolution} · custom</option>}
         {groups.map((group) => (
           <optgroup key={group.tier.id} label={group.tier.label}>
@@ -1410,7 +1411,7 @@ function TieredResolutionPicker({ resolution, machinery, onRatio, onPick }: {
             ))}
           </optgroup>
         ))}
-      </select>
+      </StudioSelect>
     </span>
   )
 }

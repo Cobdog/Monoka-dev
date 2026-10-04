@@ -7,9 +7,14 @@
  * fork-from-early-take preference: an earlier take has hopped fewer windows,
  * so drifting identities should re-anchor there (the drift guidance
  * surfaced as a first-class choice, not a footnote).
+ *
+ * Component vocabulary task 16: the menu rides PopoverMenu — the ONE
+ * dismissal idiom (registry Escape + Base UI outside-press). Pre-migration
+ * this menu had NO Escape of its own (backdrop-click only).
  */
 import { useCanvasStore } from './store'
 import { SUBSTRATE_LABEL, substratesForTake, type ForkSubstrate } from './generation'
+import { PopoverMenu } from '../ui/PopoverMenu'
 import type { MediaFile } from '../types'
 
 export function ForkMenu() {
@@ -32,66 +37,67 @@ export function ForkMenu() {
     return doc?.chains.find((chain) => chain.id === tile.id)?.outputs[0]?.id ?? null
   })()
 
-  return <div className="canvas-menu-backdrop" onClick={() => setForkMenu(null)}>
-    <div
-      className="canvas-endpoint-menu canvas-fork-menu"
-      data-canvas-fork-menu
-      role="dialog"
-      aria-label="Fork"
-      style={{ left: Math.min(Math.max(16, tile.x + tile.w - 60), window.innerWidth - 300), top: Math.max(64, tile.y + 48) }}
-      onClick={(event) => event.stopPropagation()}
-    >
-      <header>
-        <strong>Fork “{tile.title}”</strong>
-        <span>the source is never altered</span>
-      </header>
-      <div className="canvas-menu-group" data-canvas-menu-group="substrate">
-        <span className="canvas-menu-group-label">substrate</span>
-        {(substrates as ForkSubstrate[]).map((substrate) => (
-          <button
-            type="button"
-            key={substrate}
-            className="canvas-menu-row"
-            data-canvas-fork-substrate={substrate}
-            onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, substrate })}
-          >
-            <span className="canvas-menu-row-label">{SUBSTRATE_LABEL[substrate]}</span>
-            <span className="canvas-menu-row-note">
-              {substrate === 'decoded' ? 'A new chain consuming this take’s artifact.' : substrate === 'extracted-frame' ? 'Extract frame 0 server-side; continue from the still.' : 'Motion-Context continuation — the saved clip pins never-denoised conditioning, no re-encode.'}
-            </span>
-          </button>
-        ))}
-        {/* Upscale dual-mode (§5.1): the FORK side. The stack side is the
-            upscale op in the op modal — one capability, two placements. */}
+  return <PopoverMenu
+    layerId="canvas-fork-menu"
+    open
+    onClose={() => setForkMenu(null)}
+    position={{ left: Math.min(Math.max(16, tile.x + tile.w - 60), window.innerWidth - 300), top: Math.max(64, tile.y + 48) }}
+    className="canvas-endpoint-menu canvas-fork-menu"
+    backdrop
+    data-canvas-fork-menu
+    role="dialog"
+    aria-label="Fork"
+  >
+    <header>
+      <strong>Fork “{tile.title}”</strong>
+      <span>the source is never altered</span>
+    </header>
+    <div className="canvas-menu-group" data-canvas-menu-group="substrate">
+      <span className="canvas-menu-group-label">substrate</span>
+      {(substrates as ForkSubstrate[]).map((substrate) => (
         <button
           type="button"
+          key={substrate}
           className="canvas-menu-row"
-          data-canvas-fork-upscale
-          onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, substrate: 'decoded', withUpscale: true })}
+          data-canvas-fork-substrate={substrate}
+          onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, substrate })}
         >
-          <span className="canvas-menu-row-label">Fork — upscaled</span>
-          <span className="canvas-menu-row-note">A new chain with the engine upscale preset (switchable in its properties).</span>
+          <span className="canvas-menu-row-label">{SUBSTRATE_LABEL[substrate]}</span>
+          <span className="canvas-menu-row-note">
+            {substrate === 'decoded' ? 'A new chain consuming this take’s artifact.' : substrate === 'extracted-frame' ? 'Extract frame 0 server-side; continue from the still.' : 'Motion-Context continuation — the saved clip pins never-denoised conditioning, no re-encode.'}
+          </span>
         </button>
-      </div>
-      {earlier.length > 0 && (
-        <div className="canvas-menu-group" data-canvas-menu-group="early-take">
-          <span className="canvas-menu-group-label">fork from an earlier take — lower drift</span>
-          {earlier.slice(0, 4).map((take, index) => (
-            <button
-              type="button"
-              key={take.id}
-              className="canvas-menu-row"
-              data-canvas-fork-take={take.id}
-              title="Fewer hops from the anchor — re-anchoring a drifting identity forks better from an early take (L28)."
-              onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, takeId: take.id, substrate: 'decoded' })}
-            >
-              <span className="canvas-menu-row-label">take {earlier.length - index} · {take.id.slice(0, 8)}</span>
-              <span className="canvas-menu-row-note">{new Date(take.createdAt).toLocaleTimeString()} — pre-drift anchor</span>
-            </button>
-          ))}
-        </div>
-      )}
-      <footer>Esc closes · B reopens from any selection</footer>
+      ))}
+      {/* Upscale dual-mode (§5.1): the FORK side. The stack side is the
+          upscale op in the op modal — one capability, two placements. */}
+      <button
+        type="button"
+        className="canvas-menu-row"
+        data-canvas-fork-upscale
+        onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, substrate: 'decoded', withUpscale: true })}
+      >
+        <span className="canvas-menu-row-label">Fork — upscaled</span>
+        <span className="canvas-menu-row-note">A new chain with the engine upscale preset (switchable in its properties).</span>
+      </button>
     </div>
-  </div>
+    {earlier.length > 0 && (
+      <div className="canvas-menu-group" data-canvas-menu-group="early-take">
+        <span className="canvas-menu-group-label">fork from an earlier take — lower drift</span>
+        {earlier.slice(0, 4).map((take, index) => (
+          <button
+            type="button"
+            key={take.id}
+            className="canvas-menu-row"
+            data-canvas-fork-take={take.id}
+            title="Fewer hops from the anchor — re-anchoring a drifting identity forks better from an early take (L28)."
+            onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, takeId: take.id, substrate: 'decoded' })}
+          >
+            <span className="canvas-menu-row-label">take {earlier.length - index} · {take.id.slice(0, 8)}</span>
+            <span className="canvas-menu-row-note">{new Date(take.createdAt).toLocaleTimeString()} — pre-drift anchor</span>
+          </button>
+        ))}
+      </div>
+    )}
+    <footer>Esc closes · B reopens from any selection</footer>
+  </PopoverMenu>
 }

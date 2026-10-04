@@ -37,7 +37,7 @@ function eq(actual, expected, label) {
   console.log(`  ok - ${label}`)
 }
 
-const { isChromeChord, isTypingTarget, keepsKeyLocal, tabCycleTarget } = loadTs('src/ui/overlayBehavior.ts')
+const { isChromeChord, isTypingTarget, keepsKeyLocal, tabCycleTarget, arrowRowTarget } = loadTs('src/ui/overlayBehavior.ts')
 
 const key = (over = {}) => ({ key: 'v', ...over })
 
@@ -86,6 +86,21 @@ test('(d) Tab wraps inside the panel at the ends; the middle passes through', ()
   eq(tabCycleTarget(4, -1, true), 3, 'a focus outside the tabbables is pulled in from the back on Shift+Tab')
 })
 
+// ---- (e) the menu arrow walk (task 16, PopoverMenu) ----------------------------
+
+test('(e) PopoverMenu arrows walk the rows locally, wrapping at the ends', () => {
+  eq(arrowRowTarget(0, -1, 'ArrowDown'), null, 'no rows — nothing to walk (the panel holds focus)')
+  eq(arrowRowTarget(3, -1, 'ArrowDown'), 0, 'ArrowDown from the panel enters at the first row')
+  eq(arrowRowTarget(3, -1, 'ArrowUp'), 2, 'ArrowUp from the panel enters at the last row')
+  eq(arrowRowTarget(3, 1, 'ArrowDown'), 2, 'ArrowDown mid-menu moves down one')
+  eq(arrowRowTarget(3, 2, 'ArrowDown'), 0, 'ArrowDown at the end wraps to the first row')
+  eq(arrowRowTarget(3, 0, 'ArrowUp'), 2, 'ArrowUp at the top wraps to the last row')
+  eq(arrowRowTarget(3, 1, 'Home'), 0, 'Home jumps to the first row')
+  eq(arrowRowTarget(3, 1, 'End'), 2, 'End jumps to the last row')
+  eq(arrowRowTarget(3, 1, 'b'), null, 'a plain key is not the menu walk\'s (the consumer\'s own keys compose after)')
+  eq(arrowRowTarget(3, 1, 'Escape'), null, 'Escape is NEVER the walk\'s — the registry owns Escape-class dismissal')
+})
+
 // ---- module shape -------------------------------------------------------------
 
 test('the pure model exports exactly the derivation surface', () => {
@@ -93,4 +108,5 @@ test('the pure model exports exactly the derivation surface', () => {
   ok(typeof isTypingTarget === 'function', 'isTypingTarget is exported as a function')
   ok(typeof keepsKeyLocal === 'function', 'keepsKeyLocal is exported as a function')
   ok(typeof tabCycleTarget === 'function', 'tabCycleTarget is exported as a function')
+  ok(typeof arrowRowTarget === 'function', 'arrowRowTarget is exported as a function (task 16, PopoverMenu\'s local walk)')
 })

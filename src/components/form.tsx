@@ -1,10 +1,10 @@
 /** Labeled form primitives shared by the Create and Settings views. */
 import { useId } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { StudioSelect } from '../ui/StudioSelect'
 
 export function SelectField({ label, value, options, onChange, disabled }: { label: string; value: string; options: string[][]; onChange(value: string): void; disabled?: boolean }) {
   const id = useId()
-  return <div className="field-group"><label htmlFor={id}>{label}</label><div className="select-wrap"><select id={id} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{options.map(([optionValue, text]) => <option value={optionValue} key={optionValue}>{text}</option>)}</select><ChevronDown size={15} /></div></div>
+  return <div className="field-group"><label htmlFor={id}>{label}</label><StudioSelect wrapClassName="select-wrap" chevronSize={15} id={id} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{options.map(([optionValue, text]) => <option value={optionValue} key={optionValue}>{text}</option>)}</StudioSelect></div>
 }
 
 export function NumberField({ label, value, min, max, step, onChange, disabled }: { label: string; value: number; min: number; max: number; step?: number; onChange(value: number): void; disabled?: boolean }) {
