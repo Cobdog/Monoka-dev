@@ -13,7 +13,8 @@
  */
 import { useEffect, useState } from 'react'
 import { Rnd } from 'react-rnd'
-import { Check, Download, LoaderCircle, PackageOpen, RefreshCw, Wrench, X } from 'lucide-react'
+import { Check, Download, PackageOpen, RefreshCw, Wrench, X } from 'lucide-react'
+import { Button } from '../ui/Button'
 import { PREFLIGHT_REFUSAL_EVENT, type MissingNodeClass } from '../lib/preflight'
 import { remediationRows, type RemediationRow } from '../lib/preflightRemediation'
 import { dockDefaultGeometry } from './dockGeometry'
@@ -99,12 +100,13 @@ export function RemediationDock() {
               {row.action.kind === 'install' && (
                 installed.has(row.className)
                   ? <span className="canvas-remediation-done" data-remediation-installed><Check size={12} /> installed — restart to activate</span>
-                  : <button type="button" className="chip canvas-chip" data-remediation-install={row.action.packId}
+                  : <Button variant="ghost" className="chip canvas-chip" size={12} data-remediation-install={row.action.packId}
                     title={row.action.note}
-                    disabled={busy === row.className}
+                    busy={busy === row.className}
+                    icon={<PackageOpen size={12} />}
                     onClick={() => void install(row)}>
-                    {busy === row.className ? <LoaderCircle size={12} className="spin" /> : <PackageOpen size={12} />} Install <small>no network</small>
-                  </button>
+                    Install <small>no network</small>
+                  </Button>
               )}
               {row.action.kind === 'stock' && (
                 <button type="button" className="chip canvas-chip" data-remediation-stock

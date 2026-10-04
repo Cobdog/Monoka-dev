@@ -187,7 +187,7 @@ test('the caption editor: live trigger validation and the stale badge flow', asy
   await page.locator('[data-ds-save-caption]').click()
   await expect(page.locator('.ds-status', { hasText: 'Saved' })).toBeVisible()
   // Editing the crop afterwards flags the caption stale (§4).
-  await page.locator('[data-ds-caption] .ds-btn.ghost', { hasText: 'Close' }).click()
+  await page.locator('[data-ds-caption] .ds-btn.btn--ghost', { hasText: 'Close' }).click()
   await page.locator('[data-ds-layer]').first().getByRole('button', { name: 'crop/trim' }).click()
   // (2026-09-28) The aspect change must pick a chip that is NOT the layer's
   // current aspect — an already-active chip renders disabled and the click
@@ -469,7 +469,7 @@ test('the crop editor and caption panel answer Escape (one press, one action)', 
   await expect(layer).toBeVisible()
   await layer.getByRole('button', { name: 'caption' }).click()
   await expect(page.locator('[data-ds-caption]')).toBeVisible()
-  await page.locator('[data-ds-caption] .ds-btn.ghost', { hasText: 'VLM' }).click()
+  await page.locator('[data-ds-caption] .ds-btn.btn--ghost', { hasText: 'VLM' }).click()
   await expect(page.locator('[data-ds-vlm]')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.locator('[data-ds-vlm]')).toHaveCount(0)
@@ -549,5 +549,108 @@ test('the fresh-user export cycle: the trigger is settable in the wizard and the
   await page.locator('[data-ds-run-export]').click()
   await expect(page.locator('[data-ds-export-result]')).toBeVisible({ timeout: 30_000 })
   await expect(page.locator('[data-ds-export-result] h3')).toContainText('1 item(s) exported · 0 refused')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// The button recipes' first family, worked fully (component vocabulary
+// task 7, k2q0n9s): ds-btn — the plan's named complete dialect — absorbed
+// into the shared .btn recipes (tone relocated verbatim, geometry retained
+// in the surface class, P06). These pins hold the migration: the Button
+// API's class composition on the real ds-btn surfaces AND the recipe-owned
+// computed tone (browser-computed values as the final authority — the same
+// probe doctrine as the aspect-chip pin above). The icon-only pin is the
+// manifest §2 a11y row: icon-only REQUIRES an accessible name (the dev-warn
+// contract's live surface — the trash action names itself).
+test('button recipes: the ds-btn family composes btn classes with recipe-owned tone', async ({ page }) => {
+  const problems = await trackErrors(page)
+  const sourceId = await seedLibrary(page.request)
+  await page.goto('/?datasets=1')
+  const master = page.locator(`[data-ds-master][data-health="healthy"]`, { hasText: 'e2e-clip' }).first()
+  await expect(master).toBeVisible({ timeout: 10_000 })
+
+  // The toolbar's primary action: Button composes btn btn--primary; the
+  // surface class carries geometry only; the old `primary` dialect token
+  // is gone (its tone rule was absorbed, not kept alongside).
+  const exportButton = page.locator('.ds-toolbar button', { hasText: 'Export…' })
+  await expect(exportButton).toHaveClass(/(^|\s)btn btn--primary ds-btn(\s|$)/)
+  const exportRender = await exportButton.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return { border: style.borderTopColor, background: style.backgroundColor, color: style.color }
+  })
+  const expectedPrimaryTone = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.style.borderTopColor = 'color-mix(in srgb, var(--accent) 55%, transparent)'
+    probe.style.backgroundColor = 'color-mix(in srgb, var(--accent) 16%, transparent)'
+    probe.style.color = 'var(--accent)'
+    document.body.appendChild(probe)
+    const style = getComputedStyle(probe)
+    const tone = { border: style.borderTopColor, background: style.backgroundColor, color: style.color }
+    probe.remove()
+    return tone
+  })
+  expect(exportRender).toEqual(expectedPrimaryTone)
+
+  // The neutral base: a plain ds-btn composes btn btn--secondary and its
+  // rest fill renders through the recipe (the muted-8% surface tint).
+  const uploadButton = page.locator('.ds-toolbar button', { hasText: 'Upload from LAN' })
+  await expect(uploadButton).toHaveClass(/(^|\s)btn btn--secondary ds-btn(\s|$)/)
+  const uploadBackground = await uploadButton.evaluate((element) => getComputedStyle(element).backgroundColor)
+  const expectedNeutralFill = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.style.backgroundColor = 'color-mix(in srgb, var(--muted) 8%, transparent)'
+    document.body.appendChild(probe)
+    const background = getComputedStyle(probe).backgroundColor
+    probe.remove()
+    return background
+  })
+  expect(uploadBackground).toBe(expectedNeutralFill)
+
+  // The source row's icon-only trash action carries its accessible name
+  // (the icon-only contract: never an unnamed icon button).
+  const trash = master.getByRole('button', { name: 'Trash this source' })
+  await expect(trash).toBeVisible()
+  await expect(trash).toHaveClass(/btn--danger/)
+  await expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  void sourceId
+})
+
+// The busy contract at a first-family site (manifest §2): the caption
+// save held mid-flight by hanging its POST — busy = LoaderCircle +
+// aria-busy + disabled, on the ds-btn dialect.
+test('button busy: the caption save announces aria-busy and disables while held', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await seedLibrary(page.request)
+  await page.goto('/?datasets=1')
+  const master = page.locator(`[data-ds-master][data-health="healthy"]`, { hasText: 'e2e-clip' }).first()
+  await expect(master).toBeVisible({ timeout: 10_000 })
+  await master.getByRole('button', { name: /layer/ }).first().click()
+  await page.locator('[data-ds-save-layer]').click()
+  await master.locator('.ds-master-name').click()
+  const layer = page.locator('[data-ds-layer]').first()
+  await expect(layer).toBeVisible({ timeout: 10_000 })
+  await layer.getByRole('button', { name: 'caption' }).click()
+  await expect(page.locator('[data-ds-caption]')).toBeVisible()
+
+  const save = page.locator('[data-ds-save-caption]')
+  await expect(save).toBeEnabled()
+  await expect(save).not.toHaveAttribute('aria-busy')
+
+  let release!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/lan/datasets/captions', async (route) => {
+    await held
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ layer: {} }) })
+  })
+  await page.locator('[data-ds-caption-textarea]').fill('e2e_trigger the busy contract pin')
+  await save.click()
+  await expect(save).toHaveAttribute('aria-busy', 'true')
+  await expect(save).toBeDisabled()
+  await expect(save.locator('.spin')).toHaveCount(1)
+  await expect(save).toHaveClass(/(^|\s)btn btn--primary btn--busy ds-btn(\s|$)/)
+
+  release()
+  await expect(save).not.toHaveAttribute('aria-busy', { timeout: 10_000 })
+  await expect(save).toBeEnabled()
+  await expect(save.locator('.spin')).toHaveCount(0)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })

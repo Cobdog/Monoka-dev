@@ -12,7 +12,8 @@
  *  own server (the local doctor + engine-status routes); the report stays
  *  on the machine until the user copies or saves it. */
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, AlertCircle, Check, ClipboardCopy, Download, LoaderCircle, RefreshCw, ShieldCheck, Stethoscope } from 'lucide-react'
+import { Activity, AlertCircle, Check, ClipboardCopy, Download, RefreshCw, ShieldCheck, Stethoscope } from 'lucide-react'
+import { Button } from '../ui/Button'
 import type { ModelKind } from '../types'
 import { buildDiagnosticReport, runSanitizerSelfTest, type ReportFailure, type ReportFailureGraph } from '../lib/diagnosticReport'
 import { classifyFailure } from '../lib/failureTaxonomy'
@@ -301,7 +302,7 @@ export function DiagnosticsView() {
     <section className="settings-section setup-doctor-section" aria-label="Setup doctor">
       <div className="settings-heading">
         <div><Stethoscope size={19} /><span><strong>Setup doctor</strong><small>Local toolchain checks — FFmpeg, HTTPS tooling, engine device, attention backends.</small></span></div>
-        <button className="secondary-button" onClick={() => void runDoctor()} disabled={doctorRunning}>{doctorRunning ? <LoaderCircle size={16} className="spin" /> : <Stethoscope size={16} />}{doctorRunning ? 'Checking…' : 'Run checks'}</button>
+        <Button variant="secondary" className="secondary-button" size={16} busy={doctorRunning} icon={<Stethoscope size={16} />} onClick={() => void runDoctor()}>{doctorRunning ? 'Checking…' : 'Run checks'}</Button>
       </div>
       {doctor && <div className="doctor-report">{doctor.checks.map((check) => <div className={`doctor-check ${check.status}`} style={doctorCheckVars(check.status)} key={check.id}><span>{check.status === 'ok' ? <Check size={14} /> : <AlertCircle size={14} />}</span><div><strong>{check.label}</strong><small>{check.detail}</small>{check.recommendation && <p>{check.recommendation}</p>}</div></div>)}</div>}
     </section>

@@ -6,7 +6,8 @@
  *  post-fetch availability refresh. Self-contained by design so the canvas
  *  redesign can lift it wholesale. */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertCircle, Check, Download, Globe, LoaderCircle, PackageOpen, RefreshCw, Scale, Search, Trash2 } from 'lucide-react'
+import { AlertCircle, Check, Download, Globe, PackageOpen, RefreshCw, Scale, Search, Trash2 } from 'lucide-react'
+import { Button } from '../ui/Button'
 import type { AppSettings, FetchEntryStatus, FetchProgress } from '../types'
 import { formatBytes } from '../lib/format'
 import { StudioDialog } from '../ui/StudioDialog'
@@ -189,9 +190,9 @@ export function FetchBrowser({ settings, setSettings, onAfterFetch, onAdoptCheck
               <div className="node-pack-actions">
                 {entry.state === 'placed' && entry.destination.kind === 'engine-checkout' && entry.placedPaths?.[0] && settings.engine.checkoutPath !== entry.placedPaths[0]
                   && <button type="button" className="secondary-button" onClick={() => onAdoptCheckout(entry.placedPaths![0])}>Use as managed checkout</button>}
-                <button type="button" className="secondary-button" disabled={fetching || busy === entry.id} onClick={() => openConsent(entry)}>
-                  {fetching ? <LoaderCircle size={14} className="spin" /> : <Download size={14} />}{entry.state === 'placed' || entry.state === 'present' || entry.state === 'cached' ? 'Refetch' : 'Fetch'}
-                </button>
+                <Button variant="secondary" className="secondary-button" size={14} busy={fetching} disabled={busy === entry.id} icon={<Download size={14} />} onClick={() => openConsent(entry)}>
+                  {entry.state === 'placed' || entry.state === 'present' || entry.state === 'cached' ? 'Refetch' : 'Fetch'}
+                </Button>
                 {(entry.state === 'placed' || entry.state === 'cached') && <button type="button" className="secondary-button" disabled={fetching || busy === entry.id} onClick={() => void removeItem(entry)} aria-label={`Remove the studio's placement of ${entry.name}`}><Trash2 size={14} /></button>}
               </div>
             </div>
@@ -247,9 +248,9 @@ export function FetchBrowser({ settings, setSettings, onAfterFetch, onAdoptCheck
           <span className="fetch-consent-note"><PackageOpen size={14} /> Weights land as links; your existing files are never replaced.</span>
           <div className="fetch-consent-actions">
             <button type="button" className="secondary-button" onClick={() => setConsentFor(null)}>Cancel</button>
-            <button type="button" className="primary-button" disabled={!acknowledged || busy === consentFor.id} onClick={() => void confirmFetch()}>
-              {busy === consentFor.id ? <LoaderCircle size={15} className="spin" /> : <Check size={15} />}Fetch {consentFor.sizeBytes ? formatBytes(consentFor.sizeBytes) : ''}
-            </button>
+            <Button variant="primary" className="primary-button" size={15} busy={busy === consentFor.id} disabled={!acknowledged} icon={<Check size={15} />} onClick={() => void confirmFetch()}>
+              Fetch {consentFor.sizeBytes ? formatBytes(consentFor.sizeBytes) : ''}
+            </Button>
           </div>
         </footer>
       </>}

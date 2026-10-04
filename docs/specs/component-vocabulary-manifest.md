@@ -63,9 +63,9 @@ Actuals at pin: `<LoaderCircle` JSX sites **×32** (matches the ×32 baseline). 
 
 **Out of the button subset (5, remain as-is):** `src/main.tsx:50` (boot fallback), `src/canvas/PoseRigDock.tsx:23` (rig-loading fallback), `src/images/WorkbenchApp.tsx:754,757` (workbench boot), `src/datasets/DatasetsApp.tsx:406` (ds-busy panel strip).
 
-- **retired selectors:** the conditional-icon-in-button idiom — `grep -rnE "\? <LoaderCircle" src/ | grep -v "ds-busy"` → currently **27**; target **0** (the ds-busy panel strip is not a ternary; the `grep -v` is belt-and-braces, its line is listed above as out-of-scope).
-- **retained geometry:** `grep -rn "<LoaderCircle" src/ | wc -l` → currently **32**; target **exactly 5** (the enumerated non-button sites).
-- **behavior tests:** `tests/button-classes.test.js` (node, class map) + `e2e/settings.spec.ts › button: busy = LoaderCircle + aria-busy + disabled` and `› button: icon-only requires aria-label (dev warn)`.
+- **retired selectors:** the conditional-icon-in-button idiom — `grep -rnE "\? <LoaderCircle" src/ | grep -v "ds-busy"` → currently **27**; target **0** (the ds-busy panel strip is not a ternary; the `grep -v` is belt-and-braces, its line is listed above as out-of-scope). *(Task-7 annotation, 2026-10-04: the mechanism itself — `src/ui/Button.tsx`'s internal busy ternary — now owns ONE occurrence of this shape; the re-run pattern is `grep -rnE "\? <LoaderCircle" src/ | grep -v "ds-busy" | grep -v "src/ui/Button.tsx"` → target 0. No scope change — the 27 consumer idiom sites are gone; the component IS the replacement.)*
+- **retained geometry:** `grep -rn "<LoaderCircle" src/ | wc -l` → currently **32**; target **exactly 5** (the enumerated non-button sites). *(Task-7 annotation, 2026-10-04: post-migration the count is **6 = the 5 enumerated non-button sites + `src/ui/Button.tsx`'s single internal spinner** — the busy mechanism the 27 sites were replaced BY. Same rationale as above; no scope change.)*
+- **behavior tests:** `tests/button-classes.test.js` (node, class map) + `e2e/settings.spec.ts › button: busy = LoaderCircle + aria-busy + disabled` and `› button: icon-only requires aria-label (dev warn)`. *(Task-7 annotation, 2026-10-04: the icon-only test lives in `e2e/datasets.spec.ts` (the trash-source action — the batch's real migrated icon-only Button; the settings surface has no migrated icon-only site, and the dev warn itself is node-covered in button-classes.test.js (g) since e2e runs the production build where `import.meta.env.DEV` is false).)*
 
 ## 3. Dialogs
 

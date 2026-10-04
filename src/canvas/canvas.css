@@ -640,7 +640,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-prompt-suggestion-actions { display: flex; justify-content: flex-end; gap: 6px; }
 .canvas-prompt-suggestion-actions button { padding: 3px 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: transparent; color: var(--muted); font-size: var(--text-2xs); cursor: pointer; }
 .canvas-prompt-suggestion-actions button.primary { border-color: color-mix(in srgb, var(--accent) 48%, transparent); color: var(--accent); }
-.canvas-properties-refs .canvas-properties-ref-caption { display: grid; place-items: center; width: 22px; height: 22px; margin-left: auto; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.canvas-properties-refs .canvas-properties-ref-caption { display: grid; place-items: center; width: 22px; height: 22px; margin-left: auto; border-width: 1px; border-style: solid; border-color: var(--line); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .canvas-properties-refs .canvas-properties-ref-caption:hover:not(:disabled) { color: var(--text); border-color: var(--line-strong); background: var(--surface-3); }
 .canvas-properties-refs .canvas-properties-ref-caption:disabled { opacity: .4; cursor: default; }
 

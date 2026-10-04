@@ -5,8 +5,9 @@
  * free-form discussion; batch modes live on the layer list).
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { History, LoaderCircle, MessageSquareText, ShieldAlert, Sparkles } from 'lucide-react'
+import { History, MessageSquareText, ShieldAlert, Sparkles } from 'lucide-react'
 import { datasetsApi, type LibraryLayer, type TriggerVerdict } from './api'
+import { Button } from '../ui/Button'
 
 type Props = {
   layer: LibraryLayer
@@ -128,9 +129,9 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
         <p className="ds-sub">{authorLabel}{layer.caption?.reviewState === 'queued' ? ' · review queued' : ''}{stale ? ' · STALE' : ''}</p>
       </div>
       <div className="ds-caption-actions">
-        <button type="button" className="ds-btn ghost" onClick={() => setVlmOpen((open) => !open)}><Sparkles size={13} /> VLM</button>
-        <button type="button" className="ds-btn ghost" onClick={loadHistory}><History size={13} /> {history ? 'Hide history' : 'History'}</button>
-        <button type="button" className="ds-btn ghost" onClick={onClose}>Close</button>
+        <Button variant="ghost" className="ds-btn" onClick={() => setVlmOpen((open) => !open)}><Sparkles size={13} /> VLM</Button>
+        <Button variant="ghost" className="ds-btn" onClick={loadHistory}><History size={13} /> {history ? 'Hide history' : 'History'}</Button>
+        <Button variant="ghost" className="ds-btn" onClick={onClose}>Close</Button>
       </div>
     </header>
     {stale && <p className="ds-stale-note" data-ds-stale><ShieldAlert size={13} /> {layer.caption?.stale ? 'This caption is STALE — the layer\'s view changed after captioning. Recaption (or accept explicitly at export).' : ''}</p>}
@@ -150,9 +151,9 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
         : <p className="ds-validation ok" data-ds-validation-ok>Trigger format OK — single rare token, exactly once, first.</p>}
       {error && <p className="ds-error">{error}</p>}
       {savedAt && !busy && !error && <p className="ds-status">Saved (hand-written; batch VLM will never silently overwrite it).</p>}
-      <button type="button" className="ds-btn primary" onClick={save} disabled={busy} data-ds-save-caption>
-        {busy ? <LoaderCircle className="spin" size={13} /> : null} Save caption
-      </button>
+      <Button variant="primary" className="ds-btn" size={13} busy={busy} onClick={save} data-ds-save-caption>
+        Save caption
+      </Button>
     </div>
     {history && history.length > 0 && <div className="ds-history" data-ds-history>
       {history.map((entry, index) => (
@@ -166,16 +167,16 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
       <div className="ds-vlm-box">
         <header>
           <h3><MessageSquareText size={14} /> Local VLM — caption this clip, or discuss it</h3>
-          <button type="button" className="ds-btn ghost" onClick={() => setVlmOpen(false)}>×</button>
+          <Button variant="ghost" className="ds-btn" onClick={() => setVlmOpen(false)}>×</Button>
         </header>
         <section>
           <h4>Caption / recaption (dense → condense, on the llama.cpp router)</h4>
           <p className="ds-hint">Pass 1 describes the frames densely; pass 2 condenses into the class template — both local.</p>
           <textarea value={vlmInstruction} onChange={(event) => setVlmInstruction(event.target.value)} rows={3} placeholder="Optional instruction (e.g. 'mention the lighting and the camera push-in')" />
           {vlmError && <p className="ds-error">{vlmError}</p>}
-          <button type="button" className="ds-btn primary" onClick={runVlm} disabled={vlmBusy} data-ds-vlm-caption>
-            {vlmBusy ? <LoaderCircle className="spin" size={13} /> : null} Caption this clip
-          </button>
+          <Button variant="primary" className="ds-btn" size={13} busy={vlmBusy} onClick={runVlm} data-ds-vlm-caption>
+            Caption this clip
+          </Button>
         </section>
         <section className="ds-chat">
           <h4>Free-form discussion (no caption write)</h4>
@@ -190,7 +191,7 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
                 void sendChat()
               }
             }} />
-            <button type="button" className="ds-btn" onClick={sendChat} disabled={chatBusy}>Ask</button>
+            <Button variant="secondary" className="ds-btn" onClick={sendChat} disabled={chatBusy}>Ask</Button>
           </div>
         </section>
       </div>

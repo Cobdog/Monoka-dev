@@ -54,6 +54,7 @@ const REPO = path.resolve(__dirname, '..')
  */
 const SUITES = {
   benchmarks: { build: 'server', windows: true, python: true, ffmpeg: false },
+  'button-classes': { build: null, windows: false, python: false, ffmpeg: false },
   camera: { build: null, windows: false, python: false, ffmpeg: false },
   canvas: { build: null, windows: false, python: false, ffmpeg: false },
   'chip-classes': { build: null, windows: false, python: false, ffmpeg: false },
@@ -123,9 +124,9 @@ const RULES = [
   },
   {
     match: ['eslint.config.mjs', 'stylelint.config.mjs', 'src/styles.css', '.gitattributes', '.gitignore'],
-    suites: ['stylelint-guard', 'chip-classes'],
+    suites: ['stylelint-guard', 'chip-classes', 'button-classes'],
     lintAll: true,
-    reason: 'lint/config — the stylelint guard suite owns stylelint.config.mjs and the :root type ramp it parses out of src/styles.css (a ramp change can flip the guard); the chip-classes suite walks the same sheet\'s .chip recipe block (existence, tone-only properties, :root-defined tokens — task 6); the full lint runs on any of these.',
+    reason: 'lint/config — the stylelint guard suite owns stylelint.config.mjs and the :root type ramp it parses out of src/styles.css (a ramp change can flip the guard); the chip-classes suite walks the same sheet\'s .chip recipe block (existence, tone-only properties, :root-defined tokens — task 6); the button-classes suite walks the sheet\'s .btn recipe block the same way (task 7); the full lint runs on any of these.',
   },
   {
     match: ['playwright.config.ts', 'e2e/**'],
@@ -340,6 +341,11 @@ const RULES = [
     match: ['src/ui/Chip.tsx', 'src/ui/chipClasses.ts'],
     suites: ['chip-classes'],
     reason: 'the chip system\'s pure tone/variant class + aria math (component vocabulary task 6): the chip-classes suite loads chipClasses.ts through the VM harness and walks the .chip recipe block in src/styles.css (recipe lockstep both directions, tone-only properties per P06, :root-defined tokens).',
+  },
+  {
+    match: ['src/ui/Button.tsx', 'src/ui/buttonClasses.ts'],
+    suites: ['button-classes'],
+    reason: 'the Button API\'s pure variant/busy class + state math and its border-shorthand hazard net (component vocabulary task 7): the button-classes suite loads buttonClasses.ts through the VM harness, walks the .btn recipe block in src/styles.css (recipe lockstep both directions, tone-only properties per P06, :root-defined tokens), and re-runs the C1 net over every Button-composed surface class across all src sheets.',
   },
   {
     match: [

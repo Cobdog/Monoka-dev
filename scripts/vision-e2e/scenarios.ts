@@ -1459,7 +1459,7 @@ export const SCENARIOS: VisionScenario[] = [
         id: 'datasets-workbench-dashboard-1080p',
         label: 'Dataset manager — dashboard: distributions + per-trainer VRAM preflight',
         drive: async (page) => {
-          const close = page.locator('[data-ds-editor] .ds-btn.ghost', { hasText: 'Close' })
+          const close = page.locator('[data-ds-editor] .ds-btn.btn--ghost', { hasText: 'Close' })
           if (await close.count()) await close.click().catch(() => undefined)
           await page.getByRole('button', { name: 'dashboard' }).click()
           await expect(page.locator('[data-ds-dashboard]')).toBeVisible()

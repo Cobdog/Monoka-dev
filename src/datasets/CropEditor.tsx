@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlipHorizontal2, Grid2x2, Move, Scissors } from 'lucide-react'
 import { datasetsApi, mediaUrlFor, type AspectEntry, type CropRect, type LibraryLayer, type LibrarySource } from './api'
+import { Button } from '../ui/Button'
 
 const GRID = 32
 
@@ -299,7 +300,7 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
           <h2 id="ds-editor-title">{layer ? 'Edit layer' : 'New layer'} — {source.name}</h2>
           <p className="ds-sub">{source.probe.width}×{source.probe.height} · {source.kind === 'image' ? 'still' : `${(source.probe.fps ?? 0).toFixed(3)} fps · ${totalFrames} decoded frames`}</p>
         </div>
-        <button type="button" className="ds-btn ghost" onClick={onClose}>Close</button>
+        <Button variant="ghost" className="ds-btn" onClick={onClose}>Close</Button>
       </header>
       <div className="ds-editor-body">
         <div
@@ -399,9 +400,9 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
             <p className="ds-hint">{trimOut - trimIn} frames selected — the grid target is chosen at export, never baked into the trim.</p>
           </div>}
           {saveError && <p className="ds-error">{saveError}</p>}
-          <button type="button" className="ds-btn primary" onClick={save} disabled={busy} data-ds-save-layer>
+          <Button variant="primary" className="ds-btn" onClick={save} disabled={busy} data-ds-save-layer>
             {busy ? 'Saving…' : layer ? 'Save layer' : 'Create layer'}
-          </button>
+          </Button>
         </aside>
       </div>
     </div>

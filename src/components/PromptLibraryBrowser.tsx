@@ -5,7 +5,8 @@
  *  Metadata (seed/sampler/steps) is imported for study; only prompt text is
  *  inserted into the composer. */
 import { useCallback, useEffect, useState, type RefObject } from 'react'
-import { AlertCircle, Bookmark, Check, LoaderCircle, Search, Sparkles, Trash2, X } from 'lucide-react'
+import { AlertCircle, Bookmark, Check, Search, Sparkles, Trash2, X } from 'lucide-react'
+import { Button } from '../ui/Button'
 import type { PromptLibraryItem } from '../types'
 import { PROMPT_LIBRARY_EVENT, deletePromptEntry, loadPromptLibrary, savePromptEntry, type SavedPromptEntry } from '../lib/promptLibraryStorage'
 import { deleteServerPromptEntry, saveServerPromptEntries, searchSavedPrompts } from '../lib/serverStorage'
@@ -131,7 +132,7 @@ export function PromptLibraryBrowser({ onClose, onInsert, finalFocusRef }: { onC
               <div className="select-wrap"><select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort">{SORTS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
               <label className="prompt-library-nsfw" title="Restrict results to generations made with MiniMax H3"><input type="checkbox" checked={scope === 'h3'} onChange={(event) => setScope(event.target.checked ? 'h3' : 'all')} />H3 only</label>
               <label className="prompt-library-nsfw" title="Include adult-rated results"><input type="checkbox" checked={nsfw} onChange={(event) => setNsfw(event.target.checked)} />Adult</label>
-              <button type="button" className="primary-button" onClick={() => void run()} disabled={loading}>{loading ? <LoaderCircle size={15} className="spin" /> : <Search size={15} />}Search</button>
+              <Button variant="primary" className="primary-button" size={15} busy={loading} icon={<Search size={15} />} onClick={() => void run()}>Search</Button>
             </div>
             {error && <div className="prompt-library-error" role="alert"><AlertCircle size={15} />{error}</div>}
             <div className="prompt-library-results">

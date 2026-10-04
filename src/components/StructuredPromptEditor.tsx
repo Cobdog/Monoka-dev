@@ -10,7 +10,8 @@
  * exact string the concat contract submits.
  */
 import { useRef, useState, type ReactNode } from 'react'
-import { Camera, ChevronDown, ChevronRight, Copy, CopyPlus, LoaderCircle, Sparkles, Trash2, WandSparkles } from 'lucide-react'
+import { Camera, ChevronDown, ChevronRight, Copy, CopyPlus, Sparkles, Trash2, WandSparkles } from 'lucide-react'
+import { Button } from '../ui/Button'
 import type { GenerationMode } from '../types'
 import type { LlmStreamUi } from '../lib/useLlmStream'
 import { CameraPathEditor } from './CameraPathEditor'
@@ -119,24 +120,30 @@ export function StructuredPromptEditor(props: {
 
   const assistButtons = (box: StructuredBoxId) => (
     <>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size={11}
         data-structured-assist={`distill-${box}`}
         disabled={!llmAvailable || Boolean(assisting)}
         title={!llmAvailable ? 'Connect a local text model in Settings' : 'Distill rough notes in this box into guide-correct content'}
         onClick={() => void runAssist(box, 'distill')}
+        icon={<Sparkles size={11} />}
+        busy={assisting === box}
       >
-        {assisting === box ? <LoaderCircle size={11} className="spin" /> : <Sparkles size={11} />} distill
-      </button>
-      <button
-        type="button"
+        distill
+      </Button>
+      <Button
+        variant="ghost"
+        size={11}
         data-structured-assist={`enhance-${box}`}
         disabled={!llmAvailable || Boolean(assisting)}
         title={!llmAvailable ? 'Connect a local text model in Settings' : 'Rewrite this box in guide-correct vocabulary'}
         onClick={() => void runAssist(box, 'enhance')}
+        icon={<WandSparkles size={11} />}
+        busy={assisting === box}
       >
-        {assisting === box ? <LoaderCircle size={11} className="spin" /> : <WandSparkles size={11} />} enhance
-      </button>
+        enhance
+      </Button>
     </>
   )
 
@@ -489,11 +496,14 @@ export function StructuredPromptEditor(props: {
     )}
 
     <div className="structured-parse-tool">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size={11}
         data-structured-distill
         disabled={!llmAvailable || parsing}
         title={!llmAvailable ? 'Connect a local text model in Settings' : 'Ask the local model to split the current prompt into the finer boxes — reviewed before adopting'}
+        icon={<Sparkles size={11} />}
+        busy={parsing}
         onClick={async () => {
           if (!llmAvailable || parsing) return
           setParsing(true)
@@ -520,8 +530,8 @@ export function StructuredPromptEditor(props: {
           }
         }}
       >
-        {parsing ? <LoaderCircle size={11} className="spin" /> : <Sparkles size={11} />} distill into boxes…
-      </button>
+        distill into boxes…
+      </Button>
     </div>
 
     <details className="structured-preview" data-structured-preview>

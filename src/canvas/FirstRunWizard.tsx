@@ -18,7 +18,8 @@
  * journey, the notice catches whatever path skipped it.
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Check, HardDrive, LoaderCircle, RefreshCw, Sparkles, X } from 'lucide-react'
+import { Check, HardDrive, RefreshCw, Sparkles, X } from 'lucide-react'
+import { Button } from '../ui/Button'
 import { useContext } from 'react'
 import { dbg } from '../lib/dbg'
 import { h3StackReport } from '../lib/h3Stack'
@@ -206,18 +207,18 @@ function EngineStep(props: {
         placeholder="http://127.0.0.1:8188 — ComfyUI's default port"
         onChange={(event) => setSettings({ ...settings, comfyUrl: event.target.value })}
       />
-      <button type="button" className="chip canvas-chip" data-wizard-test disabled={probing} onClick={() => { setCheckedUrl(settings.comfyUrl); void checkConnection(settings.comfyUrl) }}>
-        {probing ? <LoaderCircle size={12} className="spin" /> : <RefreshCw size={12} />} Test
-      </button>
+      <Button variant="ghost" className="chip canvas-chip" size={12} data-wizard-test busy={probing} icon={<RefreshCw size={12} />} onClick={() => { setCheckedUrl(settings.comfyUrl); void checkConnection(settings.comfyUrl) }}>
+        Test
+      </Button>
     </div>
     {checkedUrl === settings.comfyUrl && (status.connected
       ? <p className="canvas-wizard-ok" data-wizard-connected><Check size={13} /> Engine reachable{status.stats?.devices?.[0]?.name ? ` — ${status.stats.devices[0].name}` : ''}.</p>
       : <p className="canvas-wizard-warn" data-wizard-unreachable>Not reachable at {settings.comfyUrl}{status.error ? ` — ${status.error}` : ''}. Start the engine and test again, or continue and connect later.</p>)}
     <div className="canvas-wizard-row">
       <span className="canvas-wizard-hint">Not sure of the port? The probe asks each common port for a heartbeat — you click, it asks; nothing probes on its own.</span>
-      <button type="button" className="chip canvas-chip" data-wizard-probe onClick={() => void probe()} disabled={probing}>
-        {probing ? <LoaderCircle size={12} className="spin" /> : null} Probe common ports
-      </button>
+      <Button variant="ghost" className="chip canvas-chip" size={12} data-wizard-probe busy={probing} onClick={() => void probe()}>
+        Probe common ports
+      </Button>
     </div>
     {reachable.length > 0 && (
       <ul className="canvas-wizard-ports" data-wizard-ports>
@@ -261,9 +262,9 @@ function RegistryStep(props: { models: ReturnType<typeof useSessionStore.getStat
               : 'The H3 stack is incomplete — make the missing components visible to the engine (any name shape the pickers recognize resolves), then refresh.'}
     </p>}
     <div className="canvas-wizard-row">
-      <button type="button" className="chip canvas-chip" data-wizard-refresh onClick={onRefresh} disabled={scanning}>
-        {scanning ? <LoaderCircle size={12} className="spin" /> : <RefreshCw size={12} />} Refresh from the engine
-      </button>
+      <Button variant="ghost" className="chip canvas-chip" size={12} data-wizard-refresh busy={scanning} icon={<RefreshCw size={12} />} onClick={onRefresh}>
+        Refresh from the engine
+      </Button>
     </div>
   </div>
 }
