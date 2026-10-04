@@ -48,7 +48,11 @@ export function StudioDialog({
         <Dialog.Backdrop className={`modal-backdrop ${backdropClassName}`.trim()} />
         <div className={`ui-dialog-center ${centerClassName}`.trim()}>
           <Dialog.Popup
-            render={<section aria-labelledby={labelledBy} aria-describedby={describedBy} />}
+            /* aria-modal is stated here, not left to Base UI: 1.8 sets the
+             * dialog role but not the modal flag, and every consumer of this
+             * wrapper IS modal (the W1 sweep's guarantee — pinned in
+             * e2e/images.spec.ts and the datasets crop editor alike). */
+            render={<section aria-modal="true" aria-labelledby={labelledBy} aria-describedby={describedBy} />}
             className={popupClassName}
             initialFocus={initialFocus}
             finalFocus={finalFocus}

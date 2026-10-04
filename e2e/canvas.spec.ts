@@ -1776,11 +1776,13 @@ test('reactive dock ranks: 50 raises stay in the band, relative order preserved 
   let expected = ['inspector', 'settings', 'audio']
   await expect.poll(orderBottomToTop).toEqual(expected)
 
-  // 50 raises over a deterministic cycle that hits the top (idempotent
-  // re-top), the bottom (the full re-rank), and the middle. After EVERY
-  // raise: unique z values (no two docks share a slot — the at-rest tie is
-  // dead), all inside the 8-slot band, and the z order EQUALS the recorded
-  // raise order (monotone recency).
+  // 50 raises over a deterministic cycle: the rotation raises the docks in
+  // turn, and each raise tops its target, so the next in the rotation is
+  // always the current BOTTOM at its turn — bottom-50/50, the full re-rank
+  // every time (maximum churn; the idempotent re-top is a designed no-op and
+  // is not what this loop exercises). After EVERY raise: unique z values (no
+  // two docks share a slot — the at-rest tie is dead), all inside the 8-slot
+  // band, and the z order EQUALS the recorded raise order (monotone recency).
   for (let index = 0; index < 50; index += 1) {
     const target = docks[(index * 7) % docks.length]
     expected = expected.filter((id) => id !== target.id).concat(target.id)

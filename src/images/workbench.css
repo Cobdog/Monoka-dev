@@ -152,10 +152,31 @@
 .iw-note { border-top-width: 1px; border-top-style: solid; }
 .iw-file-input { display: none; }
 
-.iw-dialog-backdrop { position: fixed; inset: 0; background: color-mix(in srgb, var(--color-surface-abyss, #000) 62%, transparent); display: flex; align-items: center; justify-content: center; z-index: 50; }
-.iw-dialog { width: min(560px, 92vw); max-height: 80vh; overflow: auto; background: var(--color-surface-deep, #0a0d0b); border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+/* (Component vocabulary task 12, k2q0n9s) IwDialog is DELETED — the three
+   workbench dialogs are StudioDialogLayered (Base UI portal). The portal
+   mounts Backdrop and Popup as SIBLINGS (CV13), so the retired
+   .iw-dialog-backdrop's two jobs split: the shared .modal-backdrop recipe
+   (src/styles.css) keeps the fixed/z discipline — the dialogs now ride
+   var(--z-modal):70, the §0.1 contract band, instead of the retired literal
+   50 that sank under raised docks — while these COMPOUND variants carry
+   only the iw surface's own geometry: the full-viewport inset (the workbench
+   is a whole-screen surface — no app topbar strip to spare), its lighter
+   62% dim, and the no-blur backdrop. The center variant restores the same
+   inset: 0 centering area the old flex backdrop owned. The popup keeps
+   .iw-dialog; its width moves 92vw/94vw → 100% of the 18px-padded center —
+   the vw forms could overflow the center's padding on narrow viewports,
+   100% cannot (the popup NEVER owns page scroll; its own max-height 80vh +
+   overflow auto is the containment). */
+.modal-backdrop.iw-dialog-backdrop { inset: 0; background: color-mix(in srgb, var(--color-surface-abyss, #000) 62%, transparent); backdrop-filter: none; }
+.ui-dialog-center.iw-dialog-center { inset: 0; }
+.iw-dialog { width: min(560px, 100%); max-height: 80vh; overflow: auto; background: var(--color-surface-deep, #0a0d0b); border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
 .iw-dialog h3 { margin: 0; font-size: var(--text-sm); }
 .iw-dialog p { margin: 0; font-size: var(--text-md); color: var(--muted); }
+/* The header row every migrated dialog carries: the h3 (the dialog's
+   accessible name via labelledBy) + the ×, which owns its OWN handler —
+   never a bubbling dependency on a backdrop's target check. */
+.iw-dialog-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.iw-dialog-close { padding: 2px 5px; border-radius: 7px; }
 .iw-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }
 .iw-dialog footer button { padding: 6px 14px; border-radius: 9px; cursor: pointer; font-size: var(--text-2xs); border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); background: none; color: inherit; }
 .iw-dialog footer button.primary { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
@@ -188,7 +209,7 @@
 .iw-mask-needed { color: var(--warning, #d0a030); font-style: normal; font-size: 9px; }
 .iw-mask-actions em { font-style: normal; font-size: 9px; color: var(--muted); }
 
-.iw-mask-dialog { width: min(720px, 94vw); }
+.iw-mask-dialog { width: min(720px, 100%); }
 .iw-mask-stage { position: relative; align-self: center; max-width: 100%; line-height: 0; }
 .iw-mask-under { max-width: 100%; max-height: 52vh; border-radius: 8px; display: block; }
 .iw-mask-paint { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; touch-action: none; border-radius: 8px; }
