@@ -900,3 +900,189 @@ test('the crop editor joins the dialog stack; its in-flight save defers dismissa
   await expect(page.getByRole('dialog', { name: /New layer/ })).toHaveCount(0)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
+
+// ---------------------------------------------------------------------------
+// Component vocabulary task 15 (Flux k2q0n9s) — the native window.prompt /
+// window.confirm are gone; the shared PromptDialog / ConfirmDialog own every
+// ask-then-act flow (spec §2.1). Review Focus #5 (spec §0.6): the
+// batch-instruction prompt's CANCEL ABORTS — the retired `?? ''` (a cancel
+// ran the default batch) was the silent-loss class; a cancel must send NO
+// request at all. And the CV12 contract is the inverse arm: a SUBMITTED
+// EMPTY instruction ('') genuinely runs the default batch — null and '' are
+// different outcomes at the call site, observed here on the wire.
+test('prompt dialog: batch cancel executes nothing (no POST); an empty submit runs the default batch (RF#5, k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  const sourceId = await seedLibrary(page.request)
+  await page.request.post('/api/lan/datasets/layers', { data: { sourceId, name: 'batch-layer' } })
+  const batchPosts: Array<{ instruction: string; guard: string }> = []
+  await page.route('**/api/lan/datasets/vlm/batch', async (route) => {
+    const body = route.request().postDataJSON() as { instruction?: string; guard?: string }
+    batchPosts.push({ instruction: body.instruction ?? '(missing)', guard: body.guard ?? '(missing)' })
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ captioned: [], skipped: [], queuedForReview: [], errors: [] }) })
+  })
+  await page.goto('/?datasets=1')
+  const master = page.locator('[data-ds-master]', { hasText: 'e2e-clip' }).first()
+  await expect(master).toBeVisible({ timeout: 10_000 })
+  await master.locator('.ds-master-name').click()
+  const layer = master.locator('[data-ds-layer]', { hasText: 'batch-layer' }).first()
+  await expect(layer).toBeVisible()
+  await layer.locator('.ds-layer-select').click()
+  const batchTrigger = page.locator('.ds-toolbar button', { hasText: 'Batch VLM (skip hand)' })
+
+  // CANCEL (Escape) ABORTS before any work: no request leaves the page, no
+  // busy state starts, and focus restores to the trigger (§0.2 invariant).
+  await batchTrigger.click()
+  const dialog = page.getByRole('dialog', { name: /Batch VLM instruction/ })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toHaveAttribute('aria-modal', 'true')
+  await expect(dialog).toHaveAccessibleName(/Batch VLM instruction/)
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  expect(batchPosts, 'a cancelled batch instruction sends NO POST (RF#5)').toEqual([])
+  await expect(batchTrigger).toBeFocused()
+  await expect(page.locator('.ds-busy')).toHaveCount(0)
+
+  // SUBMITTED-EMPTY (Enter): '' is a REAL submission — the default batch
+  // runs, instruction carried as '' on the wire (null ≠ '', CV12).
+  await batchTrigger.click()
+  await expect(dialog).toBeVisible()
+  const input = dialog.getByRole('textbox')
+  await expect(input).toBeFocused()
+  await input.press('Enter')
+  await expect(dialog).toHaveCount(0)
+  await expect.poll(() => batchPosts.length).toBe(1)
+  expect(batchPosts[0]!.instruction).toBe('')
+  expect(batchPosts[0]!.guard).toBe('skip')
+
+  // A TYPED instruction rides the request verbatim (Cancel button arm too:
+  // the affordance resolves the same null as Escape).
+  await batchTrigger.click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('textbox').fill('dense forest, drifting fog')
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(batchPosts.length, 'the Cancel affordance aborts exactly like Escape').toBe(1)
+  await batchTrigger.click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('textbox').fill('dense forest, drifting fog')
+  await dialog.getByRole('button', { name: 'OK' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect.poll(() => batchPosts.length).toBe(2)
+  expect(batchPosts[1]!.instruction).toBe('dense forest, drifting fog')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// The confirm half of the family, worked at the manifest's named danger site
+// (empty trash — the one real delete): danger rides the confirm ACTION (the
+// Button danger recipe, computed authority), and EVERY dismissal path is
+// owned by the resolve contract — Escape, outside-press, and Cancel all
+// resolve no WITHOUT posting; only the confirm action ever does.
+test('confirm dialog: danger framing and dismissal ownership — every close path resolves no, only Confirm posts (k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await seedLibrary(page.request)
+  await page.goto('/?datasets=1')
+  await page.locator('.ds-tab', { hasText: 'trash' }).click()
+  await expect(page.locator('[data-ds-trash]')).toBeVisible()
+  let emptyPosts = 0
+  await page.route('**/api/lan/datasets/trash/empty', async (route) => {
+    emptyPosts += 1
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ dropped: 0, bytesDeleted: 0 }) })
+  })
+  const emptyTrigger = page.locator('[data-ds-trash] button', { hasText: /Empty trash/ })
+
+  // DANGER FRAMING: dialog semantics via the shared wrapper (role + modal +
+  // labelledBy naming the visible heading), and the destructive action
+  // paints through the danger recipe — its text color IS var(--danger)
+  // computed live (the PR-1 probe doctrine).
+  await emptyTrigger.click()
+  const dialog = page.getByRole('dialog', { name: 'Empty the trash?' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toHaveAttribute('aria-modal', 'true')
+  await expect(dialog).toHaveAttribute('aria-labelledby', 'ds-confirm-empty-trash-title')
+  await expect(page.locator('#ds-confirm-empty-trash-title')).toContainText('Empty the trash?')
+  await expect(dialog).toContainText(/one real delete/)
+  const confirmAction = dialog.getByRole('button', { name: 'Confirm', exact: true })
+  await expect(confirmAction).toHaveClass(/btn--danger/)
+  const dangerColor = await confirmAction.evaluate((element) => getComputedStyle(element).color)
+  const expectedDanger = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.style.color = 'var(--danger)'
+    document.body.appendChild(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  })
+  expect(dangerColor, 'the danger confirm action paints var(--danger)').toBe(expectedDanger)
+
+  // DISMISSAL OWNERSHIP: Escape resolves no (and restores the trigger)…
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(emptyTrigger).toBeFocused()
+  expect(emptyPosts).toBe(0)
+  // …the outside-press resolves no…
+  await emptyTrigger.click()
+  await expect(dialog).toBeVisible()
+  await page.mouse.click(8, 300)
+  await expect(dialog).toHaveCount(0)
+  expect(emptyPosts).toBe(0)
+  // …and the Cancel affordance resolves no.
+  await emptyTrigger.click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(dialog).toHaveCount(0)
+  expect(emptyPosts).toBe(0)
+
+  // Only the confirm action posts.
+  await emptyTrigger.click()
+  await expect(dialog).toBeVisible()
+  await confirmAction.click()
+  await expect(dialog).toHaveCount(0)
+  await expect.poll(() => emptyPosts).toBe(1)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// The path-prompt sites: Enter submits the typed value (a REAL request with
+// that path), Escape cancels untouched, and a submitted-empty path is the
+// honest-refusal arm of the CV12 distinction — visible feedback, no request
+// (cancel and empty-submit remain observably different outcomes).
+test('prompt dialog: Enter submits the path, Escape cancels untouched, an empty submit refuses honestly (k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await seedLibrary(page.request)
+  const refPosts: string[] = []
+  await page.route('**/api/lan/datasets/ingest/reference', async (route) => {
+    if (route.request().method() === 'POST') refPosts.push(String((route.request().postDataJSON() as { path?: string }).path ?? '(missing)'))
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ source: { id: 'e2e-ref', probe: { width: 480, height: 832 } }, deduped: false }) })
+  })
+  await page.goto('/?datasets=1')
+  await expect(page.locator('[data-ds-root]')).toBeVisible()
+  const refTrigger = page.locator('.ds-toolbar button', { hasText: 'Reference a file' })
+
+  // Escape cancels: no request, focus back on the trigger.
+  await refTrigger.click()
+  const dialog = page.getByRole('dialog', { name: /Reference a file/ })
+  await expect(dialog).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(refTrigger).toBeFocused()
+  expect(refPosts).toEqual([])
+
+  // Enter submits the typed value — the request carries it verbatim.
+  await refTrigger.click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('textbox').fill('/tmp/e2e-ref-take.mp4')
+  await dialog.getByRole('textbox').press('Enter')
+  await expect(dialog).toHaveCount(0)
+  await expect.poll(() => refPosts.length).toBe(1)
+  expect(refPosts[0]).toBe('/tmp/e2e-ref-take.mp4')
+  await expect(page.locator('[data-ds-notice]')).toContainText('Imported 480×832')
+
+  // Submitted-empty is NOT a cancel and NOT a silent no-op: the page says
+  // what happened and still sends nothing.
+  await refTrigger.click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('textbox').press('Enter')
+  await expect(dialog).toHaveCount(0)
+  await expect(page.locator('[data-ds-error]')).toContainText(/empty/i)
+  expect(refPosts.length).toBe(1)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
