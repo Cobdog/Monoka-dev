@@ -81,9 +81,11 @@
 .canvas-tile-ring[data-status="failed"] { border: 2px solid var(--tile-tone); }
 .canvas-inspector .canvas-tile-ring { position: static; display: inline-block; width: 10px; height: 10px; inset: auto; border-radius: 50%; border-width: 2px !important; vertical-align: -1px; }
 @keyframes canvas-pulse { 50% { opacity: .4; } }
-.canvas-tile-progress { position: absolute; left: 10px; right: 10px; bottom: 8px; height: 3px; border-radius: 999px; background: color-mix(in srgb, var(--tile-tone) 22%, transparent); overflow: hidden; }
-.canvas-tile-progress::after { content: ''; position: absolute; inset: 0; width: 40%; border-radius: inherit; background: var(--tile-tone); animation: canvas-slide 1.2s ease-in-out infinite; }
-@keyframes canvas-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(320%); } }
+/* Task 8 (k2q0n9s): the ::after sweep dialect + canvas-slide keyframes
+   retired into the .progressbar recipes (progressbar--indeterminate owns the
+   sweep — identical keyframes/timing; tone='local' paints fill + track from
+   the --bar-tone bridge below). The track keeps its surface geometry. */
+.canvas-tile-progress { position: absolute; left: 10px; right: 10px; bottom: 8px; height: 3px; border-radius: 999px; overflow: hidden; --bar-tone: var(--tile-tone); }
 
 /* F6 live progress — in-progress sampler frames + the percent/label readout
    on the generating tile. Frames are transient (never a take, never stored):

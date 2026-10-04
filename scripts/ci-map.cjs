@@ -73,6 +73,7 @@ const SUITES = {
   llm: { build: 'full', windows: false, python: false, ffmpeg: false },
   'manager-install': { build: 'full', windows: false, python: false, ffmpeg: false },
   poserig: { build: null, windows: false, python: false, ffmpeg: false },
+  'progressbar-classes': { build: null, windows: false, python: false, ffmpeg: false },
   realtime: { build: 'full', windows: false, python: false, ffmpeg: false },
   registry: { build: null, windows: false, python: false, ffmpeg: false },
   resync: { build: 'full', windows: false, python: false, ffmpeg: false },
@@ -124,9 +125,9 @@ const RULES = [
   },
   {
     match: ['eslint.config.mjs', 'stylelint.config.mjs', 'src/styles.css', '.gitattributes', '.gitignore'],
-    suites: ['stylelint-guard', 'chip-classes', 'button-classes'],
+    suites: ['stylelint-guard', 'chip-classes', 'button-classes', 'progressbar-classes'],
     lintAll: true,
-    reason: 'lint/config — the stylelint guard suite owns stylelint.config.mjs and the :root type ramp it parses out of src/styles.css (a ramp change can flip the guard); the chip-classes suite walks the same sheet\'s .chip recipe block (existence, tone-only properties, :root-defined tokens — task 6); the button-classes suite walks the sheet\'s .btn recipe block the same way (task 7); the full lint runs on any of these.',
+    reason: 'lint/config — the stylelint guard suite owns stylelint.config.mjs and the :root type ramp it parses out of src/styles.css (a ramp change can flip the guard); the chip-classes suite walks the same sheet\'s .chip recipe block (existence, tone-only properties, :root-defined tokens — task 6); the button-classes suite walks the sheet\'s .btn recipe block the same way (task 7); the progressbar-classes suite walks the sheet\'s .progressbar recipe block + the migrated fetch/tile dialect rules in styles.css and canvas.css (task 8); the full lint runs on any of these.',
   },
   {
     match: ['playwright.config.ts', 'e2e/**'],
@@ -346,6 +347,11 @@ const RULES = [
     match: ['src/ui/Button.tsx', 'src/ui/buttonClasses.ts'],
     suites: ['button-classes'],
     reason: 'the Button API\'s pure variant/busy class + state math and its border-shorthand hazard net (component vocabulary task 7): the button-classes suite loads buttonClasses.ts through the VM harness, walks the .btn recipe block in src/styles.css (recipe lockstep both directions, tone-only properties per P06, :root-defined tokens), and re-runs the C1 net over every Button-composed surface class across all src sheets.',
+  },
+  {
+    match: ['src/ui/ProgressBar.tsx', 'src/ui/progressClasses.ts', 'src/canvas/canvas.css'],
+    suites: ['progressbar-classes'],
+    reason: 'the scalar progress bar\'s pure tone/state class + width/aria math (component vocabulary task 8): the progressbar-classes suite loads progressClasses.ts through the VM harness, pins the determinate width math byte-identical to the retired fetch expression, and walks the .progressbar recipe block in src/styles.css plus the migrated fetch/tile dialect rules (recipe lockstep both directions, tone+mechanics-only properties per P06, :root-defined tokens, retirement pins — canvas.css carries the tile row).',
   },
   {
     match: [

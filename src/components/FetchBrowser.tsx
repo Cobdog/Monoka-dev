@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, Check, Download, Globe, PackageOpen, RefreshCw, Scale, Search, Trash2 } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { ProgressBar } from '../ui/ProgressBar'
 import type { AppSettings, FetchEntryStatus, FetchProgress } from '../types'
 import { formatBytes } from '../lib/format'
 import { StudioDialog } from '../ui/StudioDialog'
@@ -181,7 +182,7 @@ export function FetchBrowser({ settings, setSettings, onAfterFetch, onAdoptCheck
                 <small>{entry.description}</small>
                 <small className="node-pack-meta">{entry.source.kind === 'hf' ? `${entry.source.repo} @ ${entry.source.revision.value.slice(0, 12)}` : `${entry.source.url.replace('https://github.com/', '')} @ ${entry.source.revision.kind}:${entry.source.revision.value}`}{entry.installedRevision && entry.state === 'placed' ? ` — fetched at ${entry.installedRevision.slice(0, 12)}` : ''}{entry.verified && entry.state === 'placed' ? ` · ${entry.verified === 'sha256' ? 'sha256-verified' : entry.verified === 'size' ? 'size-verified' : 'recorded without a pin'}` : ''}{entry.note ? ` — ${entry.note}` : ''}</small>
                 {fetching && <div className="fetch-progress" role="status">
-                  <span className="fetch-progress-bar"><span style={{ width: fraction === null ? '100%' : `${Math.round(fraction * 100)}%` }} className={fraction === null ? 'indeterminate' : ''} /></span>
+                  <ProgressBar className="fetch-progress-bar" value={fraction} indeterminate={fraction === null} />
                   <small>{live!.phase === 'downloading' && typeof live!.bytes === 'number' && live!.totalBytes
                     ? `${live!.file ? `${live!.file} · ` : ''}${formatBytes(live!.bytes)} / ${formatBytes(live!.totalBytes)}`
                     : live!.message ?? live!.phase}</small>

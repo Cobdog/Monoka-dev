@@ -27,6 +27,7 @@ import { opPreviewStyle } from './ops'
 import type { ZoomBand } from './camera'
 import { STATUS_LABEL, type Tile } from './derive'
 import { liveReadoutVars, tileToneVars } from '../ui/statusToken'
+import { ProgressBar } from '../ui/ProgressBar'
 import { useCanvasStore } from './store'
 
 /** Canvas bridge, direction 1 (dataset-manager spec §11): send this object's
@@ -192,7 +193,7 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
       {tile.jobId && (tile.status === 'running' || tile.status === 'queued-gpu') ? <TileLiveProgress jobId={tile.jobId} /> : null}
       {/* the status ring — on-object state, always visible in every band */}
       <span className="canvas-tile-ring" data-status={tile.status} aria-label={STATUS_LABEL[tile.status]} />
-      {tile.status === 'running' && <span className="canvas-tile-progress" aria-hidden />}
+      {tile.status === 'running' && <ProgressBar indeterminate tone="local" className="canvas-tile-progress" aria-hidden />}
       {tile.status === 'failed' && (
         // Contract a: durable on the object until dismissed, reason attached.
         <div className="canvas-tile-failure" role="alert">
