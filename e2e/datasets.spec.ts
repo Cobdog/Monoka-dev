@@ -364,10 +364,15 @@ test('the crop editor is a named, focus-contained dialog with keyboard-settable 
   await expect(panel).toHaveAttribute('aria-labelledby', 'ds-editor-title')
   await expect(page.locator('#ds-editor-title')).toContainText('New layer')
 
-  // Focus containment (C2): focus moves INTO the dialog on open, and Tab
-  // stays inside no matter how far it walks (it used to travel the
-  // background gallery controls).
-  await expect(panel).toBeFocused()
+  // Focus containment (C2): focus moves INTO the dialog on open — Base UI's
+  // FocusManager owns the trap since the task 13 migration (the A09 pin's
+  // spirit; the first tabbable takes focus, not the panel node the retired
+  // hand-rolled trap focused) — and Tab stays inside no matter how far it
+  // walks (it used to travel the background gallery controls).
+  await expect.poll(() => panel.evaluate((node) => {
+    const active = document.activeElement
+    return active !== null && (node === active || node.contains(active))
+  }), 'focus settles inside the dialog on open').toBe(true)
   for (let index = 0; index < 30; index += 1) await page.keyboard.press('Tab')
   expect(await page.evaluate(() => document.activeElement?.closest('[data-ds-editor]') ?? null)).not.toBeNull()
 
@@ -716,5 +721,177 @@ test('datasets banners announce (NoticeBanner: role + aria-live, the × owns dis
   await expect(errorBanner).toHaveCount(0)
   await notice.locator('button[aria-label="Dismiss"]').click()
   await expect(notice).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// Component vocabulary task 13 (Flux k2q0n9s) — the datasets overlays join
+// the shared dialog stack. The Caption→VLM pair is the app's GENUINE
+// two-dialog stack (task 12's nested test proxied it with a stand-in; this
+// is the real one): the caption dialog opens the VLM dialog ABOVE it, both
+// are StudioDialogLayered (§0.2 registry layers), so ONE Escape closes only
+// the VLM dialog, the next closes the caption dialog, each restoring focus
+// to its own trigger. Plus C1's uniform busy guard: while the caption save
+// is in flight, Escape (the registry's routed path), outside-press (Base
+// UI's path), and the Close affordance ALL defer — no dismissal path may
+// bypass the guard — and after the save lands all three dismiss again.
+
+/** The §0.2 layer stack through the ?probe=layers seam (task 10's idiom). */
+function layerStackVia(page: Page) {
+  return page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })
+}
+
+/** Seeds one layer on the e2e-clip master and returns locators for the
+ *  gallery row + its caption trigger (the shared per-test seed the suite's
+ *  other caption tests use). */
+async function seedLayerWithCaptionTarget(page: Page) {
+  await seedLibrary(page.request)
+  await page.goto('/?datasets=1&probe=layers')
+  const master = page.locator('[data-ds-master]', { hasText: 'e2e-clip' }).first()
+  await expect(master).toBeVisible({ timeout: 10_000 })
+  await master.getByRole('button', { name: /layer/ }).first().click()
+  await expect(page.getByRole('dialog', { name: /New layer/ })).toBeVisible()
+  await page.locator('[data-ds-save-layer]').click()
+  await expect(page.getByRole('dialog', { name: /New layer/ })).toHaveCount(0)
+  await master.locator('.ds-master-name').click()
+  const layer = page.locator('[data-ds-layer]').first()
+  await expect(layer).toBeVisible({ timeout: 10_000 })
+  return { layer, captionTrigger: layer.getByRole('button', { name: 'caption', exact: true }) }
+}
+
+test('the caption→VLM stack: registered dialogs unwind topmost-first, focus restores to each trigger (k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  const { captionTrigger } = await seedLayerWithCaptionTarget(page)
+  await captionTrigger.click()
+
+  // The caption dialog: real dialog semantics (role + accessible name via
+  // labelledBy + the modal flag the shared wrapper states) and a registered
+  // §0.2 layer.
+  const captionDialog = page.getByRole('dialog', { name: /Caption —/ })
+  await expect(captionDialog).toBeVisible()
+  await expect(captionDialog).toHaveAccessibleName(/Caption —/)
+  await expect(captionDialog).toHaveAttribute('aria-modal', 'true')
+  await expect(captionDialog).toHaveAttribute('aria-labelledby', 'ds-caption-title')
+  await expect.poll(() => layerStackVia(page)).toBe('ds-caption')
+
+  // The VLM dialog opens ABOVE it — the genuine two-dialog stack.
+  const vlmTrigger = captionDialog.getByRole('button', { name: 'VLM', exact: true })
+  await vlmTrigger.click()
+  const vlmDialog = page.getByRole('dialog', { name: /Local VLM/ })
+  await expect(vlmDialog).toBeVisible()
+  await expect(vlmDialog).toHaveAccessibleName(/Local VLM/)
+  await expect(vlmDialog).toHaveAttribute('aria-modal', 'true')
+  await expect(vlmDialog).toHaveAttribute('aria-labelledby', 'ds-vlm-title')
+  await expect.poll(() => layerStackVia(page)).toBe('ds-caption|ds-caption-vlm')
+
+  // ONE Escape: the topmost layer (VLM) takes it alone — the caption dialog
+  // underneath survives, and focus restores to the VLM's own trigger.
+  await page.keyboard.press('Escape')
+  await expect(vlmDialog).toHaveCount(0)
+  await expect(captionDialog).toBeVisible()
+  expect(await layerStackVia(page)).toBe('ds-caption')
+  await expect(vlmTrigger).toBeFocused()
+
+  // The next Escape belongs to the caption dialog — the stack drains and
+  // focus restores to the caption trigger (full unwind).
+  await page.keyboard.press('Escape')
+  await expect(captionDialog).toHaveCount(0)
+  await expect.poll(() => layerStackVia(page)).toBe('')
+  await expect(captionTrigger).toBeFocused()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('the uniform busy guard: while the caption save is in flight Escape, outside-press, and Close ALL defer; after it lands all three dismiss (C1, k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  const { captionTrigger } = await seedLayerWithCaptionTarget(page)
+  await captionTrigger.click()
+  const captionDialog = page.getByRole('dialog', { name: /Caption —/ })
+  await expect(captionDialog).toBeVisible()
+  await expect.poll(() => layerStackVia(page)).toBe('ds-caption')
+
+  // Hold the caption save mid-flight (the button-busy test's pattern).
+  let release!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/lan/datasets/captions', async (route) => {
+    await held
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ layer: {} }) })
+  })
+  const save = page.locator('[data-ds-save-caption]')
+  await page.locator('[data-ds-caption-textarea]').fill('c1_guard the uniform busy-dismissal pin')
+  await save.click()
+  await expect(save).toHaveAttribute('aria-busy', 'true')
+
+  // Every dismissal path defers — the routed Escape…
+  await page.keyboard.press('Escape')
+  await expect(captionDialog).toBeVisible()
+  expect(await layerStackVia(page)).toBe('ds-caption')
+  // …the outside-press (the backdrop, never the registry's business)…
+  await page.mouse.click(8, 300)
+  await expect(captionDialog).toBeVisible()
+  // …and the Close affordance.
+  await captionDialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(captionDialog).toBeVisible()
+
+  // The save lands (its outcome belongs on screen) — then all three paths
+  // dismiss again. Arm 1: Escape.
+  release()
+  await expect(save).not.toHaveAttribute('aria-busy', { timeout: 10_000 })
+  await expect(page.locator('.ds-status', { hasText: 'Saved' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(captionDialog).toHaveCount(0)
+  await expect(captionTrigger).toBeFocused()
+  // Arm 2: the Close affordance.
+  await captionTrigger.click()
+  await expect(captionDialog).toBeVisible()
+  await captionDialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(captionDialog).toHaveCount(0)
+  // Arm 3: the outside-press.
+  await captionTrigger.click()
+  await expect(captionDialog).toBeVisible()
+  await page.mouse.click(8, 300)
+  await expect(captionDialog).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('the crop editor joins the dialog stack; its in-flight save defers dismissal the same uniform way (k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await seedLibrary(page.request)
+  await page.goto('/?datasets=1&probe=layers')
+  const masterCard = page.locator('[data-ds-master]', { hasText: 'e2e-clip' }).first()
+  await expect(masterCard).toBeVisible({ timeout: 10_000 })
+  await masterCard.getByRole('button', { name: /layer/ }).first().click()
+  const editor = page.getByRole('dialog', { name: /New layer/ })
+  await expect(editor).toBeVisible()
+  await expect(editor).toHaveAttribute('aria-modal', 'true')
+  await expect.poll(() => layerStackVia(page)).toBe('ds-editor')
+
+  // A save held mid-flight defers every dismissal path — Escape and Close
+  // here (the crop editor's own busy guard, now the uniform one).
+  let release!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  await page.route('**/api/lan/datasets/layers', async (route) => {
+    await held
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ layer: {} }) })
+  })
+  await page.locator('[data-ds-save-layer]').click()
+  await expect(page.locator('[data-ds-save-layer]')).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await expect(editor).toBeVisible()
+  await editor.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(editor).toBeVisible()
+
+  // The completed save closes the editor through its OWN path (onSaved) —
+  // the layer unregisters with it — and Escape is live again on reopen.
+  release()
+  await expect(editor).toHaveCount(0, { timeout: 10_000 })
+  await expect.poll(() => layerStackVia(page)).toBe('')
+  await masterCard.getByRole('button', { name: /layer/ }).first().click()
+  await expect(page.getByRole('dialog', { name: /New layer/ })).toBeVisible()
+  await expect.poll(() => layerStackVia(page)).toBe('ds-editor')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: /New layer/ })).toHaveCount(0)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })

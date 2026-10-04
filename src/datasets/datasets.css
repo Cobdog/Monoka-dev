@@ -89,9 +89,29 @@
 .ds-layer-actions { display: flex; gap: 4px; flex-direction: column; align-items: flex-end; }
 .ds-disposition-select { background: none; color: var(--muted); border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 6px; font-size: 9px; padding: 1px 4px; }
 
-/* ---- crop editor overlay ------------------------------------------------- */
-.ds-editor-overlay { position: fixed; inset: 0; background: color-mix(in srgb, var(--color-surface-abyss) 78%, transparent); display: grid; place-items: center; z-index: 60; }
-.ds-editor { width: min(1180px, 94vw); max-height: 92vh; background: var(--color-surface-sunken, #0d110f); border: 1px solid color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
+/* ---- the dialogs' portal geometry (component vocabulary task 13, k2q0n9s) --
+   The hand-rolled .ds-editor-overlay / .ds-caption-overlay / .ds-vlm-modal
+   backdrops died with the StudioDialogLayered migration: the Base UI portal
+   mounts Backdrop and Popup as SIBLINGS (CV13), so each retired overlay's
+   two jobs split — the shared .modal-backdrop / .ui-dialog-center recipes
+   (src/styles.css) keep the fixed/z discipline (the dialogs ride
+   var(--z-modal):70, the §0.1 contract band; the retired literal 60/70 are
+   gone) while these COMPOUND variants carry ONLY the ds surface's own
+   geometry: the full-viewport inset (the datasets surface is a whole-screen
+   surface — no app topbar strip to spare) and each overlay's own dim, kept
+   verbatim (78/70/60%). The popups keep .ds-editor/.ds-caption-panel/
+   .ds-vlm-box; their widths move the vw forms → 100% of the 18px-padded
+   center (the vw forms could overflow the center's padding on narrow
+   viewports — 100% cannot). Borders split to LONGHANDS per the C1
+   discipline (the shorthand resets border-color to currentcolor).
+   .ds-dialog-flow is each popup's test-hook wrapper — display:contents
+   keeps the popup's own flex flow passing straight through it, so the
+   surface's data-ds-* test vocabulary stays where the e2e suite expects it
+   without extending the shared wrapper's API. */
+.modal-backdrop.ds-editor-backdrop { inset: 0; background: color-mix(in srgb, var(--color-surface-abyss) 78%, transparent); backdrop-filter: none; }
+.ui-dialog-center.ds-editor-center { inset: 0; }
+.ds-dialog-flow { display: contents; }
+.ds-editor { width: min(1180px, 100%); max-height: 92vh; background: var(--color-surface-sunken, #0d110f); border-width: 1px; border-style: solid; border-color: color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
 .ds-editor-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid color-mix(in srgb, var(--muted) 20%, transparent); }
 .ds-editor-head h2 { margin: 0; font-size: var(--text-sm); }
 .ds-editor-body { display: flex; min-height: 0; }
@@ -127,8 +147,9 @@
 .ds-error { color: var(--danger); font-size: var(--text-md); white-space: pre-wrap; margin: 0; }
 
 /* ---- caption panel -------------------------------------------------------- */
-.ds-caption-overlay { position: fixed; inset: 0; background: color-mix(in srgb, var(--color-surface-abyss) 70%, transparent); display: grid; place-items: center; z-index: 60; }
-.ds-caption-panel { width: min(760px, 92vw); background: var(--color-surface-sunken, #0d110f); border: 1px solid color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; max-height: 88vh; overflow-y: auto; }
+.modal-backdrop.ds-caption-backdrop { inset: 0; background: color-mix(in srgb, var(--color-surface-abyss) 70%, transparent); backdrop-filter: none; }
+.ui-dialog-center.ds-caption-center { inset: 0; }
+.ds-caption-panel { width: min(760px, 100%); background: var(--color-surface-sunken, #0d110f); border-width: 1px; border-style: solid; border-color: color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; max-height: 88vh; overflow-y: auto; }
 .ds-caption-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .ds-caption-head h3 { margin: 0; font-size: var(--text-sm); }
 .ds-caption-actions { display: flex; gap: 6px; }
@@ -140,9 +161,11 @@
 .ds-history { border-top: 1px dashed color-mix(in srgb, var(--muted) 25%, transparent); padding-top: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
 .ds-history-entry { font-size: var(--text-2xs); }
 .ds-history-meta { color: var(--muted); font-size: 10px; }
-.ds-vlm-modal { position: fixed; inset: 0; background: color-mix(in srgb, var(--color-surface-abyss) 60%, transparent); display: grid; place-items: center; z-index: 70; }
-.ds-vlm-box { width: min(680px, 92vw); background: var(--color-surface-deep, #080b09); border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px; max-height: 84vh; overflow-y: auto; }
+.modal-backdrop.ds-vlm-backdrop { inset: 0; background: color-mix(in srgb, var(--color-surface-abyss) 60%, transparent); backdrop-filter: none; }
+.ui-dialog-center.ds-vlm-center { inset: 0; }
+.ds-vlm-box { width: min(680px, 100%); background: var(--color-surface-deep, #080b09); border-width: 1px; border-style: solid; border-color: color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 12px; max-height: 84vh; overflow-y: auto; }
 .ds-vlm-box header { display: flex; justify-content: space-between; align-items: center; }
+.ds-vlm-close { padding: 2px 5px; border-radius: 7px; }
 .ds-vlm-box h3 { margin: 0; font-size: var(--text-sm); display: flex; gap: 6px; align-items: center; }
 .ds-vlm-box h4 { margin: 0 0 6px; font-size: var(--text-2xs); color: var(--muted); }
 .ds-vlm-box textarea { width: 100%; box-sizing: border-box; background: none; border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 8px; color: inherit; padding: 7px; font-size: var(--text-2xs); resize: vertical; }
