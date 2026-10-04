@@ -5,13 +5,15 @@ import stylelint from 'stylelint'
 /**
  * Studio lint stack — CSS half of `pnpm lint` (eslint owns JS/TS).
  *
- * Two layers, both signal-only:
+ * Three layers, all signal-only:
  *  1. stylelint-config-standard — syntax correctness and genuine foot-guns.
  *  2. minimax/no-raw-colors (custom, below) — design-token discipline: color
  *     values in declarations must go through var(--token) (the wave-2b token
  *     system in src/styles.css :root). Raw literals are allowed ONLY in
  *     token definitions (custom properties) and on the documented allowlist
  *     (secondary.allow) — every entry there states why it is a one-off.
+ *  3. component-vocab/no-dead-fallback (custom, below) — type-ramp
+ *     discipline on the --text-* tokens.
  *
  * Rules from the standard config that only fight the codebase's established
  * patterns are disabled BELOW with a comment stating why (documented
@@ -72,11 +74,101 @@ const noRawColors = stylelint.createPlugin('minimax/no-raw-colors', (primary, se
   })
 })
 
+// The type ramp (--text-* font-size tokens) parsed from src/styles.css at
+// config load — every :root block, later definitions winning (the cascade is
+// the house override mechanism). Same doctrine as the statusToken suite:
+// the rule's knowledge is the LIVE sheet, never a hand-maintained constant.
+function parseTextRamp() {
+  const css = fs.readFileSync(path.resolve(import.meta.dirname, 'src', 'styles.css'), 'utf8')
+  const ramp = new Map()
+  let at = css.indexOf(':root')
+  while (at !== -1) {
+    const open = css.indexOf('{', at)
+    if (open === -1) break
+    let depth = 1
+    let end = open + 1
+    while (depth > 0 && end < css.length) {
+      if (css[end] === '{') depth += 1
+      if (css[end] === '}') depth -= 1
+      end += 1
+    }
+    const declaration = /(--text-[\w-]+)\s*:\s*([^;}]+)/g
+    let match = declaration.exec(css.slice(open + 1, end - 1))
+    while (match !== null) {
+      ramp.set(match[1], match[2].trim())
+      match = declaration.exec(css.slice(open + 1, end - 1))
+    }
+    at = css.indexOf(':root', end)
+  }
+  if (ramp.size < 6) throw new Error(`text-ramp parse looks wrong — only ${ramp.size} --text-* tokens found in src/styles.css :root`)
+  return ramp
+}
+
+export const textRamp = parseTextRamp()
+
+// SCOPE AUTHORIZATION (component vocabulary task 5, Flux k2q0n9s; P12):
+// spec principle 5 ("Tokens always") BANS the dead-fallback pattern —
+// var(--text-<token>, <fallback>) where the token IS defined in the
+// src/styles.css :root type ramp. A var() fallback is not a minimum:
+// --text-2xs is 7px, so every `var(--text-2xs, 11px)` rendered at 7px
+// while reading as an 11px floor (audit A10,
+// docs/audit/codex-webui-audit-2026-10-02.md). This rule ENFORCES the ban.
+//
+// Policy (removal-first): an in-scope consumer's fallback is REMOVED —
+// `var(--text-2xs, 11px)` becomes `var(--text-2xs)` (rendering-identical:
+// the fallback never applied). Suppression is for EXEMPT surfaces only
+// (prototypes / pose-rig authoring — the families in the migration
+// manifest §12, whose exemption column is the authoritative list):
+//   /* stylelint-disable-line component-vocab/no-dead-fallback -- <reason> */
+const NO_DEAD_FALLBACK = 'component-vocab/no-dead-fallback'
+
+// Every var() call in a declaration value whose first argument is a
+// ramp-defined token AND that carries a fallback argument (the first
+// top-level comma inside the call). Paren-depth aware, so fallbacks that
+// are themselves var() chains are walked correctly.
+function* deadFallbacks(value) {
+  let from = 0
+  for (;;) {
+    const at = value.indexOf('var(', from)
+    if (at === -1) return
+    let depth = 1
+    let i = at + 4
+    let comma = -1
+    while (i < value.length && depth > 0) {
+      const ch = value[i]
+      if (ch === '(') depth += 1
+      else if (ch === ')') depth -= 1
+      else if (ch === ',' && depth === 1 && comma === -1) comma = i
+      i += 1
+    }
+    if (comma !== -1) {
+      const name = value.slice(at + 4, comma).trim()
+      if (textRamp.has(name)) yield name
+    }
+    from = at + 4 // keep scanning inside the fallback (nested var() chains)
+  }
+}
+
+const noDeadFallback = stylelint.createPlugin(NO_DEAD_FALLBACK, (primary) => (root, result) => {
+  if (!primary) return
+  root.walkDecls((decl) => {
+    for (const name of deadFallbacks(decl.value)) {
+      stylelint.utils.report({
+        ruleName: NO_DEAD_FALLBACK,
+        result,
+        node: decl,
+        message: `Dead fallback: ${name} is defined (${textRamp.get(name)}) in src/styles.css :root, so the second var() argument never applies (audit A10's class) — remove the fallback, or suppress with a manifest §12 exemption reason.`,
+      })
+    }
+  })
+})
+
 export default {
-  plugins: [noRawColors],
+  plugins: [noRawColors, noDeadFallback],
   extends: ['stylelint-config-standard'],
   rules: {
     'minimax/no-raw-colors': true,
+    'component-vocab/no-dead-fallback': true,
 
     // ---- Documented suppressions (rules that only fight house style) ----
     // The stylesheets are deliberately written as dense SINGLE-LINE rules

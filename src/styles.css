@@ -709,7 +709,7 @@ select { text-overflow: ellipsis; }
 
 /* Directory-path feedback (maintainer flag 2026-09-19): inline validation
    under Settings' directory fields. */
-.path-input .path-check, .field-group .path-check { margin: 4px 0 0; font-size: var(--text-base, 12px); display: flex; align-items: center; gap: 5px; }
+.path-input .path-check, .field-group .path-check { margin: 4px 0 0; font-size: var(--text-base); display: flex; align-items: center; gap: 5px; }
 .path-check.ok { color: var(--color-ok, #3fb950); }
 .path-check.missing, .path-check.file, .path-check.error { color: var(--warning, #d29922); }
 .path-check.checking { color: var(--muted-2, #888); }
