@@ -357,3 +357,20 @@ the template.
 7. **Two shims/pins touched the canonical install:** `ExpSetSigmas` added to
    exp_shims (local tier, PART 2 History line appended; server picks it up on
    restart). Nothing else changed; no core/pack updates.
+
+## Addendum — the maintainer's own-eye calibration (2026-10-04, the Amendment-1 surface's first delivery)
+
+Reconciled against the escrowed key AFTER the calls were recorded (review-responses.json). **Zero wrong calls.** The reconciliation:
+
+| Pair | Corruption | Pre-registered | Maintainer's call | Verdict |
+|---|---|---|---|---|
+| p01 | VAE re-encode | near-floor | tie | ✓ below JND as registered |
+| p02 | +2 L* uniform | visually subtle | tie | ✓ below JND |
+| p03 | 1-frame jitter | local spike, globally subtle | tie | ✓ below JND at a glance |
+| p04 | crossblend seam (17f ghost window) | visible ghosting | right (clean) | **DETECTED** |
+| p05 | identity swap (donor face) | largest identity delta | left (clean) | **DETECTED** |
+| p06 | half-resolution | global softening | left (clean) | **DETECTED** |
+| p07 | latent-hold decode determinism | expected TIE (the null) | tie | ✓ **THE NULL PASSED** — no visible decode nondeterminism across load states |
+| p08 | VAE round-trip floor | near-tie | tie | ✓ the floor is invisible |
+
+**The measured human JND**: seam-ghosting, identity swaps, and 2× resolution loss are VISIBLE to the maintainer at a glance; VAE re-encode loss, ±2 L* uniform shifts, and single-frame temporal jitter are NOT. Consequences for the batch: (1) for seam/identity/resolution-class effects the maintainer is a reliable primary detector; (2) for fry/color/jitter-class effects the automated metrics are PRIMARY and the human checkpoint is confirmation-only — the thresholds for those axes derive from Set B's SDs, not the eye; (3) caveat recorded: this calibration ran with fresh eyes on a known-clean board — real A/B judgments (two plausible variants) are harder, so this floor is an optimistic bound.
