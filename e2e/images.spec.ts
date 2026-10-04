@@ -1080,12 +1080,14 @@ test('the workbench toast strip is the adapter at bottom-right — the placement
 // Task 16 fix round 1 (I2): the StudioSelect wrap must FILL the .iw-row
 // labels. Pre-migration the tier and resolution-locked selects were
 // block-level width:100% children of their flexed labels (workbench.css's
-// .iw-controls select rule); the migration's inline wrap shrink-to-fit them
-// to content width until the .iw-row label .studio-select companion
-// restored the fill. This pin covers BOTH named sites: the boot-default
-// packet family renders the tier select, and the inpaint lane with a
-// painted/masked source renders the locked one. RED against the unfixed
-// wrap by construction (content width < 90% of the label on the tier site).
+// .iw-controls select rule); the migration's inline wrap needed the fill
+// made an EXPLICIT contract (.iw-row label .studio-select) — the geometry
+// was already held by the .iw-controls label > span blockification, so
+// this pin holds with the rule removed; it exists so option-text-length
+// drift can never silently shrink the rows. Covers BOTH named sites, and
+// pins the label>span text idiom NOT reaching the select (the re-review's
+// finding 2: uppercase/muted/letter-spacing must not cascade through the
+// wrap — the retired selects were label siblings with normal-case text).
 test('the workbench row selects fill their labels (StudioSelect wrap geometry, task 16 fix I2)', async ({ page, request }) => {
   const problems = await trackErrors(page)
   await seedSession(request)
@@ -1140,6 +1142,11 @@ test('the workbench row selects fill their labels (StudioSelect wrap geometry, t
     expect(layout.label, `${name}: the select sits inside a labelled row`).toBeGreaterThan(0)
     expect(layout.ownLine, `${name}: the filled select breaks to its own line under the label text`).toBe(true)
     expect(layout.select, `${name}: select ${layout.select.toFixed(0)}px fills the label (${layout.label.toFixed(0)}px)`).toBeGreaterThanOrEqual(layout.label * 0.9)
+    // The label>span text idiom must not reach the select through the wrap:
+    // RED against the unfixed cascade (the wrap matched .iw-controls
+    // label > span and lent the select its uppercase/muted label-text paint).
+    expect(await select.evaluate((node) => getComputedStyle(node).textTransform), `${name}: normal-case option text`).toBe('none')
+    expect(await select.evaluate((node) => getComputedStyle(node).marginBottom), `${name}: no label-text margin`).toBe('0px')
   }
 
   // Site 1 — the boot-default packet family's tier row.

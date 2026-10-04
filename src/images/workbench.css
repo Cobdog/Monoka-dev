@@ -115,9 +115,16 @@
 /* Task 16 fix round 1 (P06): StudioSelect's wrap is the label's content
    now — the fill the select carried as a block-level width:100% child of
    the flexed label moves to the wrap (the lora-slot companion's shape).
-   Without it the inline wrap shrink-to-fits and the tier/resolution
-   selects render at content width. */
+   The fill was already held by the label>span blockification below; the
+   explicit contract keeps it immune to option-text-length drift. */
 .iw-row label .studio-select { width: 100%; }
+/* The label>span idiom (.iw-controls label > span: uppercase, muted,
+   letter-spaced, 10px, 4px margin — the LABEL TEXT's styling) must not
+   reach the select through the wrap: the retired selects were label
+   SIBLINGS that inherited the label's normal-case ambient text. Resetting
+   the wrap restores the pre-migration inheritance chain (re-review
+   finding 2, closed here rather than handed forward). */
+.iw-controls label > span.studio-select { text-transform: none; letter-spacing: normal; color: inherit; margin-bottom: 0; }
 .iw-overflow { display: flex; gap: 6px; align-items: center; font-size: 10px; color: var(--muted); }
 .iw-overflow em { font-size: 9px; border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent); color: var(--danger); padding: 0 5px; border-radius: 999px; font-style: normal; }
 
