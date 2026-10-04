@@ -909,6 +909,20 @@ test('a virgin home seeds no "Imported workspace" — the legacy import gates on
       try { if ((await fetch(`http://127.0.0.1:${port}/api/lan/settings`)).ok) break } catch { /* booting */ }
       await new Promise((resolve) => setTimeout(resolve, 200))
     }
+    // Hermetic engine target (hbdzmoa): a virgin home inherits the shipped
+    // 8189 default — on the dev box that is the LIVE shared testbed, so this
+    // engine-independent test's boot polls (comfy-status → object-info, the
+    // registry listing) would proxy a real engine and can still be pending
+    // when the child dies below, racing post-kill refused fetches. Pin the
+    // CI-simulation dead port (the settings/runtime-suite precedent): the
+    // home stays virgin for the legacy import — that gate is the documents
+    // marker, not the settings file — but the boot polls fast-fail.
+    const seeded = await (await fetch(`http://127.0.0.1:${port}/api/lan/settings`)).json()
+    await fetch(`http://127.0.0.1:${port}/api/lan/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ settings: { ...seeded.settings, comfyUrl: 'http://127.0.0.1:59999' } }),
+    })
     await page.goto(`http://127.0.0.1:${port}/?canvas=1`)
     await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 20_000 })
     // The canvas boot ran the §6 legacy import on this virgin home — with

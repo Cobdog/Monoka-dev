@@ -162,7 +162,13 @@ export function useStudioSession() {
   useEffect(() => {
     void window.minimax.getSettings().then((loaded) => {
       setSettings(loaded)
+      // (hbdzmoa) The boot reads are fail-tolerant: if the app server dies
+      // inside the boot window (or the engine behind it is unreachable), the
+      // inventory stays empty and the engine-watch loop re-pulls once it can.
+      // The scan rejection used to escape this voided chain uncaught — an
+      // unhandled renderer error for a read that is allowed to fail.
       void Promise.all([scanModels(loaded), runEngineCheck(loaded.comfyUrl, 'boot').catch(() => undefined), refreshOllama(loaded), refreshLlm()])
+        .catch(() => undefined)
     })
   }, [refreshLlm, refreshOllama, scanModels, setSettings])
 
