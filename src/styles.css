@@ -372,6 +372,30 @@ select { text-overflow: ellipsis; }
 .chip--muted:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); }
 .chip:disabled { opacity: .45; cursor: default; }
 .chip--busy { opacity: .7; cursor: progress; }
+/* ---- Component vocabulary: the progress recipes (task 8, k2q0n9s) ---------
+ * Scalar bars ONLY (spec §2.1 narrowing, manifest §10's {fetch, tile} set;
+ * wizard step indicators and prototype queue bars are EXEMPT). Tone + bar
+ * mechanics shared, geometry local (P06): the recipes carry the track/fill
+ * paint, the fill mechanics (block/100%/inherit-radius/width-transition),
+ * and the component's own default SIZE STEP (4px; compact 3px — the dead
+ * .progress vocabulary revived) so a bare bar renders; the track's real
+ * dimensions, radius, placement, and borders stay in the consuming
+ * surface's class composed alongside (later-loading/equal-specificity
+ * surface rules keep winning, the chip/button bridge). The indeterminate
+ * state is the census fold: fetch's translateX shimmer and canvas-slide
+ * were the same dialect — a rounded bar sweeping the track, ease-in-out,
+ * infinite — unified on the sweep (40% fill, 1.1s/1.2s folded to 1.2s;
+ * proto's width-fill dialect is EXEMPT and untouched). `local` tone reads
+ * the surface's `--bar-tone` bridge (the --pill-fg precedent: set by the
+ * surface, never a :root token). The class math lives in
+ * src/ui/progressClasses.ts (node-tested against THIS block). */
+.progressbar { display: block; overflow: hidden; height: 4px; background: var(--surface-3); }
+.progressbar-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .3s ease; }
+.progressbar--compact { height: 3px; }
+.progressbar--indeterminate .progressbar-fill { width: 40%; animation: progressbar-sweep 1.2s ease-in-out infinite; }
+.progressbar--local { background: color-mix(in srgb, var(--bar-tone, var(--accent)) 22%, transparent); }
+.progressbar--local .progressbar-fill { background: var(--bar-tone, var(--accent)); }
+@keyframes progressbar-sweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(320%); } }
 .connection-row { display: flex; align-items: flex-end; gap: 10px; padding:var(--space-4) 17px; }
 .field-group.grow { flex: 1; }
 .connection-row input { height: 38px; padding: 0 10px; }
@@ -723,10 +747,13 @@ select { text-overflow: ellipsis; }
 @keyframes fetch-focused-nudge { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(3px); } }
 .fetch-progress { display: grid; gap: 4px; padding-top: 2px; }
 .fetch-progress small { color: var(--muted-2); font-size: 11px; overflow-wrap: anywhere; }
-.fetch-progress-bar { display: block; height: 5px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; }
-.fetch-progress-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; transition: width .3s ease; }
-.fetch-progress-bar > span.indeterminate { animation: fetch-indeterminate 1.1s ease-in-out infinite; }
-@keyframes fetch-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+/* Task 8 (k2q0n9s): the fill dialect rules retired into the .progressbar
+   recipes (progressbar-fill owns the fill; progressbar--indeterminate owns
+   the sweep — the census fold). The track keeps its surface geometry (5px,
+   radius, its distinct --surface paint beating the recipe default at
+   equal-specificity later-in-sheet); border split to LONGHANDS per the C1
+   discipline so a future recipe border-color can never be clobbered. */
+.fetch-progress-bar { display: block; height: 5px; border-radius: 999px; background: var(--surface); border-width: 1px; border-style: solid; border-color: var(--line); overflow: hidden; }
 /* Consent stacking (maintainer flag 2026-09-19: "the fetch authorization box
    appears behind the settings panel"): the standard modal layer (--z-modal:50)
    sits UNDER the react-rnd docks (z-index:60), so a consent fired from the

@@ -2720,6 +2720,51 @@ test('F6 live progress: targeted engine events + preview frames surface on the g
     const painted = tile.locator('[data-canvas-live-preview]')
     await expect(painted).toBeVisible({ timeout: 15_000 })
     await expect.poll(async () => painted.evaluate((element) => (element as HTMLImageElement).naturalWidth), { timeout: 15_000 }).toBeGreaterThan(0)
+
+    // Task 8 (k2q0n9s): the running tile's bar is the migrated ProgressBar —
+    // the unified sweep (indeterminate, ONE class-toggle), the local tone
+    // bridged from --tile-tone, the surface geometry retained, decorative
+    // (aria-hidden, no role). Computed styles are the authority (PR-1).
+    const bar = tile.locator('.canvas-tile-progress')
+    await expect(bar).toHaveClass(/(^|\s)progressbar progressbar--local progressbar--indeterminate canvas-tile-progress(\s|$)/)
+    await expect(bar).toHaveAttribute('aria-hidden', 'true')
+    await expect(bar).not.toHaveAttribute('role')
+    const fill = bar.locator('.progressbar-fill')
+    await expect(fill).toBeVisible()
+    const barComputed = await tile.evaluate((element) => {
+      const track = element.querySelector('.canvas-tile-progress') as HTMLElement | null
+      const fillEl = track?.querySelector('.progressbar-fill') as HTMLElement | null
+      // Probe inside the tile's --tile-tone scope: the recipe's color-mix
+      // must equal the same mix computed live (the PR-1 probe doctrine).
+      const probe = document.createElement('span')
+      probe.style.background = 'color-mix(in srgb, var(--tile-tone) 22%, transparent)'
+      const probeFill = document.createElement('span')
+      probeFill.style.background = 'var(--tile-tone)'
+      ;(track?.parentElement ?? element).append(probe, probeFill)
+      const result = {
+        trackWidth: track?.clientWidth ?? 0,
+        fillWidth: fillEl ? getComputedStyle(fillEl).width : '',
+        animation: fillEl ? getComputedStyle(fillEl).animationName : '',
+        duration: fillEl ? getComputedStyle(fillEl).animationDuration : '',
+        trackBackground: track ? getComputedStyle(track).backgroundColor : '',
+        probeTrack: getComputedStyle(probe).backgroundColor,
+        fillBackground: fillEl ? getComputedStyle(fillEl).backgroundColor : '',
+        probeFill: getComputedStyle(probeFill).backgroundColor,
+      }
+      probe.remove()
+      probeFill.remove()
+      return result
+    })
+    // The sweep: the census fold's geometry (40% of the track) and timing,
+    // driven by the recipe's keyframes.
+    expect(Math.round(parseFloat(barComputed.fillWidth))).toBe(Math.round(barComputed.trackWidth * 0.4))
+    expect(barComputed.animation).toBe('progressbar-sweep')
+    expect(barComputed.duration).toBe('1.2s')
+    // The local tone: track tint + fill read the SAME live --tile-tone the
+    // old dialect painted (rendering-stable at the tone level).
+    expect(barComputed.trackBackground).toBe(barComputed.probeTrack)
+    expect(barComputed.fillBackground).toBe(barComputed.probeFill)
+
     // The upstream registered a well-formed clientId — targeted delivery,
     // not a broadcast accident.
     expect(seenClientIds.length).toBeGreaterThan(0)
