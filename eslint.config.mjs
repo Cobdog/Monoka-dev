@@ -11,7 +11,7 @@ export default tseslint.config(
   // gitignored scratch (vision bundles, agents' driver scripts — F-GATE-1:
   // the perfect-state walk's own driver turned the lint leg red on an
   // otherwise-clean tree).
-  { ignores: ['dist', 'dist-electron', 'dist-server', 'release', 'node_modules', '.claude/worktrees', 'test-results'] },
+  { ignores: ['gpu-review', 'scripts/gpu-review', 'dist', 'dist-electron', 'dist-server', 'release', 'node_modules', '.claude/worktrees', 'test-results'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files: ['scripts/**/*.cjs', 'tests/lib/**/*.cjs'], languageOptions: { globals: { ...globals.node, WebSocket: 'readonly', fetch: 'readonly' } }, rules: { '@typescript-eslint/no-require-imports': 'off' } },
