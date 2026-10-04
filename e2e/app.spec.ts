@@ -459,6 +459,84 @@ test('launcher core flow is keyboard-operable (focus rings + dialog discipline)'
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// Component vocabulary task 10 — the layer-ownership registry's first real
+// consumer. PromptLibraryBrowser (a StudioDialog surface) participates in
+// the registry: it registers while open, and Escape is ROUTED — the ONE
+// window keydown listener routes each Escape to the topmost registered
+// layer ONLY, stopping propagation at window-capture so Base UI's own
+// document-level dismissal cannot double-handle the same keystroke. The
+// ?probe=layers handle (the TransientProbe compromise: shipped but inert
+// without the flag) lets this suite drive the registry API directly — a
+// hook-overlay stand-in, the surface class that migrates at task 14.
+test('layer registry: Escape unwinds topmost-first at the prompt library (§0.2)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?probe=layers')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+
+  // Open the real consumer: spawn a tile, then the panel's library button.
+  await page.keyboard.press('/')
+  await page.locator('[data-canvas-prompt]').fill('a lone drummer on a night train')
+  await page.locator('[data-canvas-submit]').click()
+  const panelLibraryButton = page.locator('[data-canvas-prompt-library]')
+  await expect(panelLibraryButton).toBeVisible({ timeout: 10_000 })
+  await panelLibraryButton.click()
+  const dialog = page.locator('.prompt-library-modal')
+  await expect(dialog).toBeVisible({ timeout: 10_000 })
+
+  type LayerProbe = { layerIds(): string[] }
+  const stackVia = () => page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: LayerProbe }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })
+
+  // Registry participation: the open dialog IS a registered layer.
+  await expect.poll(stackVia).toBe('prompt-library')
+
+  // Baseline discipline kept: Escape closes the dialog, focus restores.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(panelLibraryButton).toBeFocused()
+
+  // The nested-ownership case (Review Focus #1's mechanism): a stand-in
+  // overlay registered ABOVE the open dialog. One Escape must close ONLY
+  // the stand-in — routing goes to the topmost, and the window-capture stop
+  // keeps Base UI's dismissal from ALSO closing the dialog underneath.
+  await panelLibraryButton.click()
+  await expect(dialog).toBeVisible({ timeout: 10_000 })
+  const standIn = page.locator('[data-e2e-stand-in-layer]')
+  const registered = await page.evaluate(() => {
+    const probe = (window as unknown as {
+      __studioLayerProbe?: {
+        layerIds(): string[]
+        registerLayer(registration: { id: string; modal?: boolean; onEscape(event: KeyboardEvent): void }): () => void
+      }
+    }).__studioLayerProbe
+    if (!probe) return '(probe not bound)'
+    const overlay = document.createElement('div')
+    overlay.setAttribute('data-e2e-stand-in-layer', 'hook-overlay')
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.35)'
+    document.body.appendChild(overlay)
+    let unregister = () => {}
+    unregister = probe.registerLayer({ id: 'e2e-hook-overlay', modal: true, onEscape: () => { overlay.remove(); unregister() } })
+    return probe.layerIds().join('|')
+  })
+  expect(registered).toBe('prompt-library|e2e-hook-overlay')
+  await expect(standIn).toHaveCount(1)
+
+  await page.keyboard.press('Escape')
+  await expect(standIn).toHaveCount(0) // the topmost layer took the Escape
+  await expect(dialog).toBeVisible() // ... and the dialog UNDERNEATH stayed open
+  expect(await stackVia()).toBe('prompt-library')
+
+  // Nested layers unwind topmost-first: the next Escape belongs to the dialog.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(panelLibraryButton).toBeFocused()
+
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 // Wave 2d successor — the filmstrip/pool capability on the post-deletion app.
 // The old Library's video cards are gone; the canvas media tile is the video
 // surface now. A real mp4 ingested through the canvas file input lands as a
