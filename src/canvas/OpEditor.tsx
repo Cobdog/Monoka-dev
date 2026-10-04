@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Brush, Eraser, Lock, Plus, Undo2 } from 'lucide-react'
 import { StudioDialog } from '../ui/StudioDialog'
+import { StudioSelect } from '../ui/StudioSelect'
 import { documentsApi } from './api'
 import { moveOpPermutation, opKindsFor, OP_META, opPreviewStyle, opSummary, readOpSettings, type MaskStroke } from './ops'
 import { useCanvasStore } from './store'
@@ -350,10 +351,10 @@ export function OpEditor() {
               const crop = readOpSettings('crop', selectedOp.settings) as { x: number; y: number; zoom: number; fit: 'crop' | 'contain' }
               return <>
                 <label>fit
-                  <select data-canvas-op-field="fit" value={crop.fit} onChange={(event) => patchSelected({ fit: event.target.value as 'crop' | 'contain' }, true)}>
+                  <StudioSelect data-canvas-op-field="fit" value={crop.fit} onChange={(event) => patchSelected({ fit: event.target.value as 'crop' | 'contain' }, true)}>
                     <option value="crop">fill frame · crop edges</option>
                     <option value="contain">fit whole · bars</option>
-                  </select>
+                  </StudioSelect>
                 </label>
                 <label>focal x<input data-canvas-op-field="x" type="range" min={0} max={1} step={0.01} value={crop.x} disabled={crop.fit === 'contain'} onChange={(event) => patchSelected({ x: Number(event.target.value) })} /></label>
                 <label>focal y<input data-canvas-op-field="y" type="range" min={0} max={1} step={0.01} value={crop.y} disabled={crop.fit === 'contain'} onChange={(event) => patchSelected({ y: Number(event.target.value) })} /></label>
@@ -423,11 +424,11 @@ export function OpEditor() {
               const upscale = readOpSettings('upscale', selectedOp.settings) as { mode: string }
               return <>
                 <label>engine
-                  <select data-canvas-op-field="mode" value={upscale.mode} onChange={(event) => patchSelected({ mode: event.target.value }, true)}>
+                  <StudioSelect data-canvas-op-field="mode" value={upscale.mode} onChange={(event) => patchSelected({ mode: event.target.value }, true)}>
                     <option value="rtx">AI upscale model (RTX)</option>
                     <option value="lbh2d">LBH-123-AI 2D latent</option>
                     <option value="lbh3d">LBH-123-AI 3D latent</option>
-                  </select>
+                  </StudioSelect>
                 </label>
                 <p className="canvas-op-note">Dual-mode: this stack op rides the chain's render (settings stay in sync); the fork gesture covers the fork side.</p>
               </>

@@ -24,6 +24,7 @@ import { STATUS_LABEL } from './derive'
 import { deriveTimeline, GAP_LABEL, GAP_MECHANISM_LABEL, GAP_MENU, readPlanDocument, type PlanGapKind, type TimelineGapView } from './plan'
 import { TIMELINE_TONE } from '../ui/statusToken'
 import { isTypingTarget } from '../ui/overlayBehavior'
+import { StudioSelect } from '../ui/StudioSelect'
 import { useOverlayBehavior } from '../ui/useOverlayBehavior'
 import { useCanvasStore } from './store'
 import { useJobsStore } from '../state/jobsStore'
@@ -98,9 +99,12 @@ function KindIcon({ kind }: { kind: 'video' | 'image' | 'audio' | null }) {
 
 /** The measured gap menu (§6) — a NESTED surface since task 14: registered
  *  with the layer registry ABOVE the timeline while open, one Escape closes
- *  only the menu and the projection survives the press. (The menu idiom
- *  itself — one dismissal shape across ForkMenu/EndpointMenu/this — unifies
- *  at task 16's PopoverMenu.) */
+ *  only the menu and the projection survives the press. Deliberately NOT a
+ *  task-16 PopoverMenu consumer: the menu is positioned and stacked INSIDE
+ *  the projection panel (absolute, z 5 under the panel's own layer) — the
+ *  shared component's body-level portal would re-anchor it to the viewport
+ *  and paint it under the panel. The stale-gapMenu flag cleanup rides the
+ *  overlay (the effect below). */
 function TimelineGapMenu({ gap, footer, onChoose, onClose }: {
   gap: TimelineGapView
   footer: string
@@ -193,6 +197,17 @@ export function TimelineOverlay() {
     if (open) focusOnOpen()
   }, [open, focusOnOpen])
 
+  // The open gap, resolved BEFORE the early return (the stale-flag effect
+  // below needs it while the panel is mounted).
+  const openGap = projection.gaps.find((gap) => gap.afterSegmentId === gapMenu?.afterSegmentId)
+  // The stale-gapMenu flag (task 14's ledger, cleaned at task 16): a gap
+  // that no longer resolves (its segment left the plan while the menu flag
+  // was set) must leave NO menu mounted and NO flag waiting — the store's
+  // flag dies with the gap, so nothing resurrects a menu on a later derive.
+  useEffect(() => {
+    if (gapMenu && !openGap) store().setGapMenu(null)
+  }, [gapMenu, openGap, store])
+
   if (!open) return null
 
   const close = () => store().setTimelineOpen(false)
@@ -231,7 +246,6 @@ export function TimelineOverlay() {
     return Boolean(next && next.chainId && plan.gaps.some((gap) => gap.afterSegmentId === segment.id && gap.kind === 'flf'))
   }) : -1
 
-  const openGap = projection.gaps.find((gap) => gap.afterSegmentId === gapMenu?.afterSegmentId)
   const openGapRight = plan ? plan.segments.find((segment) => segment.id === gapMenu?.afterSegmentId) : undefined
 
   // V stays the flip family's own key while a projection is open (§0.2) —
@@ -253,14 +267,14 @@ export function TimelineOverlay() {
         <LayoutList size={15} />
         <strong className="canvas-timeline-title">{planRow ? `Timeline — plan (${plan ? plan.segments.length : 0} segments)` : 'Timeline — chain outputs (unplanned chronology)'}</strong>
         <span className="canvas-timeline-total">{projection.items.length} items · {Math.round(projection.plannedDuration)}s planned{projection.renderedDuration ? ` · ${Math.round(projection.renderedDuration)}s rendered` : ''}</span>
-        {plans.length > 1 && <select
+        {plans.length > 1 && <StudioSelect
           className="canvas-timeline-plan-select"
           aria-label="Plan"
           value={planRow?.id ?? ''}
           onChange={(event) => useCanvasStore.setState({ timelinePlanId: event.target.value })}
         >
           {plans.map((entry, index) => <option key={entry.id} value={entry.id}>Plan {index + 1} — {readPlanDocument(entry.document).segments.length} segments</option>)}
-        </select>}
+        </StudioSelect>}
         {!planRow && document && document.chains.some((chain) => chain.outputs.some((output) => output.takes.length)) && (
           <button type="button" className="chip canvas-chip" data-canvas-timeline-adopt onClick={() => void store().adoptChronology()}>Plan this chronology</button>
         )}

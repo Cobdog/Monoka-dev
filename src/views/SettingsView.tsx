@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { GitBranch, Wand2 } from 'lucide-react'
 import { Activity, AlertCircle, Check, ChevronDown, Cpu, Eye, Folder, FolderOpen, Gauge, HardDrive, Info, Layers, Power, RefreshCw, Scale, ServerCog, SlidersHorizontal, Sparkles, Stethoscope, Unplug } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { StudioSelect } from '../ui/StudioSelect'
 import type { AppSettings, ComfyStatus, LlmModelsResult, ManagerAvailability, ModelFile, ModelKind, NodePackActionResult, NodePackStatus, OllamaModel, UpscaleMode } from '../types'
 import { choices, type ObjectInfo } from '../lib/comfyInfo'
 import { subscribe } from '../lib/useRealtime'
@@ -337,9 +338,9 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
         </div>
         <div className="connection-row">
           <div className="field-group"><label htmlFor="managed-profile">Launch profile</label>
-            <select id="managed-profile" value={settings.engine.profile} onChange={(event) => updateEngine({ profile: event.target.value })}>
+            <StudioSelect wrapClassName="select-wrap" chevronSize={15} id="managed-profile" value={settings.engine.profile} onChange={(event) => updateEngine({ profile: event.target.value })}>
               {profileIds.map((id) => <option key={id} value={id}>{settings.engine.profiles[id].label}</option>)}
-            </select>
+            </StudioSelect>
           </div>
           <p className="settings-note managed-engine-note">{activeProfile?.description}</p>
         </div>
@@ -500,19 +501,16 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
               const outcome = value ? overridePickOutcome(family.id, slot, value, models) : null
               return <div className={`model-override-row${outcome?.state === 'refused' ? ' refused' : outcome?.state === 'degraded' ? ' degraded' : ''}`} key={slot} data-model-override-slot={slot}>
                 <div className="model-override-slot"><strong>{SLOT_LABELS[slot]}</strong><small>{candidates.length} {kind.replace(/_/g, ' ')} file{candidates.length === 1 ? '' : 's'} on the connected engine</small></div>
-                <div className="select-wrap">
-                  <select aria-label={`${family.label} — ${SLOT_LABELS[slot]}`} value={value} onChange={(event) => setModelOverride(family.id, slot, event.target.value)}>
-                    <option value="">auto (inferred){autoFile ? ` — ${autoFile}` : ' — nothing detected'}</option>
-                    {/* (M3) Every option carries its CLASS at the choice point —
-                        the same heuristics the validate-time guards use, shown
-                        before the pick instead of refusing after it. */}
-                    {candidates.map((model) => {
-                      const hint = modelClassHint(kind, model.name)
-                      return <option key={model.name} value={model.name}>{hint ? `${model.name} · ${hint}` : model.name}</option>
-                    })}
-                  </select>
-                  <ChevronDown size={15} />
-                </div>
+                <StudioSelect wrapClassName="select-wrap" chevronSize={15} aria-label={`${family.label} — ${SLOT_LABELS[slot]}`} value={value} onChange={(event) => setModelOverride(family.id, slot, event.target.value)}>
+                  <option value="">auto (inferred){autoFile ? ` — ${autoFile}` : ' — nothing detected'}</option>
+                  {/* (M3) Every option carries its CLASS at the choice point —
+                      the same heuristics the validate-time guards use, shown
+                      before the pick instead of refusing after it. */}
+                  {candidates.map((model) => {
+                    const hint = modelClassHint(kind, model.name)
+                    return <option key={model.name} value={model.name}>{hint ? `${model.name} · ${hint}` : model.name}</option>
+                  })}
+                </StudioSelect>
                 {!value && !autoFile && family.emptyAutoHint?.[slot] && <p className="model-override-problem" data-model-override-requirement={slot} role="status">{family.emptyAutoHint[slot]}</p>}
                 {outcome?.state === 'refused' && <p className="model-override-problem" data-model-override-problem role="alert">Refused — {outcome.reason} Clear the pick to render on auto.</p>}
                 {outcome?.state === 'degraded' && <p className="model-override-problem" data-model-override-problem role="status">{outcome.warning}</p>}
@@ -574,7 +572,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
       </div>
       <div className="ollama-grid">
         <div className="field-group"><label htmlFor="ollama-url">Ollama URL</label><input id="ollama-url" value={settings.ollamaUrl} onChange={(event) => setSettings({ ...settings, ollamaUrl: event.target.value })} /></div>
-        <div className="field-group"><label htmlFor="ollama-model">Local model</label><div className="select-wrap"><select id="ollama-model" value={settings.ollamaModel} onChange={(event) => setSettings({ ...settings, ollamaModel: event.target.value })} disabled={ollamaModels.length === 0}>{ollamaModels.length === 0 ? <option value="">No local text models detected</option> : ollamaModels.map((model) => <option value={model.name} key={model.name}>{model.name}{model.parameterSize ? ` · ${model.parameterSize}` : ''}</option>)}</select><ChevronDown size={15} /></div></div>
+        <div className="field-group"><label htmlFor="ollama-model">Local model</label><StudioSelect wrapClassName="select-wrap" chevronSize={15} id="ollama-model" value={settings.ollamaModel} onChange={(event) => setSettings({ ...settings, ollamaModel: event.target.value })} disabled={ollamaModels.length === 0}>{ollamaModels.length === 0 ? <option value="">No local text models detected</option> : ollamaModels.map((model) => <option value={model.name} key={model.name}>{model.name}{model.parameterSize ? ` · ${model.parameterSize}` : ''}</option>)}</StudioSelect></div>
         <button className="secondary-button test-button" onClick={onRefreshOllama}><RefreshCw size={16} />Refresh models</button>
       </div>
       <p className="settings-note">Prompts go directly to the local Ollama server. Embedding and cloud-backed models are excluded.</p>

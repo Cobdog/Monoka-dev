@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { Aperture, AudioLines, Camera, ChevronRight, Lightbulb, MapPin, Move, Plus, Scan, Search, Shirt, Sparkles, Users } from 'lucide-react'
 import { promptPresetCategories, promptPresets, searchPromptPresets } from '../lib/promptPresets'
+import { registerLayer } from '../ui/layerRegistry'
 import type { PromptPresetCategory } from '../types'
 
 export type SmartInsertOption = { id: string; category: 'character' | 'wardrobe' | 'location'; label: string; description: string; insertion: string; thumbnail?: string; meta?: string; onSelect?: (nextValue: string) => void }
@@ -28,6 +29,21 @@ export const SmartPromptEditor = forwardRef<SmartPromptEditorHandle, { id: strin
 
   useEffect(() => setActive(0), [query])
   useEffect(() => { if (open) resultsRef.current?.querySelector<HTMLElement>(`[data-preset-index="${active}"]`)?.scrollIntoView({ block: 'nearest' }) }, [active, open, results])
+  // Task 16 (manifest §9, the dismissal-idiom unification): while the
+  // insert menu is open it joins the ONE Escape mechanism — registered with
+  // the layer registry, so one routed press closes the menu ALONE.
+  // Pre-migration the palette's own Escape handling ran first and the SAME
+  // keystroke then leaked to CanvasApp's window chain, deselecting the
+  // canvas selection behind the editor. The palette's OTHER keys (arrows,
+  // PgUp/PgDn, Enter and Tab insert) stay its own local handlers below.
+  useEffect(() => {
+    if (!open) return undefined
+    return registerLayer({
+      id: 'smart-insert-menu',
+      modal: true,
+      onEscape: () => { setOpen(false); setCommandStart(null); inputRef.current?.focus() },
+    })
+  }, [open])
 
   const insert = (text: string, option?: SmartInsertOption) => {
     const input = inputRef.current
@@ -76,7 +92,9 @@ export const SmartPromptEditor = forwardRef<SmartPromptEditorHandle, { id: strin
     else if (event.key === 'Home') { event.preventDefault(); setActive(0) }
     else if (event.key === 'End') { event.preventDefault(); setActive(Math.max(0, results.length - 1)) }
     else if (event.key === 'Enter' || (event.key === 'Tab' && results.length > 0)) { event.preventDefault(); selectResult(active) }
-    else if (event.key === 'Escape') { event.preventDefault(); setOpen(false); setCommandStart(null); inputRef.current?.focus() }
+    // Escape is NOT handled here: the registry consumes it at window-capture
+    // while the menu is registered (the effect above) — one press, one
+    // dismissal, no leak to the window chain behind.
   }
 
   return <div className={`smart-prompt-editor ${className}`} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) window.setTimeout(() => setOpen(false), 100) }}>

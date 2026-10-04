@@ -11,6 +11,7 @@ import type { PromptLibraryItem } from '../types'
 import { PROMPT_LIBRARY_EVENT, deletePromptEntry, loadPromptLibrary, savePromptEntry, type SavedPromptEntry } from '../lib/promptLibraryStorage'
 import { deleteServerPromptEntry, saveServerPromptEntries, searchSavedPrompts } from '../lib/serverStorage'
 import { StudioDialogLayered } from '../ui/StudioDialogLayered'
+import { StudioSelect } from '../ui/StudioSelect'
 import { StudioTab, StudioTabs } from '../ui/StudioTabs'
 
 const SORTS = ['Most Reactions', 'Most Comments', 'Newest', 'Oldest']
@@ -133,7 +134,7 @@ export function PromptLibraryBrowser({ onClose, onInsert, finalFocusRef }: { onC
           <>
             <div className="prompt-library-controls">
               <div className="select-wrap grow"><input value={text} onChange={(event) => setText(event.target.value)} placeholder="Search community prompts…" onKeyDown={(event) => { if (event.key === 'Enter') void run() }} aria-label="Search community prompts" /></div>
-              <div className="select-wrap"><select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort">{SORTS.map((option) => <option key={option} value={option}>{option}</option>)}</select></div>
+              <StudioSelect wrapClassName="select-wrap" chevronSize={15} value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort">{SORTS.map((option) => <option key={option} value={option}>{option}</option>)}</StudioSelect>
               <label className="prompt-library-nsfw" title="Restrict results to generations made with MiniMax H3"><input type="checkbox" checked={scope === 'h3'} onChange={(event) => setScope(event.target.checked ? 'h3' : 'all')} />H3 only</label>
               <label className="prompt-library-nsfw" title="Include adult-rated results"><input type="checkbox" checked={nsfw} onChange={(event) => setNsfw(event.target.checked)} />Adult</label>
               <Button variant="primary" className="primary-button" size={15} busy={loading} icon={<Search size={15} />} onClick={() => void run()}>Search</Button>

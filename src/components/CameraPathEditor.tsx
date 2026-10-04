@@ -15,6 +15,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { Camera, Crosshair, Move3d, Trash2 } from 'lucide-react'
 import { StudioDialog } from '../ui/StudioDialog'
+import { StudioSelect } from '../ui/StudioSelect'
 import {
   CAMERA_MOVE_PRESETS, applyCameraBoxText, applyCameraMovePreset, cameraBoxText, compileCameraDoc,
   parseCameraBoxText, planEndOf, readCameraPathDoc, type CameraPathDoc,
@@ -330,35 +331,35 @@ export function CameraPathEditor(props: {
       <div className="camera-path-controls">
         <label className="camera-path-field">
           duration profile
-          <select
+          <StudioSelect
             data-camera-profile
             value={doc.profile}
             onChange={(event) => setDoc((current) => ({ ...current, profile: event.target.value }))}
           >
             {Object.keys(PROFILES).map((profile) => <option key={profile} value={profile}>{profile}</option>)}
-          </select>
+          </StudioSelect>
         </label>
         <p className="camera-path-note" data-camera-profile-note>
           chain {duration.toFixed(1)}s ≈ {chainFrames} frames — the compiler ships three proven profiles (the engine frame grid); timing below uses {(planEnd).toFixed(3)}s.
         </p>
         <label className="camera-path-field">
           interpolation
-          <select data-camera-interpolation value={doc.interpolation} onChange={(event) => setDoc((current) => ({ ...current, interpolation: event.target.value === 'linear' ? 'linear' : 'smooth' }))}>
+          <StudioSelect data-camera-interpolation value={doc.interpolation} onChange={(event) => setDoc((current) => ({ ...current, interpolation: event.target.value === 'linear' ? 'linear' : 'smooth' }))}>
             <option value="smooth">smooth</option>
             <option value="linear">linear</option>
-          </select>
+          </StudioSelect>
         </label>
         <label className="camera-path-field">
           elevation range
-          <select data-camera-elevation-range value={doc.elevationRange} onChange={(event) => setDoc((current) => ({ ...current, elevationRange: event.target.value }))}>
+          <StudioSelect data-camera-elevation-range value={doc.elevationRange} onChange={(event) => setDoc((current) => ({ ...current, elevationRange: event.target.value }))}>
             {Object.keys(ELEVATION_RANGES).map((range) => <option key={range} value={range}>{range}°</option>)}
-          </select>
+          </StudioSelect>
         </label>
         <label className="camera-path-field">
           orbit calibration (H3 mirror quirk)
-          <select data-camera-direction value={doc.orbitDirection} onChange={(event) => setDoc((current) => ({ ...current, orbitDirection: event.target.value }))}>
+          <StudioSelect data-camera-direction value={doc.orbitDirection} onChange={(event) => setDoc((current) => ({ ...current, orbitDirection: event.target.value }))}>
             {ORBIT_DIRECTIONS.map((direction) => <option key={direction} value={direction}>{direction}</option>)}
-          </select>
+          </StudioSelect>
         </label>
         {mirrorCheck && <p className="camera-path-mirror" data-camera-mirror>{mirrorCheck}</p>}
         <label className="camera-path-field">
@@ -388,11 +389,11 @@ export function CameraPathEditor(props: {
           <div className="camera-path-keyframe-row">
             <label className="camera-path-field">
               keyframe
-              <select data-camera-keyframe-select value={selected} onChange={(event) => setSelected(Number(event.target.value))}>
+              <StudioSelect data-camera-keyframe-select value={selected} onChange={(event) => setSelected(Number(event.target.value))}>
                 {doc.keyframes.map((point, index) => (
                   <option key={index} value={index}>{index + 1}{index === 0 ? ' · anchor' : ` · ${(point.time * planEnd).toFixed(2)}s`}</option>
                 ))}
-              </select>
+              </StudioSelect>
             </label>
             <button
               type="button"

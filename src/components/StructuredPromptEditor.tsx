@@ -12,6 +12,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { Camera, ChevronDown, ChevronRight, Copy, CopyPlus, Sparkles, Trash2, WandSparkles } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { StudioSelect } from '../ui/StudioSelect'
 import type { GenerationMode } from '../types'
 import type { LlmStreamUi } from '../lib/useLlmStream'
 import { CameraPathEditor } from './CameraPathEditor'
@@ -330,7 +331,7 @@ export function StructuredPromptEditor(props: {
                 <button type="button" data-structured-subject-add onClick={() => patch({ subjects: [...draft.subjects, { id: structuredId('subject'), name: '', appearance: '', wardrobe: '', features: '' }] })}>
                   + subject card
                 </button>
-                <select
+                <StudioSelect
                   aria-label="Pin a subject from the library or identity payload"
                   data-structured-subject-pin
                   value=""
@@ -340,7 +341,7 @@ export function StructuredPromptEditor(props: {
                   {pinSources.identitySubjectText.trim() && <option value="identity">the chain identity payload</option>}
                   {pinSources.characters.map((character) => <option key={character.id} value={`character:${character.id}`}>character · {character.name}</option>)}
                   {pinSources.assets.map((asset) => <option key={asset.id} value={`asset:${asset.id}`}>{asset.kind === 'location' ? 'location' : 'character'} asset · {asset.label}</option>)}
-                </select>
+                </StudioSelect>
                 {assistButtons('subjects')}
               </div>
             </div>
@@ -438,9 +439,9 @@ export function StructuredPromptEditor(props: {
               onChange={(event) => patch({ audio: { ...draft.audio, dialogue: event.target.value } })}
             />
             <div className="structured-dialogue-helper" data-structured-dialogue-helper>
-              <select aria-label="Dialogue language" data-structured-dialogue-language value={dialogueLanguage} onChange={(event) => setDialogueLanguage(event.target.value)}>
+              <StudioSelect aria-label="Dialogue language" data-structured-dialogue-language value={dialogueLanguage} onChange={(event) => setDialogueLanguage(event.target.value)}>
                 {DIALOGUE_LANGUAGES.map((language) => <option key={language} value={language}>{language}</option>)}
-              </select>
+              </StudioSelect>
               <input
                 aria-label="New dialogue line"
                 data-structured-dialogue-line

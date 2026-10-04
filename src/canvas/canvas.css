@@ -742,6 +742,10 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-lora-range { display: grid; gap: 5px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 9px; }
 .canvas-lora-range-slots { display: grid; gap: 5px; }
 .canvas-lora-slot { display: flex; align-items: center; gap: 5px; }
+/* Task 16 (P06): StudioSelect's wrap is the row's flex child now — the box
+   geometry the select carried (grow + shrink floor) moves to the wrap; the
+   select rule keeps its paint and still fills the wrap from inside. */
+.canvas-lora-slot .studio-select { flex: 1; min-width: 0; }
 .canvas-lora-slot select { flex: 1; min-width: 0; padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); color: var(--text); font-size: var(--text-sm); }
 .canvas-lora-slot input[type="number"] { width: 58px; padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface); color: var(--text); font-size: var(--text-sm); }
 .canvas-lora-range-span { display: flex; align-items: center; gap: 6px; color: var(--muted-2); font-size: var(--text-2xs); }

@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Database, Download, FolderOpen, Layers, LoaderCircle, Pin, Plus, RefreshCw, Search, Settings, Sparkles, Trash2, Upload, Video } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { StudioSelect } from '../ui/StudioSelect'
 import { datasetsApi, mediaUrlFor, type AspectEntry, type DashboardPayload, type DatasetSettings, type ExportResultPayload, type LibraryLayer, type LibrarySource } from './api'
 import { useStudioSession } from '../hooks/useStudioSession'
 import { submitH3DiagnosticPair } from '../lib/h3Diagnostics'
@@ -745,12 +746,12 @@ function MasterCard(props: {
             <Button variant="secondary" className="ds-btn small" aria-label="Pin onto the canvas as a reference asset" onClick={() => props.onPin(layer)} title="Pin onto the canvas as a reference asset"><Pin size={11} /></Button>
             {layer.slowmoDisposition
               ? <span className="ds-disposition">{layer.slowmoDisposition}</span>
-              : <select className="ds-disposition-select" defaultValue="" onChange={(event) => event.target.value && props.onSlowMo(layer, event.target.value)} title="Slow-mo disposition (gate 4)">
+              : <StudioSelect className="ds-disposition-select" defaultValue="" onChange={(event) => event.target.value && props.onSlowMo(layer, event.target.value)} title="Slow-mo disposition (gate 4)">
                   <option value="">disposition…</option>
                   <option value="retime">retime</option>
                   <option value="caption">caption-honestly</option>
                   <option value="exclude">exclude</option>
-                </select>}
+                </StudioSelect>}
           </div>
         </div>
       ))}

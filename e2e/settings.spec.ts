@@ -684,3 +684,83 @@ test('button: busy = LoaderCircle + aria-busy + disabled', async ({ page }) => {
   await expect(testButton.locator('.spin')).toHaveCount(0)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
+
+// StudioSelect (component vocabulary task 16, manifest §9 — the select
+// census's settings rows): the styled NATIVE select keeps every platform
+// semantic while the component adds the affordances the bare <select> never
+// had — the chevron over an appearance:none control (the platform arrow is
+// retired), ellipsis overflow for long option text, and visible focus. The
+// EAGER VALUE CAPTURE is the component's documented contract (spec §0.2, the
+// T2 bug class): the native select commits its value on EVERY gesture — one
+// ArrowDown on the closed control fires `change` immediately, no deferred
+// commit — and consumers read event.target.value at dispatch. Failing
+// pre-migration: no .studio-select wrap exists (the row was a bare native
+// select riding the platform arrow).
+test('studio select: chevron/overflow/focus-visible; eager value capture', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const original = await originalSettings(page)
+  try {
+    await page.goto('/')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await openSettings(page)
+
+    // The engine-mode toggle persists immediately (the shared-home
+    // discipline: restore in finally); Managed reveals the profile row.
+    const modeButtons = page.locator('.managed-engine-section .preset-row button')
+    await modeButtons.nth(1).click()
+    const select = page.locator('#managed-profile')
+    await expect(select).toBeVisible()
+
+    // The component: a NATIVE select inside the .studio-select wrap — no
+    // custom listbox — with the platform arrow retired and the chevron
+    // sibling overlaid (the recipe reserves the icon's room in the
+    // select's own right padding, whatever the surface's geometry). The
+    // settings surface carries one per row (27+ across the dock), so the
+    // pin scopes to THIS select's own wrap.
+    const wrap = page.locator('.studio-select').filter({ has: page.locator('#managed-profile') })
+    await expect(wrap).toHaveCount(1)
+    expect(await select.evaluate((element) => element.tagName)).toBe('SELECT')
+    expect(await select.evaluate((element) => getComputedStyle(element).appearance)).toBe('none')
+    await expect(wrap.locator('svg')).toBeVisible()
+    expect(await select.evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingRight))).toBeGreaterThanOrEqual(20)
+
+    // Overflow: long option text truncates with an ellipsis.
+    expect(await select.evaluate((element) => getComputedStyle(element).textOverflow)).toBe('ellipsis')
+
+    // Visible focus (the form tier swaps the outline for its border+ring
+    // treatment — retained .field-group select:focus): keyboard focus
+    // visibly changes the control against its own resting paint.
+    const restingPaint = await select.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { border: style.borderTopColor, shadow: style.boxShadow }
+    })
+    await page.locator('#managed-python').click()
+    for (let step = 0; step < 6 && !(await select.evaluate((element) => element === document.activeElement)); step += 1) {
+      await page.keyboard.press('Tab')
+    }
+    await expect(select).toBeFocused()
+    const focusPaint = await select.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { border: style.borderTopColor, shadow: style.boxShadow }
+    })
+    expect(focusPaint.shadow !== 'none' || focusPaint.border !== restingPaint.border).toBe(true)
+
+    // EAGER capture: one ArrowDown = one `change` with the moved value —
+    // the platform commits per gesture; StudioSelect passes it through.
+    await select.evaluate((element) => {
+      (window as unknown as { __studioSelectChanges?: number }).__studioSelectChanges = 0
+      element.addEventListener('change', () => {
+        (window as unknown as { __studioSelectChanges?: number }).__studioSelectChanges! += 1
+      })
+    })
+    const before = await select.inputValue()
+    await page.keyboard.press('ArrowDown')
+    await expect(select).not.toHaveValue(before)
+    await page.keyboard.press('ArrowUp')
+    await expect.poll(() => select.evaluate(() => (window as unknown as { __studioSelectChanges?: number }).__studioSelectChanges)).toBe(2)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await restoreSettings(page, original).catch(() => undefined)
+  }
+})

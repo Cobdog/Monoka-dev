@@ -5593,3 +5593,124 @@ test('overlay hook: V is dead over a modal dialog — the projection cannot flip
   await expect(page.locator('[data-canvas-timeline]')).toBeVisible()
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
+
+// PopoverMenu (component vocabulary task 16, manifest §9 — the dismissal-
+// idiom unification): the endpoint/fork menus replace their hand-rolled
+// dismissal (a backdrop onClick with NO Escape; a backdrop plus an inline
+// stopPropagation'd Escape) with the ONE idiom — Escape through the layer
+// registry (topmost-only) + outside-press through Base UI — plus the menu's
+// OWN local arrow navigation (the T14 doctrine: the registry owns
+// Escape-class dismissal, never navigation). Failing pre-migration: the
+// menus never register with the layer registry (empty probe stack) and
+// carry no arrow walk.
+test('popover menu: one Escape closes topmost only; outside-press via Base UI', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=layers')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  const stackVia = () => page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })
+  await dropPng(page, 'popover-source.png')
+  const mediaTile = page.locator('[data-canvas-tile]').first()
+  await expect(mediaTile).toBeVisible({ timeout: 10_000 })
+  await page.waitForTimeout(900) // fly-to settle (d3 transition) before clicking
+
+  // The produce menu opens REGISTERED — the stack names it, and the modal
+  // registration suspends the background chain while it holds the keyboard.
+  await mediaTile.locator('[data-canvas-endpoint="tail"]').click()
+  const menu = page.locator('[data-canvas-endpoint-menu="produce"]')
+  await expect(menu).toBeVisible()
+  await expect.poll(stackVia).toBe('canvas-endpoint-menu')
+
+  // Local arrows: focus entered the panel on open; ArrowDown walks into the
+  // rows (the menu's own navigation — the window chain never sees the key).
+  await page.keyboard.press('ArrowDown')
+  await expect.poll(() => page.evaluate(() => {
+    const active = document.activeElement
+    return active instanceof HTMLElement && active.tagName === 'BUTTON' && active.closest('[data-canvas-endpoint-menu]') !== null
+  })).toBe(true)
+
+  // ONE Escape closes exactly the TOPMOST layer: with the palette summoned
+  // over the menu, the first press closes only the palette (the menu
+  // survives), the second only the menu — no cascade, no deselect behind.
+  await page.keyboard.press('ControlOrMeta+k')
+  const palette = page.locator('[data-canvas-index]')
+  await expect(palette).toBeVisible()
+  expect(await stackVia()).toBe('canvas-endpoint-menu|canvas-index')
+  await page.keyboard.press('Escape')
+  await expect(palette).toHaveCount(0)
+  await expect(menu).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  await expect(mediaTile).toBeVisible()
+
+  // Outside-press (Base UI — the one idiom): a click on the canvas behind
+  // the reopened menu closes it.
+  await mediaTile.locator('[data-canvas-endpoint="tail"]').click()
+  await expect(menu).toBeVisible()
+  await page.mouse.click(24, 24)
+  await expect(menu).toHaveCount(0)
+
+  // The fork menu (B) — the menu that had NO Escape of its own before the
+  // unification — is the same idiom: registered, one Escape closes it alone.
+  await mediaTile.click()
+  await page.waitForTimeout(300)
+  await page.keyboard.press('b')
+  const forkMenu = page.locator('[data-canvas-fork-menu]')
+  await expect(forkMenu).toBeVisible()
+  await expect.poll(stackVia).toBe('canvas-fork-menu')
+  await page.keyboard.press('Escape')
+  await expect(forkMenu).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// The stale-gapMenu flag (task 14's ledger, cleaned at task 16): a gap that
+// stops resolving (its segment left the plan while the menu flag was set)
+// renders no menu AND leaves no flag waiting to resurrect one — the layer
+// stack unwinds to the projection alone, and a later gap still opens. The
+// gap menu itself stays the T14 hook consumer (deliberately NOT a
+// PopoverMenu: its panel-relative positioning and z would break in the
+// shared component's body-level portal — see TimelineGapMenu's docblock).
+test('gap menu: a gap that stops resolving renders no menu and leaves no stale flag', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=layers')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  const stackVia = () => page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })
+  await page.keyboard.press('v')
+  const timeline = page.locator('[data-canvas-timeline]')
+  await expect(timeline).toBeVisible()
+  await timeline.locator('[data-canvas-timeline-new-plan]').click()
+  await expect(timeline.locator('[data-canvas-plan-brief]')).toBeVisible({ timeout: 10_000 })
+  await timeline.locator('[data-canvas-plan-add-segment]').click()
+  await timeline.locator('[data-canvas-plan-add-segment]').click()
+  await timeline.locator('[data-canvas-plan-add-segment]').click()
+  await expect(timeline.locator('[data-canvas-segment]')).toHaveCount(3)
+  await page.waitForTimeout(500)
+  await timeline.locator('[data-canvas-gap]').first().click()
+  const menu = timeline.locator('[data-canvas-gap-menu]')
+  await expect(menu).toBeVisible()
+  await expect.poll(stackVia).toBe('canvas-timeline|canvas-gap-menu')
+
+  // The gap's own segment leaves the plan — the gap stops resolving, so no
+  // menu renders and no layer lingers: the stack is the projection alone.
+  // (DOM-driven click: the open menu overlays the editor's Remove button —
+  // the T14 menu has no outside-press, and the pin is the CLEANUP, not the
+  // click path.)
+  await page.locator('[data-canvas-segment-remove]').first().evaluate((element) => (element as HTMLElement).click())
+  await expect(menu).toHaveCount(0)
+  await expect.poll(stackVia).toBe('canvas-timeline')
+  // The cleaned flag is not a zombie: opening the remaining gap still works.
+  await page.waitForTimeout(300)
+  await timeline.locator('[data-canvas-gap]').first().click()
+  await expect(timeline.locator('[data-canvas-gap-menu]')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(timeline.locator('[data-canvas-gap-menu]')).toHaveCount(0)
+  await expect(timeline).toBeVisible()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
