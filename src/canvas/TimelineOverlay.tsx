@@ -22,6 +22,7 @@ import { Film, Image as ImageIcon, LayoutList, Link2, Music2, Plus, Scissors, X 
 import { documentsApi } from './api'
 import { STATUS_LABEL } from './derive'
 import { deriveTimeline, GAP_LABEL, GAP_MECHANISM_LABEL, GAP_MENU, readPlanDocument, type PlanGapKind } from './plan'
+import { TIMELINE_TONE } from '../ui/statusToken'
 import { useCanvasStore } from './store'
 import { useJobsStore } from '../state/jobsStore'
 import { useWindowedList } from './useWindowedList'
@@ -78,14 +79,13 @@ function SegmentPromptField({ planRowId, segmentId, prompt }: { planRowId: strin
   return <textarea data-canvas-segment-prompt value={field.fieldValue} placeholder="This segment's prompt — subject, action, camera, light…" onChange={(event) => field.commit(event.target.value)} onBlur={() => { const next = field.settled(); if (next !== prompt) void updatePlanSegment(planRowId, segmentId, { prompt: next }) }} />
 }
 
-const STATUS_TONE: Record<string, string> = {
-  idle: 'var(--muted-2)',
-  'queued-gpu': 'var(--accent)',
-  running: 'var(--accent)',
-  stale: 'var(--warning)',
-  failed: 'var(--danger, #e5484d)',
-  unseeded: 'var(--muted-2)',
-}
+// The strip's tone ladder lives in statusToken's TIMELINE_TONE adapter
+// (task 4): it intentionally diverges from the tile ring's map on
+// idle/queued-gpu/running (accent for the plan's own committed + active
+// segments) — each difference is a row in statusToken's divergence table.
+// (The old hand map also carried a dead #e5484d fallback on --danger —
+// gone with the map; the token is :root-defined and asserted by the
+// statusToken suite.)
 
 function KindIcon({ kind }: { kind: 'video' | 'image' | 'audio' | null }) {
   if (kind === 'audio') return <Music2 size={13} />
@@ -209,7 +209,7 @@ export function TimelineOverlay() {
                 {!item.artifactPath && !item.previewPath && <span className="canvas-timeline-poster empty"><KindIcon kind={item.mediaKind} /></span>}
                 <span className="canvas-timeline-item-title">{item.title}</span>
                 <span className="canvas-timeline-item-meta">
-                  <i style={{ background: STATUS_TONE[item.status] ?? 'var(--muted-2)' }} data-canvas-timeline-item-status={item.status} />
+                  <i style={{ background: `var(${TIMELINE_TONE[item.status].fg})` }} data-canvas-timeline-item-status={item.status} />
                   {item.status === 'unseeded' ? 'no object' : STATUS_LABEL[item.status]}
                   {' · '}{item.plannedDuration}s{item.renderedDuration != null ? ` · rendered ${Math.round(item.renderedDuration)}s` : ''}
                 </span>

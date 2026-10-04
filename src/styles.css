@@ -310,8 +310,11 @@ select { text-overflow: ellipsis; }
 .settings-heading span { display: grid; }
 .settings-heading strong { font-size:var(--text-lg); }
 .settings-heading small { color: var(--muted); font-size:var(--text-base); }
-.health-pill { display: block !important; padding:5px var(--space-2); border-radius: 999px; background:color-mix(in srgb, var(--danger) 7%, transparent); color: var(--danger); font-size:var(--text-sm); font-weight: 700; text-transform: uppercase; }
-.health-pill.online { background: var(--accent-soft); color: var(--accent); }
+/* Connection tone via statusToken's --pill-fg/--pill-bg bridge (task 4):
+   the offline/failure recipe composes fg at 7%; online fills with the
+   domain's distinct bg token (--accent-soft). */
+.health-pill { display: block !important; padding:5px var(--space-2); border-radius: 999px; background:color-mix(in srgb, var(--pill-fg) 7%, transparent); color: var(--pill-fg); font-size:var(--text-sm); font-weight: 700; text-transform: uppercase; }
+.health-pill[data-connection='online'] { background: var(--pill-bg); }
 .connection-row { display: flex; align-items: flex-end; gap: 10px; padding:var(--space-4) 17px; }
 .field-group.grow { flex: 1; }
 .connection-row input { height: 38px; padding: 0 10px; }
@@ -574,10 +577,10 @@ select { text-overflow: ellipsis; }
 
 /* Setup doctor. */
 .doctor-report { display: grid; gap:var(--space-2); }
+/* Doctor severity tone via statusToken's --check-fg bridge (task 4); the
+   ok/warn/fail state classes stay on the row as the severity key. */
 .doctor-check { display: flex; gap: 9px; padding:10px var(--space-3); border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
-.doctor-check.ok > span { color: var(--accent); }
-.doctor-check.warn > span { color: var(--warning); }
-.doctor-check.fail > span { color: var(--danger); }
+.doctor-check > span { color: var(--check-fg); }
 .doctor-check strong { font-size:var(--text-md); }
 .doctor-check small { display: block; margin-top: 2px; color: var(--muted); font-size:var(--text-base); line-height: 1.5; overflow-wrap: anywhere; }
 .doctor-check p { margin: 5px 0 0; color: var(--text); font-size:var(--text-base); line-height: 1.5; }
@@ -619,19 +622,21 @@ select { text-overflow: ellipsis; }
 .node-pack-main { display: grid; gap: 5px; min-width: 0; flex: 1; }
 .node-pack-main small { color: var(--muted-2); font-size: var(--text-base); line-height: 1.45; }
 .node-pack-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.node-pack-license { padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
-.node-pack-license.warn { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+/* Install tones via statusToken's --license-fg/--pack-fg bridges (task 4):
+   the ok/warn/info/muted state classes stay as recipe keys (mix ratios),
+   the tokens themselves come from the map. */
+.node-pack-license { padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; background: color-mix(in srgb, var(--license-fg) 14%, transparent); color: var(--license-fg); }
+.node-pack-license.warn { background: color-mix(in srgb, var(--license-fg) 12%, transparent); }
 .node-pack-mode, .node-pack-installed { padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; background: var(--surface); color: var(--muted); border: 1px solid var(--line); }
-.node-pack-installed { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.node-pack-installed { color: var(--pack-fg); }
 /* Live instance chips (task 9om4bi9): the tone classes carry the state —
    ok = active on the instance / installed at the pin, warn = installed-but-
-   not-loaded, a drifted pin, or a foreign folder (honest amber, never
+   not-loaded, a drifted pin, or a foreign folder (sharp danger, never
    green), muted = missing / no target, info = managed by ComfyUI (calm
    amber — an attribution, not an alarm; task mjhlt3k). */
-.node-pack-installed.ok { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
-.node-pack-installed.warn { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
-.node-pack-installed.muted { color: var(--muted); border-color: var(--line); }
-.node-pack-installed.info { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 35%, transparent); background: color-mix(in srgb, var(--warning) 8%, transparent); }
+.node-pack-installed.ok, .node-pack-installed.warn { border-color: color-mix(in srgb, var(--pack-fg) 30%, transparent); }
+.node-pack-installed.muted { border-color: var(--line); }
+.node-pack-installed.info { border-color: color-mix(in srgb, var(--pack-fg) 35%, transparent); background: color-mix(in srgb, var(--pack-fg) 8%, transparent); }
 /* The version string beside the badge (task mjhlt3k): the discovered
    revision/registry version + its relation to the pin. */
 .node-pack-version { font-size: 11px; color: var(--muted-2); overflow-wrap: anywhere; }

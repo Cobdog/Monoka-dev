@@ -15,6 +15,7 @@ import { formatBytes } from '../lib/format'
 import { allSupportedResolutions, ratioKeyOf } from '../lib/aspectResolutions'
 import type { DoctorReport } from '../lib/doctor'
 import { PACKS_CHANGED_EVENT } from '../components/LibraryDock'
+import { doctorCheckVars, healthPillVars, nodePackRowVars, type InstallStatus } from '../ui/statusToken'
 import { useSessionStore } from '../state/sessionStore'
 
 /** Inline directory-path feedback (maintainer flag 2026-09-19: "changing a
@@ -278,7 +279,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
     </nav>
     <section className="settings-group" data-settings-group="setup" aria-label="Setup">
 <h2 className="settings-group-heading">Setup <small>once — engine, node packs, the model library, input &amp; output</small></h2>
-<section className="settings-section" data-settings-section="engine"><div className="settings-heading"><div><Activity size={19} /><span><strong>ComfyUI engine</strong><small>The desktop app communicates only with this local address.</small></span></div><span className={`health-pill ${status.connected ? 'online' : ''}`}>{status.connected ? 'Connected' : 'Offline'}</span></div><div className="connection-row"><div className="field-group grow"><label htmlFor="comfy-url">Server URL</label><input id="comfy-url" value={settings.comfyUrl} onChange={(event) => setSettings({ ...settings, comfyUrl: event.target.value })} /></div><button className="secondary-button test-button" onClick={onCheck} disabled={checking}>{checking ? <LoaderCircle size={16} className="spin" /> : <RefreshCw size={16} />}Test connection</button></div>
+<section className="settings-section" data-settings-section="engine"><div className="settings-heading"><div><Activity size={19} /><span><strong>ComfyUI engine</strong><small>The desktop app communicates only with this local address.</small></span></div><span className="health-pill" data-connection={status.connected ? 'online' : 'offline'} style={healthPillVars(status.connected ? 'online' : 'offline')}>{status.connected ? 'Connected' : 'Offline'}</span></div><div className="connection-row"><div className="field-group grow"><label htmlFor="comfy-url">Server URL</label><input id="comfy-url" value={settings.comfyUrl} onChange={(event) => setSettings({ ...settings, comfyUrl: event.target.value })} /></div><button className="secondary-button test-button" onClick={onCheck} disabled={checking}>{checking ? <LoaderCircle size={16} className="spin" /> : <RefreshCw size={16} />}Test connection</button></div>
     {/* M3 (review 2026-09-19): the status route's `error` used to be dead
         weight — a failed test showed only the stale "Offline" pill with no
         acknowledgment the test ran or why it failed. Render the reason with
@@ -297,7 +298,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
     <section className="settings-section managed-engine-section" aria-label="Managed engine">
       <div className="settings-heading">
         <div><ServerCog size={19} /><span><strong>Managed engine</strong><small>The studio launches and supervises its own ComfyUI from a checkout you nominate. External mode keeps the connection above.</small></span></div>
-        <span className={`health-pill ${engineRuntime?.state === 'running' ? 'online' : ''}`}>{settings.engine.mode === 'managed' ? (engineRuntime ? engineRuntime.state : 'managed') : 'external'}</span>
+        <span className="health-pill" data-connection={engineRuntime?.state === 'running' ? 'online' : 'offline'} style={healthPillVars(engineRuntime?.state === 'running' ? 'online' : 'offline')}>{settings.engine.mode === 'managed' ? (engineRuntime ? engineRuntime.state : 'managed') : 'external'}</span>
       </div>
       <div className="preset-row" aria-label="Engine mode">
         <button type="button" className={settings.engine.mode !== 'managed' ? 'tier-selected' : ''} onClick={() => updateEngine({ mode: 'external' })}><strong>External</strong><small>Use the ComfyUI address above — the studio never launches an engine.</small></button>
@@ -390,6 +391,11 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
             <p className="node-pack-group-heading">{group.label}</p>
             {group.packs.map((pack) => {
           const chip = nodePackChip(pack)
+          // Install tones from statusToken (task 4): the chip's status +
+          // the license badge's ok/warn, bridged as row-scoped custom
+          // properties (the ok/warn/info/muted classes stay as the CSS
+          // recipe keys).
+          const license: InstallStatus = pack.licenseSpdx === 'NO-LICENSE' ? 'warn' : 'ok'
           // AC-1 path-prompt gate: the local-source input exists ONLY for a
           // pack with no network/payload source (no fetch-catalog entry —
           // empty in today's registry) that has a usable target and no
@@ -402,7 +408,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
           return (
           <div className="node-pack-row" key={pack.id}>
             <div className="node-pack-main">
-              <div className="node-pack-title"><strong>{pack.name}</strong><span className={`node-pack-license ${pack.licenseSpdx === 'NO-LICENSE' ? 'warn' : ''}`}>{pack.licenseSpdx}</span><span className="node-pack-mode">{pack.installMode === 'vendor' ? (pack.vendored ? 'vendored' : 'vendor payload missing') : pack.installMode === 'first-party' ? 'first-party' : 'user-fetch'}</span><span className={`node-pack-installed ${chip.tone}`} data-node-pack-chip={chip.label}>{chip.label}</span>{versionText && <span className="node-pack-version" data-node-pack-version={versionText}>{versionText}</span>}</div>
+              <div className="node-pack-title" style={nodePackRowVars(chip.status, license)}><strong>{pack.name}</strong><span className={`node-pack-license ${license === 'warn' ? 'warn' : ''}`}>{pack.licenseSpdx}</span><span className="node-pack-mode">{pack.installMode === 'vendor' ? (pack.vendored ? 'vendored' : 'vendor payload missing') : pack.installMode === 'first-party' ? 'first-party' : 'user-fetch'}</span><span className={`node-pack-installed ${chip.status}`} data-node-pack-chip={chip.label}>{chip.label}</span>{versionText && <span className="node-pack-version" data-node-pack-version={versionText}>{versionText}</span>}</div>
               {pack.managedNotice && <small className="node-pack-managed-notice" role="status"><Info size={13} />{pack.managedNotice}</small>}
               <small>{pack.description}</small>
               <small className="node-pack-meta">{pack.repoUrl} @ {pack.pinnedRevision.slice(0, 12)}{pack.note ? ` — ${pack.note}` : ''}</small>
@@ -514,7 +520,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
     <section className="settings-section llm-section" data-settings-section="llm" aria-label="LLM router">
       <div className="settings-heading">
         <div><Cpu size={19} /><span><strong>LLM · llama.cpp router</strong><small>One router endpoint serves every text model (DeepSeek, Gemma, Qwen…). Empty address keeps the Ollama fallback below.</small></span></div>
-        <span className={`health-pill ${llmList?.connected && llmList.provider === 'router' ? 'online' : ''}`}>{llmList?.provider === 'router' ? (llmList.connected ? `Router · ${llmList.models.length} models` : 'Router offline') : 'Ollama fallback'}</span>
+        <span className="health-pill" data-connection={llmList?.connected && llmList.provider === 'router' ? 'online' : 'offline'} style={healthPillVars(llmList?.connected && llmList.provider === 'router' ? 'online' : 'offline')}>{llmList?.provider === 'router' ? (llmList.connected ? `Router · ${llmList.models.length} models` : 'Router offline') : 'Ollama fallback'}</span>
       </div>
       <div className="connection-row">
         <div className="field-group grow"><label htmlFor="llm-router-url">Router address (router mode)</label><input id="llm-router-url" value={settings.llamaCppUrl} placeholder="http://127.0.0.1:8080 — empty = Ollama fallback" onChange={(event) => setSettings({ ...settings, llamaCppUrl: event.target.value })} /></div>
@@ -557,7 +563,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
     <section className="settings-section ollama-section">
       <div className="settings-heading">
         <div><Sparkles size={19} /><span><strong>Ollama prompt assistant</strong><small>Fallback provider — active while no router address is set above. Uses only text models installed on this computer.</small></span></div>
-        <span className={`health-pill ${ollamaModels.length > 0 && !settings.llamaCppUrl.trim() ? 'online' : ''}`}>{settings.llamaCppUrl.trim() ? 'Fallback (router active)' : ollamaModels.length > 0 ? `${ollamaModels.length} local` : 'Offline'}</span>
+        <span className="health-pill" data-connection={ollamaModels.length > 0 && !settings.llamaCppUrl.trim() ? 'online' : 'offline'} style={healthPillVars(ollamaModels.length > 0 && !settings.llamaCppUrl.trim() ? 'online' : 'offline')}>{settings.llamaCppUrl.trim() ? 'Fallback (router active)' : ollamaModels.length > 0 ? `${ollamaModels.length} local` : 'Offline'}</span>
       </div>
       <div className="ollama-grid">
         <div className="field-group"><label htmlFor="ollama-url">Ollama URL</label><input id="ollama-url" value={settings.ollamaUrl} onChange={(event) => setSettings({ ...settings, ollamaUrl: event.target.value })} /></div>
@@ -571,7 +577,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
 <h2 className="settings-group-heading">Status &amp; diagnostics <small>what the engine and this workstation actually have</small></h2>
 <section className="settings-section"><div className="settings-heading"><div><HardDrive size={19} /><span><strong>Model inventory</strong><small>The connected engine's own registry is the model source of truth (instance-invisible = nonexistent) — there is no local folder list and no manual pointing. Refresh asks the engine to re-scan its folders and reads the listing again.</small></span></div><button className="secondary-button" onClick={onScan} disabled={scanning}>{scanning ? <LoaderCircle size={16} className="spin" /> : <RefreshCw size={16} />}{scanning ? 'Refreshing…' : 'Refresh from engine'}</button></div><div className="path-table">{pathRows.map((row) => { const kindModels = models.filter((model) => model.kind === row.kind); return <div className="path-row" key={row.kind}><div className="path-kind"><Folder size={17} /><span><strong>{row.label}</strong><small>{row.note}</small></span></div><span className="file-count" data-model-kind-count={row.kind}>{kindModels.length} file{kindModels.length === 1 ? '' : 's'} on the engine</span></div> })}{models.length === 0 && <div className="path-row"><div className="path-kind"><Folder size={17} /><span><strong>No models listed</strong><small>{status.connected ? 'The engine serves none of these folders yet — add weights where the engine reads them, then Refresh.' : 'The engine is offline — the registry is the only model source, so nothing can be listed until it connects.'}</small></span></div><span className="file-count">0 files</span></div>}</div></section>
     <section className="settings-section h3-stack-section">
-      <div className="settings-heading"><div><Gauge size={19} /><span><strong>H3 engine stack</strong><small>What the graphs will load, resolved the same way submission resolves it — auto-inferred picks and your overrides alike. Canonical names are guidance, not a gate.</small></span></div><span className={`health-pill ${h3Report.ready ? 'online' : ''}`}>{h3Report.validated ? 'Validated' : h3Report.ready ? 'Custom' : 'Incomplete'}</span></div>
+      <div className="settings-heading"><div><Gauge size={19} /><span><strong>H3 engine stack</strong><small>What the graphs will load, resolved the same way submission resolves it — auto-inferred picks and your overrides alike. Canonical names are guidance, not a gate.</small></span></div><span className="health-pill" data-connection={h3Report.ready ? 'online' : 'offline'} style={healthPillVars(h3Report.ready ? 'online' : 'offline')}>{h3Report.validated ? 'Validated' : h3Report.ready ? 'Custom' : 'Incomplete'}</span></div>
       <div className="h3-stack-list">{h3Report.rows.map((row) => <div key={row.label} className={row.present && !row.refusal ? (row.isCanonical ? 'validated' : 'custom') : 'custom'}><span>{row.present && !row.refusal ? <Check size={14} /> : <AlertCircle size={14} />}</span><div><strong>{row.label}</strong><small title={row.selected || row.canonical}>{row.refusal ? `${row.selected || row.canonical} — refused: ${row.refusal}` : row.selected ? (row.isCanonical ? row.selected : `${row.selected} · canonical: ${row.canonical}`) : `Not found — make ${row.makeVisible} visible to the engine`}</small></div><em>{row.source === 'override' ? (row.layer === 'chain' ? 'Chain pick' : row.layer === 'global' ? 'Global pick' : 'Override') : row.refusal ? 'Refused' : row.present ? 'Inferred' : 'Not found'}</em></div>)}</div>
       <div className="h3-stack-list">{detectedTurboFamilies.length ? detectedTurboFamilies.map(({ entry, detection }) => <div key={entry.id} className="validated"><span><Check size={14} /></span><div><strong>{entry.label}</strong><small title={detection.model ?? entry.ui.installHint}>{detection.model ?? entry.ui.installHint}</small></div><em>{entry.pairing?.steps ?? '?'} steps{entry.pairing?.samplerNode ? ' · larryvrh-ready' : ''}</em></div>) : <div className="custom"><span><AlertCircle size={14} /></span><div><strong>No turbo families detected</strong><small>Install an official or community turbo LoRA into ComfyUI/models/loras, then rescan.</small></div><em>Missing</em></div>}</div>
       {!h3Report.ready && <p className="settings-warning"><AlertCircle size={15} />{h3Report.rows.some((row) => row.refusal) ? 'A component was found but refused — clear or fix the pick in Model overrides; the named reason says which class it needs.' : 'The H3 stack is incomplete — make the named components visible to the engine, then refresh. Video renders refuse until every slot resolves.'}</p>}
@@ -581,7 +587,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
     </section>
     <section className="settings-section setup-doctor-section">
       <div className="settings-heading"><div><Stethoscope size={19} /><span><strong>Setup doctor</strong><small>Verifies FFmpeg, HTTPS tooling, the engine device, and attention backends — with exact fixes.</small></span></div><button className="secondary-button" onClick={() => void runDoctor()} disabled={doctorRunning}>{doctorRunning ? <LoaderCircle size={16} className="spin" /> : <Stethoscope size={16} />}{doctorRunning ? 'Checking…' : 'Run checks'}</button></div>
-      {doctor && <div className="doctor-report">{doctor.checks.map((check) => <div className={`doctor-check ${check.status}`} key={check.id}><span>{check.status === 'ok' ? <Check size={14} /> : <AlertCircle size={14} />}</span><div><strong>{check.label}</strong><small>{check.detail}</small>{check.recommendation && <p>{check.recommendation}</p>}</div></div>)}</div>}
+      {doctor && <div className="doctor-report">{doctor.checks.map((check) => <div className={`doctor-check ${check.status}`} style={doctorCheckVars(check.status)} key={check.id}><span>{check.status === 'ok' ? <Check size={14} /> : <AlertCircle size={14} />}</span><div><strong>{check.label}</strong><small>{check.detail}</small>{check.recommendation && <p>{check.recommendation}</p>}</div></div>)}</div>}
     </section>
     <section className="settings-section graph-compat-section">
       <div className="settings-heading"><div><GitBranch size={19} /><span><strong>Graph compatibility</strong><small>The ComfyUI version this studio's graph families were last verified against.</small></span></div></div>
@@ -589,12 +595,12 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
         const connected = status.stats?.system?.comfyui_version
         const tested = settings.testedComfyVersion
         const newer = Boolean(connected && tested && connected !== tested)
-        return <div className={`doctor-check ${newer ? 'warn' : 'ok'}`}><span>{newer ? <AlertCircle size={14} /> : <Check size={14} />}</span><div><strong>{newer ? 'ComfyUI updated since verification' : 'Graphs verified against this engine'}</strong><small>{connected ? `Connected engine: ${connected}. ` : 'Engine offline — version unknown. '}{tested ? `Graphs last verified against: ${tested}.` : 'No verification recorded yet; it is captured on the next successful connection.'}{newer ? ' Node changes in newer ComfyUI builds can break graphs — re-run the H3 Quality Test before trusting new renders, then the record updates on save.' : ''}</small></div></div>
+        return <div className={`doctor-check ${newer ? 'warn' : 'ok'}`} style={doctorCheckVars(newer ? 'warn' : 'ok')}><span>{newer ? <AlertCircle size={14} /> : <Check size={14} />}</span><div><strong>{newer ? 'ComfyUI updated since verification' : 'Graphs verified against this engine'}</strong><small>{connected ? `Connected engine: ${connected}. ` : 'Engine offline — version unknown. '}{tested ? `Graphs last verified against: ${tested}.` : 'No verification recorded yet; it is captured on the next successful connection.'}{newer ? ' Node changes in newer ComfyUI builds can break graphs — re-run the H3 Quality Test before trusting new renders, then the record updates on save.' : ''}</small></div></div>
       })()}
     </section>
     <section className="settings-section status-subsection-section" aria-label="Krea 2 edit modes availability">
 <div className="settings-heading"><div><Wand2 size={19} /><span><strong>Krea 2 edit modes</strong><small>Availability + recipe readout — the real editing UI lives on the canvas/workbench surfaces (the settings exit, R-15).</small></span></div></div>
-<details className="settings-subsection" data-settings-krea2-details><summary><strong>Edit-mode availability &amp; recipes</strong><small>per-workflow graphs over the resident Krea 2 pair</small></summary><div className="settings-heading"><div><Wand2 size={19} /><span><strong>Krea 2 edit modes</strong><small>Per-workflow edit graphs over the resident Krea 2 checkpoint pair — availability-gated here; the canvas redesign owns the real editing UI.</small></span></div><span className={`health-pill ${editModesReady === krea2EditModes.length ? 'online' : ''}`}>{editModesReady} of {krea2EditModes.length} ready</span></div>
+<details className="settings-subsection" data-settings-krea2-details><summary><strong>Edit-mode availability &amp; recipes</strong><small>per-workflow graphs over the resident Krea 2 pair</small></summary><div className="settings-heading"><div><Wand2 size={19} /><span><strong>Krea 2 edit modes</strong><small>Per-workflow edit graphs over the resident Krea 2 checkpoint pair — availability-gated here; the canvas redesign owns the real editing UI.</small></span></div><span className="health-pill" data-connection={editModesReady === krea2EditModes.length ? 'online' : 'offline'} style={healthPillVars(editModesReady === krea2EditModes.length ? 'online' : 'offline')}>{editModesReady} of {krea2EditModes.length} ready</span></div>
       <div className="preset-row" aria-label="Edit mode picker">
         {krea2EditModes.map(({ family, detection }) => <button type="button" className={selectedKrea2EditMode === family.id ? 'tier-selected' : ''} key={family.id} onClick={() => setSelectedKrea2EditMode(family.id)}><strong>{family.label}</strong><small>{detection.available ? `${family.checkpoint === 'raw' ? 'RAW' : 'Turbo'} · ${family.recipe.steps} steps · CFG ${family.recipe.cfg}` : 'Needs setup'}</small></button>)}
       </div>
@@ -613,7 +619,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
           padding: `padding per side on a ${KREA2_RECIPE_PINS.anypaint.paddingStep}px grid; mask + padding in one request = mixed`,
         }
         const missing = [...detection.missingNodes.map((nodeClass) => `node ${nodeClass} (node pack)`), ...detection.missingModels]
-        return <div className={`doctor-check ${detection.available ? 'ok' : 'warn'}`}>
+        return <div className={`doctor-check ${detection.available ? 'ok' : 'warn'}`} style={doctorCheckVars(detection.available ? 'ok' : 'warn')}>
           <span>{detection.available ? <Check size={14} /> : <AlertCircle size={14} />}</span>
           <div>
             <strong>{family.label}{detection.available && detection.resolved ? ` — ${detection.resolved.diffusion} + ${detection.resolved.lora}` : ''}</strong>
@@ -686,26 +692,26 @@ function groupNodePacks(packs: NodePackStatus[]): Array<{ label: string; packs: 
  *  A foreign folder carrying a git checkout or a Comfy-Registry pyproject
  *  is "managed by ComfyUI" (info tone — calm, not an alarm); any other
  *  foreign folder keeps the honest "present — not studio-managed". */
-function nodePackChip(pack: NodePackStatus): { label: string; tone: string } {
+function nodePackChip(pack: NodePackStatus): { label: string; status: InstallStatus } {
   const liveSuffix = pack.instanceState === 'active' ? ' · live' : ''
   if (pack.installed) {
     const atPin = pack.versionRelation !== 'differs'
     const base = atPin ? 'installed @ pin' : 'outdated'
     return pack.instanceState === 'absent'
-      ? { label: `${base} — restart engine to activate`, tone: 'warn' }
-      : { label: base + liveSuffix, tone: atPin ? 'ok' : 'warn' }
+      ? { label: `${base} — restart engine to activate`, status: 'warn' }
+      : { label: base + liveSuffix, status: atPin ? 'ok' : 'warn' }
   }
   if (pack.folderState === 'foreign') {
-    if (pack.versionInfo?.managedBy === 'comfyui') return { label: 'managed by ComfyUI' + liveSuffix, tone: 'info' }
+    if (pack.versionInfo?.managedBy === 'comfyui') return { label: 'managed by ComfyUI' + liveSuffix, status: 'info' }
     return pack.targetKind === 'external'
-      ? { label: 'present — not studio-managed' + liveSuffix, tone: 'warn' }
-      : { label: 'foreign folder' + liveSuffix, tone: 'warn' }
+      ? { label: 'present — not studio-managed' + liveSuffix, status: 'warn' }
+      : { label: 'foreign folder' + liveSuffix, status: 'warn' }
   }
   // (A foreign folder already returned above — reaching here means no
   // folder is present, so the live instance is the only install evidence.)
-  if (pack.instanceState === 'active') return { label: 'installed on instance', tone: 'ok' }
-  if (pack.targetKind === 'none') return { label: 'no install target', tone: 'muted' }
-  return { label: 'missing', tone: 'muted' }
+  if (pack.instanceState === 'active') return { label: 'installed on instance', status: 'ok' }
+  if (pack.targetKind === 'none') return { label: 'no install target', status: 'muted' }
+  return { label: 'missing', status: 'muted' }
 }
 
 /** The version string beside the badge (AC-3): the discovered revision (sha

@@ -76,6 +76,7 @@ const SUITES = {
   resync: { build: 'full', windows: false, python: false, ffmpeg: false },
   runtime: { build: 'full', windows: true, python: false, ffmpeg: false },
   storage: { build: 'full', windows: false, python: false, ffmpeg: false },
+  statusToken: { build: null, windows: false, python: false, ffmpeg: false },
   vdn: { build: null, windows: false, python: false, ffmpeg: false },
   workflows: { build: null, windows: false, python: false, ffmpeg: false },
 }
@@ -327,6 +328,11 @@ const RULES = [
     match: ['src/lib/modelSelection.ts'],
     suites: ['registry', 'workflows'],
     reason: 'selection inference — loaded directly by both suites.',
+  },
+  {
+    match: ['src/ui/statusToken.ts'],
+    suites: ['statusToken'],
+    reason: 'the domain-qualified status→tone-token map (component vocabulary task 4): the statusToken suite parses styles.css :root at run time and checks every mapped token is DEFINED, plus the exhaustive divergence table.',
   },
   {
     match: [

@@ -27,8 +27,8 @@
 .canvas-radar { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: var(--text-md); font-weight: 650; white-space: nowrap; cursor: pointer; }
 .canvas-radar:hover { border-color: var(--line-strong); color: var(--text); }
 .canvas-radar.attention { border-color: color-mix(in srgb, var(--warning) 45%, transparent); background: color-mix(in srgb, var(--warning) 8%, transparent); color: var(--warning); }
-.canvas-engine-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px dashed var(--line-strong); border-radius: 999px; background: transparent; color: var(--muted-2); font-size: var(--text-sm); white-space: nowrap; cursor: default; }
-.canvas-engine-chip .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted-2); }
+.canvas-engine-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px dashed var(--line-strong); border-radius: 999px; background: transparent; color: var(--engine-tone); font-size: var(--text-sm); white-space: nowrap; cursor: default; }
+.canvas-engine-chip .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--engine-tone); }
 .canvas-titlebar-spacer { flex: 1; }
 .canvas-index-button { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font-size: var(--text-md); cursor: pointer; }
 .canvas-index-button:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); }
@@ -69,17 +69,20 @@
 .canvas-tile .filmstrip-poster { width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; }
 .canvas-tile .filmstrip-poster-empty { display: grid; place-items: center; align-content: center; gap: 5px; aspect-ratio: 16 / 9; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted-2); font-size: var(--text-sm); }
 
-/* the status ring — on-object state, every band (§4 contract) */
+/* the status ring — on-object state, every band (§4 contract). The tone
+   token comes from statusToken (task 4) through the --tile-tone bridge set
+   inline by the ring's renderers; these rules keep only the per-state
+   recipes (widths, mix ratios, animation). */
 .canvas-tile-ring { position: absolute; inset: -3px; border-radius: 11px; pointer-events: none; }
-.canvas-tile-ring[data-status="idle"] { border: 1px solid color-mix(in srgb, var(--text) 14%, transparent); }
-.canvas-tile-ring[data-status="queued-gpu"] { border: 2px solid color-mix(in srgb, var(--muted-2) 70%, transparent); }
-.canvas-tile-ring[data-status="running"] { border: 2px solid var(--color-info); animation: canvas-pulse 1.1s ease-in-out infinite; }
-.canvas-tile-ring[data-status="stale"] { border: 2px solid var(--warning); }
-.canvas-tile-ring[data-status="failed"] { border: 2px solid var(--danger); }
+.canvas-tile-ring[data-status="idle"] { border: 1px solid color-mix(in srgb, var(--tile-tone) 14%, transparent); }
+.canvas-tile-ring[data-status="queued-gpu"] { border: 2px solid color-mix(in srgb, var(--tile-tone) 70%, transparent); }
+.canvas-tile-ring[data-status="running"] { border: 2px solid var(--tile-tone); animation: canvas-pulse 1.1s ease-in-out infinite; }
+.canvas-tile-ring[data-status="stale"] { border: 2px solid var(--tile-tone); }
+.canvas-tile-ring[data-status="failed"] { border: 2px solid var(--tile-tone); }
 .canvas-inspector .canvas-tile-ring { position: static; display: inline-block; width: 10px; height: 10px; inset: auto; border-radius: 50%; border-width: 2px !important; vertical-align: -1px; }
 @keyframes canvas-pulse { 50% { opacity: .4; } }
-.canvas-tile-progress { position: absolute; left: 10px; right: 10px; bottom: 8px; height: 3px; border-radius: 999px; background: color-mix(in srgb, var(--color-info) 22%, transparent); overflow: hidden; }
-.canvas-tile-progress::after { content: ''; position: absolute; inset: 0; width: 40%; border-radius: inherit; background: var(--color-info); animation: canvas-slide 1.2s ease-in-out infinite; }
+.canvas-tile-progress { position: absolute; left: 10px; right: 10px; bottom: 8px; height: 3px; border-radius: 999px; background: color-mix(in srgb, var(--tile-tone) 22%, transparent); overflow: hidden; }
+.canvas-tile-progress::after { content: ''; position: absolute; inset: 0; width: 40%; border-radius: inherit; background: var(--tile-tone); animation: canvas-slide 1.2s ease-in-out infinite; }
 @keyframes canvas-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(320%); } }
 
 /* F6 live progress — in-progress sampler frames + the percent/label readout
@@ -88,13 +91,13 @@
 .canvas-tile-live { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
 .canvas-tile-live-frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
 .canvas-tile-live-frame:not([src]) { display: none; }
-.canvas-tile-live-readout { position: absolute; left: 8px; right: 8px; bottom: 16px; display: flex; align-items: baseline; gap: 7px; padding: 4px 9px; border: 1px solid color-mix(in srgb, var(--color-info) 38%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--surface-abyss) 80%, transparent); }
-.canvas-tile-live-pct { color: var(--color-info); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.canvas-tile-live-readout { position: absolute; left: 8px; right: 8px; bottom: 16px; display: flex; align-items: baseline; gap: 7px; padding: 4px 9px; border: 1px solid color-mix(in srgb, var(--live-tone) 38%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--surface-abyss) 80%, transparent); }
+.canvas-tile-live-pct { color: var(--live-tone); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .canvas-tile-live-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted-2); font-size: var(--text-2xs); }
 .canvas-tile-lock { position: absolute; top: 7px; right: 7px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: color-mix(in srgb, var(--color-surface-abyss) 72%, transparent); color: var(--warning); }
-.canvas-tile-failure { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 7px; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--danger) 46%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--danger) 88%, transparent); color: var(--danger); font-size: var(--text-sm); }
+.canvas-tile-failure { position: absolute; left: 8px; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 7px; padding: 6px 8px; border: 1px solid color-mix(in srgb, var(--tile-tone) 46%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--tile-tone) 88%, transparent); color: var(--tile-tone); font-size: var(--text-sm); }
 .canvas-tile-failure p { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.canvas-tile-failure button { flex: 0 0 auto; padding: 2px 7px; border: 1px solid color-mix(in srgb, var(--danger) 46%, transparent); border-radius: 6px; background: transparent; color: var(--danger); font-size: var(--text-2xs); text-transform: uppercase; cursor: pointer; }
+.canvas-tile-failure button { flex: 0 0 auto; padding: 2px 7px; border: 1px solid color-mix(in srgb, var(--tile-tone) 46%, transparent); border-radius: 6px; background: transparent; color: var(--tile-tone); font-size: var(--text-2xs); text-transform: uppercase; cursor: pointer; }
 
 /* head/tail endpoint affordances — visual only in Phase 1 */
 .canvas-tile-endpoint { position: absolute; top: 50%; z-index: 3; display: grid; place-items: center; width: 24px; height: 34px; padding: 0; border: 0; background: transparent; translate: 0 -50%; cursor: pointer; }
@@ -262,12 +265,10 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 /* Journey sweep #4a (audit F6): the footer bar's lane toggle — the same
    chip vocabulary the hero's launcher carries, kept inline in the bar. */
 .canvas-bar-lane { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.canvas-bar-engine { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted-2); font-size: var(--text-sm); white-space: nowrap; }
-.canvas-bar-engine .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted-2); }
-.canvas-bar-engine.online { color: var(--color-status-ok); }
-.canvas-bar-engine.online .status-dot { background: var(--color-status-ok); }
-.canvas-bar-engine.degraded { color: var(--warning); }
-.canvas-bar-engine.degraded .status-dot { background: var(--warning); }
+/* Connection tone (statusToken --engine-tone bridge, task 4): the online/
+   degraded state classes carry no color declarations any more. */
+.canvas-bar-engine { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--engine-tone); font-size: var(--text-sm); white-space: nowrap; }
+.canvas-bar-engine .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--engine-tone); }
 .canvas-bar-mode, .canvas-bar-state, .canvas-bar-identity, .canvas-bar-drift, .canvas-bar-takes, .canvas-bar-fork-history { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: var(--text-sm); white-space: nowrap; }
 .canvas-bar-mode { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
 .canvas-bar-chip-tile { max-width: 160px; overflow: hidden; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
@@ -484,10 +485,9 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .camera-path-actions button:disabled { opacity: .4; cursor: default; }
 .camera-path-actions button.primary:hover:not(:disabled) { filter: brightness(1.1); }
 .canvas-tile-poster[data-canvas-poster="blob"] { object-fit: cover; width: 100%; height: 100%; }
-.canvas-engine-chip.online { border-style: solid; color: var(--color-status-ok); }
-.canvas-engine-chip.online .status-dot { background: var(--color-status-ok); }
-.canvas-engine-chip.degraded { border-style: solid; color: var(--warning); }
-.canvas-engine-chip.degraded .status-dot { background: var(--warning); }
+/* Connection tone flows from statusToken's --engine-tone bridge (task 4);
+   the state classes keep only the connected/not border treatment. */
+.canvas-engine-chip.online, .canvas-engine-chip.degraded { border-style: solid; }
 .canvas-index-row-cancel { margin-left: auto; padding: 1px 7px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--muted); font-size: var(--text-2xs); white-space: nowrap; }
 .canvas-index-row-cancel:hover { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
 .canvas-index-li { position: relative; display: flex; align-items: stretch; }
