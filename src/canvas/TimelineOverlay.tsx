@@ -17,12 +17,14 @@
  *    honest unplanned chronology; gaps implicit hard cuts) + the
  *    adopt-chronology upgrade ("Plan this chronology").
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Film, Image as ImageIcon, LayoutList, Link2, Music2, Plus, Scissors, X } from 'lucide-react'
 import { documentsApi } from './api'
 import { STATUS_LABEL } from './derive'
-import { deriveTimeline, GAP_LABEL, GAP_MECHANISM_LABEL, GAP_MENU, readPlanDocument, type PlanGapKind } from './plan'
+import { deriveTimeline, GAP_LABEL, GAP_MECHANISM_LABEL, GAP_MENU, readPlanDocument, type PlanGapKind, type TimelineGapView } from './plan'
 import { TIMELINE_TONE } from '../ui/statusToken'
+import { isTypingTarget } from '../ui/overlayBehavior'
+import { useOverlayBehavior } from '../ui/useOverlayBehavior'
 import { useCanvasStore } from './store'
 import { useJobsStore } from '../state/jobsStore'
 import { useWindowedList } from './useWindowedList'
@@ -94,6 +96,55 @@ function KindIcon({ kind }: { kind: 'video' | 'image' | 'audio' | null }) {
   return <Scissors size={13} />
 }
 
+/** The measured gap menu (§6) — a NESTED surface since task 14: registered
+ *  with the layer registry ABOVE the timeline while open, one Escape closes
+ *  only the menu and the projection survives the press. (The menu idiom
+ *  itself — one dismissal shape across ForkMenu/EndpointMenu/this — unifies
+ *  at task 16's PopoverMenu.) */
+function TimelineGapMenu({ gap, footer, onChoose, onClose }: {
+  gap: TimelineGapView
+  footer: string
+  onChoose(kind: PlanGapKind): void
+  onClose(): void
+}) {
+  const overlay = useOverlayBehavior({ id: 'canvas-gap-menu', onDismiss: onClose })
+  return <div className="canvas-gap-menu" data-canvas-gap-menu role="menu" aria-label="Transition" ref={overlay.ref} onKeyDown={overlay.onKeyDown}>
+    <header>
+      <strong>Transition</strong>
+      <span>{GAP_LABEL[gap.kind]} · choose the measured path</span>
+      <button type="button" className="icon-button" aria-label="Close transition menu" data-canvas-gap-close onClick={onClose}><X size={12} /></button>
+    </header>
+    {GAP_MENU.map((entry) => {
+      const flfBlocked = entry.kind === 'flf' && !gap.flfReady
+      const disabled = entry.engineDependent || flfBlocked
+      const reason = entry.engineDependent
+        ? 'needs bridge-render machinery — engine work, queued (the choice is recorded; the render lands with it)'
+        : flfBlocked
+          ? 'render the LEFT segment first — the splice wires from its final rendered frame'
+          : null
+      return <button
+        key={entry.kind}
+        type="button"
+        role="menuitem"
+        className={`chip canvas-gap-option ${gap.kind === entry.kind ? 'chip--selected' : ''}`}
+        data-canvas-gap-option={entry.kind}
+        disabled={disabled}
+        title={reason ?? entry.verdict}
+        onClick={() => onChoose(entry.kind)}
+      >
+        <span className="canvas-gap-option-head">
+          <strong>{entry.label}</strong>
+          <span className="canvas-gap-option-mechanism" data-canvas-gap-mechanism={entry.mechanism}>{GAP_MECHANISM_LABEL[entry.mechanism]}</span>
+          {gap.kind === entry.kind && <span className="canvas-gap-option-current">current</span>}
+        </span>
+        <span className="canvas-gap-option-verdict" data-canvas-gap-verdict>{entry.verdict}</span>
+        {reason && <span className="canvas-gap-option-reason">{reason}</span>}
+      </button>
+    })}
+    <footer>{footer} — verdicts: tranche-1 measurements</footer>
+  </div>
+}
+
 export function TimelineOverlay() {
   const open = useCanvasStore((state) => state.timelineOpen)
   const timelinePlanId = useCanvasStore((state) => state.timelinePlanId)
@@ -131,6 +182,16 @@ export function TimelineOverlay() {
   // truth. The plan editor below is untouched — plans are hand-authored,
   // not density-seeded.
   const stripWindow = useWindowedList({ count: projection.items.length, axis: 'x' })
+  // Task 14 (§0.2): the projection joins the layer registry — Escape routes
+  // topmost-only (the window-cascade branch died with it), focus settles
+  // into the panel, and the background chain suspends while it holds the
+  // keyboard. V stays the family's own flip through the panel's local key.
+  const overlay = useOverlayBehavior({ id: 'canvas-timeline', onDismiss: () => useCanvasStore.getState().setTimelineOpen(false) })
+  const { focusOnOpen } = overlay
+
+  useEffect(() => {
+    if (open) focusOnOpen()
+  }, [open, focusOnOpen])
 
   if (!open) return null
 
@@ -173,8 +234,21 @@ export function TimelineOverlay() {
   const openGap = projection.gaps.find((gap) => gap.afterSegmentId === gapMenu?.afterSegmentId)
   const openGapRight = plan ? plan.segments.find((segment) => segment.id === gapMenu?.afterSegmentId) : undefined
 
+  // V stays the flip family's own key while a projection is open (§0.2) —
+  // the footers advertise the cycle; the panel's local handler owns it
+  // because the hook's containment keeps it away from the background chain.
+  // Never while the user types (the plan editor's fields own their keys).
+  const flipProjection = (event: { key: string; target: unknown }) => {
+    if (event.key === 'v' && !isTypingTarget(event.target)) store().cycleProjection()
+  }
+
   return <div className="canvas-index-overlay" data-canvas-timeline role="dialog" aria-label="Timeline" onClick={close}>
-    <div className="canvas-timeline-panel" onClick={(event) => event.stopPropagation()}>
+    <div
+      className="canvas-timeline-panel"
+      onClick={(event) => event.stopPropagation()}
+      ref={overlay.ref}
+      onKeyDown={(event) => { overlay.onKeyDown(event); flipProjection(event) }}
+    >
       <header className="canvas-index-input canvas-timeline-header">
         <LayoutList size={15} />
         <strong className="canvas-timeline-title">{planRow ? `Timeline — plan (${plan ? plan.segments.length : 0} segments)` : 'Timeline — chain outputs (unplanned chronology)'}</strong>
@@ -230,43 +304,15 @@ export function TimelineOverlay() {
       </div>
 
       {/* The measured gap menu (§6): five entries, verdicts from the
-          transitions research, honest mechanism labels. */}
+          transitions research, honest mechanism labels — a registered
+          NESTED layer (task 14): one Escape closes only the menu. */}
       {gapMenu && openGap && (
-        <div className="canvas-gap-menu" data-canvas-gap-menu role="menu" aria-label="Transition">
-          <header>
-            <strong>Transition</strong>
-            <span>{GAP_LABEL[openGap.kind]} · choose the measured path</span>
-            <button type="button" className="icon-button" aria-label="Close transition menu" data-canvas-gap-close onClick={() => store().setGapMenu(null)}><X size={12} /></button>
-          </header>
-          {GAP_MENU.map((entry) => {
-            const flfBlocked = entry.kind === 'flf' && !openGap.flfReady
-            const disabled = entry.engineDependent || flfBlocked
-            const reason = entry.engineDependent
-              ? 'needs bridge-render machinery — engine work, queued (the choice is recorded; the render lands with it)'
-              : flfBlocked
-                ? 'render the LEFT segment first — the splice wires from its final rendered frame'
-                : null
-            return <button
-              key={entry.kind}
-              type="button"
-              role="menuitem"
-              className={`chip canvas-gap-option ${openGap.kind === entry.kind ? 'chip--selected' : ''}`}
-              data-canvas-gap-option={entry.kind}
-              disabled={disabled}
-              title={reason ?? entry.verdict}
-              onClick={() => void chooseGap(entry.kind)}
-            >
-              <span className="canvas-gap-option-head">
-                <strong>{entry.label}</strong>
-                <span className="canvas-gap-option-mechanism" data-canvas-gap-mechanism={entry.mechanism}>{GAP_MECHANISM_LABEL[entry.mechanism]}</span>
-                {openGap.kind === entry.kind && <span className="canvas-gap-option-current">current</span>}
-              </span>
-              <span className="canvas-gap-option-verdict" data-canvas-gap-verdict>{entry.verdict}</span>
-              {reason && <span className="canvas-gap-option-reason">{reason}</span>}
-            </button>
-          })}
-          <footer>{openGapRight ? `between “${projection.items.find((item) => item.segmentId === openGap.afterSegmentId)?.title ?? ''}” and the next segment` : ''} — verdicts: tranche-1 measurements</footer>
-        </div>
+        <TimelineGapMenu
+          gap={openGap}
+          footer={openGapRight ? `between “${projection.items.find((item) => item.segmentId === openGap.afterSegmentId)?.title ?? ''}” and the next segment` : ''}
+          onChoose={(kind) => void chooseGap(kind)}
+          onClose={() => store().setGapMenu(null)}
+        />
       )}
 
       {/* The plan editor (the MoviePlanner inheritance, on the document store). */}

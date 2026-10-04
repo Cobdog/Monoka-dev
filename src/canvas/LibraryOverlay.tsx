@@ -17,6 +17,8 @@ import { mediaForOutput, buildOutputIndex } from './generation'
 import { chainTitle } from './derive'
 import { useCanvasStore } from './store'
 import { Chip } from '../ui/Chip'
+import { isTypingTarget } from '../ui/overlayBehavior'
+import { useOverlayBehavior } from '../ui/useOverlayBehavior'
 import { useWindowedList } from './useWindowedList'
 
 type LibraryRow = {
@@ -39,10 +41,19 @@ export function LibraryOverlay() {
 
   const [query, setQuery] = useState('')
   const [kindFilter, setKindFilter] = useState<'all' | 'video' | 'image' | 'audio'>('all')
+  // Task 14 (§0.2): the projection joins the layer registry (Escape routes
+  // topmost-only; the retired inline input handler died with it), focus
+  // settles into the search field, and the background chain suspends while
+  // it holds the keyboard.
+  const overlay = useOverlayBehavior({ id: 'canvas-library', onDismiss: () => setLibraryOpen(false) })
+  const { focusOnOpen } = overlay
 
   useEffect(() => {
-    if (open) setQuery('')
-  }, [open])
+    if (open) {
+      setQuery('')
+      focusOnOpen()
+    }
+  }, [open, focusOnOpen])
 
   // The projection itself: every take that resolves to renderable media,
   // across every LOADED canvas (canonical + priors — priors are the library's
@@ -123,8 +134,22 @@ export function LibraryOverlay() {
     setLibraryOpen(false)
   }
 
+  // V stays the flip family's own key while a projection is open (§0.2:
+  // command controls retain their local navigation keys — the footers
+  // advertise the cycle). The panel's local handler owns it because the
+  // hook's containment keeps it away from the canvas background chain;
+  // never while the user types (the field's key, not the surface's).
+  const flipProjection = (event: { key: string; target: unknown }) => {
+    if (event.key === 'v' && !isTypingTarget(event.target)) useCanvasStore.getState().cycleProjection()
+  }
+
   return <div className="canvas-index-overlay" data-canvas-library role="dialog" aria-label="Library" onClick={() => setLibraryOpen(false)}>
-    <div className="canvas-index-panel canvas-library-panel" onClick={(event) => event.stopPropagation()}>
+    <div
+      className="canvas-index-panel canvas-library-panel"
+      onClick={(event) => event.stopPropagation()}
+      ref={overlay.ref}
+      onKeyDown={(event) => { overlay.onKeyDown(event); flipProjection(event) }}
+    >
       <div className="canvas-index-input">
         <Search size={15} />
         <input
@@ -132,7 +157,6 @@ export function LibraryOverlay() {
           data-canvas-library-input
           placeholder="Search completed outputs across the session…"
           onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setLibraryOpen(false) } }}
         />
         <div className="canvas-library-filters" role="group" aria-label="Filter by kind">
           {/* Manifest §5 independent toggles (task 6): the filter chips are

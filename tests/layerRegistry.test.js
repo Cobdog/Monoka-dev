@@ -109,7 +109,7 @@ class FakeWindow {
 
 const fakeWindow = new FakeWindow('?probe=layers')
 const layerRegistry = loadTs('src/ui/layerRegistry.ts', { window: fakeWindow })
-const { registerLayer, topmostLayer, layerIds, routeKeyDown } = layerRegistry
+const { registerLayer, topmostLayer, layerIds, routeKeyDown, anyModalLayer } = layerRegistry
 
 const ids = () => layerIds().join('|')
 const topmostId = () => {
@@ -274,4 +274,21 @@ test('(h) ?probe=layers binds the e2e probe; the gate stays a query flag', () =>
   const a = layer('a')
   eq(probe.layerIds().join('|'), 'a', 'the probe reads the SAME registry the app uses')
   a.unregister()
+})
+
+// ---- (i) the modal suspension derivation (task 14) ---------------------------------
+
+test('(i) anyModalLayer — the background-shortcut suspension derivation (§0.2)', () => {
+  eq(anyModalLayer(), false, 'no modal layer while the stack is empty — the canvas background chain is live')
+  const plain = layer('plain')
+  eq(anyModalLayer(), false, 'a non-modal layer alone does not suspend the background chain')
+  const nested = layer('nested')
+  const modal = layer('modal', true)
+  eq(anyModalLayer(), true, 'a modal layer anywhere in the stack suspends it (the command overlays carry the flag)')
+  nested.unregister()
+  eq(anyModalLayer(), true, 'a non-top modal layer keeps the suspension (any-modal, not topmost-modal)')
+  modal.unregister()
+  eq(anyModalLayer(), false, 'unregistering the modal layer releases the suspension')
+  plain.unregister()
+  eq(anyModalLayer(), false, 'the stack is quiet again')
 })
