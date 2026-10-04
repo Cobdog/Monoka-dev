@@ -1452,11 +1452,16 @@ function MaskPainterDialog({ file, onCancel, onUse }: {
 
   // Draw-loop bookkeeping: the paint canvas keeps the source's NATURAL
   // pixel geometry so the mask aligns exactly; the displayed bitmap is a
-  // CSS-scaled view of it.
-  useEffect(() => {
-    const paint = paintRef.current
-    const img = imgRef.current
-    if (!paint || !img) return
+  // CSS-scaled view of it. (Task 12R, k2q0n9s) The bind rides CALLBACK REFS,
+  // not a mount effect: Base UI's portal gates its content on an internal
+  // `mounted` flag that flips a commit AFTER this component mounts, so the
+  // old []-effect ran against null refs and never re-ran (the canvas stayed
+  // at the browser's 300x150 default — dead since the StudioDialogLayered
+  // move; the CropEditor wheel fix is the same shape). The callback refs
+  // fire when the nodes actually appear; React attaches them in tree order,
+  // so the img's ref finds no canvas yet and the LAST-attaching ref performs
+  // the one bind (both-present guard — order never assumed).
+  const bindPaintSize = useCallback((img: HTMLImageElement, paint: HTMLCanvasElement) => {
     const redraw = () => {
       paint.width = img.naturalWidth
       paint.height = img.naturalHeight
@@ -1465,6 +1470,14 @@ function MaskPainterDialog({ file, onCancel, onUse }: {
     if (img.complete) redraw()
     else img.addEventListener('load', redraw, { once: true })
   }, [])
+  const setImgNode = useCallback((node: HTMLImageElement | null) => {
+    imgRef.current = node
+    if (node && paintRef.current) bindPaintSize(node, paintRef.current)
+  }, [bindPaintSize])
+  const setPaintNode = useCallback((node: HTMLCanvasElement | null) => {
+    paintRef.current = node
+    if (node && imgRef.current) bindPaintSize(imgRef.current, node)
+  }, [bindPaintSize])
 
   const paintAt = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const paint = paintRef.current
@@ -1547,9 +1560,9 @@ function MaskPainterDialog({ file, onCancel, onUse }: {
       </div>
       <p>Everything you paint regenerates from the instruction; the rest of the image is restored pixel-exactly after the render. Transparent pixels ARE the mask (the Mask-Editor convention).</p>
       <div className="iw-mask-stage">
-        {file.preview ? <img ref={imgRef} src={file.preview} alt="source" className="iw-mask-under" /> : <span className="iw-frame-evicted">no preview</span>}
+        {file.preview ? <img ref={setImgNode} src={file.preview} alt="source" className="iw-mask-under" /> : <span className="iw-frame-evicted">no preview</span>}
         <canvas
-          ref={paintRef}
+          ref={setPaintNode}
           className="iw-mask-paint"
           data-iw-mask-canvas
           onPointerDown={(event) => { drawing.current = true; event.currentTarget.setPointerCapture(event.pointerId); paintAt(event) }}

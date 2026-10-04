@@ -511,6 +511,62 @@ test('the canvas tile names the workbench packet and links to the pick surface',
 })
 
 // ---------------------------------------------------------------------------
+// (Task 12R, k2q0n9s) The mask painter's sizing contract, pinned end to end:
+// the paint canvas's BITMAP (its width/height attributes) must equal the
+// loaded source's natural pixel geometry — the painter paints in SOURCE
+// pixels and CSS scales the view, so a mis-sized bitmap mis-scales every
+// stroke and the mask. This is the pin the T12 StudioDialogLayered move
+// needed: Base UI's portal mounts its content a commit AFTER the dialog
+// component, so the painter's old []-mount-effect img-load binding ran
+// against null refs and never re-ran — the canvas stayed at the browser's
+// 300x150 default. The bind now rides callback refs (the CropEditor fix
+// shape, src/datasets/CropEditor.tsx). Engine-independent: painting needs no
+// engine, only the seeded canvas take as the picked source (the W8 path).
+test('the mask painter\'s canvas sizes to the loaded source\'s natural pixels (Task 12R, k2q0n9s)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  await seedSession(request)
+  await page.goto('/?images=1')
+  await expect(page.locator('[data-iw-root]')).toBeVisible({ timeout: 15_000 })
+
+  // The inpaint lane: the Edit tab, the masked sub-lane, then anchor the
+  // source from the seeded canvas take.
+  await page.locator('[data-iw-mode="edit"] > button').click()
+  await page.locator('[data-iw-family-button="h3img.edit.inpaint"]').click()
+  await page.locator('[data-iw-source-pick-canvas]').click()
+  const picker = page.getByRole('dialog', { name: 'Use a canvas image as the source' })
+  await expect(picker).toBeVisible()
+  await picker.locator('[data-iw-canvas-ref]').first().click()
+  await expect(picker).toHaveCount(0)
+  await expect(page.locator('[data-iw-source-name]')).toBeVisible()
+
+  // Open the painter.
+  await page.locator('[data-iw-paint-mask]').click()
+  const painter = page.getByRole('dialog', { name: 'Paint the region to regenerate' })
+  await expect(painter).toBeVisible()
+
+  // Judge only a LOADED source (natural size is 0 while in flight; the
+  // seeded frames are the distinct 1x1 PNGs from seedSession).
+  await page.waitForFunction(() => {
+    const img = document.querySelector('.iw-mask-under')
+    return img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0
+  })
+  const dims = await page.evaluate(() => {
+    const img = document.querySelector('.iw-mask-under')
+    const paint = document.querySelector('[data-iw-mask-canvas]')
+    if (!(img instanceof HTMLImageElement) || !(paint instanceof HTMLCanvasElement)) return { natural: '(missing)', canvas: '(missing)' }
+    return { natural: `${img.naturalWidth}x${img.naturalHeight}`, canvas: `${paint.width}x${paint.height}` }
+  })
+  // 300x150 here would be the browser default — the T12 regression, live.
+  expect(dims.canvas, `paint bitmap ${dims.canvas} vs natural ${dims.natural}`).toBe(dims.natural)
+
+  // The painter stays a registry-participating dialog: Escape dismisses it.
+  await page.keyboard.press('Escape')
+  await expect(painter).toHaveCount(0)
+
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
 // The FULL generation path through a fake engine speaking the real contract
 // (the canvas F6 precedent): submit → poll → the packet-aware landing
 // (getHistory → EVERY frame descriptor → server-side byte ingest → the
