@@ -2542,6 +2542,14 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
           // async document writes settle before the e2e reads activeDocument
         }
       }
+      if (name === 'open-audio-dock') {
+        // PR-1b (k2q0n9s): the audio lane is flag-paused (nn5ld47) — every
+        // UI entry point renders disabled — so the e2e drives the REAL
+        // setter the disabled rows would call. The dock's raise behavior
+        // stays testable while authoring stays paused.
+        state.setAudioDock({ engine: 'music3' })
+        return { ok: true }
+      }
       return { ok: false, reason: `unknown scenario ${name}` }
     },
   })

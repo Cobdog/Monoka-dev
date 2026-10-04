@@ -10,7 +10,7 @@
  * row on the target chain (kind pose, source poserig) — the §2.1 control
  * track, one per shot.
  */
-import { lazy, Suspense, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { Rnd } from 'react-rnd'
 import { LoaderCircle } from 'lucide-react'
 import { documentsApi } from './api'
@@ -28,7 +28,13 @@ export function PoseRigDock() {
   const documents = useCanvasStore((state) => state.documents)
   const activeProjectId = useCanvasStore((state) => state.activeProjectId)
   const tiles = useCanvasStore((state) => state.tiles)
+  const raiseDock = useCanvasStore((state) => state.raiseDock)
   const [exporting, setExporting] = useState(false)
+  // Dock stacking (review M11): this dock's own z, raised on open and on any
+  // pointer grab — independent of the other docks' z values. The stranded
+  // z-55 CSS pin is retired; the store owns ordering.
+  const [dockZ, setDockZ] = useState(60)
+  useEffect(() => { if (panel) setDockZ(raiseDock()) }, [panel, raiseDock])
 
   if (!panel) return null
   const doc = activeProjectId ? documents[activeProjectId] : null
@@ -62,6 +68,8 @@ export function PoseRigDock() {
   return <Rnd
     className="canvas-poserig-dock"
     data-canvas-poserig
+    style={{ zIndex: dockZ }}
+    onPointerDownCapture={() => setDockZ(raiseDock())}
     default={{ x: 96, y: 72, width: Math.min(1180, window.innerWidth - 120), height: Math.min(720, window.innerHeight - 160) }}
     minWidth={720}
     minHeight={420}

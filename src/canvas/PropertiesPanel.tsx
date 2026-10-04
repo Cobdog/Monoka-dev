@@ -421,6 +421,12 @@ export function PropertiesPanel() {
   const submitChain = useCanvasStore((state) => state.submitChain)
   const validateChain = useCanvasStore((state) => state.validateChain)
   const cancelChainJob = useCanvasStore((state) => state.cancelChainJob)
+  const raiseDock = useCanvasStore((state) => state.raiseDock)
+  // Dock stacking (review M11): this dock's own z, raised on open and on any
+  // pointer grab — independent of the other docks' z values. The stranded
+  // z-40 CSS pin is retired; the store owns ordering.
+  const [dockZ, setDockZ] = useState(60)
+  useEffect(() => { if (open) setDockZ(raiseDock()) }, [open, raiseDock])
 
   const models = useSessionStore((state) => state.models)
   const info = useSessionStore((state) => state.info)
@@ -976,6 +982,8 @@ export function PropertiesPanel() {
     className="canvas-inspector canvas-properties"
     data-canvas-inspector
     data-canvas-properties
+    style={{ zIndex: dockZ }}
+    onPointerDownCapture={() => setDockZ(raiseDock())}
     default={{ x: window.innerWidth - 396, y: 64, width: 356, height: Math.min(760, window.innerHeight - 140) }}
     minWidth={300}
     minHeight={240}

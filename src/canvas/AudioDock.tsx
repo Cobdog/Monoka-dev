@@ -10,7 +10,7 @@
  * projection like every output. (The ACE-Step dock arm was removed with
  * the engine, 2026-09-21 — nn5ld47.)
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Rnd } from 'react-rnd'
 import { AudioLines, Play, X } from 'lucide-react'
 import { useCanvasStore } from './store'
@@ -27,11 +27,17 @@ export function AudioDock() {
   const selection = useCanvasStore((state) => state.selection)
   const documents = useCanvasStore((state) => state.documents)
   const activeProjectId = useCanvasStore((state) => state.activeProjectId)
+  const raiseDock = useCanvasStore((state) => state.raiseDock)
 
   const [caption, setCaption] = useState('')
   const [lyrics, setLyrics] = useState('')
   const [duration, setDuration] = useState(60)
   const [submitting, setSubmitting] = useState(false)
+  // Dock stacking (review M11): this dock's own z, raised on open and on any
+  // pointer grab — independent of the other docks' z values. The stranded
+  // z-55 CSS pin is retired; the store owns ordering.
+  const [dockZ, setDockZ] = useState(60)
+  useEffect(() => { if (dock) setDockZ(raiseDock()) }, [dock, raiseDock])
 
   if (!dock) return null
   const engine = dock.engine
@@ -85,6 +91,8 @@ export function AudioDock() {
       data-canvas-audio-dock
       data-canvas-audio-engine={engine}
       data-canvas-audio-paused="true"
+      style={{ zIndex: dockZ }}
+      onPointerDownCapture={() => setDockZ(raiseDock())}
       default={{ x: 96, y: 120, width: 400, height: 560 }}
       minWidth={320}
       minHeight={300}
@@ -108,6 +116,8 @@ export function AudioDock() {
     className="canvas-audio-dock"
     data-canvas-audio-dock
     data-canvas-audio-engine={engine}
+    style={{ zIndex: dockZ }}
+    onPointerDownCapture={() => setDockZ(raiseDock())}
     default={{ x: 96, y: 120, width: 400, height: 560 }}
     minWidth={320}
     minHeight={300}
