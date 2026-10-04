@@ -16,7 +16,7 @@
  * pattern: delete → trashed state visible → restore or empty; NO hard
  * deletes from here — the store's GC owns those.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Clapperboard, Download, Search, Trash2 } from 'lucide-react'
 import { documentsApi, type SearchHit } from './api'
 import { useCanvasStore } from './store'
@@ -24,6 +24,7 @@ import { useJobsStore } from '../state/jobsStore'
 import { dbg } from '../lib/dbg'
 import { chainTitle } from './derive'
 import { Chip } from '../ui/Chip'
+import { useOverlayBehavior } from '../ui/useOverlayBehavior'
 import type { DocumentChain } from './derive'
 
 type Row = {
@@ -48,6 +49,28 @@ function sceneTitle(document: { chains: DocumentChain[] }, chain: DocumentChain)
   return prompt.split(/[.\n]/).map((part) => part.trim()).find(Boolean) ?? chainTitle(document, chain)
 }
 
+/** The in-panel trash confirm (W13) — a NESTED surface since task 14: it
+ *  registers with the layer registry ABOVE the palette while open, so one
+ *  Escape cancels the confirm alone and the palette survives the press. */
+function IndexConfirm({ kind, copy, onCancel, onConfirm }: {
+  kind: 'trash-scene' | 'empty-trash'
+  copy: { title: string; body: string; confirm: string }
+  onCancel(): void
+  onConfirm(): void
+}) {
+  const overlay = useOverlayBehavior({ id: 'canvas-index-confirm', onDismiss: onCancel })
+  return <div className="canvas-index-confirm" role="alertdialog" aria-label={copy.title} data-canvas-index-confirm={kind} ref={overlay.ref} onKeyDown={overlay.onKeyDown}>
+    <div>
+      <strong>{copy.title}</strong>
+      <p>{copy.body}</p>
+    </div>
+    <div className="canvas-index-confirm-actions">
+      <button type="button" data-canvas-index-confirm-cancel onClick={onCancel}>Keep it</button>
+      <button type="button" className="danger" data-canvas-index-confirm-accept onClick={onConfirm}>{copy.confirm}</button>
+    </div>
+  </div>
+}
+
 export function IndexOverlay() {
   const open = useCanvasStore((state) => state.indexOpen)
   const setIndexOpen = useCanvasStore((state) => state.setIndexOpen)
@@ -65,7 +88,6 @@ export function IndexOverlay() {
   const [cursor, setCursor] = useState(0)
   const [ftsHits, setFtsHits] = useState<SearchHit[]>([])
   const [ftsPending, setFtsPending] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
   // The trash view: trashed scenes from the STORE's own listing (the
   // undo window the GC owns), fetched on entry, refreshed after acts.
   const [trashMode, setTrashMode] = useState(false)
@@ -76,6 +98,13 @@ export function IndexOverlay() {
   //  other hooks (never after the !open early return: hook order is a
   //  component-lifetime invariant).
   const [confirming, setConfirming] = useState<{ kind: 'trash-scene'; row: Row } | { kind: 'empty-trash' } | null>(null)
+  // Task 14 (§0.2): the palette joins the layer registry — Escape routes to
+  // the topmost layer (this palette over a wrapped dialog closes ONLY the
+  // palette), focus settles into the input, and the canvas background chain
+  // suspends while it holds the keyboard. The input's arrows/Enter stay the
+  // palette's OWN local keys below.
+  const overlay = useOverlayBehavior({ id: 'canvas-index', onDismiss: () => setIndexOpen(false) })
+  const { focusOnOpen } = overlay
 
   useEffect(() => {
     if (open) {
@@ -84,9 +113,9 @@ export function IndexOverlay() {
       setFtsHits([])
       setTrashMode(false)
       setTrashed(null)
-      window.setTimeout(() => inputRef.current?.focus(), 0)
+      focusOnOpen()
     }
-  }, [open])
+  }, [open, focusOnOpen])
 
   const refreshTrash = () => {
     documentsApi.listTrashedChains().then((chains) => setTrashed(chains)).catch((error) => {
@@ -280,22 +309,23 @@ export function IndexOverlay() {
   })
 
   return <div className="canvas-index-overlay" data-canvas-index role="dialog" aria-label="Canvas index" onClick={() => setIndexOpen(false)}>
-    <div className="canvas-index-panel" onClick={(event) => event.stopPropagation()}>
+    <div className="canvas-index-panel" onClick={(event) => event.stopPropagation()} ref={overlay.ref} onKeyDown={overlay.onKeyDown}>
       <div className="canvas-index-input">
         <Search size={15} />
         <input
-          ref={inputRef}
           value={query}
           data-canvas-index-input
           placeholder={trashMode ? 'Search the trash…' : 'Search canvases, objects, takes, jobs…'}
           onChange={(event) => { setQuery(event.target.value); setCursor(0) }}
           onKeyDown={(event) => {
-            // The trash view's rows are not navigable — the live rows' cursor
+            // The palette's LOCAL navigation keys (§0.2: command controls
+            // retain them; the registry owns Escape-class dismissal only —
+            // the retired inline Escape handler died with task 14). The
+            // trash view's rows are not navigable — the live rows' cursor
             // stays parked while the trash list is displayed.
             if (event.key === 'ArrowDown' && !trashMode) { event.preventDefault(); setCursor((value) => Math.min(value + 1, rows.length - 1)) }
             if (event.key === 'ArrowUp' && !trashMode) { event.preventDefault(); setCursor((value) => Math.max(value - 1, 0)) }
             if (event.key === 'Enter' && !trashMode) { event.preventDefault(); const row = rows[cursor]; if (row) void activate(row) }
-            if (event.key === 'Escape') { event.stopPropagation(); setIndexOpen(false) }
           }}
         />
         {ftsPending && !trashMode && <span className="canvas-index-pending">searching…</span>}
@@ -393,18 +423,15 @@ export function IndexOverlay() {
       )}
       {/* (W13) The in-app confirm: the same blast-radius copy, the house
           styled-dialog language, inside the index panel — never the native
-          browser confirm. */}
+          browser confirm. A registered NESTED layer (task 14): Escape
+          cancels the confirm without closing the palette under it. */}
       {confirmCopy && confirming && (
-        <div className="canvas-index-confirm" role="alertdialog" aria-label={confirmCopy.title} data-canvas-index-confirm={confirming.kind}>
-          <div>
-            <strong>{confirmCopy.title}</strong>
-            <p>{confirmCopy.body}</p>
-          </div>
-          <div className="canvas-index-confirm-actions">
-            <button type="button" data-canvas-index-confirm-cancel onClick={() => setConfirming(null)}>Keep it</button>
-            <button type="button" className="danger" data-canvas-index-confirm-accept onClick={() => { if (confirming.kind === 'empty-trash') void emptyTrash(); else void trashScene(confirming.row) }}>{confirmCopy.confirm}</button>
-          </div>
-        </div>
+        <IndexConfirm
+          kind={confirming.kind}
+          copy={confirmCopy}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => { if (confirming.kind === 'empty-trash') void emptyTrash(); else void trashScene(confirming.row) }}
+        />
       )}
     </div>
   </div>

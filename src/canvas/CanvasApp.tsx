@@ -33,6 +33,7 @@ import { Radar } from './Radar'
 import { SettingsDock } from './SettingsDock'
 import { LibraryDock } from '../components/LibraryDock'
 import { RemediationDock } from './RemediationDock'
+import { anyModalLayer } from '../ui/layerRegistry'
 import { CanvasToastAdapter } from './toastAdapter'
 import { Substrate } from './Substrate'
 import { useCanvasStore } from './store'
@@ -89,17 +90,15 @@ export function CanvasApp() {
       }
       if (event.key === 'Escape') {
         // App-tour wave (d6iy68r, review m1, decided 2026-09-19): ONE action
-        // per press. Overlays with their own Escape handlers (index, library,
-        // endpoint menu) stopPropagation — the overlay that ACTS owns the
-        // keypress and this chain never runs for it (before, closing an
-        // overlay ALSO deselected in the same press). This handler stays the
-        // owner for everything without its own handler.
+        // per press. Since task 10/14 every REGISTERED layer (the dialogs
+        // via StudioDialogLayered, the command overlays via
+        // useOverlayBehavior) routes its Escape through the layer registry —
+        // the routed keystroke is consumed at window-capture and this chain
+        // never runs for it. This handler stays the owner for the
+        // unregistered rest: the canvas menus (endpoint/fork — task 16's
+        // PopoverMenu migration) and the base deselect.
         const state = useCanvasStore.getState()
-        if (state.indexOpen) setIndexOpen(false)
-        else if (state.gapMenu) state.setGapMenu(null)
-        else if (state.timelineOpen) state.setTimelineOpen(false)
-        else if (state.libraryOpen) state.setLibraryOpen(false)
-        else if (state.endpointMenu || state.forkMenu) {
+        if (state.endpointMenu || state.forkMenu) {
           state.setEndpointMenu(null)
           state.setForkMenu(null)
         } else if (state.diagnosticsDock) state.setDiagnosticsDock(false)
@@ -112,8 +111,16 @@ export function CanvasApp() {
       // single-letter keys (digits included) never fire with Alt held.
       if (event.altKey) return
       const state = useCanvasStore.getState()
-      // The modal surfaces own Escape/keys while open.
-      if (state.opEditor || state.poseRig) return
+      // The modal surfaces own Escape/keys while open: the pose-rig dock
+      // binds its own window keys, the op modal is a StudioDialog surface,
+      // and since task 14 every registry-registered MODAL layer — the
+      // command overlays (index/library/timeline) included — suspends this
+      // background chain (§0.2: background canvas shortcuts cannot fire
+      // through a modal). The overlays' own keys (the palette's arrows, the
+      // flip family's V) are their LOCAL panel handlers now; ⌘K above is
+      // handled before this gate on purpose — summoning the palette over a
+      // dialog is the supported stack (task 14 retired the interim hazard).
+      if (state.opEditor || state.poseRig || anyModalLayer()) return
       // §7 V — the projection flip through the family: ∅ → timeline →
       // library → ∅ (Phase 5b; Phase 4's V toggled the library alone).
       if (event.key === 'v') {

@@ -60,6 +60,16 @@ export function layerIds(): string[] {
   return stack.map((entry) => entry.id)
 }
 
+/** True while ANY registered layer is modal — spec §0.2's background-shortcut
+ *  suspension derivation. CanvasApp consults it to suspend its background
+ *  chain while a modal layer holds the keyboard; task 14's overlay hook
+ *  supplies the flag for the hand-rolled command surfaces (the §0.1 z-band
+ *  reads the same field for layering). Any-modal, not topmost-modal: a
+ *  dialog under a modal overlay keeps the suspension held. */
+export function anyModalLayer(): boolean {
+  return stack.some((entry) => entry.modal === true)
+}
+
 /**
  * Registers a layer; returns its unregister function. Idempotent — a spent
  * handle never removes anyone else's entry.

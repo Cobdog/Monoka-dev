@@ -5338,3 +5338,170 @@ test('a settings save landing mid-typing cannot roll back the identity edit (I-R
 })
 
 
+
+// ---------------------------------------------------------------------------
+// Component vocabulary task 14 (k2q0n9s) — the overlay hook (§0.2): the
+// canvas command surfaces (index/library/timeline palettes — hand-rolled
+// positioned surfaces, NOT Base UI dialogs) join the ONE Escape mechanism
+// through src/ui/useOverlayBehavior.ts. Registration rides the panel's
+// mount; Escape routes topmost-only; focus settles INTO the surface; the
+// background canvas chain suspends while a modal layer holds the keyboard;
+// the surfaces keep their OWN keys (the palette's arrows, the flip family's
+// V) as local handlers.
+// ---------------------------------------------------------------------------
+
+test('overlay hook: ⌘K over a wrapped dialog — Escape closes only the palette (§0.2 interim hazard retired)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=layers')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('a lone drummer on a night train')
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 10_000 })
+  const panelLibraryButton = page.locator('[data-canvas-prompt-library]')
+  await panelLibraryButton.click()
+  const dialog = page.locator('.prompt-library-modal')
+  await expect(dialog).toBeVisible({ timeout: 10_000 })
+
+  const stackVia = () => page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })
+  await expect.poll(stackVia).toBe('prompt-library')
+
+  // ⌘K stacks the palette OVER the wrapped dialog — registered on top.
+  await page.keyboard.press('ControlOrMeta+k')
+  const palette = page.locator('[data-canvas-index]')
+  await expect(palette).toBeVisible()
+  expect(await stackVia()).toBe('prompt-library|canvas-index')
+  // focusOnOpen — the settled-containment invariant: focus moves into the palette.
+  await expect(page.locator('[data-canvas-index-input]')).toBeFocused()
+
+  // ONE Escape closes ONLY the palette. Pre-migration (task 10's disclosed
+  // interim hazard) the unregistered palette was bypassed: the routed Escape
+  // closed the dialog UNDERNEATH while the palette stayed open.
+  await page.keyboard.press('Escape')
+  await expect(palette).toHaveCount(0)
+  await expect(dialog).toBeVisible()
+  expect(await stackVia()).toBe('prompt-library')
+
+  // The next Escape belongs to the dialog (topmost now) — focus restores.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(panelLibraryButton).toBeFocused()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('overlay hook: the palette keeps its local keys; background canvas shortcuts are dead while it holds the layer (§0.2)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=layers')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('a lighthouse in the fog')
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 10_000 })
+  await page.locator('[data-canvas-tile]').first().click()
+  await expect(page.locator('.canvas-tile.selected')).toHaveCount(1)
+  // Park the mouse clear of the centered panel: the rows follow the pointer
+  // on hover, and a stationary cursor left over a row would claim it the
+  // moment the palette renders (boundary events fire without movement).
+  await page.mouse.move(20, 540)
+
+  await page.keyboard.press('ControlOrMeta+k')
+  const palette = page.locator('[data-canvas-index]')
+  await expect(palette).toBeVisible()
+  await expect(page.locator('[data-canvas-index-input]')).toBeFocused()
+  const stackVia = () => page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })
+  await expect.poll(stackVia).toBe('canvas-index')
+
+  // LOCAL keys stay the palette's own: the row cursor answers the arrows
+  // (registry participation never touches navigation inside the surface).
+  const rows = palette.locator('.canvas-index-li')
+  await expect(rows.nth(0)).toHaveClass(/cursor/)
+  await page.keyboard.press('ArrowDown')
+  await expect(rows.nth(1)).toHaveClass(/cursor/)
+  await expect(rows.nth(0)).not.toHaveClass(/cursor/)
+  await page.keyboard.press('ArrowUp')
+  await expect(rows.nth(0)).toHaveClass(/cursor/)
+
+  // BACKGROUND shortcuts are dead while the overlay holds the layer: with
+  // focus on the palette's own chrome (the trash toggle — a button, not a
+  // text field), B must NOT open the fork menu behind the overlay
+  // (pre-migration the window chain fired it through the open palette).
+  await palette.locator('[data-canvas-index-trash]').click()
+  await page.keyboard.press('b')
+  await expect(page.locator('[data-canvas-fork-menu]')).toHaveCount(0)
+
+  // Escape closes only the palette — the tile selection survives the press.
+  await page.keyboard.press('Escape')
+  await expect(palette).toHaveCount(0)
+  await expect(page.locator('.canvas-tile.selected')).toHaveCount(1)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('overlay hook: the projections register, focus settles in, V flips the family locally, the gap menu unwinds first (§0.2)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=layers')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+
+  const stackVia = () => page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })
+
+  // The timeline summons from its titlebar button: it registers as a layer
+  // and focus moves INTO the panel (settled containment).
+  await page.locator('[data-canvas-timeline-button]').click()
+  const timeline = page.locator('[data-canvas-timeline]')
+  await expect(timeline).toBeVisible()
+  await expect.poll(stackVia).toBe('canvas-timeline')
+  expect(await page.evaluate(() => Boolean(document.activeElement?.closest('[data-canvas-timeline]')))).toBe(true)
+
+  // V stays the family's own flip while a projection is open (the footers
+  // advertise it): timeline → library, through the overlay's local key.
+  await page.keyboard.press('v')
+  await expect(timeline).toHaveCount(0)
+  const library = page.locator('[data-canvas-library]')
+  await expect(library).toBeVisible()
+  await expect(page.locator('[data-canvas-library-input]')).toBeFocused()
+
+  await page.keyboard.press('Escape')
+  await expect(library).toHaveCount(0)
+
+  // A button-summoned library restores focus to its opener on close.
+  await page.locator('[data-canvas-library-button]').click()
+  await expect(library).toBeVisible()
+  await expect(page.locator('[data-canvas-library-input]')).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(library).toHaveCount(0)
+  await expect(page.locator('[data-canvas-library-button]')).toBeFocused()
+
+  // The gap menu is a NESTED surface: registered ABOVE the timeline, one
+  // Escape closes ONLY the menu; the next closes the projection.
+  await page.keyboard.press('v')
+  await expect(timeline).toBeVisible()
+  await timeline.locator('[data-canvas-timeline-new-plan]').click()
+  await expect(timeline.locator('[data-canvas-plan-brief]')).toBeVisible({ timeout: 10_000 })
+  await timeline.locator('[data-canvas-plan-add-segment]').click()
+  await timeline.locator('[data-canvas-plan-add-segment]').click()
+  await expect(timeline.locator('[data-canvas-segment]')).toHaveCount(2)
+  await timeline.locator('[data-canvas-segment-prompt]').nth(0).fill('the drummer steps off the night train into the rain')
+  await timeline.locator('[data-canvas-segment-prompt]').nth(0).blur()
+  await timeline.locator('[data-canvas-segment-prompt]').nth(1).fill('the corridor lights stutter as she passes')
+  await timeline.locator('[data-canvas-segment-prompt]').nth(1).blur()
+  await page.waitForTimeout(500)
+  await timeline.locator('[data-canvas-gap]').first().click()
+  const menu = timeline.locator('[data-canvas-gap-menu]')
+  await expect(menu).toBeVisible()
+  expect(await stackVia()).toBe('canvas-timeline|canvas-gap-menu')
+  await page.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  await expect(timeline).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(timeline).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
