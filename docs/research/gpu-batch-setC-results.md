@@ -312,3 +312,20 @@ between the maintainer's calls and the automated reads (especially on p01–
 p03, where the metrics say tie-class) escalates as a protocol event — most
 interestingly on p11–p13, where the automated battery says the sides are
 *identical to* p08–p10's truncated side by construction.
+
+## Addendum — the maintainer's review (2026-10-04, 26/28 called; p01-p02 skipped, both X1 near-twin cells already covered by p03's tie)
+
+**Reconciliation against the automated verdicts** (the eye sees arm-blind; the key decoded after the export):
+
+| Contrast | The eye said | The metrics said | Verdict |
+|---|---|---|---|
+| **X1 sgm vs simple** (p03) | tie | pixel-twins predicted | **AGREE** — the A1 knot-level 0.052 separation genuinely doesn't survive to perception |
+| **X1 beta vs simple** (p04-06) | beta wins LOW+MED ("much more vibrant"), simple wins HIGH | beta: HF halved, +157% plan error at low, -13.9% sub-floor at high | **DISAGREE at low/mid, AGREE at high** — the eye's "vibrant" may be the fry reading as punch; OR the metrics' HF-energy ratio penalizes what the eye rewards. The X1 falsification stands (the AND-rule fails on metrics), but the eye's beta preference at low motion is recorded as a counter-signal |
+| **X3 truncation** (p08-13) | all tie, six pairs | HF 0.99-1.05, texture held, 0.05≡0.15 bit-identical | **AGREE** — the binary confirmed by both tracks |
+| **X6 distill off-distribution** (p14-16) | simple/8 wins all three | P2 alternation 5.8× (simple cleaner); all else within granularity | **AGREE** — the alternation metric is visible to the eye; simple/8 confirmed the better off-card recipe. p16's note (the winner had its own flicker) is honest signal |
+| **X2 rung ladder** (p17-22) | 544p muted at low motion; 576p≈544p safe; **the cliff confirmed by eye at 768p on low-motion (p20 left) and the inversion on med/high (p21-22 right)** | plan error 1.37→2.04→7.61; inversion at high motion | **AGREE on the cliff AND the inversion** — the batch's most consequential finding now has human confirmation on both sides |
+| **X2 shift legs** (p23-28) | mixed; s18@768p won the P1/P2 eyes | flat at 544p; exploratory s18@768p interaction | **NEUTRAL/PARTIAL** — the flat-at-544p confirmed (p24 tie); the s18@768p eye preference gives the exploratory stability interaction its first corroboration |
+
+**The human track's own finding**: your unguided note on p09 ("this feels like same prompt and different seed") was made on an X3 pair (same seed, different sigma grid) — the observation that grid changes produce seed-like variety is itself data: **grid effects and seed effects are perceptually confusable** at the individual-pair level, which bounds what un-paired judgments can ever distinguish.
+
+**Standing disagreements recorded for the recipe ledger**: beta-at-low-motion (the eye's preference vs the metrics' fry verdict) is the one open question — X1's falsification of the AND-rule stands, but if the product ever ships a "vibrant preference" toggle, the beta family is its candidate, with the fry axis as the labeled cost.
