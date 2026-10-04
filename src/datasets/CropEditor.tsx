@@ -10,11 +10,20 @@
  *    the video is never resized.
  * Scroll/shift+scroll belong to the crop stamp INSIDE this editor only — the
  * canvas's wheel-zoom semantics are untouched (audit-clean).
+ *
+ * Component vocabulary task 13 (k2q0n9s): the editor is StudioDialogLayered
+ * — Base UI owns the focus trap/restore and outside press, and the §0.2
+ * layer registry routes Escape topmost-only. The A09 remediation's
+ * hand-rolled trap and window-Escape listener retire into the shared
+ * wrapper; the busy guard is C1's uniform one now (every dismissal path —
+ * routed Escape, outside-press, Close — defers while a save is in flight;
+ * the save's outcome, or its refusal reason, belongs on screen).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlipHorizontal2, Grid2x2, Move, Scissors } from 'lucide-react'
 import { datasetsApi, mediaUrlFor, type AspectEntry, type CropRect, type LibraryLayer, type LibrarySource } from './api'
 import { Button } from '../ui/Button'
+import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 
 const GRID = 32
 
@@ -68,7 +77,6 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
   const enabled = useMemo(() => aspects.filter((aspect) => aspect.enabled), [aspects])
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
-  const panelRef = useRef<HTMLDivElement | null>(null)
   const [aspectIndex, setAspectIndex] = useState(() => {
     const initial = layer?.crop ? enabled.findIndex((aspect) => Math.abs(aspect.ratio - layer.crop!.w / layer.crop!.h) < 0.05) : enabled.findIndex((aspect) => aspect.id === '16:9')
     return initial >= 0 ? initial : 0
@@ -147,56 +155,36 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
     })
   }, [aspect, source.probe.width, source.probe.height])
 
-  useEffect(() => {
-    const node = stageRef.current
-    if (!node) return
-    node.addEventListener('wheel', onWheel, { passive: false })
-    return () => node.removeEventListener('wheel', onWheel)
-  }, [onWheel])
+  // (Task 13, k2q0n9s) The wheel listener binds through a CALLBACK REF, not
+  // a mount effect: Base UI's portal gates its content on an internal
+  // `mounted` flag that flips a commit AFTER this component mounts, so the
+  // old effect ran against a null stageRef and never re-ran (the stage's
+  // wheel went dead — measured in the migration's e2e). The callback ref
+  // fires when the stage NODE actually appears (and again if it is ever
+  // replaced); the handler rides a ref so its identity churn (aspect-count
+  // / probe deps) never re-binds the node. The binding stays NON-PASSIVE —
+  // the contract preventDefault()s (React's synthetic onWheel is passive at
+  // the root and cannot).
+  const wheelRef = useRef(onWheel)
+  useEffect(() => { wheelRef.current = onWheel })
+  const stageWheel = useCallback((event: WheelEvent) => wheelRef.current(event), [])
+  const setStageNode = useCallback((node: HTMLDivElement | null) => {
+    const previous = stageRef.current
+    if (previous === node) return
+    if (previous) previous.removeEventListener('wheel', stageWheel)
+    stageRef.current = node
+    if (node) node.addEventListener('wheel', stageWheel, { passive: false })
+  }, [stageWheel])
 
-  // App-tour wave (d6iy68r, review m3): the editor answers Escape (Close
-  // was the only exit). Not while a save is in flight — the save's outcome
-  // (or its refusal reason) belongs on screen.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || busy) return
-      onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [busy, onClose])
-
-  // (A09, Codex audit 2026-10-02 — standing C2) The editor is a real dialog:
-  // focus moves in on open, Tab wraps at the panel's edges (it used to walk
-  // the background gallery), and focus returns to the trigger on close.
-  useEffect(() => {
-    const panel = panelRef.current
-    if (!panel) return
-    const restore = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    panel.focus()
-    const tabbables = () => Array.from(panel.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'))
-      .filter((element) => !(element as HTMLButtonElement).disabled && element.offsetParent !== null)
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab') return
-      const items = tabbables()
-      if (items.length === 0) return
-      const first = items[0]
-      const last = items[items.length - 1]
-      const active = document.activeElement
-      if (event.shiftKey && (active === first || active === panel || !panel.contains(active))) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && (active === last || active === panel || !panel.contains(active))) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    panel.addEventListener('keydown', onKey)
-    return () => {
-      panel.removeEventListener('keydown', onKey)
-      restore?.focus()
-    }
-  }, [])
+  // C1's guarded close (the A09/app-tour Escape guards, uniform now): every
+  // dismissal path — the registry-routed Escape, Base UI's outside-press,
+  // the Close button — defers while a save is in flight; the save's outcome
+  // (or its refusal reason) belongs on screen. The save's OWN completion
+  // path (onSaved below) is not a dismissal and never passes through here.
+  const requestClose = () => {
+    if (busy) return
+    onClose()
+  }
 
   const onPointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0) return
@@ -286,25 +274,28 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
   const trimIn = draft.trim.inFrame ?? 0
   const trimOut = draft.trim.outFrame ?? totalFrames
 
-  return <div className="ds-editor-overlay" data-ds-editor>
-    <div
-      ref={panelRef}
-      className="ds-editor"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="ds-editor-title"
-      tabIndex={-1}
-    >
+  return <StudioDialogLayered
+    layerId="ds-editor"
+    open
+    onClose={requestClose}
+    backdropClassName="ds-editor-backdrop"
+    centerClassName="ds-editor-center"
+    popupClassName="ds-editor"
+    labelledBy="ds-editor-title"
+  >
+    {/* .ds-dialog-flow is the surface's test-hook wrapper (display:contents —
+        the popup's own flex flow passes straight through; see datasets.css). */}
+    <div className="ds-dialog-flow" data-ds-editor>
       <header className="ds-editor-head">
         <div>
           <h2 id="ds-editor-title">{layer ? 'Edit layer' : 'New layer'} — {source.name}</h2>
           <p className="ds-sub">{source.probe.width}×{source.probe.height} · {source.kind === 'image' ? 'still' : `${(source.probe.fps ?? 0).toFixed(3)} fps · ${totalFrames} decoded frames`}</p>
         </div>
-        <Button variant="ghost" className="ds-btn" onClick={onClose}>Close</Button>
+        <Button variant="ghost" className="ds-btn" onClick={requestClose}>Close</Button>
       </header>
       <div className="ds-editor-body">
         <div
-          ref={stageRef}
+          ref={setStageNode}
           className="ds-editor-stage"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -406,5 +397,5 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
         </aside>
       </div>
     </div>
-  </div>
+  </StudioDialogLayered>
 }

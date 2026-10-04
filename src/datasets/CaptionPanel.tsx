@@ -3,11 +3,24 @@
  * live trigger-token validation, authorship + history, the stale flow, and
  * the VLM modal carrying the four automation modes (single caption/recaption,
  * free-form discussion; batch modes live on the layer list).
+ *
+ * Component vocabulary task 13 (k2q0n9s): the panel and its VLM modal are
+ * StudioDialogLayered — Base UI owns the focus trap/restore and outside
+ * press, and the §0.2 layer registry routes Escape topmost-only. This pair
+ * is the app's GENUINE two-dialog stack: the VLM dialog registers ABOVE the
+ * caption dialog, so one Escape closes only the VLM, the next the caption
+ * (the retired hand-rolled window listener's VLM-first ownership is the
+ * registry's push order now). C1's uniform busy guard: every dismissal path
+ * — the routed Escape, Base UI's outside-press, the Close/× affordances —
+ * funnels through one guarded close per dialog; declining while that
+ * dialog's own protected action is in flight simply closes nothing (the
+ * registry's documented contract — the save's outcome belongs on screen).
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { History, MessageSquareText, ShieldAlert, Sparkles } from 'lucide-react'
+import { History, MessageSquareText, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { datasetsApi, type LibraryLayer, type TriggerVerdict } from './api'
 import { Button } from '../ui/Button'
+import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 
 type Props = {
   layer: LibraryLayer
@@ -46,18 +59,16 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
     }
   }, [text])
 
-  // App-tour wave (d6iy68r, review m3): the panel answers Escape — the
-  // inner VLM modal owns the FIRST press while it is open (one press, one
-  // action; the chat input's Enter keeps its own meaning).
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      if (vlmOpen) setVlmOpen(false)
-      else onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [vlmOpen, onClose])
+  // C1's guarded closes: the caption save / the VLM recaption run are the
+  // protected actions; every dismissal path above lands here.
+  const closeCaption = () => {
+    if (busy) return
+    onClose()
+  }
+  const closeVlm = () => {
+    if (vlmBusy) return
+    setVlmOpen(false)
+  }
 
   const save = async () => {
     setBusy(true)
@@ -122,79 +133,99 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
     return layer.caption.author === 'hand' ? 'hand-written' : `VLM (${layer.caption.author})`
   }, [layer.caption])
 
-  return <div className="ds-caption-panel" data-ds-caption>
-    <header className="ds-caption-head">
-      <div>
-        <h3>Caption — {layer.name || `layer ${layer.id.slice(0, 8)}`}</h3>
-        <p className="ds-sub">{authorLabel}{layer.caption?.reviewState === 'queued' ? ' · review queued' : ''}{stale ? ' · STALE' : ''}</p>
-      </div>
-      <div className="ds-caption-actions">
-        <Button variant="ghost" className="ds-btn" onClick={() => setVlmOpen((open) => !open)}><Sparkles size={13} /> VLM</Button>
-        <Button variant="ghost" className="ds-btn" onClick={loadHistory}><History size={13} /> {history ? 'Hide history' : 'History'}</Button>
-        <Button variant="ghost" className="ds-btn" onClick={onClose}>Close</Button>
-      </div>
-    </header>
-    {stale && <p className="ds-stale-note" data-ds-stale><ShieldAlert size={13} /> {layer.caption?.stale ? 'This caption is STALE — the layer\'s view changed after captioning. Recaption (or accept explicitly at export).' : ''}</p>}
-    <textarea
-      className="ds-caption-textarea"
-      value={text}
-      onChange={(event) => setText(event.target.value)}
-      rows={6}
-      placeholder="One flowing paragraph, natural language only. Trigger token first, exactly once."
-      data-ds-caption-textarea
-    />
-    <div className="ds-caption-foot">
-      {validation && !validation.ok
-        ? <ul className="ds-validation" data-ds-validation>
-            {validation.issues.map((issue) => <li key={issue}>{issue}</li>)}
-          </ul>
-        : <p className="ds-validation ok" data-ds-validation-ok>Trigger format OK — single rare token, exactly once, first.</p>}
-      {error && <p className="ds-error">{error}</p>}
-      {savedAt && !busy && !error && <p className="ds-status">Saved (hand-written; batch VLM will never silently overwrite it).</p>}
-      <Button variant="primary" className="ds-btn" size={13} busy={busy} onClick={save} data-ds-save-caption>
-        Save caption
-      </Button>
-    </div>
-    {history && history.length > 0 && <div className="ds-history" data-ds-history>
-      {history.map((entry, index) => (
-        <div key={index} className="ds-history-entry">
-          <span className="ds-history-meta">{entry.author === 'hand' ? 'hand' : `VLM${entry.authorModel ? ` · ${entry.authorModel}` : ''}`} · {new Date(entry.recordedAt).toLocaleString()}</span>
-          <p>{entry.text}</p>
+  return <StudioDialogLayered
+    layerId="ds-caption"
+    open
+    onClose={closeCaption}
+    backdropClassName="ds-caption-backdrop"
+    centerClassName="ds-caption-center"
+    popupClassName="ds-caption-panel"
+    labelledBy="ds-caption-title"
+  >
+    {/* .ds-dialog-flow is the surface's test-hook wrapper (display:contents —
+        the popup's own flex flow passes straight through; see datasets.css). */}
+    <div className="ds-dialog-flow" data-ds-caption>
+      <header className="ds-caption-head">
+        <div>
+          <h3 id="ds-caption-title">Caption — {layer.name || `layer ${layer.id.slice(0, 8)}`}</h3>
+          <p className="ds-sub">{authorLabel}{layer.caption?.reviewState === 'queued' ? ' · review queued' : ''}{stale ? ' · STALE' : ''}</p>
         </div>
-      ))}
-    </div>}
-    {vlmOpen && <div className="ds-vlm-modal" data-ds-vlm>
-      <div className="ds-vlm-box">
-        <header>
-          <h3><MessageSquareText size={14} /> Local VLM — caption this clip, or discuss it</h3>
-          <Button variant="ghost" className="ds-btn" onClick={() => setVlmOpen(false)}>×</Button>
-        </header>
-        <section>
-          <h4>Caption / recaption (dense → condense, on the llama.cpp router)</h4>
-          <p className="ds-hint">Pass 1 describes the frames densely; pass 2 condenses into the class template — both local.</p>
-          <textarea value={vlmInstruction} onChange={(event) => setVlmInstruction(event.target.value)} rows={3} placeholder="Optional instruction (e.g. 'mention the lighting and the camera push-in')" />
-          {vlmError && <p className="ds-error">{vlmError}</p>}
-          <Button variant="primary" className="ds-btn" size={13} busy={vlmBusy} onClick={runVlm} data-ds-vlm-caption>
-            Caption this clip
-          </Button>
-        </section>
-        <section className="ds-chat">
-          <h4>Free-form discussion (no caption write)</h4>
-          <div className="ds-chat-log">
-            {chat.map((turn, index) => <p key={index} className={turn.role}>{turn.content}</p>)}
-            {chatBusy && <p className="assistant pending">thinking…</p>}
-          </div>
-          <div className="ds-chat-row">
-            <input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Ask about this clip…" onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault()
-                void sendChat()
-              }
-            }} />
-            <Button variant="secondary" className="ds-btn" onClick={sendChat} disabled={chatBusy}>Ask</Button>
-          </div>
-        </section>
+        <div className="ds-caption-actions">
+          <Button variant="ghost" className="ds-btn" onClick={() => setVlmOpen((open) => !open)}><Sparkles size={13} /> VLM</Button>
+          <Button variant="ghost" className="ds-btn" onClick={loadHistory}><History size={13} /> {history ? 'Hide history' : 'History'}</Button>
+          <Button variant="ghost" className="ds-btn" onClick={closeCaption}>Close</Button>
+        </div>
+      </header>
+      {stale && <p className="ds-stale-note" data-ds-stale><ShieldAlert size={13} /> {layer.caption?.stale ? 'This caption is STALE — the layer\'s view changed after captioning. Recaption (or accept explicitly at export).' : ''}</p>}
+      <textarea
+        className="ds-caption-textarea"
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        rows={6}
+        placeholder="One flowing paragraph, natural language only. Trigger token first, exactly once."
+        data-ds-caption-textarea
+      />
+      <div className="ds-caption-foot">
+        {validation && !validation.ok
+          ? <ul className="ds-validation" data-ds-validation>
+              {validation.issues.map((issue) => <li key={issue}>{issue}</li>)}
+            </ul>
+          : <p className="ds-validation ok" data-ds-validation-ok>Trigger format OK — single rare token, exactly once, first.</p>}
+        {error && <p className="ds-error">{error}</p>}
+        {savedAt && !busy && !error && <p className="ds-status">Saved (hand-written; batch VLM will never silently overwrite it).</p>}
+        <Button variant="primary" className="ds-btn" size={13} busy={busy} onClick={save} data-ds-save-caption>
+          Save caption
+        </Button>
       </div>
-    </div>}
-  </div>
+      {history && history.length > 0 && <div className="ds-history" data-ds-history>
+        {history.map((entry, index) => (
+          <div key={index} className="ds-history-entry">
+            <span className="ds-history-meta">{entry.author === 'hand' ? 'hand' : `VLM${entry.authorModel ? ` · ${entry.authorModel}` : ''}`} · {new Date(entry.recordedAt).toLocaleString()}</span>
+            <p>{entry.text}</p>
+          </div>
+        ))}
+      </div>}
+      {vlmOpen && <StudioDialogLayered
+        layerId="ds-caption-vlm"
+        open
+        onClose={closeVlm}
+        backdropClassName="ds-vlm-backdrop"
+        centerClassName="ds-vlm-center"
+        popupClassName="ds-vlm-box"
+        labelledBy="ds-vlm-title"
+      >
+        <div className="ds-dialog-flow" data-ds-vlm>
+          <header>
+            <h3 id="ds-vlm-title"><MessageSquareText size={14} /> Local VLM — caption this clip, or discuss it</h3>
+            <Button variant="icon" className="ds-vlm-close" aria-label="Close the VLM dialog" onClick={closeVlm}><X size={14} /></Button>
+          </header>
+          <section>
+            <h4>Caption / recaption (dense → condense, on the llama.cpp router)</h4>
+            <p className="ds-hint">Pass 1 describes the frames densely; pass 2 condenses into the class template — both local.</p>
+            <textarea value={vlmInstruction} onChange={(event) => setVlmInstruction(event.target.value)} rows={3} placeholder="Optional instruction (e.g. 'mention the lighting and the camera push-in')" />
+            {vlmError && <p className="ds-error">{vlmError}</p>}
+            <Button variant="primary" className="ds-btn" size={13} busy={vlmBusy} onClick={runVlm} data-ds-vlm-caption>
+              Caption this clip
+            </Button>
+          </section>
+          <section className="ds-chat">
+            <h4>Free-form discussion (no caption write)</h4>
+            <div className="ds-chat-log">
+              {chat.map((turn, index) => <p key={index} className={turn.role}>{turn.content}</p>)}
+              {chatBusy && <p className="assistant pending">thinking…</p>}
+            </div>
+            <div className="ds-chat-row">
+              <input value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Ask about this clip…" onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  void sendChat()
+                }
+              }} />
+              <Button variant="secondary" className="ds-btn" onClick={sendChat} disabled={chatBusy}>Ask</Button>
+            </div>
+          </section>
+        </div>
+      </StudioDialogLayered>}
+    </div>
+  </StudioDialogLayered>
 }

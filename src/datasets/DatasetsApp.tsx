@@ -551,13 +551,14 @@ function DatasetsSurface() {
         void refresh()
       }}
     />}
-    {captioning && <div className="ds-caption-overlay">
-      <CaptionPanel
-        layer={captioning}
-        onClose={() => setCaptioning(null)}
-        onChanged={() => void refresh()}
-      />
-    </div>}
+    {/* Task 13 (k2q0n9s): the retired .ds-caption-overlay backdrop died with
+        the CaptionPanel's migration to StudioDialogLayered — the portal's own
+        backdrop/center/popup slots carry the layering now (datasets.css). */}
+    {captioning && <CaptionPanel
+      layer={captioning}
+      onClose={() => setCaptioning(null)}
+      onChanged={() => void refresh()}
+    />}
   </div>
 }
 
