@@ -840,3 +840,11 @@ results doc §B1–B3.
 5. **Board pinned:** Set B's canary board (PROMPT_A verbatim @ 960×544×39f,
    base-20, seed 421337) is the batch's drift-sentinel config — §1.2
    item 4's per-set canary re-runs use it plus the signature levers.
+
+## Amendment 4 — the review instrument contract is now the rebuilt Codex version (maintainer directive, 2026-10-04: "ensure this is used across all reviews from now on")
+
+Standing rules for EVERY set executor from Set C onward:
+1. **The instrument is `scripts/gpu-review/` as rebuilt at 67bb129** — one canvas, one clock, matched lossless frame strips; the three modes (sbs/slider/blink), manual blink, exact stepping, safe metadata reveal, persistent calls, JS export. Do NOT regenerate or modify the page; reuse it verbatim and populate per the contract (frames/, pairs-frames.js, pairs-metadata.js, pairs/ for the native fallbacks).
+2. **Frame extraction is a generator obligation**: ffmpeg sequential extraction (`-vsync 0`, matched presentation indices, lossless WebP strips) runs as part of every set's output assembly — new or replaced videos require re-extraction. Budget ~220 MiB/set. The offline contract + limitations live in scripts/gpu-review/ (VERIFICATION.md + the spec).
+3. **The p-null check ships with every set**: each set's expected-tie or null pair (canaries, controls) must pass the pixel-identity verification before the set's review counts — the instrument's own calibration rides every delivery.
+4. The setA/setB retrofits are the reference implementations of the contract.
