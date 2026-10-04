@@ -21,7 +21,7 @@
   border: 0;
   border-radius: 7px;
   color: var(--muted, #8f9b94);
-  font-size: var(--text-md, 12px);
+  font-size: var(--text-md);
   font-weight: 600;
   line-height: 1;
   text-decoration: none;

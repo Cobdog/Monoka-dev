@@ -77,6 +77,7 @@ const SUITES = {
   runtime: { build: 'full', windows: true, python: false, ffmpeg: false },
   storage: { build: 'full', windows: false, python: false, ffmpeg: false },
   statusToken: { build: null, windows: false, python: false, ffmpeg: false },
+  'stylelint-guard': { build: null, windows: false, python: false, ffmpeg: false },
   vdn: { build: null, windows: false, python: false, ffmpeg: false },
   workflows: { build: null, windows: false, python: false, ffmpeg: false },
 }
@@ -120,10 +121,10 @@ const RULES = [
     reason: 'dependency / build / test infrastructure: anything can shift — full run (also on the Windows leg).',
   },
   {
-    match: ['eslint.config.mjs', 'stylelint.config.mjs', '.gitattributes', '.gitignore'],
-    suites: [],
+    match: ['eslint.config.mjs', 'stylelint.config.mjs', 'src/styles.css', '.gitattributes', '.gitignore'],
+    suites: ['stylelint-guard'],
     lintAll: true,
-    reason: 'lint/config only — no unit suite, but the full lint runs.',
+    reason: 'lint/config — the stylelint guard suite owns stylelint.config.mjs and the :root type ramp it parses out of src/styles.css (a ramp change can flip the guard); the full lint runs on any of these.',
   },
   {
     match: ['playwright.config.ts', 'e2e/**'],
