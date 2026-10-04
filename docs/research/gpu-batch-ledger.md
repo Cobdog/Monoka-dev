@@ -729,3 +729,14 @@ clause above is a place the total can and should shrink on evidence.
 
 - (none yet — sets record their verdicts here as dated addenda, one per
   set gate, per §1.1's between-sets re-planning rule.)
+
+## Amendment 1 — the maintainer-review surface (standing rule, 2026-10-04: "my own eyes on test results... validate A/B testing as well as automated tools")
+
+Every set that produces judged outputs ships, alongside its metrics doc:
+
+1. **The review directory** — `gpu-review/<set>/<arm>/<run>/` carrying the raw outputs with their per-run manifests (the config that made them), organized so any video can be traced to its arm in one glance.
+2. **Blinded A/B pairs** — for every contrast the set judges, a `pairs/` folder of randomized-order pairs (L/R or 1/2, blind filenames, same timestamps/trims), with the arm key escrowed in `pairs/.key` (yaml, not opened until after the maintainer's calls are recorded).
+3. **The review page** — `gpu-review/<set>/review.html`: a static page of side-by-side looping players, one row per pair, with per-pair response capture (left/right/tie/cannot-assess + optional note) that writes a local JSON the set's results doc consumes. No framework, no server — opens from the filesystem.
+4. **The recorded verdict table** — the maintainer's calls and the automated metrics side-by-side in the set's results doc; disagreements are the protocol's escalation trigger (§1.4b), never resolved by tool authority alone.
+
+This extends §1.4's human-checkpoint list from "before verdicts are acted on" to "every judged set, by default" — the maintainer is a first-class judge, not a final approver. Set A's calibration set ships under the same surface (the corruption ladder must pass the maintainer's eye before the automated judge's floor counts).
