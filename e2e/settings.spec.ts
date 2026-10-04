@@ -329,6 +329,58 @@ test('statusToken: the health pill and doctor rows paint their mapped tokens', a
   }
 })
 
+// The chip system's independent-toggle semantics (component vocabulary task
+// 6): the manifest's tier-selected buttons — the engine-mode pair and the
+// Krea 2 edit-mode picker — render as PRESSED BUTTONS (aria-pressed), never
+// aria-checked (radiogroup territory, exclusive groups only). The engine-mode
+// pair is assert-only (clicking Managed would persist an engine switch, and
+// the shared-home discipline keeps this test mutation-free); the Krea picker
+// is LOCAL state, so it carries the Space/Enter flip. Failing pre-migration:
+// neither row exposes any pressed state.
+test('chip toggles: the preset-row tier buttons expose aria-pressed (Space/Enter flip, never aria-checked)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await openSettings(page)
+
+  // Engine mode — exactly one of the pair is pressed, matching the persisted
+  // mode (mutual exclusivity without a radiogroup contract).
+  const modeButtons = page.locator('.managed-engine-section .preset-row button')
+  await expect(modeButtons).toHaveCount(2)
+  const enginePressed = await modeButtons.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-pressed')))
+  expect(enginePressed.filter((value) => value === 'true')).toHaveLength(1)
+  for (const value of enginePressed) expect(['true', 'false']).toContain(value)
+  expect(await modeButtons.first().getAttribute('aria-checked')).toBeNull()
+
+  // Krea 2 edit modes — local picker state: Space and Enter each move the
+  // pressed marker, always exactly one pressed.
+  const kreaDetails = page.locator('[data-settings-krea2-details]')
+  await kreaDetails.locator('summary').scrollIntoViewIfNeeded()
+  await kreaDetails.locator('summary').click()
+  const kreaButtons = kreaDetails.locator('.preset-row button')
+  await expect(kreaButtons.first()).toBeVisible()
+  expect(await kreaButtons.count()).toBeGreaterThanOrEqual(2)
+  const onePressed = async () => {
+    const states = await kreaButtons.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-pressed')))
+    expect(states.filter((value) => value === 'true')).toHaveLength(1)
+    return states
+  }
+  await onePressed()
+  await kreaButtons.nth(1).focus()
+  await page.keyboard.press('Space')
+  await expect(kreaButtons.nth(1)).toHaveAttribute('aria-pressed', 'true')
+  await onePressed()
+  await kreaButtons.nth(0).focus()
+  await page.keyboard.press('Enter')
+  await expect(kreaButtons.nth(0)).toHaveAttribute('aria-pressed', 'true')
+  const finalStates = await onePressed()
+  expect(finalStates[1]).toBe('false')
+  expect(await kreaButtons.first().getAttribute('aria-checked')).toBeNull()
+
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 // M4 — the server computes save-warnings ("…does not exist yet") and the
 // client used to drop them for a flat success toast. The toast must carry
 // them. Persisted settings are restored in finally.

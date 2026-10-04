@@ -112,14 +112,13 @@
 .canvas-tile-header strong { overflow: hidden; color: var(--color-text-soft); font-size: var(--text-md); text-overflow: ellipsis; white-space: nowrap; }
 .canvas-tile-meta { overflow: hidden; color: var(--muted-2); font-size: var(--text-2xs); letter-spacing: .04em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .canvas-tile-ops { display: flex; flex-wrap: wrap; gap: 4px; }
-.canvas-op-chip { display: inline-flex; align-items: center; padding: 2px 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--color-text-soft); font-size: var(--text-2xs); font-weight: 700; }
-.canvas-op-chip-empty { border-style: dashed; color: var(--muted-2); font-weight: 500; }
+.canvas-op-chip { display: inline-flex; align-items: center; padding: 2px 7px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-2xs); font-weight: 700; }
+.canvas-op-chip.canvas-op-chip-empty { border-style: dashed; color: var(--muted-2); font-weight: 500; }
 .canvas-tile-latent { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 9px; border: 1px dashed color-mix(in srgb, var(--color-info) 34%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--color-info) 5%, transparent); color: var(--color-info); font-size: var(--text-2xs); font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
 .canvas-tile-latent small { color: var(--muted-2); font-weight: 500; letter-spacing: 0; text-transform: none; }
 .canvas-tile-takes { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-.canvas-take-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: var(--text-2xs); font-weight: 700; }
-.canvas-take-chip.prior { border-color: var(--line); background: var(--surface-2); color: var(--muted); }
-.canvas-take-chip-empty { border-style: dashed; color: var(--muted-2); font-weight: 500; }
+.canvas-take-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-2xs); font-weight: 700; }
+.canvas-take-chip.canvas-take-chip-empty { border-style: dashed; color: var(--muted-2); font-weight: 500; }
 
 /* ---- the launcher (§4) ---------------------------------------------------- */
 .canvas-launcher { position: absolute; inset: 0; display: grid; place-items: start center; padding-top: 12vh; pointer-events: none; background: color-mix(in srgb, var(--color-surface-abyss) 42%, transparent); }
@@ -144,9 +143,12 @@
 .canvas-promptbar-submit { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 0 16px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: var(--text-sm); font-weight: 700; cursor: pointer; }
 .canvas-promptbar-submit:disabled { opacity: .45; cursor: default; }
 .canvas-launcher-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.canvas-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: var(--text-sm); cursor: pointer; }
-.canvas-chip:hover { border-color: var(--line-strong); color: var(--text); }
-.canvas-chip.active { border-color: color-mix(in srgb, var(--accent) 48%, transparent); background: var(--accent-soft); color: var(--accent); }
+/* Chip geometry only (task 6, k2q0n9s): the tone/state recipes (base,
+ * hover, selected/active, danger, primary→accent, disabled) moved to the
+ * shared `.chip` block in src/styles.css; surfaces compose
+ * `chip [chip--*] canvas-chip`. Border width/style stay here so pill
+ * geometry is the surface's own. */
+.canvas-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-sm); cursor: pointer; }
 .canvas-launcher-resume { display: grid; gap: 8px; }
 .canvas-launcher-resume > header { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: var(--text-sm); letter-spacing: .06em; text-transform: uppercase; }
 .canvas-launcher-resume ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
@@ -271,8 +273,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-bar-engine .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--engine-tone); }
 .canvas-bar-mode, .canvas-bar-state, .canvas-bar-identity, .canvas-bar-drift, .canvas-bar-takes, .canvas-bar-fork-history { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: var(--text-sm); white-space: nowrap; }
 .canvas-bar-mode { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
-.canvas-bar-chip-tile { max-width: 160px; overflow: hidden; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.canvas-bar-chip-tile:hover { color: var(--text); border-color: var(--line-strong); }
+.canvas-bar-chip-tile { max-width: 160px; overflow: hidden; padding: 4px 9px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .canvas-bar-opmenu { position: relative; }
 .canvas-bar-opmenu-pop { position: absolute; bottom: calc(100% + 6px); left: 0; display: grid; gap: 2px; min-width: 170px; padding: 5px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); box-shadow: 0 18px 48px rgba(0,0,0,.5); }
 .canvas-bar-opmenu-pop button { padding: 6px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text); font-size: var(--text-md); text-align: left; cursor: pointer; }
@@ -301,7 +302,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-endpoint-menu footer { padding: 7px 11px; border-top: 1px solid var(--line); color: var(--muted-2); font-size: var(--text-2xs); }
 .canvas-take-fork { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: var(--text-2xs); cursor: pointer; }
 .canvas-take-fork:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
-.canvas-tile-stale-badge { position: absolute; top: 6px; left: 6px; padding: 1px 6px; border: 1px solid color-mix(in srgb, var(--warning) 45%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--warning); font-size: var(--text-2xs); }
+.canvas-tile-stale-badge { position: absolute; top: 6px; left: 6px; padding: 1px 6px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-2xs); }
 
 /* ---- Phase 2: properties panel (the absorption surface) ------------------ */
 .canvas-properties-body { display: grid; gap: 9px; align-content: start; }
@@ -327,7 +328,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-properties-tiers .canvas-chip { justify-content: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .canvas-properties-refs { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
 .canvas-properties-refs li { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); }
-.canvas-properties-ref-tag { padding: 0 5px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--accent); font-family: ui-monospace, Consolas, monospace; font-size: var(--text-2xs); white-space: nowrap; }
+.canvas-properties-ref-tag { padding: 0 5px; border-width: 1px; border-style: solid; border-radius: 5px; font-family: ui-monospace, Consolas, monospace; font-size: var(--text-2xs); white-space: nowrap; }
 .canvas-properties-ref-label { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
 .canvas-properties-empty { color: var(--muted-2); font-size: var(--text-sm); }
 .canvas-properties textarea { padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); color: var(--text); font-size: var(--text-md); resize: vertical; }
@@ -354,9 +355,8 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 
 /* ---- The structured H3 prompt editor (fh94g76) ------------------------------ */
 .canvas-properties-promptmode { display: inline-flex; gap: 0; width: max-content; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
-.canvas-properties-promptmode button { padding: 3px 12px; border: 0; background: transparent; color: var(--muted); font-size: var(--text-2xs); font-weight: 650; cursor: pointer; }
+.canvas-properties-promptmode button { padding: 3px 12px; border: 0; font-size: var(--text-2xs); font-weight: 650; cursor: pointer; }
 .canvas-properties-promptmode button + button { border-left: 1px solid var(--line); }
-.canvas-properties-promptmode button.active { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
 .structured-editor { display: grid; gap: 6px; }
 .structured-box { display: grid; gap: 4px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
 .structured-box[data-structured-empty='true'] { opacity: .78; }
@@ -368,8 +368,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .structured-box textarea, .structured-box input { width: 100%; padding: 5px 7px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-2); color: var(--text); font-size: var(--text-md); resize: vertical; }
 .structured-box input { resize: none; }
 .structured-chips { display: flex; flex-wrap: wrap; gap: 3px; }
-.structured-chips button { padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: 999px; background: transparent; color: var(--muted); font-size: var(--text-2xs); cursor: pointer; }
-.structured-chips button:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.structured-chips button { padding: 2px 8px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-2xs); cursor: pointer; }
 .structured-box-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .structured-box-tools button, .structured-parse-tool button { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: transparent; color: var(--muted); font-size: var(--text-2xs); cursor: pointer; }
 .structured-box-tools button:hover:not(:disabled), .structured-parse-tool button:hover:not(:disabled) { color: var(--text); background: var(--surface-3); }
@@ -379,7 +378,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .structured-subject-head { display: flex; align-items: center; gap: 5px; }
 .structured-subject-head button { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 1px solid var(--line-strong); border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
 .structured-subject-head button:hover { color: var(--warning); }
-.structured-pin-badge { width: max-content; padding: 1px 7px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 999px; color: var(--accent); font-size: var(--text-2xs); }
+.structured-pin-badge { width: max-content; padding: 1px 7px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-2xs); }
 .structured-flow-row { display: grid; gap: 4px; padding: 6px 7px; border: 1px dashed var(--line-strong); border-radius: 8px; }
 
 /* (R-18/vision debt, Wave 3) THE LEFT-EDGE CLIP, fixed at its source: the
@@ -496,9 +495,6 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 /* The trash front door (ruling 2026-09-26): the chip + the trash view sit in
    the index overlay's own vocabulary — the datasets manager's pattern, the
    canvas's materials. */
-.canvas-chip.danger { border-color: color-mix(in srgb, var(--danger) 46%, transparent); color: var(--danger); }
-.canvas-chip.danger:hover:not(:disabled) { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
-.canvas-chip.danger:disabled { opacity: .4; cursor: default; }
 .canvas-index-trash { display: flex; flex-direction: column; min-height: 0; }
 .canvas-index-trash-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
 .canvas-index-trash-head strong { color: var(--muted); font-size: var(--text-sm); font-weight: 500; }
@@ -526,10 +522,9 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 
 /* ---- Phase 3: op chips + canonical-switch takes -------------------------------- */
 .canvas-op-chip { cursor: pointer; }
-.canvas-op-chip.baked { border-style: solid; border-color: color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning); }
+.canvas-op-chip.baked { border-style: solid; }
 .canvas-op-chip-empty { cursor: pointer; }
 .canvas-take-chip.prior { cursor: pointer; }
-.canvas-take-chip.prior:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); }
 
 /* ---- Phase 3: the op modal editor (§5.1, L8 modal-only v1) --------------------- */
 .canvas-opmodal { display: grid; grid-template-rows: auto minmax(0, 1fr); width: min(1080px, 94vw); max-height: min(760px, 92vh); border: 1px solid var(--line-strong); border-radius: 14px; background: var(--surface); box-shadow: 0 18px 48px rgba(0,0,0,.5); overflow: hidden; }
@@ -746,6 +741,3 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-lora-gap-note { color: var(--muted-2); white-space: nowrap; }
 .canvas-lora-warnings { margin: 0; padding-left: 14px; color: var(--muted); font-size: var(--text-2xs); }
 .canvas-lora-actions { display: flex; justify-content: flex-end; }
-.canvas-chip.primary { border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent); }
-.canvas-chip.primary:hover:not(:disabled) { background: var(--accent-soft); }
-.canvas-chip:disabled { opacity: .45; cursor: default; }

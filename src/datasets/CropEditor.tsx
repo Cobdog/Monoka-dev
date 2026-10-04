@@ -340,7 +340,7 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
               <button
                 key={entry.id}
                 type="button"
-                className={`ds-aspect-chip ${index === aspectIndex ? 'active' : ''} ${!entry.official ? 'custom' : ''}`}
+                className={`chip ${index === aspectIndex ? 'chip--selected' : ''} ds-aspect-chip ${!entry.official ? 'custom' : ''}`}
                 onClick={() => setAspectIndex(index)}
                 disabled={index === aspectIndex}
               >

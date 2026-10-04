@@ -23,6 +23,7 @@ import { useCanvasStore } from './store'
 import { useJobsStore } from '../state/jobsStore'
 import { dbg } from '../lib/dbg'
 import { chainTitle } from './derive'
+import { Chip } from '../ui/Chip'
 import type { DocumentChain } from './derive'
 
 type Row = {
@@ -298,21 +299,22 @@ export function IndexOverlay() {
           }}
         />
         {ftsPending && !trashMode && <span className="canvas-index-pending">searching…</span>}
-        <button
-          type="button"
-          className={`canvas-chip ${trashMode ? 'active' : ''}`}
+        <Chip
+          variant="toggle"
+          selected={trashMode}
+          className="canvas-chip"
           data-canvas-index-trash
           title={trashMode ? 'Back to the session index' : 'Trashed scenes — restorable until the trash is emptied'}
           onClick={() => setTrashMode((value) => !value)}
         >
           <Trash2 size={12} /> trash
-        </button>
+        </Chip>
       </div>
       {trashMode ? (
         <div className="canvas-index-trash" data-canvas-index-trash-view>
           <div className="canvas-index-trash-head">
             <strong>Trash — soft-deleted scenes (restorable)</strong>
-            <button type="button" className="canvas-chip danger" data-canvas-index-empty onClick={() => setConfirming({ kind: 'empty-trash' })} disabled={!trashed?.length}>
+            <button type="button" className="chip chip--danger canvas-chip" data-canvas-index-empty onClick={() => setConfirming({ kind: 'empty-trash' })} disabled={!trashed?.length}>
               Empty trash (the one real delete)
             </button>
           </div>

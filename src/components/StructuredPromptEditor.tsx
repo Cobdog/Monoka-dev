@@ -145,6 +145,7 @@ export function StructuredPromptEditor(props: {
       {STRUCTURED_CHIPS[box].map((chip) => (
         <button
           type="button"
+          className="chip"
           key={chip.label}
           data-structured-chip={chip.label}
           title={chip.insertion}
@@ -293,7 +294,7 @@ export function StructuredPromptEditor(props: {
                       <Trash2 size={11} />
                     </button>
                   </div>
-                  {(card.pinnedIdentity || card.pinnedAssetId) && <span className="structured-pin-badge" data-structured-pin-badge>{card.pinnedIdentity ? 'identity payload' : 'library pin'}</span>}
+                  {(card.pinnedIdentity || card.pinnedAssetId) && <span className="chip chip--accent structured-pin-badge" data-structured-pin-badge>{card.pinnedIdentity ? 'identity payload' : 'library pin'}</span>}
                   <textarea
                     aria-label={`Subject ${index + 1} appearance`}
                     data-structured-subject-appearance={index}

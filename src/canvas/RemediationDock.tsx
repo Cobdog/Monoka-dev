@@ -90,7 +90,7 @@ export function RemediationDock() {
             </div>
             <div className="canvas-remediation-action">
               {row.action.kind === 'fetch' && (
-                <button type="button" className="canvas-chip" data-remediation-fetch={row.action.packId}
+                <button type="button" className="chip canvas-chip" data-remediation-fetch={row.action.packId}
                   title={`Opens the library focused on ${row.action.packName} — the license verdict is on the row and the fetch asks again before anything downloads`}
                   onClick={() => setLibraryDock(true, [row.action.kind === 'fetch' ? row.action.catalogEntryId : ''])}>
                   <Download size={12} /> Fetch… <small>{row.action.licenseSpdx}</small>
@@ -99,7 +99,7 @@ export function RemediationDock() {
               {row.action.kind === 'install' && (
                 installed.has(row.className)
                   ? <span className="canvas-remediation-done" data-remediation-installed><Check size={12} /> installed — restart to activate</span>
-                  : <button type="button" className="canvas-chip" data-remediation-install={row.action.packId}
+                  : <button type="button" className="chip canvas-chip" data-remediation-install={row.action.packId}
                     title={row.action.note}
                     disabled={busy === row.className}
                     onClick={() => void install(row)}>
@@ -107,7 +107,7 @@ export function RemediationDock() {
                   </button>
               )}
               {row.action.kind === 'stock' && (
-                <button type="button" className="canvas-chip" data-remediation-stock
+                <button type="button" className="chip canvas-chip" data-remediation-stock
                   title="The graph-compatibility view in Settings explains the version contract"
                   onClick={() => setSettingsDock(true)}>
                   <RefreshCw size={12} /> Graph compatibility

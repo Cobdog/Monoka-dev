@@ -87,7 +87,10 @@
 .iw-ref-strip { display: flex; flex-direction: column; gap: 6px; }
 .iw-ref-slot { display: grid; grid-template-columns: 44px 1fr 1fr 46px 22px; gap: 5px; align-items: center; border: 1px solid color-mix(in srgb, var(--muted) 20%, transparent); border-radius: 9px; padding: 5px; }
 .iw-ref-thumb { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 7px; background: color-mix(in srgb, var(--muted) 8%, transparent); color: var(--muted); overflow: hidden; }
-.iw-refmod-tag, .iw-poserig-tag, .iw-canvas-tag { font-size: 9px; color: var(--muted); }
+/* Tag geometry only (task 6): the muted text tone composes from the shared
+ * `.chip` base in src/styles.css (rectangle geometry — no border/radius —
+ * stays here). */
+.iw-refmod-tag, .iw-poserig-tag, .iw-canvas-tag { font-size: 9px; }
 .iw-ref-slot select, .iw-lora-slot select, .iw-controls select, .iw-controls input[type='number'] { background: color-mix(in srgb, var(--muted) 7%, transparent); border: 1px solid color-mix(in srgb, var(--muted) 28%, transparent); border-radius: 7px; color: inherit; font-size: 10px; padding: 3px 5px; outline: none; width: 100%; }
 .iw-ref-keep { font-size: 10px; }
 .iw-ref-remove { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 13px; }

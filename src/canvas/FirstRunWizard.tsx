@@ -151,8 +151,8 @@ export function FirstRunWizard() {
         ))}
       </ol>
       <div className="canvas-wizard-actions">
-        {step > 0 && <button type="button" className="canvas-chip" data-wizard-back onClick={() => patch({ step: step - 1 })}>Back</button>}
-        {step < 3 && <button type="button" className="canvas-chip primary" data-wizard-next onClick={() => patch({ step: step + 1 })}>Next — {STEP_TITLES[step + 1]}</button>}
+        {step > 0 && <button type="button" className="chip canvas-chip" data-wizard-back onClick={() => patch({ step: step - 1 })}>Back</button>}
+        {step < 3 && <button type="button" className="chip chip--accent canvas-chip" data-wizard-next onClick={() => patch({ step: step + 1 })}>Next — {STEP_TITLES[step + 1]}</button>}
       </div>
     </footer>
   </div>
@@ -206,7 +206,7 @@ function EngineStep(props: {
         placeholder="http://127.0.0.1:8188 — ComfyUI's default port"
         onChange={(event) => setSettings({ ...settings, comfyUrl: event.target.value })}
       />
-      <button type="button" className="canvas-chip" data-wizard-test disabled={probing} onClick={() => { setCheckedUrl(settings.comfyUrl); void checkConnection(settings.comfyUrl) }}>
+      <button type="button" className="chip canvas-chip" data-wizard-test disabled={probing} onClick={() => { setCheckedUrl(settings.comfyUrl); void checkConnection(settings.comfyUrl) }}>
         {probing ? <LoaderCircle size={12} className="spin" /> : <RefreshCw size={12} />} Test
       </button>
     </div>
@@ -215,7 +215,7 @@ function EngineStep(props: {
       : <p className="canvas-wizard-warn" data-wizard-unreachable>Not reachable at {settings.comfyUrl}{status.error ? ` — ${status.error}` : ''}. Start the engine and test again, or continue and connect later.</p>)}
     <div className="canvas-wizard-row">
       <span className="canvas-wizard-hint">Not sure of the port? The probe asks each common port for a heartbeat — you click, it asks; nothing probes on its own.</span>
-      <button type="button" className="canvas-chip" data-wizard-probe onClick={() => void probe()} disabled={probing}>
+      <button type="button" className="chip canvas-chip" data-wizard-probe onClick={() => void probe()} disabled={probing}>
         {probing ? <LoaderCircle size={12} className="spin" /> : null} Probe common ports
       </button>
     </div>
@@ -223,7 +223,7 @@ function EngineStep(props: {
       <ul className="canvas-wizard-ports" data-wizard-ports>
         {reachable.map(({ port, latencyMs }) => (
           <li key={port}>
-            <button type="button" className="canvas-chip" data-wizard-port={port} onClick={() => { const url = `http://127.0.0.1:${port}`; setSettings({ ...settings, comfyUrl: url }); setCheckedUrl(url); void checkConnection(url) }}>
+            <button type="button" className="chip canvas-chip" data-wizard-port={port} onClick={() => { const url = `http://127.0.0.1:${port}`; setSettings({ ...settings, comfyUrl: url }); setCheckedUrl(url); void checkConnection(url) }}>
               <Check size={12} /> :{port} <small>{latencyMs} ms{port === 8188 ? ' · ComfyUI’s default port — adopt it only if it is your own instance' : ''}</small>
             </button>
           </li>
@@ -261,7 +261,7 @@ function RegistryStep(props: { models: ReturnType<typeof useSessionStore.getStat
               : 'The H3 stack is incomplete — make the missing components visible to the engine (any name shape the pickers recognize resolves), then refresh.'}
     </p>}
     <div className="canvas-wizard-row">
-      <button type="button" className="canvas-chip" data-wizard-refresh onClick={onRefresh} disabled={scanning}>
+      <button type="button" className="chip canvas-chip" data-wizard-refresh onClick={onRefresh} disabled={scanning}>
         {scanning ? <LoaderCircle size={12} className="spin" /> : <RefreshCw size={12} />} Refresh from the engine
       </button>
     </div>
@@ -277,8 +277,8 @@ function PacksStep(props: { summary: { active: number; total: number } | null; o
       ? <p className="canvas-wizard-warn" data-wizard-packs-unknown>The pack board could not be listed (the engine is offline or still loading) — it stays available in Settings → Setup → Node packs.</p>
       : <p className="canvas-wizard-ok" data-wizard-packs-summary>{summary.active} of {summary.total} packs active on the engine{summary.active < summary.total ? ' — the missing ones can be fetched or installed from their rows.' : '.'}</p>}
     <div className="canvas-wizard-row">
-      <button type="button" className="canvas-chip" data-wizard-open-packs onClick={onOpenPacks}>Open the pack board (Settings)</button>
-      <button type="button" className="canvas-chip" data-wizard-open-library onClick={onOpenLibrary}>Open the library — get models</button>
+      <button type="button" className="chip canvas-chip" data-wizard-open-packs onClick={onOpenPacks}>Open the pack board (Settings)</button>
+      <button type="button" className="chip canvas-chip" data-wizard-open-library onClick={onOpenLibrary}>Open the library — get models</button>
     </div>
   </div>
 }
@@ -297,7 +297,7 @@ function PromptStep(props: { onDone(prompt: string): void }) {
       onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); props.onDone(prompt) } }}
     />
     <div className="canvas-wizard-row">
-      <button type="button" className="canvas-chip primary" data-wizard-finish disabled={!prompt.trim()} onClick={() => props.onDone(prompt)}>
+      <button type="button" className="chip chip--accent canvas-chip" data-wizard-finish disabled={!prompt.trim()} onClick={() => props.onDone(prompt)}>
         <Sparkles size={12} /> Create the first chain
       </button>
     </div>

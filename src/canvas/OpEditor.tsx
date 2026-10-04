@@ -286,7 +286,7 @@ export function OpEditor() {
 
       <aside className="canvas-opmodal-stack" data-canvas-op-stack>
         <div className="canvas-opmodal-addrow">
-          <button type="button" className="canvas-chip" data-canvas-op-add onClick={() => setAddOpen((value) => !value)} disabled={!offeredKinds.length}>
+          <button type="button" className="chip canvas-chip" data-canvas-op-add onClick={() => setAddOpen((value) => !value)} disabled={!offeredKinds.length}>
             <Plus size={12} /> add op
           </button>
           <span className="canvas-opmodal-count">{ops.length} op{ops.length === 1 ? '' : 's'}</span>
@@ -377,12 +377,12 @@ export function OpEditor() {
               const mask = readOpSettings('mask', selectedOp.settings) as { strokes: MaskStroke[] }
               return <>
                 <div className="canvas-op-brushrow">
-                  <span className={`canvas-chip ${!brush.erase ? 'active' : ''}`} data-canvas-op-brushmode="paint" onClick={() => setBrush({ ...brush, erase: false })}><Brush size={11} /> paint</span>
-                  <span className={`canvas-chip ${brush.erase ? 'active' : ''}`} data-canvas-op-brushmode="erase" onClick={() => setBrush({ ...brush, erase: true })}><Eraser size={11} /> erase</span>
+                  <span className={`chip canvas-chip ${!brush.erase ? 'chip--selected' : ''}`} data-canvas-op-brushmode="paint" onClick={() => setBrush({ ...brush, erase: false })}><Brush size={11} /> paint</span>
+                  <span className={`chip canvas-chip ${brush.erase ? 'chip--selected' : ''}`} data-canvas-op-brushmode="erase" onClick={() => setBrush({ ...brush, erase: true })}><Eraser size={11} /> erase</span>
                   <label>size<input data-canvas-op-field="size" type="range" min={0.01} max={0.3} step={0.005} value={brush.size} onChange={(event) => setBrush({ ...brush, size: Number(event.target.value) })} /></label>
                 </div>
                 <p className="canvas-op-note">{mask.strokes.length} stroke{mask.strokes.length === 1 ? '' : 's'} — paint on the stage. Strokes store normalized, so reordering the stack replays them.</p>
-                <button type="button" className="canvas-chip" data-canvas-op-clearmask onClick={() => patchSelected({ strokes: [] }, true)}>clear mask</button>
+                <button type="button" className="chip canvas-chip" data-canvas-op-clearmask onClick={() => patchSelected({ strokes: [] }, true)}>clear mask</button>
               </>
             })()}
             {selectedOp.kind === 'adjust' && (() => {
@@ -448,7 +448,7 @@ export function OpEditor() {
 
         <footer className="canvas-opmodal-footer">
           <span><kbd>⌘Z</kbd> undo last op · drag rows or arrows to reorder · <kbd>Esc</kbd> closes</span>
-          {tile?.ops.length !== ops.length && <button type="button" className="canvas-chip" onClick={() => toast('neutral', 'The tile preview re-derives with the stack — live by design.')}>preview is live</button>}
+          {tile?.ops.length !== ops.length && <button type="button" className="chip canvas-chip" onClick={() => toast('neutral', 'The tile preview re-derives with the stack — live by design.')}>preview is live</button>}
         </footer>
       </aside>
     </div>

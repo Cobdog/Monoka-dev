@@ -370,12 +370,12 @@ function DatasetsSurface() {
           <div className="ds-search"><Search size={13} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="FTS over captions + provenance" data-ds-search /></div>
           <div className="ds-filter-row">
             {(['all', 'video', 'image'] as const).map((entry) => (
-              <button key={entry} type="button" className={`ds-chip ${kindFilter === entry ? 'active' : ''}`} onClick={() => setKindFilter(entry)}>{entry}</button>
+              <button key={entry} type="button" className={`chip ${kindFilter === entry ? 'chip--selected' : ''} ds-chip`} onClick={() => setKindFilter(entry)}>{entry}</button>
             ))}
           </div>
           <div className="ds-filter-row">
             {(['all', 'missing', 'stale'] as const).map((entry) => (
-              <button key={entry} type="button" className={`ds-chip ${captionFilter === entry ? 'active' : ''}`} onClick={() => setCaptionFilter(entry)}>{entry === 'all' ? 'any caption' : entry}</button>
+              <button key={entry} type="button" className={`chip ${captionFilter === entry ? 'chip--selected' : ''} ds-chip`} onClick={() => setCaptionFilter(entry)}>{entry === 'all' ? 'any caption' : entry}</button>
             ))}
           </div>
         </div>
@@ -627,11 +627,11 @@ function MasterCard(props: {
           <button type="button" className="ds-layer-select" onClick={() => props.onSelect(layer.id)} title="Select for export/batch" aria-label="select layer" />
           <div className="ds-layer-main">
             <span className="ds-layer-name">{layer.name || layer.id.slice(0, 8)}</span>
-            <span className={`ds-bucket-badge wall-${layer.bucket.wall}`} title={`bucket: ${layer.bucket.label} (walls: ok/warn/stop)`}>{layer.bucket.label}</span>
-            {layer.clusterId && <span className="ds-cluster-badge" title="near-dup cluster member — advisory">⧉ {layer.clusterId.split('-')[0]}·{layer.clusterNo}</span>}
-            {layer.caption?.stale && <span className="ds-stale-badge" title="view changed after captioning">stale</span>}
-            {layer.interpolated && <span className="ds-interp-badge" title="bake interpolates (tagged)">interp</span>}
-            {layer.caption?.reviewState === 'queued' && <span className="ds-review-badge">review queued</span>}
+            <span className={`chip ${layer.bucket.wall === 'warn' ? 'chip--warning' : layer.bucket.wall === 'stop' ? 'chip--danger' : ''} ds-bucket-badge wall-${layer.bucket.wall}`} title={`bucket: ${layer.bucket.label} (walls: ok/warn/stop)`}>{layer.bucket.label}</span>
+            {layer.clusterId && <span className="chip chip--accent ds-cluster-badge" title="near-dup cluster member — advisory">⧉ {layer.clusterId.split('-')[0]}·{layer.clusterNo}</span>}
+            {layer.caption?.stale && <span className="chip chip--warning ds-stale-badge" title="view changed after captioning">stale</span>}
+            {layer.interpolated && <span className="chip ds-interp-badge" title="bake interpolates (tagged)">interp</span>}
+            {layer.caption?.reviewState === 'queued' && <span className="chip chip--accent ds-review-badge">review queued</span>}
             <span className="ds-layer-caption">{layer.caption?.text?.slice(0, 120) ?? <em>uncaptioned</em>}</span>
           </div>
           <div className="ds-layer-actions">
@@ -781,7 +781,7 @@ function ExportWizard(props: {
         <label>Shape</label>
         <div className="ds-filter-row">
           {(['musubi', 'diffsynx', 'external'] as const).map((entry) => (
-            <button key={entry} type="button" className={`ds-chip ${shape === entry ? 'active' : ''}`} onClick={() => setShape(entry)}>{entry}</button>
+            <button key={entry} type="button" className={`chip ${shape === entry ? 'chip--selected' : ''} ds-chip`} onClick={() => setShape(entry)}>{entry}</button>
           ))}
         </div>
         <p className="ds-hint">{shape === 'musubi' ? 'musubi TOML + caption sidecars + wav sidecars + one_frame stills' : shape === 'diffsynx' ? 'DiffSynX stage-1 manifest rows (video/prompt/input_audio/frame_rate)' : 'both shapes + README — standalone for any external trainer; in-app training stays availability-gated'}</p>
@@ -790,7 +790,7 @@ function ExportWizard(props: {
         <label>Recipe trainer (the card follows)</label>
         <div className="ds-filter-row">
           {(['diffsynx', 'musubi'] as const).map((entry) => (
-            <button key={entry} type="button" className={`ds-chip ${trainer === entry ? 'active' : ''}`} onClick={() => setTrainer(entry)}>{entry}</button>
+            <button key={entry} type="button" className={`chip ${trainer === entry ? 'chip--selected' : ''} ds-chip`} onClick={() => setTrainer(entry)}>{entry}</button>
           ))}
         </div>
       </div>

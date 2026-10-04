@@ -301,8 +301,8 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
         <span className="health-pill" data-connection={engineRuntime?.state === 'running' ? 'online' : 'offline'} style={healthPillVars(engineRuntime?.state === 'running' ? 'online' : 'offline')}>{settings.engine.mode === 'managed' ? (engineRuntime ? engineRuntime.state : 'managed') : 'external'}</span>
       </div>
       <div className="preset-row" aria-label="Engine mode">
-        <button type="button" className={settings.engine.mode !== 'managed' ? 'tier-selected' : ''} onClick={() => updateEngine({ mode: 'external' })}><strong>External</strong><small>Use the ComfyUI address above — the studio never launches an engine.</small></button>
-        <button type="button" className={settings.engine.mode === 'managed' ? 'tier-selected' : ''} onClick={() => updateEngine({ mode: 'managed' })}><strong>Managed</strong><small>The studio starts, configures, and stops its own instance. Ports stay clear of 8188/8189.</small></button>
+        <button type="button" className={settings.engine.mode !== 'managed' ? 'tier-selected' : ''} aria-pressed={settings.engine.mode !== 'managed'} onClick={() => updateEngine({ mode: 'external' })}><strong>External</strong><small>Use the ComfyUI address above — the studio never launches an engine.</small></button>
+        <button type="button" className={settings.engine.mode === 'managed' ? 'tier-selected' : ''} aria-pressed={settings.engine.mode === 'managed'} onClick={() => updateEngine({ mode: 'managed' })}><strong>Managed</strong><small>The studio starts, configures, and stops its own instance. Ports stay clear of 8188/8189.</small></button>
       </div>
       {settings.engine.mode === 'external' && <>
         {/* External-instance integration (task 9om4bi9): the studio does not
@@ -536,7 +536,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
           const selected = llmSelectedModel ? llmSelectedModel === model.id : model.active
           return (
           <button type="button" key={model.id} aria-pressed={selected} className={`llm-model-row ${selected ? 'active' : ''}`} onClick={() => setSettings({ ...settings, llamaCppModel: model.id })} title={selected ? 'Selected chat model (used on the next call; saves with Save settings)' : `Make ${model.id} the selected chat model`}>
-            <span className={`llm-family-badge family-${model.family}`}>{model.family}</span>
+            <span className={`chip chip--accent llm-family-badge family-${model.family}`}>{model.family}</span>
             <span className="llm-model-name">{model.id}</span>
             <span className="llm-model-flags">{model.vision && <em title="Vision-capable (image input)"><Eye size={13} /> vision</em>}{model.status && <em className="llm-model-status">{model.status}</em>}{selected && <em className="llm-model-active"><Check size={13} /> selected</em>}</span>
           </button>
@@ -602,7 +602,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
 <div className="settings-heading"><div><Wand2 size={19} /><span><strong>Krea 2 edit modes</strong><small>Availability + recipe readout — the real editing UI lives on the canvas/workbench surfaces (the settings exit, R-15).</small></span></div></div>
 <details className="settings-subsection" data-settings-krea2-details><summary><strong>Edit-mode availability &amp; recipes</strong><small>per-workflow graphs over the resident Krea 2 pair</small></summary><div className="settings-heading"><div><Wand2 size={19} /><span><strong>Krea 2 edit modes</strong><small>Per-workflow edit graphs over the resident Krea 2 checkpoint pair — availability-gated here; the canvas redesign owns the real editing UI.</small></span></div><span className="health-pill" data-connection={editModesReady === krea2EditModes.length ? 'online' : 'offline'} style={healthPillVars(editModesReady === krea2EditModes.length ? 'online' : 'offline')}>{editModesReady} of {krea2EditModes.length} ready</span></div>
       <div className="preset-row" aria-label="Edit mode picker">
-        {krea2EditModes.map(({ family, detection }) => <button type="button" className={selectedKrea2EditMode === family.id ? 'tier-selected' : ''} key={family.id} onClick={() => setSelectedKrea2EditMode(family.id)}><strong>{family.label}</strong><small>{detection.available ? `${family.checkpoint === 'raw' ? 'RAW' : 'Turbo'} · ${family.recipe.steps} steps · CFG ${family.recipe.cfg}` : 'Needs setup'}</small></button>)}
+        {krea2EditModes.map(({ family, detection }) => <button type="button" className={selectedKrea2EditMode === family.id ? 'tier-selected' : ''} aria-pressed={selectedKrea2EditMode === family.id} key={family.id} onClick={() => setSelectedKrea2EditMode(family.id)}><strong>{family.label}</strong><small>{detection.available ? `${family.checkpoint === 'raw' ? 'RAW' : 'Turbo'} · ${family.recipe.steps} steps · CFG ${family.recipe.cfg}` : 'Needs setup'}</small></button>)}
       </div>
       {(() => {
         const selected = krea2EditModes.find(({ family }) => family.id === selectedKrea2EditMode) ?? krea2EditModes[0]

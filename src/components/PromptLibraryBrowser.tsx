@@ -167,7 +167,7 @@ export function PromptLibraryBrowser({ onClose, onInsert, finalFocusRef }: { onC
               {filteredLibrary.map((entry) => (
                 <article className="prompt-library-item" key={entry.id} data-technique={entry.technique ? 'true' : undefined}>
                   <div className="prompt-library-saved-heading">
-                    {entry.technique && <span className="prompt-library-technique-badge" title="Bundled technique starter from fal’s H3 prompting guide (paraphrased)">technique</span>}
+                    {entry.technique && <span className="chip chip--accent prompt-library-technique-badge" title="Bundled technique starter from fal’s H3 prompting guide (paraphrased)">technique</span>}
                     <strong title={entry.prompt}>{entry.label}</strong>
                     {entry.source?.kind === 'civitai' && <small>{entry.source.username ? `by ${entry.source.username} · ` : ''}civitai #{entry.source.itemId}</small>}
                   </div>

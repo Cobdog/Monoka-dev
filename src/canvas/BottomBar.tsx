@@ -16,6 +16,7 @@ import { ChevronUp, CircleDot, FileVideo, GitFork, ImagePlus, Layers, Lock, Lock
 import { collectOutputRefs, STATUS_LABEL } from './derive'
 import { modeLabelFor, readChainSettings } from './generation'
 import { opKindsFor } from './ops'
+import { Chip, ChipGroup } from '../ui/Chip'
 import { engineToneVars, tileToneVars, type ConnectionStatus } from '../ui/statusToken'
 import { useCanvasStore } from './store'
 
@@ -133,11 +134,14 @@ export function BottomBar() {
           : <>
             <span className="canvas-bar-title">generate</span>
             {/* #4a: the lane toggle — same vocabulary as the hero's chips
-                (R-23: each states its EFFECT), one kbd gesture apart. */}
-            <span className="canvas-bar-lane" data-canvas-bar-lane={barLane} role="radiogroup" aria-label="Spawn lane">
-              <button type="button" role="radio" aria-checked={barLane === 'video'} className={`canvas-chip ${barLane === 'video' ? 'active' : ''}`} data-canvas-bar-lane-toggle="video" title="Spawn a VIDEO chain — the derived mode follows what you later bind" onClick={() => setBarLane('video')}><FileVideo size={12} /> video</button>
-              <button type="button" role="radio" aria-checked={barLane === 'image'} className={`canvas-chip ${barLane === 'image' ? 'active' : ''}`} data-canvas-bar-lane-toggle="image" title="Spawn an IMAGE chain — a still per take (the workbench's families)" onClick={() => setBarLane('image')}><ImagePlus size={12} /> image</button>
-            </span>
+                (R-23: each states its EFFECT), one kbd gesture apart. The
+                COMPLETE radio contract since the chip system (task 6):
+                roving tabindex + arrow keys move selection AND focus, Tab
+                exits the group as one unit. */}
+            <ChipGroup exclusive className="canvas-bar-lane" data-canvas-bar-lane={barLane} aria-label="Spawn lane" value={barLane} onChange={(next) => setBarLane(next as 'video' | 'image')}>
+              <Chip id="video" variant="radio" className="canvas-chip" data-canvas-bar-lane-toggle="video" title="Spawn a VIDEO chain — the derived mode follows what you later bind"><FileVideo size={12} /> video</Chip>
+              <Chip id="image" variant="radio" className="canvas-chip" data-canvas-bar-lane-toggle="image" title="Spawn an IMAGE chain — a still per take (the workbench's families)"><ImagePlus size={12} /> image</Chip>
+            </ChipGroup>
             <input className="canvas-bar-prompt" data-canvas-bar-prompt value={barPrompt} placeholder={`Describe a ${barLane === 'image' ? 'still' : 'shot'} — Enter spawns it at the bar`} onChange={(event) => setBarPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); const text = barPrompt; setBarPrompt(''); void submit(text) } } } />
           </>}
         <button
@@ -173,26 +177,29 @@ export function BottomBar() {
           {forkHistory.forks.length ? `${forkHistory.forks.length} fork${forkHistory.forks.length === 1 ? '' : 's'} ↓` : ''}
           {!forkHistory.parents.length && !forkHistory.forks.length ? 'no forks yet' : ''}
         </span>
-        <button
-          type="button"
+        {/* The lock is an INDEPENDENT toggle — a pressed button (aria-pressed
+            via Space/Enter), never aria-checked (exclusive-group territory). */}
+        <Chip
+          variant="toggle"
+          selected={primary.lockState === 'locked'}
           className="canvas-chip"
           data-canvas-bar-lock={primary.lockState}
           title={primary.lockState === 'locked' ? 'Unlock — upstream changes mark this chain stale again' : 'Lock — propagation is gated; every take stays resident'}
           onClick={() => void useCanvasStore.getState().setChainLock(primary.id, primary.lockState !== 'locked')}
         >
           {primary.lockState === 'locked' ? <Lock size={11} /> : <LockOpen size={11} />} {primary.lockState === 'locked' ? 'locked' : 'unlocked'} <kbd>P</kbd>
-        </button>
-        <button type="button" className="canvas-chip" data-canvas-bar-fork disabled={!primary.canonical} onClick={() => setForkMenu({ chainId: primary.id })}><GitFork size={11} /> fork <kbd>B</kbd></button>
-        {primary.stale && <button type="button" className="canvas-chip" data-canvas-bar-rerun title="Rerun this chain — one gesture (principle 5)" onClick={() => void useCanvasStore.getState().rerunChain(primary.id)}>rerun <kbd>R</kbd></button>}
+        </Chip>
+        <button type="button" className="chip canvas-chip" data-canvas-bar-fork disabled={!primary.canonical} onClick={() => setForkMenu({ chainId: primary.id })}><GitFork size={11} /> fork <kbd>B</kbd></button>
+        {primary.stale && <button type="button" className="chip canvas-chip" data-canvas-bar-rerun title="Rerun this chain — one gesture (principle 5)" onClick={() => void useCanvasStore.getState().rerunChain(primary.id)}>rerun <kbd>R</kbd></button>}
       </>
     )}
 
     {context === 'media' && primary && (
       <>
         <span className="canvas-bar-title">{primary.title}</span>
-        <button type="button" className="canvas-chip" data-canvas-bar-transport onClick={toggleTransport} disabled={primary.mediaKind !== 'video'}><Play size={11} /> / <Pause size={11} /> play</button>
+        <button type="button" className="chip canvas-chip" data-canvas-bar-transport onClick={toggleTransport} disabled={primary.mediaKind !== 'video'}><Play size={11} /> / <Pause size={11} /> play</button>
         <div className="canvas-bar-opmenu">
-          <button type="button" className="canvas-chip" data-canvas-bar-ops onClick={() => setOpMenuOpen((value) => !value)}><Plus size={11} /> op <ChevronUp size={10} /></button>
+          <button type="button" className="chip canvas-chip" data-canvas-bar-ops onClick={() => setOpMenuOpen((value) => !value)}><Plus size={11} /> op <ChevronUp size={10} /></button>
           {opMenuOpen && (
             <div className="canvas-bar-opmenu-pop" data-canvas-bar-opmenu role="menu">
               {offeredOpKinds.map((kind) => (
@@ -202,9 +209,9 @@ export function BottomBar() {
             </div>
           )}
         </div>
-        <button type="button" className="canvas-chip" data-canvas-bar-opedit onClick={() => useCanvasStore.getState().setOpEditor({ chainId: primary.id })}>ops <kbd>↵</kbd></button>
-        <button type="button" className="canvas-chip" data-canvas-bar-properties onClick={() => useCanvasStore.getState().setInspectorOpen(true)}>properties</button>
-        <button type="button" className="canvas-chip" data-canvas-bar-fork onClick={() => setForkMenu({ chainId: primary.id })}><GitFork size={11} /> fork</button>
+        <button type="button" className="chip canvas-chip" data-canvas-bar-opedit onClick={() => useCanvasStore.getState().setOpEditor({ chainId: primary.id })}>ops <kbd>↵</kbd></button>
+        <button type="button" className="chip canvas-chip" data-canvas-bar-properties onClick={() => useCanvasStore.getState().setInspectorOpen(true)}>properties</button>
+        <button type="button" className="chip canvas-chip" data-canvas-bar-fork onClick={() => setForkMenu({ chainId: primary.id })}><GitFork size={11} /> fork</button>
       </>
     )}
 
@@ -212,16 +219,16 @@ export function BottomBar() {
       <>
         <span className="canvas-bar-title"><Layers size={12} /> {selectedTiles.length} objects</span>
         {selectedTiles.slice(0, 4).map((tile) => (
-          <button type="button" key={tile!.id} className="canvas-bar-chip-tile" data-canvas-bar-multitile={tile!.id} onClick={() => { select(tile!.id); requestCamera({ kind: 'fly', tileId: tile!.id }) }}>{tile!.title}</button>
+          <button type="button" key={tile!.id} className="chip canvas-bar-chip-tile" data-canvas-bar-multitile={tile!.id} onClick={() => { select(tile!.id); requestCamera({ kind: 'fly', tileId: tile!.id }) }}>{tile!.title}</button>
         ))}
-        <button type="button" className="canvas-chip" data-canvas-bar-generate-all onClick={() => void multiGenerate()}>
+        <button type="button" className="chip canvas-chip" data-canvas-bar-generate-all onClick={() => void multiGenerate()}>
           <Play size={11} /> generate all
         </button>
-        <button type="button" className="canvas-chip" data-canvas-bar-lock-all onClick={() => void multiLock()}>
+        <button type="button" className="chip canvas-chip" data-canvas-bar-lock-all onClick={() => void multiLock()}>
           {selectedTiles.every((tile) => tile!.lockState === 'locked') ? <LockOpen size={11} /> : <Lock size={11} />}
           {selectedTiles.every((tile) => tile!.lockState === 'locked') ? 'unlock all' : 'lock all'}
         </button>
-        <button type="button" className="canvas-chip" onClick={() => select(null)}>clear</button>
+        <button type="button" className="chip canvas-chip" onClick={() => select(null)}>clear</button>
       </>
     )}
   </footer>

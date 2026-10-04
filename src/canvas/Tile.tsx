@@ -201,7 +201,7 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
         </div>
       )}
       {tile.lockState === 'locked' && <span className="canvas-tile-lock" title="Chain locked — propagation gated"><Lock size={11} /></span>}
-      {tile.stale && tile.status !== 'stale' && <span className="canvas-tile-stale-badge" title="Settings changed upstream — rerun when ready">stale</span>}
+      {tile.stale && tile.status !== 'stale' && <span className="chip chip--warning canvas-tile-stale-badge" title="Settings changed upstream — rerun when ready">stale</span>}
     </div>
 
     {band !== 'far' && (
@@ -220,7 +220,7 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
         {tile.ops.map((op) => (
           <span
             key={op.id}
-            className={`canvas-op-chip ${op.bakedAt !== null ? 'baked' : ''}`}
+            className={`chip ${op.bakedAt !== null ? 'chip--warning' : 'chip--muted'} canvas-op-chip ${op.bakedAt !== null ? 'baked' : ''}`}
             data-op-kind={op.kind}
             data-canvas-op-chip={op.id}
             role="button"
@@ -232,7 +232,7 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
           </span>
         ))}
         {!tile.ops.length && (
-          <button type="button" className="canvas-op-chip canvas-op-chip-empty" data-canvas-op-chip-empty onClick={(event) => { event.stopPropagation(); onOpenOps(tile.id) }}>no ops</button>
+          <button type="button" className="chip chip--muted canvas-op-chip canvas-op-chip-empty" data-canvas-op-chip-empty onClick={(event) => { event.stopPropagation(); onOpenOps(tile.id) }}>no ops</button>
         )}
       </div>
     )}
@@ -245,8 +245,8 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
         </div>
         <div className="canvas-tile-takes" aria-label="Takes">
           {tile.canonical
-            ? <span className="canvas-take-chip canonical" title="Canonical take — click a prior to switch the pointer"><Star size={10} fill="currentColor" /> {tile.canonical.id.slice(0, 8)}</span>
-            : <span className="canvas-take-chip canvas-take-chip-empty">no take yet</span>}
+            ? <span className="chip chip--accent canvas-take-chip canonical" title="Canonical take — click a prior to switch the pointer"><Star size={10} fill="currentColor" /> {tile.canonical.id.slice(0, 8)}</span>
+            : <span className="chip chip--accent canvas-take-chip canvas-take-chip-empty">no take yet</span>}
           {(() => {
             // The workbench packet take (k9vu6t0): its artifacts are the N
             // frame outputs — the chip says so and opens the pick surface.
@@ -254,12 +254,12 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
             if (!h3img || typeof h3img !== 'object') return null
             const frames = (h3img as { frames?: unknown }).frames
             if (typeof frames !== 'number' || !frames) return null
-            return <a className="canvas-take-chip prior" data-canvas-take-to-workbench href="?images=1" title="Open the H3 Image Workbench — this take's frames line up on the pick surface">{frames} frames · pick</a>
+            return <a className="chip chip--muted canvas-take-chip prior" data-canvas-take-to-workbench href="?images=1" title="Open the H3 Image Workbench — this take's frames line up on the pick surface">{frames} frames · pick</a>
           })()}
           {tile.artifactPath && (
             <button
               type="button"
-              className="canvas-take-chip prior"
+              className="chip chip--muted canvas-take-chip prior"
               data-canvas-take-to-datasets
               title="Send this take to the dataset manager (training-set prep) — the file stays in place"
               onClick={(event) => { event.stopPropagation(); sendToDatasets(tile) }}
@@ -271,7 +271,7 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
             <button
               key={take.id}
               type="button"
-              className="canvas-take-chip prior"
+              className="chip chip--muted canvas-take-chip prior"
               data-canvas-take-switch={take.id}
               title="Make this take canonical — nothing is deleted; downstream forks go stale"
               onClick={(event) => { event.stopPropagation(); onSwitchTake(tile.id, take.id) }}
@@ -279,7 +279,7 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
               {take.id.slice(0, 8)}
             </button>
           ))}
-          {tile.priors > 3 && <span className="canvas-take-chip prior" title={`${tile.priors - 3} more earlier takes — the properties panel lists them`}>+{tile.priors - 3}</span>}
+          {tile.priors > 3 && <span className="chip chip--muted canvas-take-chip prior" title={`${tile.priors - 3} more earlier takes — the properties panel lists them`}>+{tile.priors - 3}</span>}
           {tile.canonical && (
             <button type="button" className="canvas-take-fork" data-canvas-fork={tile.id} aria-label={`Fork ${tile.title}`} title="Fork from this object (B)" onClick={(event) => { event.stopPropagation(); onFork(tile.id) }}>
               <GitFork size={10} /> fork
