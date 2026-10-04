@@ -1,0 +1,32 @@
+p01: all modes present; manual blink reveals a pixel difference at frame 61
+p02: all modes present; manual blink reveals a pixel difference at frame 61
+p03: all modes present; manual blink reveals a pixel difference at frame 61
+p04: all modes present; manual blink reveals a pixel difference at frame 61
+p05: all modes present; manual blink reveals a pixel difference at frame 61
+p06: all modes present; manual blink reveals a pixel difference at frame 61
+p07: all modes present; manual blink pixel-identical null at frame 23
+p08: all modes present; manual blink reveals a pixel difference at frame 61
+p07: all 39 frames have identical L/R canvas screenshots
+p07 paused content: 0.5 Hz / 3 flips in 4s; unchanged pixels
+p07 paused content: 1 Hz / 8 flips in 4s; unchanged pixels
+p07 paused content: 1.5 Hz / 12 flips in 4s; unchanged pixels
+p07 paused content: 2 Hz / 16 flips in 4s; unchanged pixels
+p07 paused content: 2.5 Hz / 20 flips in 4s; unchanged pixels
+p07 paused content: 3 Hz / 24 flips in 4s; unchanged pixels
+p07 paused content: 3.5 Hz / 27 flips in 4s; unchanged pixels
+p07 paused content: 4 Hz / 32 flips in 4s; unchanged pixels
+p07 paused content: 4.5 Hz / 35 flips in 4s; unchanged pixels
+p07 paused content: 5 Hz / 40 flips in 4s; unchanged pixels
+p07 paused content: 5.5 Hz / 44 flips in 4s; unchanged pixels
+p07 paused content: 6 Hz / 48 flips in 4s; unchanged pixels
+p07 paused content: 6.5 Hz / 52 flips in 4s; unchanged pixels
+p07 paused content: 7 Hz / 55 flips in 4s; unchanged pixels
+p07 paused content: 7.5 Hz / 59 flips in 4s; unchanged pixels
+p07 paused content: 8 Hz / 64 flips in 4s; unchanged pixels
+sbs: true-frame steps, playback, pause, restart and fullscreen passed
+slider: true-frame steps, playback, pause, restart and fullscreen passed
+blink: true-frame steps, playback, pause, restart and fullscreen passed
+Real wall clock: 67 consecutive frames and 44 blink flips in ~3s at 24fps / 8Hz
+file:// JS Blob download parsed; call/note survive full Chromium close and reopen at exact URL
+setB empty state and distinct persistence key passed
+No page/console errors; no HTTP requests; no escrow requests

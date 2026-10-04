@@ -1,0 +1,1 @@
+Concurrent setB corpus: all 8 pairs loaded on file://; p01 all modes, exact steps/restart, unrevealed metadata and distinct B storage verified; no console/page errors.

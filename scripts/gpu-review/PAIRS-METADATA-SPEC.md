@@ -33,3 +33,9 @@ see [FRAME-ASSETS-SPEC.md](FRAME-ASSETS-SPEC.md) for generation, validation,
 playback semantics, and response JS export. Treatment metadata and pair notes
 must never be placed in the frame manifest. Pair notes reveal only after a valid
 call, just like L/R metadata. Metadata values render as text, never HTML.
+
+Response export is now `review-responses.js`, a classic assignment to
+`window.REVIEW_RESPONSES = { set, exported, responses }`; each response retains
+`call`, `note`, and `ts`. Existing setA localStorage responses are preserved.
+The frame manifest supplies playback count and timestamps; generation metadata
+remains descriptive and does not control frame selection.

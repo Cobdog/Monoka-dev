@@ -1,0 +1,1 @@
+Legacy review.html storage restored; next save writes current key and leaves legacy data untouched
