@@ -249,8 +249,14 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-index-row-note { flex: 0 0 auto; color: var(--muted-2); font-size: var(--text-2xs); }
 .canvas-index-empty { padding: 14px; color: var(--muted-2); font-size: var(--text-sm); }
 
-/* ---- ambient toasts (§4 notice routing) -------------------------------------- */
-.canvas-toasts { position: absolute; left: 14px; bottom: 44px; z-index: 60; display: grid; gap: 7px; max-width: 460px; }
+/* ---- ambient toasts (§4 notice routing) --------------------------------------
+ * (Component vocabulary task 9, k2q0n9s) The strip is the shared ToastHost
+ * mounted by src/canvas/toastAdapter.ts: the HOST's placement (absolute,
+ * left 14, bottom 44 — this surface's historical geometry) moved to the
+ * .toast-host--bottom-left recipe in styles.css; THIS rule is the retained
+ * CONTAINER geometry (the grid/gap/max-width dialect) composed alongside,
+ * and the .canvas-toast ITEM vocabulary below is retained verbatim. */
+.canvas-toasts { z-index: 60; display: grid; gap: 7px; max-width: 460px; }
 .canvas-toast { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); color: var(--color-text-soft); font-size: var(--text-md); box-shadow: 0 12px 30px rgba(0, 0, 0, .35); }
 .canvas-toast.error { border-color: color-mix(in srgb, var(--danger) 48%, transparent); color: var(--danger); }
 .canvas-toast.success { border-color: color-mix(in srgb, var(--accent) 44%, transparent); color: var(--accent); }
