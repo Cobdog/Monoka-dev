@@ -1,0 +1,974 @@
+{
+ "config": {
+  "set": "C \u2014 sigma mechanics (X1, X3, X3x-exploratory, X6, X2 ladder)",
+  "board": {
+   "prompts": {
+    "P1_low": "Locked-off tripod shot of a plain light-grey wooden table against a soft neutral studio background, even diffuse daylight, no shadows. A single matte red ball rests on the table at the left quarter of the frame. The ball rolls slowly to the right, a short distance, and comes to rest near the left third of the table early in the shot, then stays completely still. No camera movement. Audio: quiet room tone, one soft wooden rolling sound, then silence.",
+    "P2_med": "A pale woman in her early thirties with a short black bob haircut, thin silver hoop earrings, faint freckles, wearing an oversized rust-orange wool coat over a charcoal turtleneck. She stands at a weathered wooden counter in a small sunlit kitchen, slowly stirring a copper pot of soup with a wooden spoon. Late-afternoon light falls through a window to her left, dust motes in the beam. The camera pushes in slowly from a medium shot to a medium close-up; she tastes the soup and smiles slightly. Natural handheld micro-motion throughout. Audio: gentle simmering, the wooden spoon tapping the copper pot, a quiet kitchen fan hum, soft piano notes from a radio in the next room.",
+    "P3_high": "Locked-off tripod shot of a plain light-grey wooden table against a soft neutral studio background, even diffuse daylight, no shadows. A single matte red ball rests on the table at the left quarter of the frame. The ball rolls briskly from left to right across the whole table, crossing the full width of the frame, and comes to rest at the right quarter of the table just before the shot ends. No camera movement. Audio: quiet room tone, a sustained wooden rolling sound that travels from left to right and settles as the ball stops."
+   },
+   "plans": {
+    "P1_low": {
+     "anchors": [
+      [
+       0,
+       25.0
+      ],
+      [
+       17,
+       29.0
+      ],
+      [
+       34,
+       33.0
+      ]
+     ],
+     "success_band_end": [
+      28.0,
+      38.0
+     ]
+    },
+    "P3_high": {
+     "anchors": [
+      [
+       0,
+       25.0
+      ],
+      [
+       17,
+       50.0
+      ],
+      [
+       34,
+       75.0
+      ]
+     ],
+     "success_band_end": [
+      70.0,
+      80.0
+     ]
+    }
+   },
+   "seed": 421337,
+   "frames": 39,
+   "audio_rows": 65,
+   "p2_basis": "Set B canary board (tranche-1 PROMPT_A verbatim) \u2014 drift sentinel",
+   "p1_p3_basis": "movement-director harness ball board (E-MD1 scene, direction in-prompt)"
+  },
+  "seed": 421337,
+  "frames": 39,
+  "sampler": "res_multistep (base arms) / MiniMaxH3TurboSampler (X6, Euler-family)",
+  "turbo": "OFF for all base arms; X6 arms = larryvrh v4 turbo BYPASS (low_vram=False, strength 1.0)",
+  "adapters": "X6 only: MiniMaxH3TurboLoRA v4_step600_ema (sha 5f3a626cd72c\u2026), BYPASS runtime per \u00a71.3 corrected row",
+  "models": {
+   "unet": "minimax_h3_fl2va_pruned_int8_convrot.safetensors (e889202c\u2026)",
+   "text_encoder": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors (bc2ced0f\u2026)",
+   "vae_video": "minimax_h3_video_vae_fp16 == musubi_video_vae_fp16 == __setBalias == __setCalias (sha 7c1f131492e7\u2026)",
+   "vae_audio": "minimax_h3_audio_vae_fp32.safetensors (8e505d95\u2026)"
+  },
+  "kernel": "stock attention routing; SageAttention absent from venv (off by absence)",
+  "audio_shift": "3 throughout (video-only moves; X4 owns the audio axis)",
+  "nfe_declared": "20 per base arm, 8 per X6 arm; X3 truncation saves 0 NFE (quality-at-matched-grid contrast)",
+  "frame_contract": "39 = 17*2+5; audio rows 65 = round(39*5/3)",
+  "comfyui_version": "0.37.4",
+  "torch": "2.12.1+cu130",
+  "free_state": "never \u2014 controller owns /free; base stack left resident from Set B",
+  "node_substitutions": {
+   "ExpSetSigmas -> ManualSigmas": "live 8189 predates shim registration; stock node, exact float passthrough, no terminal forcing (nodes_custom_sampler.py:1125)",
+   "X3 decode": "SamplerCustomAdvanced output index 1 (denoised_output) \u2014 the x0 estimate the final step computes (ledger X3 control a); res_multistep fires callback every step (k_diffusion/sampling.py:1490), latent_preview.prepare_callback stores x0 unconditionally"
+  },
+  "canary_protocol": "c1/c2/c3 = Set B canary config, fresh (__setCalias x control) signatures; framemd5+audio-md5 vs setB r9 after each; ANY diff stops the set (Amendment 5)",
+  "client_id": "2c224d66-e4be-419f-80e1-5de11bdd1ac0"
+ },
+ "runs": [
+  {
+   "run_id": "c1_canary_start",
+   "arm": "canary(simple/20@12) = X1-a x P2",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.28,
+   "sampling_s": 54.28,
+   "vram_peak_mib": 23943,
+   "knots_source": "A1 X1-a (frozen)",
+   "tags": [
+    "canary",
+    "X1-a",
+    "X2-544p-s12"
+   ],
+   "canary_check_vs_setB_r9": {
+    "frames_identical": true,
+    "audio_identical": true,
+    "n_frames": 39
+   }
+  },
+  {
+   "run_id": "X1a_p1",
+   "arm": "X1-a simple/20@12",
+   "prompt_id": "P1_low",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.27,
+   "sampling_s": 54.27,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X1-a (frozen)",
+   "tags": [
+    "X1",
+    "X2-544p-s12"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X1a_p3",
+   "arm": "X1-a simple/20@12",
+   "prompt_id": "P3_high",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 58.2,
+   "sampling_s": 53.2,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X1-a (frozen)",
+   "tags": [
+    "X1",
+    "X2-544p-s12"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X1b_p1",
+   "arm": "X1-b sgm_uniform/20@12",
+   "prompt_id": "P1_low",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 58.2,
+   "sampling_s": 53.2,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X1-b (frozen; BasicScheduler sgm_uniform/20)",
+   "tags": [
+    "X1",
+    "X3-full"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X1b_p2",
+   "arm": "X1-b sgm_uniform/20@12",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.26,
+   "sampling_s": 54.26,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X1-b (frozen; BasicScheduler sgm_uniform/20)",
+   "tags": [
+    "X1",
+    "X3-full"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X1b_p3",
+   "arm": "X1-b sgm_uniform/20@12",
+   "prompt_id": "P3_high",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.28,
+   "sampling_s": 55.28,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X1-b (frozen; BasicScheduler sgm_uniform/20)",
+   "tags": [
+    "X1",
+    "X3-full"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X1d1_p1",
+   "arm": "X1-d1 beta(2,4)/20@12",
+   "prompt_id": "P1_low",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.27,
+   "sampling_s": 54.27,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X1-d1 (frozen; CustomSigmas exact)",
+   "tags": [
+    "X1"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X1d1_p2",
+   "arm": "X1-d1 beta(2,4)/20@12",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.28,
+   "sampling_s": 54.28,
+   "vram_peak_mib": 24087,
+   "knots_source": "A1 X1-d1 (frozen; CustomSigmas exact)",
+   "tags": [
+    "X1"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X1d1_p3",
+   "arm": "X1-d1 beta(2,4)/20@12",
+   "prompt_id": "P3_high",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.45,
+   "sampling_s": 55.45,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X1-d1 (frozen; CustomSigmas exact)",
+   "tags": [
+    "X1"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X3-t005_p1",
+   "arm": "X3 sgm/20@12 trunc(sigma_end=0.05)",
+   "prompt_id": "P1_low",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.26,
+   "sampling_s": 55.26,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X3 trunc(0.05) (frozen; ManualSigmas exact + denoised_output decode)",
+   "tags": [
+    "X3"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X3-t005_p2",
+   "arm": "X3 sgm/20@12 trunc(sigma_end=0.05)",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.24,
+   "sampling_s": 54.24,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X3 trunc(0.05) (frozen; ManualSigmas exact + denoised_output decode)",
+   "tags": [
+    "X3"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X3-t005_p3",
+   "arm": "X3 sgm/20@12 trunc(sigma_end=0.05)",
+   "prompt_id": "P3_high",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.25,
+   "sampling_s": 55.25,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X3 trunc(0.05) (frozen; ManualSigmas exact + denoised_output decode)",
+   "tags": [
+    "X3"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X3-t015_p1",
+   "arm": "X3 sgm/20@12 trunc(sigma_end=0.15)",
+   "prompt_id": "P1_low",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.25,
+   "sampling_s": 55.25,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X3 trunc(0.15) (frozen; ManualSigmas exact + denoised_output decode)",
+   "tags": [
+    "X3"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X3-t015_p2",
+   "arm": "X3 sgm/20@12 trunc(sigma_end=0.15)",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.24,
+   "sampling_s": 54.24,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X3 trunc(0.15) (frozen; ManualSigmas exact + denoised_output decode)",
+   "tags": [
+    "X3"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X3-t015_p3",
+   "arm": "X3 sgm/20@12 trunc(sigma_end=0.15)",
+   "prompt_id": "P3_high",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.3,
+   "sampling_s": 55.3,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X3 trunc(0.15) (frozen; ManualSigmas exact + denoised_output decode)",
+   "tags": [
+    "X3"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X3x_p1",
+   "arm": "X3x beta(0.8,3)/20@12 [EXPLORATORY fry probe]",
+   "prompt_id": "P1_low",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.25,
+   "sampling_s": 55.25,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X1-d0 relabeled (A2; exploratory)",
+   "tags": [
+    "X3",
+    "exploratory"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X3x_p2",
+   "arm": "X3x beta(0.8,3)/20@12 [EXPLORATORY fry probe]",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.25,
+   "sampling_s": 55.25,
+   "vram_peak_mib": 24151,
+   "knots_source": "A1 X1-d0 relabeled (A2; exploratory)",
+   "tags": [
+    "X3",
+    "exploratory"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X3x_p3",
+   "arm": "X3x beta(0.8,3)/20@12 [EXPLORATORY fry probe]",
+   "prompt_id": "P3_high",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.25,
+   "sampling_s": 55.24,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X1-d0 relabeled (A2; exploratory)",
+   "tags": [
+    "X3",
+    "exploratory"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "c2_canary_mid",
+   "arm": "canary(simple/20@12) [sentinel]",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.24,
+   "sampling_s": 55.24,
+   "vram_peak_mib": 24071,
+   "knots_source": "A1 X1-a (frozen)",
+   "tags": [
+    "canary"
+   ],
+   "canary_check_vs_setB_r9": {
+    "frames_identical": true,
+    "audio_identical": true,
+    "n_frames": 39
+   }
+  },
+  {
+   "run_id": "X6card_p1",
+   "arm": "X6 card beta(0.6,0.6)/8@12 turbo",
+   "prompt_id": "P1_low",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 8,
+   "wall_s": 36.77,
+   "sampling_s": 30.77,
+   "vram_peak_mib": 24135,
+   "knots_source": "A1 X6-alt2 (frozen; larryvrh v4 card recipe)",
+   "tags": [
+    "X6"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X6simple_p1",
+   "arm": "X6 simple/8@12 turbo",
+   "prompt_id": "P1_low",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 8,
+   "wall_s": 30.64,
+   "sampling_s": 29.64,
+   "vram_peak_mib": 23969,
+   "knots_source": "A1 X6-manifest simple/8 (frozen; tranche-1 as-run path)",
+   "tags": [
+    "X6"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X6card_p2",
+   "arm": "X6 card beta(0.6,0.6)/8@12 turbo",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 8,
+   "wall_s": 33.7,
+   "sampling_s": 28.7,
+   "vram_peak_mib": 24145,
+   "knots_source": "A1 X6-alt2 (frozen; larryvrh v4 card recipe)",
+   "tags": [
+    "X6"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X6simple_p2",
+   "arm": "X6 simple/8@12 turbo",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 8,
+   "wall_s": 30.65,
+   "sampling_s": 29.65,
+   "vram_peak_mib": 23969,
+   "knots_source": "A1 X6-manifest simple/8 (frozen; tranche-1 as-run path)",
+   "tags": [
+    "X6"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X6card_p3",
+   "arm": "X6 card beta(0.6,0.6)/8@12 turbo",
+   "prompt_id": "P3_high",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 8,
+   "wall_s": 33.7,
+   "sampling_s": 28.7,
+   "vram_peak_mib": 24113,
+   "knots_source": "A1 X6-alt2 (frozen; larryvrh v4 card recipe)",
+   "tags": [
+    "X6"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X6simple_p3",
+   "arm": "X6 simple/8@12 turbo",
+   "prompt_id": "P3_high",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 8,
+   "wall_s": 30.64,
+   "sampling_s": 29.64,
+   "vram_peak_mib": 23969,
+   "knots_source": "A1 X6-manifest simple/8 (frozen; tranche-1 as-run path)",
+   "tags": [
+    "X6"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_576p_s12_p1",
+   "arm": "X2 576p simple/20@12",
+   "prompt_id": "P1_low",
+   "canvas": [
+    1024,
+    576
+   ],
+   "nfe": 20,
+   "wall_s": 66.37,
+   "sampling_s": 60.37,
+   "vram_peak_mib": 24161,
+   "knots_source": "recomputed s12 == A1 X1-a (asserted)",
+   "tags": [
+    "X2",
+    "X2-stage1"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_576p_s12_p2",
+   "arm": "X2 576p simple/20@12",
+   "prompt_id": "P2_med",
+   "canvas": [
+    1024,
+    576
+   ],
+   "nfe": 20,
+   "wall_s": 69.43,
+   "sampling_s": 64.43,
+   "vram_peak_mib": 24137,
+   "knots_source": "recomputed s12 == A1 X1-a (asserted)",
+   "tags": [
+    "X2",
+    "X2-stage1"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_576p_s12_p3",
+   "arm": "X2 576p simple/20@12",
+   "prompt_id": "P3_high",
+   "canvas": [
+    1024,
+    576
+   ],
+   "nfe": 20,
+   "wall_s": 66.37,
+   "sampling_s": 61.37,
+   "vram_peak_mib": 24137,
+   "knots_source": "recomputed s12 == A1 X1-a (asserted)",
+   "tags": [
+    "X2",
+    "X2-stage1"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_768p_s12_p1",
+   "arm": "X2 768p simple/20@12",
+   "prompt_id": "P1_low",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 141.93,
+   "sampling_s": 136.93,
+   "vram_peak_mib": 24153,
+   "knots_source": "recomputed s12 == A1 X1-a (asserted)",
+   "tags": [
+    "X2",
+    "X2-stage1"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_768p_s12_p2",
+   "arm": "X2 768p simple/20@12",
+   "prompt_id": "P2_med",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 143.03,
+   "sampling_s": 138.03,
+   "vram_peak_mib": 24153,
+   "knots_source": "recomputed s12 == A1 X1-a (asserted)",
+   "tags": [
+    "X2",
+    "X2-stage1"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_768p_s12_p3",
+   "arm": "X2 768p simple/20@12",
+   "prompt_id": "P3_high",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 141.99,
+   "sampling_s": 136.99,
+   "vram_peak_mib": 24153,
+   "knots_source": "recomputed s12 == A1 X1-a (asserted)",
+   "tags": [
+    "X2",
+    "X2-stage1"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_544p_s8_p1",
+   "arm": "X2 544p simple/20@s8",
+   "prompt_id": "P1_low",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.26,
+   "sampling_s": 54.26,
+   "vram_peak_mib": 24089,
+   "knots_source": "code-true simple/20@s8 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_544p_s8_p2",
+   "arm": "X2 544p simple/20@s8",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.24,
+   "sampling_s": 54.24,
+   "vram_peak_mib": 24089,
+   "knots_source": "code-true simple/20@s8 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_544p_s8_p3",
+   "arm": "X2 544p simple/20@s8",
+   "prompt_id": "P3_high",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.25,
+   "sampling_s": 55.25,
+   "vram_peak_mib": 24137,
+   "knots_source": "code-true simple/20@s8 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_544p_s18_p1",
+   "arm": "X2 544p simple/20@s18",
+   "prompt_id": "P1_low",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.25,
+   "sampling_s": 55.25,
+   "vram_peak_mib": 24137,
+   "knots_source": "code-true simple/20@s18 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_544p_s18_p2",
+   "arm": "X2 544p simple/20@s18",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.24,
+   "sampling_s": 55.24,
+   "vram_peak_mib": 24137,
+   "knots_source": "code-true simple/20@s18 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_544p_s18_p3",
+   "arm": "X2 544p simple/20@s18",
+   "prompt_id": "P3_high",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.25,
+   "sampling_s": 55.25,
+   "vram_peak_mib": 24137,
+   "knots_source": "code-true simple/20@s18 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_768p_s8_p1",
+   "arm": "X2 768p simple/20@s8",
+   "prompt_id": "P1_low",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 141.92,
+   "sampling_s": 136.92,
+   "vram_peak_mib": 24153,
+   "knots_source": "code-true simple/20@s8 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_768p_s8_p2",
+   "arm": "X2 768p simple/20@s8",
+   "prompt_id": "P2_med",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 141.93,
+   "sampling_s": 136.93,
+   "vram_peak_mib": 24153,
+   "knots_source": "code-true simple/20@s8 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_768p_s8_p3",
+   "arm": "X2 768p simple/20@s8",
+   "prompt_id": "P3_high",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 141.92,
+   "sampling_s": 136.92,
+   "vram_peak_mib": 24153,
+   "knots_source": "code-true simple/20@s8 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_768p_s18_p1",
+   "arm": "X2 768p simple/20@s18",
+   "prompt_id": "P1_low",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 141.92,
+   "sampling_s": 136.92,
+   "vram_peak_mib": 24153,
+   "knots_source": "code-true simple/20@s18 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_768p_s18_p2",
+   "arm": "X2 768p simple/20@s18",
+   "prompt_id": "P2_med",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 141.92,
+   "sampling_s": 136.92,
+   "vram_peak_mib": 24153,
+   "knots_source": "code-true simple/20@s18 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_768p_s18_p3",
+   "arm": "X2 768p simple/20@s18",
+   "prompt_id": "P3_high",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 141.92,
+   "sampling_s": 136.92,
+   "vram_peak_mib": 24153,
+   "knots_source": "code-true simple/20@s18 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-stage2"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "c3_canary_end",
+   "arm": "canary(simple/20@12) [sentinel]",
+   "prompt_id": "P2_med",
+   "canvas": [
+    960,
+    544
+   ],
+   "nfe": 20,
+   "wall_s": 60.25,
+   "sampling_s": 55.24,
+   "vram_peak_mib": 24137,
+   "knots_source": "A1 X1-a (frozen)",
+   "tags": [
+    "canary"
+   ],
+   "canary_check_vs_setB_r9": {
+    "frames_identical": true,
+    "audio_identical": true,
+    "n_frames": 39
+   }
+  },
+  {
+   "run_id": "X2_768p_s10_p1",
+   "arm": "X2 768p simple/20@s10 [EXPLORATORY cliff-rung add-on]",
+   "prompt_id": "P1_low",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 142.95,
+   "sampling_s": 137.95,
+   "vram_peak_mib": 24137,
+   "knots_source": "code-true simple/20@s10 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-s10-exploratory"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_768p_s10_p2",
+   "arm": "X2 768p simple/20@s10 [EXPLORATORY cliff-rung add-on]",
+   "prompt_id": "P2_med",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 141.92,
+   "sampling_s": 136.92,
+   "vram_peak_mib": 24153,
+   "knots_source": "code-true simple/20@s10 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-s10-exploratory"
+   ],
+   "canary_check_vs_setB_r9": null
+  },
+  {
+   "run_id": "X2_768p_s10_p3",
+   "arm": "X2 768p simple/20@s10 [EXPLORATORY cliff-rung add-on]",
+   "prompt_id": "P3_high",
+   "canvas": [
+    1344,
+    768
+   ],
+   "nfe": 20,
+   "wall_s": 141.92,
+   "sampling_s": 135.92,
+   "vram_peak_mib": 24153,
+   "knots_source": "code-true simple/20@s10 (c0, computed this set)",
+   "tags": [
+    "X2",
+    "X2-s10-exploratory"
+   ],
+   "canary_check_vs_setB_r9": null
+  }
+ ]
+}

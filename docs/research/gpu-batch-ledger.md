@@ -852,3 +852,61 @@ Standing rules for EVERY set executor from Set C onward:
 ## Amendment 5 — the 3.4 ruling: SINGLE-SEED with the canary-stop rule (maintainer's "Go", 2026-10-04)
 
 Set C onward runs one seed per cell. The insurance: the environment-stop canary rule stays intact in force — a canary placed at set start, mid, and end; if a canary ever diffs (pixel-identity check per the instrument contract), the affected block re-runs at FULL replication and the zero-floor finding is re-examined. Savings ~25–40% of planned gens. Basis: Set B's dual-track zero (SD=0.0 × 8/8 maintainer ties).
+
+## Amendment 6 — Set C verdicts (dated 2026-10-04; executed per [gpu-batch-setC-results.md](gpu-batch-setC-results.md))
+
+47 gens, 61.1 GPU-min, single seed (Amendment 5), all three canaries
+(start/mid/end) **bit-identical to Set B's canonical** — the zero floor held
+across the whole set; the canary-stop rule never fired.
+
+1. **X1 FALSIFIED — S2 parked.** `sgm_uniform` is simple's render-level twin
+   at s12/20 NFE (every paired read tie-class — A1's 0.052 knot separation
+   does not survive to pixels). `beta(2,4)` — the only true mid-band
+   treatment — halves HF (ratios 0.44–0.52), runs alternation 9–56×, and
+   costs +157% low-motion plan error for a sub-floor (−13.9%) high-motion
+   gain. Mechanistic note (exploratory): at fixed NFE, mid-band knot density
+   is zero-sum against the terminal window (beta's last knots 0.60/0.50 then
+   one 0.50→0 jump); the beta family at fixed NFE is measured as a
+   fry/instability class on this stack (the β(0.8,3) probe reproduces it).
+2. **X3 CONFIRMED — and the σ′_end dial collapses (DESIGN CHANGE).** Under
+   the pre-registered x₀-decode control, σ′_end ∈ {0.05, 0.15} produce
+   BIT-IDENTICAL videos (proven by construction AND on the outputs): the
+   decoded x₀ is the last step's prediction, independent of the terminal
+   value that only shapes the discarded state. Truncation holds texture ≥
+   full (HF ratios 0.99/1.05/1.00 — the face prompt GAINS 4.9%) with
+   structure flat. **S4's terminal-window discipline is confirmed as a
+   BINARY choice (truncate-at-last-knot + x₀-decode vs integrate-to-zero);
+   no σ′_end value exists to tune.** Audio caveat for S4 wiring: truncated
+   decode shifts P2 treble −22% relative (absolute-tiny) — one dedicated
+   audio check belongs in the recipe validation.
+3. **X6: no measurable off-distribution penalty (automated side).** Card-beta
+   vs simple at matched 8 NFE: HF within granularity both directions; the
+   one separating metric is alternation on the face prompt (5.8× — simple
+   cleaner); plan-error splits by prompt; the grids produce materially
+   different renders (PSNR 16.5–25.5 dB). **S1's off-distribution warning
+   calibrates at ≈ zero on these endpoints.** Judge threshold (≥9/12)
+   unreachable at n=3 pairs — the maintainer's calls remain pending on the
+   surface.
+4. **X2: cliff CONFIRMED between 576p and 768p — two-sided by endpoint; S3
+   parks.** Low-motion structure collapses at 768p (plan error 2.04→7.61
+   from 576p, ball HF halved, P2 alternation 22×) while HIGH-motion plan
+   fidelity IMPROVES with resolution (12.7→6.8→7.4) — resolution tokens buy
+   fast-motion tracking and cost static-structure fidelity. The
+   resolution×shift interaction on adherence is ~zero (mean +0.169 on
+   5.4–13.9 cell values; s10 sweep flat 7.87–8.07) → H3's shift is
+   resolution-flat in this envelope; no per-resolution shift table.
+   EXPLORATORY (recorded for preset guidance, BH family): shift interacts
+   with resolution on the stability axes — s18 at 768p doubles ball HF on
+   the high-motion prompt (0.93→1.84, 544p flat) and raises P2 alternation
+   monotonically (s8→s18: 0.039→0.113); direction: avoid high shift at 768p.
+5. **Economics re-anchored (measured):** 544p base-20 ≈ 60.3 s; 576p 67.4 s
+   (+12%); 768p **142.1 s (2.36×)**; turbo-8 32.7 s (0.54×). Peak VRAM flat
+   24135 MiB at every rung — 768p fits the 24 GB stack without offloading
+   collapse. Board pinned: P2 = PROMPT_A (Set B canary), P1/P3 = the
+   director-harness ball board (plans declared; plan-error is P1/P3-only).
+6. **Fresh-material queue (§1.1):** the only promotable finding is X3's
+   truncated-decode discipline — queued as a graph-factory default candidate
+   for the next base-tier set's graphs (decode output 1 at matched grids),
+   pending the maintainer's checkpoint and the surface calls. X1/X2 produced
+   no winners to extend (falsification and flat verdicts are the results).
+
