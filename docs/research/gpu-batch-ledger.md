@@ -801,3 +801,42 @@ leading σ′=1.0 and floors at 0.6527 (N=8@s12) / 0.4392 (N=20) / 0.4020 (N=24)
 the printed 0.1260 floor was the dropped-endpoint variant, and §3.2's s=32
 sgm floor is ≈0.85 code-true (claimed 0.506). Qualitative claims (sgm floors
 deeper than simple; separation grows with shift) hold; magnitudes corrected.
+
+## Amendment 3 — Set B verdicts (dated 2026-10-04; the calibration set, executed per [gpu-batch-setB-results.md](gpu-batch-setB-results.md))
+
+**The batch's noise floors are ZERO — bit-level.** 9 identical-config renders
+across cold-start / warm / post-model-reload-under-foreign-residency /
+repeat-warm: byte-identical frames (framemd5) and audio on every pair, all
+ten scripted metrics SD = 0.0 exactly, the review instrument's verifier 0/8
+pairs with any L/R pixel difference. Full tables + evidence:
+results doc §B1–B3.
+
+1. **§1.5 register updates (binding):** the community render-to-render floor
+   (±0.039 ArcFace / ±0.38 dE) is demoted to prior-in-full — cloud-API
+   infra noise, not a pinned stack. The Kreatine VRAM-nondeterminism
+   magnitude (1.18% RMS latent) does NOT transfer to the H3 int8-convrot
+   path (the reload canary with disk-streaming-during-sampling is
+   bit-identical); the lowvram-line comparison rule stays as cheap
+   insurance. **MDE for every endpoint and every n is the battery's
+   measurement granularity** (ArcFace 1e-5 · dE 1e-4 · … per results doc
+   §B3) — the pre-registered practical floors (10–15% [EST]) now dominate
+   every threshold formula.
+2. **Cost anchor corrected:** base-20 @ 544p-class 39f ≈ **63 s/gen
+   measured** (60–70 s; load+encode 5–6 s warm, 15 s cold) vs the 5–7 min
+   [EST] — later sets' window arithmetic re-anchors on this.
+3. **Engine-behavior ruling for every later set:** re-submitting an
+   identical graph to 8189 is an InputSignature CACHE SERVE, not a
+   re-render (found the cheap way: pass-1 "renders" executed in 0.84 s).
+   Replicate cells and Set I re-runs MUST vary a proven-neutral signature
+   lever — the sanctioned toolkit: the video-VAE name aliases
+   (byte-identical files, sha 7c1f1314…) and RandomNoise
+   `control_after_generate` cycling (frontend-only key). Recorded in every
+   manifest; the `__setBalias` symlink stays in `/home/agent/models/vae/`.
+4. **Gate option recorded (maintainer's call, no unilateral change):** with
+   render noise at zero, replicate same-cell renders add no information —
+   Sets C/E/F could drop 2-seed cells to 1 seed (≈ −25–40% planned gens)
+   with §1.1's fresh-material rule carrying generalization; or replication
+   stays as stack-change insurance (driver/torch bump, 8188-concurrency).
+5. **Board pinned:** Set B's canary board (PROMPT_A verbatim @ 960×544×39f,
+   base-20, seed 421337) is the batch's drift-sentinel config — §1.2
+   item 4's per-set canary re-runs use it plus the signature levers.
