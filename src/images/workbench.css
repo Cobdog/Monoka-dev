@@ -112,6 +112,12 @@
 
 .iw-row { display: flex; gap: 8px; }
 .iw-row label { flex: 1; }
+/* Task 16 fix round 1 (P06): StudioSelect's wrap is the label's content
+   now — the fill the select carried as a block-level width:100% child of
+   the flexed label moves to the wrap (the lora-slot companion's shape).
+   Without it the inline wrap shrink-to-fits and the tier/resolution
+   selects render at content width. */
+.iw-row label .studio-select { width: 100%; }
 .iw-overflow { display: flex; gap: 6px; align-items: center; font-size: 10px; color: var(--muted); }
 .iw-overflow em { font-size: 9px; border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent); color: var(--danger); padding: 0 5px; border-radius: 999px; font-style: normal; }
 
