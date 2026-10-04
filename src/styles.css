@@ -429,6 +429,26 @@ select { text-overflow: ellipsis; }
 .notice-banner--accent { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 25%, transparent); }
 .notice-banner--danger { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
 .notice-banner > button { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; }
+/* ---- Component vocabulary: the shared confirm/prompt dialogs (task 15, k2q0n9s)
+ * ConfirmDialog + PromptDialog (src/ui/) — the native window.confirm/prompt
+ * replacements. Behavior is StudioDialogLayered's (Base UI + the §0.2
+ * registry); this block is the small shared shell's GEOMETRY with tone
+ * through tokens only (P06 fully — a shared component's own class is its
+ * surface; the shell reuses the house modal paint: surface fill, strong
+ * line, the clip-modal lift shadow). Action tone NEVER lives here — the
+ * actions are Button recipes (danger rides the variant), and
+ * .confirm-dialog-btn carries only their geometry, longhands per the C1
+ * discipline so it can never reset the recipes' border-color. Body text
+ * renders pre-line: the migrated consent copy carries its shape in
+ * newlines, the native confirm's formatting. */
+.confirm-dialog, .prompt-dialog { display: grid; gap: var(--space-3); width: min(480px, 100%); max-height: calc(100vh - 78px); padding: var(--space-4); overflow: auto; border-width: 1px; border-style: solid; border-color: var(--line-strong); border-radius: var(--radius); background: var(--surface); box-shadow: 0 24px 70px rgba(0,0,0,.55); }
+.confirm-dialog-title { margin: 0; font-size: var(--text-lg); }
+.confirm-dialog-body { color: var(--muted); font-size: var(--text-md); line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+.confirm-dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.confirm-dialog-btn { min-height: 32px; padding: 0 14px; border-width: 1px; border-style: solid; border-radius: 8px; font-size: var(--text-md); font-weight: 600; }
+.prompt-dialog-form { display: grid; gap: var(--space-2); }
+.prompt-dialog-label { color: var(--muted); font-size: var(--text-md); line-height: 1.55; white-space: pre-line; }
+.prompt-dialog-input { width: 100%; padding: 7px 10px; border-width: 1px; border-style: solid; border-color: color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 8px; background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--text-md); }
 .connection-row { display: flex; align-items: flex-end; gap: 10px; padding:var(--space-4) 17px; }
 .field-group.grow { flex: 1; }
 .connection-row input { height: 38px; padding: 0 10px; }

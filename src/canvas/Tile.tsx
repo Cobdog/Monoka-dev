@@ -15,9 +15,10 @@
  * reason this component re-renders (op edits re-derive the tile too, which
  * is the live-update contract).
  */
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Database, Film, GitFork, Lock, Star } from 'lucide-react'
 import { FilmstripPoster } from '../components/PooledVideoCard'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { useFilmstrip } from '../media/useFilmstrip'
 import type { PreviewMime } from '../types'
 import { onPreviewFrame } from '../lib/useRealtime'
@@ -32,11 +33,12 @@ import { useCanvasStore } from './store'
 
 /** Canvas bridge, direction 1 (dataset-manager spec §11): send this object's
  *  canonical take to the dataset manager as a referenced source. Explicit,
- *  consent-shaped (confirm), and the file stays where it is. */
+ *  consent-shaped, and the file stays where it is. (Task 15, k2q0n9s: the
+ *  native window.confirm gate is gone — TileBase asks through the shared
+ *  ConfirmDialog and calls this only on resolve(true).) */
 function sendToDatasets(tile: Tile) {
   if (!tile.artifactPath) return
   const store = useCanvasStore.getState()
-  if (!window.confirm(`Send "${tile.title}" to the dataset manager as a training source?\n\nThe file stays where it is — the dataset manager references it by content hash.`)) return
   const token = new URLSearchParams(window.location.search).get('token') ?? ''
   void fetch('/api/lan/datasets/ingest/canvas', {
     method: 'POST',
@@ -154,6 +156,7 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
   onSwitchTake(chainId: string, takeId: string): void
 }) {
   const priorTakes = tile.takes.filter((take) => take.supersededBy !== null)
+  const [askSendDatasets, setAskSendDatasets] = useState(false)
   return <div
     className={`canvas-tile ${selected ? 'selected' : ''}`}
     data-canvas-tile={tile.id}
@@ -263,7 +266,7 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
               className="chip chip--muted canvas-take-chip prior"
               data-canvas-take-to-datasets
               title="Send this take to the dataset manager (training-set prep) — the file stays in place"
-              onClick={(event) => { event.stopPropagation(); sendToDatasets(tile) }}
+              onClick={(event) => { event.stopPropagation(); setAskSendDatasets(true) }}
             >
               <Database size={10} /> ds
             </button>
@@ -289,6 +292,12 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
         </div>
       </>
     )}
+    {askSendDatasets && <ConfirmDialog
+      layerId="canvas-tile-send-datasets"
+      title={`Send "${tile.title}" to the dataset manager?`}
+      body={`This take becomes a referenced training source — the file stays where it is; the dataset manager references it by content hash.`}
+      onResolve={(ok) => { setAskSendDatasets(false); if (ok) sendToDatasets(tile) }}
+    />}
   </div>
 }
 

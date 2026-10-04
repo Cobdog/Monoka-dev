@@ -106,9 +106,9 @@ test('B1: node-pack chips re-resolve after Save — no field re-edit needed', as
 
 // B2 — "Reset to recommended" (the old "Apply to Create") must never
 // silently replace user-tuned defaults: it confirms first and NAMES the
-// deltas it will change. Failing-without-it: the old code applied the
-// hardcoded set with no dialog, so the cancel assertion (duration stays 10)
-// fails immediately.
+// deltas it will change. (Component vocabulary task 15, k2q0n9s: the native
+// window.confirm is gone — the consent is the shared ConfirmDialog, danger
+// framing on the destructive reset; every dismissal path resolves no.)
 test('B2: resetting generation defaults confirms and names the deltas — cancel keeps tuned values', async ({ page }) => {
   const problems = await trackErrors(page)
   await resetSession(page)
@@ -125,30 +125,33 @@ test('B2: resetting generation defaults confirms and names the deltas — cancel
   await expect(duration).toHaveValue('10')
 
   // Text selector spans the pre-fix label ("Apply to Create") and the fixed
-  // one ("Reset to recommended") — on the pre-fix build the click applies
-  // the hardcoded set with NO dialog, and the dialog wait below times out:
-  // the failing-without-it proof of the silent-overwrite regression.
+  // one ("Reset to recommended").
   const reset = page.locator('button').filter({ hasText: /Apply to Create|Reset to recommended/ }).first()
   await expect(reset).toBeEnabled()
 
-  // Cancel: the confirm names the exact delta; nothing changes. (The native
-  // confirm BLOCKS the click promise until handled — click and dialog are
-  // awaited concurrently.)
-  const cancelDialog = page.waitForEvent('dialog')
-  const cancelClick = reset.click()
-  const dialog = await cancelDialog
-  expect(dialog.message()).toContain('duration (s): 10 → 5')
-  expect(dialog.type()).toBe('confirm')
-  await dialog.dismiss()
-  await cancelClick
+  // The consent dialog names the exact delta it will change, carries real
+  // dialog semantics (the shared wrapper's role + modal + labelledBy), and
+  // frames the reset as destructive (the confirm action rides the danger
+  // recipe — the manifest's danger row).
+  await reset.click()
+  const dialog = page.getByRole('dialog', { name: /Reset generation defaults/ })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toHaveAttribute('aria-modal', 'true')
+  await expect(dialog).toContainText('duration (s): 10 → 5')
+  await expect(dialog.getByRole('button', { name: 'Confirm', exact: true })).toHaveClass(/btn--danger/)
+
+  // Cancel: nothing changes — Escape resolves no and focus returns to the
+  // trigger (the §0.2 invariant).
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await expect(reset).toBeFocused()
   await expect(duration).toHaveValue('10')
 
   // Accept: the named change is exactly what happens.
-  const acceptDialog = page.waitForEvent('dialog')
-  const acceptClick = reset.click()
-  const confirmed = await acceptDialog
-  await confirmed.accept()
-  await acceptClick
+  await reset.click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Confirm', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
   await expect(duration).toHaveValue('5')
   // Already at recommended → the button disables instead of offering a no-op.
   await expect(reset).toBeDisabled()

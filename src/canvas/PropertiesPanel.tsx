@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Rnd } from 'react-rnd'
 import { Captions, Clock3, Dices, Play, Sparkles, Square, Star, Volume2, WandSparkles, X } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { SmartPromptEditor, type SmartPromptEditorHandle } from '../components/SmartPromptEditor'
 import { StructuredPromptEditor } from '../components/StructuredPromptEditor'
 import { PromptLibraryBrowser } from '../components/PromptLibraryBrowser'
@@ -468,6 +469,9 @@ export function PropertiesPanel() {
   const [saveError, setSaveError] = useState<string | null>(null)
   // Phase 4: the CreateView capabilities this panel absorbs.
   const [libraryOpen, setLibraryOpen] = useState(false)
+  // The control-track delete's pending ask (task 15) — hoisted above the
+  // panel's early return like every hook.
+  const [trackAsk, setTrackAsk] = useState<{ id: string; kind: string } | null>(null)
   const [promptingTool, setPromptingTool] = useState<'enhance' | 'timeline' | 'audio' | null>(null)
   const [promptSuggestion, setPromptSuggestion] = useState('')
   const [captioningIndex, setCaptioningIndex] = useState<number | null>(null)
@@ -872,9 +876,10 @@ export function PropertiesPanel() {
   // Control-track delete (§2.1): the blast radius stated up front — the row
   // and its GC protection go now, the referenced media only at the next
   // store sweep, and nothing else consumes a track today (the pose
-  // conditioning lane is parked).
-  const deleteControlTrack = async (track: { id: string; kind: string; maskRef: string | null }) => {
-    if (!window.confirm(`Delete this ${track.kind} control track?\n\nThe stored row leaves this scene and its media stops being protected from the store's garbage collector (collected only by the next sweep, and only if nothing else references it). No graph consumes a track yet — this does not affect any existing take.`)) return
+  // conditioning lane is parked). (Task 15, k2q0n9s: the native
+  // window.confirm is gone — the shared ConfirmDialog owns the ask; the
+  // pending ask state lives with the panel's other hooks.)
+  const deleteControlTrack = async (track: { id: string }) => {
     const deleted = await useCanvasStore.getState().deleteControlTrack(track.id)
     if (deleted) useCanvasStore.getState().toast('success', 'Control track deleted.')
     else useCanvasStore.getState().toast('error', 'Nothing was deleted — the track was already gone (the panel refreshes).')
@@ -1532,7 +1537,7 @@ export function PropertiesPanel() {
               aria-label={`Delete control track ${track.kind}`}
               data-canvas-control-track-delete={track.id}
               title="Delete this control track — the stored row and its GC protection go; the media itself is only collected by the next store sweep"
-              onClick={() => { void deleteControlTrack(track) }}
+              onClick={() => setTrackAsk({ id: track.id, kind: track.kind })}
             >
               <X size={11} />
             </button>
@@ -1579,5 +1584,15 @@ export function PropertiesPanel() {
             <Play size={12} /> generate · {modeLabelFor(draft)}
           </button>}
       </footer>
+      {trackAsk && <ConfirmDialog
+        layerId="canvas-properties-delete-track"
+        title={`Delete this ${trackAsk.kind} control track?`}
+        body={"The stored row leaves this scene and its media stops being protected from the store's garbage collector (collected only by the next sweep, and only if nothing else references it). No graph consumes a track yet — this does not affect any existing take."}
+        onResolve={(ok) => {
+          const ask = trackAsk
+          setTrackAsk(null)
+          if (ok) void deleteControlTrack(ask)
+        }}
+      />}
   </Rnd>
 }

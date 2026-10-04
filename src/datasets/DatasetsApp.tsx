@@ -22,11 +22,32 @@ import { CanvasToastAdapter } from '../canvas/toastAdapter'
 import { useCanvasStore } from '../canvas/store'
 import { SurfaceSwitcher } from '../surfaces/SurfaceSwitcher'
 import { NoticeBanner } from '../ui/NoticeBanner'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { PromptDialog } from '../ui/PromptDialog'
 import { CropEditor } from './CropEditor'
 import { CaptionPanel } from './CaptionPanel'
 import './datasets.css'
 
 type Tab = 'library' | 'dashboard' | 'export' | 'trash'
+
+/** The pending asks (component vocabulary task 15, k2q0n9s): the native
+ *  window.confirm/window.prompt are gone — every ask-then-act flow opens the
+ *  shared ConfirmDialog/PromptDialog with its ask captured here, and the
+ *  resolve arm runs the action. The batch-instruction kind carries the
+ *  spec's §0.6 decision: resolve(null) ABORTS (the retired `?? ''` ran the
+ *  default batch on cancel — the silent-loss class); '' is a real
+ *  submission and runs the default batch. */
+type DsConfirmAsk =
+  | { kind: 'clip-consent' }
+  | { kind: 'scene-split'; sourceId: string; frames: number[] }
+  | { kind: 'trash-source'; sourceId: string; layers: number; captions: number; blast: string }
+  | { kind: 'empty-trash' }
+
+type DsPromptAsk =
+  | { kind: 'reference-path' }
+  | { kind: 'canvas-path' }
+  | { kind: 'batch-instruction'; layerIds: string[]; guard: 'skip' | 'queue' }
+  | { kind: 'relink'; sourceId: string; label: string }
 
 const CARD_HEIGHT = 168
 const CARD_WIDTH = 216
@@ -81,6 +102,8 @@ function DatasetsSurface() {
   const [captionFilter, setCaptionFilter] = useState<'all' | 'missing' | 'stale'>('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [editing, setEditing] = useState<{ source: LibrarySource; layer: LibraryLayer | null } | null>(null)
+  const [confirmAsk, setConfirmAsk] = useState<DsConfirmAsk | null>(null)
+  const [promptAsk, setPromptAsk] = useState<DsPromptAsk | null>(null)
   const [captioning, setCaptioning] = useState<LibraryLayer | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [notice, setNotice] = useState<string | null>(null)
@@ -221,9 +244,16 @@ function DatasetsSurface() {
     await refresh()
   }
 
-  const ingestByPath = async () => {
-    const path = window.prompt('Absolute path of the media file to reference (must sit inside the studio home or the output directory — the file stays where it is; anything else: use LAN upload):')
-    if (!path) return
+  /** The path asks' empty arm (CV12): a submitted-empty path is NOT a cancel
+   *  and not a silent no-op — the refusal says so. Cancel resolved null and
+   *  never reaches a runner. */
+  const requirePath = (path: string, refusal: string): string | null => {
+    if (path.trim()) return path
+    setError(refusal)
+    return null
+  }
+
+  const runIngestByPath = async (path: string) => {
     try {
       const result = await datasetsApi.ingestReference(path)
       setNotice(result.deduped ? 'Already in the library — the same content hash resolves to the same source.' : `Imported ${result.source.probe.width}×${result.source.probe.height}${result.refusal ? ` (${result.refusal.verdict}: ${result.refusal.reason})` : ''}`)
@@ -233,12 +263,10 @@ function DatasetsSurface() {
     }
   }
 
-  const ingestFromCanvas = async () => {
+  const runIngestFromCanvas = async (path: string) => {
     // Canvas bridge, direction 1: pick a completed take's artifact by path.
     // The canvas exposes takes via the document store; the take's file
     // becomes a referenced source (explicit, consent-shaped).
-    const path = window.prompt('Path of the canvas take/media file to send to the dataset manager:')
-    if (!path) return
     try {
       const result = await datasetsApi.ingestCanvas(path)
       setNotice(result.deduped ? 'That content is already in the library.' : 'Canvas media imported as a referenced source.')
@@ -267,7 +295,6 @@ function DatasetsSurface() {
   /** Records the CLIP consent (LOW-2): the download happens only after this
    *  explicit action — then the pass re-runs so the backend label is honest. */
   const enableClip = async () => {
-    if (!window.confirm('Enable CLIP embeddings? The first use downloads the model weights (Xenova/clip-vit-base-patch32, Apache-2.0) from huggingface.co to this machine. The perceptual fallback stays available otherwise.')) return
     setBusy(true)
     try {
       await datasetsApi.clipConsent(true)
@@ -290,16 +317,21 @@ function DatasetsSurface() {
     }
   }
 
-  const batchVlm = async (guard: 'skip' | 'queue') => {
+  const batchVlm = (guard: 'skip' | 'queue') => {
     const layerIds = Array.from(selected)
     if (!layerIds.length) {
       setError('Select layers first (click layer cards to select).')
       return
     }
+    setPromptAsk({ kind: 'batch-instruction', layerIds, guard })
+  }
+
+  /** The batch site's §0.6 arm: only a SUBMITTED value (incl. '') reaches
+   *  here — a cancel resolved null and aborted before this function. */
+  const runBatchVlm = async (layerIds: string[], guard: 'skip' | 'queue', instruction: string) => {
     setBusy(true)
     setError(null)
     try {
-      const instruction = window.prompt('Batch instruction template (empty = the per-class dense→condense default):') ?? ''
       const result = await datasetsApi.vlmBatch(layerIds, { instruction, guard })
       setNotice(`Batch VLM: ${result.captioned.length} captioned, ${result.skipped.length} hand-written skipped, ${result.queuedForReview.length} queued for review${result.errors.length ? `, ${result.errors.length} errors` : ''}.`)
       if (result.errors.length) setError(result.errors.map((entry) => entry.error).join('\n').slice(0, 800))
@@ -308,6 +340,64 @@ function DatasetsSurface() {
       setError(batchError instanceof Error ? batchError.message : String(batchError))
     } finally {
       setBusy(false)
+    }
+  }
+
+  /** The confirm arms: each ask's action, run only on resolve(true). */
+  const runConfirmAsk = async (ask: DsConfirmAsk) => {
+    if (ask.kind === 'clip-consent') return enableClip()
+    if (ask.kind === 'scene-split') {
+      try {
+        await datasetsApi.acceptCuts(ask.sourceId, ask.frames)
+        const split = await datasetsApi.splitAtCuts(ask.sourceId)
+        setNotice(`Split into ${split.children.length} scene children.`)
+        await refresh()
+      } catch (splitError) {
+        setError(splitError instanceof Error ? splitError.message : String(splitError))
+      }
+      return
+    }
+    if (ask.kind === 'trash-source') {
+      try {
+        await datasetsApi.trashSource(ask.sourceId)
+        await refresh()
+      } catch (trashError) {
+        setError(trashError instanceof Error ? trashError.message : String(trashError))
+      }
+      return
+    }
+    try {
+      const result = await datasetsApi.emptyTrash()
+      setNotice(`Trash emptied: ${result.dropped} entr(ies), ${(result.bytesDeleted / 1e6).toFixed(1)} MB of app-owned bytes deleted.`)
+      await refresh()
+    } catch (emptyError) {
+      setError(emptyError instanceof Error ? emptyError.message : String(emptyError))
+    }
+  }
+
+  /** The prompt arms: run only on a SUBMITTED value (null cancelled and
+   *  never reaches here). The batch kind takes '' as the default batch; the
+   *  path kinds refuse a submitted-empty honestly instead of sending it. */
+  const runPromptAsk = async (ask: DsPromptAsk, value: string) => {
+    if (ask.kind === 'reference-path') {
+      const path = requirePath(value, 'The path is empty — nothing was referenced.')
+      if (path) await runIngestByPath(path)
+      return
+    }
+    if (ask.kind === 'canvas-path') {
+      const path = requirePath(value, 'The path is empty — nothing was imported from the canvas.')
+      if (path) await runIngestFromCanvas(path)
+      return
+    }
+    if (ask.kind === 'batch-instruction') return runBatchVlm(ask.layerIds, ask.guard, value)
+    const path = requirePath(value, 'The path is empty — nothing was re-linked.')
+    if (!path) return
+    try {
+      const result = await datasetsApi.relink(ask.sourceId, path)
+      setNotice(result.relinked ? 'Re-linked by content hash.' : `Re-link refused: ${result.reason}`)
+      await refresh()
+    } catch (relinkError) {
+      setError(relinkError instanceof Error ? relinkError.message : String(relinkError))
     }
   }
 
@@ -370,8 +460,8 @@ function DatasetsSurface() {
           <h4>Import</h4>
           <Button variant="secondary" className="ds-btn" onClick={() => fileInput.current?.click()}><Upload size={13} /> Upload from LAN</Button>
           <input ref={fileInput} type="file" accept="video/*,image/*" multiple hidden onChange={(event) => void ingestFiles(event.target.files)} />
-          <Button variant="secondary" className="ds-btn" onClick={() => void ingestByPath()}><FolderOpen size={13} /> Reference a file</Button>
-          <Button variant="secondary" className="ds-btn" onClick={() => void ingestFromCanvas()}><Camera size={13} /> From canvas take</Button>
+          <Button variant="secondary" className="ds-btn" onClick={() => setPromptAsk({ kind: 'reference-path' })}><FolderOpen size={13} /> Reference a file</Button>
+          <Button variant="secondary" className="ds-btn" onClick={() => setPromptAsk({ kind: 'canvas-path' })}><Camera size={13} /> From canvas take</Button>
         </div>
         <div className="ds-toolbar-block">
           <h4>Search &amp; filter</h4>
@@ -394,14 +484,14 @@ function DatasetsSurface() {
           {clipConsent && !clipConsent.consented && (
             <p className="ds-hint">
               CLIP embeddings are off (perceptual fallback).{' '}
-              <Button variant="ghost" className="ds-btn" onClick={() => void enableClip()} disabled={busy}>
+              <Button variant="ghost" className="ds-btn" onClick={() => setConfirmAsk({ kind: 'clip-consent' })} disabled={busy}>
                 Enable CLIP
               </Button>{' '}
               — downloads its model ({clipConsent.model}, Apache-2.0) from huggingface.co once, behind this explicit consent.
             </p>
           )}
-          <Button variant="secondary" className="ds-btn" onClick={() => void batchVlm('skip')} disabled={busy}><Sparkles size={13} /> Batch VLM (skip hand)</Button>
-          <Button variant="secondary" className="ds-btn" onClick={() => void batchVlm('queue')} disabled={busy}><Sparkles size={13} /> Batch draft → review queue</Button>
+          <Button variant="secondary" className="ds-btn" onClick={() => batchVlm('skip')} disabled={busy}><Sparkles size={13} /> Batch VLM (skip hand)</Button>
+          <Button variant="secondary" className="ds-btn" onClick={() => batchVlm('queue')} disabled={busy}><Sparkles size={13} /> Batch draft → review queue</Button>
         </div>
         <div className="ds-toolbar-block">
           <h4>Selection</h4>
@@ -463,40 +553,28 @@ function DatasetsSurface() {
                         setNotice('No internal cuts detected in this source.')
                         return
                       }
-                      const frames = proposals.map((proposal) => proposal.frameNo).join(', ')
-                      const accept = window.confirm(`PySceneDetect-style proposals at frames ${frames}.\n\nAccept ALL and split into child layers? (Children attach visibly to the master; cut points stay editable until children exist.)`)
-                      if (!accept) return
-                      await datasetsApi.acceptCuts(source.id, proposals.map((proposal) => proposal.frameNo))
-                      const split = await datasetsApi.splitAtCuts(source.id)
-                      setNotice(`Split into ${split.children.length} scene children.`)
-                      await refresh()
+                      // (task 15) The ask is mid-flow here (manifest §1 row 5,
+                      // the non-guard-return form): the FETCHED proposals are
+                      // captured into the ask and the split runs only on
+                      // resolve(true) — cancel discards the proposals, no cut
+                      // is accepted.
+                      setConfirmAsk({ kind: 'scene-split', sourceId: source.id, frames: proposals.map((proposal) => proposal.frameNo) })
                     } catch (splitError) {
                       setError(splitError instanceof Error ? splitError.message : String(splitError))
                     }
                   }}
-                  onTrashSource={async () => {
-                    const layers = source.layers.length
-                    const captions = source.layers.filter((layer) => layer.caption?.text).length
-                    const blast = source.ingestPath === 'upload' ? `Its bytes are app-owned and move to the trash store (restorable).` : `The library entry is removed; your file on disk is never touched.`
-                    if (!window.confirm(`Trash this source? Blast radius: ${layers} layer(s), ${captions} caption(s). ${blast}`)) return
-                    try {
-                      await datasetsApi.trashSource(source.id)
-                      await refresh()
-                    } catch (trashError) {
-                      setError(trashError instanceof Error ? trashError.message : String(trashError))
-                    }
-                  }}
-                  onRelink={async () => {
-                    const path = window.prompt(source.healthDetail ? `${source.healthDetail}\n\nNew path for the missing file (must hash-match):` : 'New path for the missing file (must hash-match):')
-                    if (!path) return
-                    try {
-                      const result = await datasetsApi.relink(source.id, path)
-                      setNotice(result.relinked ? 'Re-linked by content hash.' : `Re-link refused: ${result.reason}`)
-                      await refresh()
-                    } catch (relinkError) {
-                      setError(relinkError instanceof Error ? relinkError.message : String(relinkError))
-                    }
-                  }}
+                  onTrashSource={() => setConfirmAsk({
+                    kind: 'trash-source',
+                    sourceId: source.id,
+                    layers: source.layers.length,
+                    captions: source.layers.filter((layer) => layer.caption?.text).length,
+                    blast: source.ingestPath === 'upload' ? 'Its bytes are app-owned and move to the trash store (restorable).' : 'The library entry is removed; your file on disk is never touched.',
+                  })}
+                  onRelink={() => setPromptAsk({
+                    kind: 'relink',
+                    sourceId: source.id,
+                    label: source.healthDetail ? `${source.healthDetail}\n\nNew path for the missing file (must hash-match):` : 'New path for the missing file (must hash-match):',
+                  })}
                   onPin={pinToCanvas}
                 />
               ))}
@@ -529,18 +607,36 @@ function DatasetsSurface() {
           setError(restoreError instanceof Error ? restoreError.message : String(restoreError))
         }
       }}
-      onEmpty={async () => {
-        if (!window.confirm('Empty the trash? THIS is the one real delete — and it only ever touches app-owned (uploaded) bytes; referenced originals are untouched. Entries restore no longer.')) return
-        try {
-          const result = await datasetsApi.emptyTrash()
-          setNotice(`Trash emptied: ${result.dropped} entr(ies), ${(result.bytesDeleted / 1e6).toFixed(1)} MB of app-owned bytes deleted.`)
-          await refresh()
-        } catch (emptyError) {
-          setError(emptyError instanceof Error ? emptyError.message : String(emptyError))
-        }
-      }}
+      onEmpty={() => setConfirmAsk({ kind: 'empty-trash' })}
     />}
 
+    {/* The shared asks (task 15): layerId derives from the ask's kind, so
+        every consumer site registers a distinct §0.2 layer. */}
+    {confirmAsk && <ConfirmDialog
+      layerId={`ds-confirm-${confirmAsk.kind}`}
+      title={confirmAsk.kind === 'clip-consent' ? 'Enable CLIP embeddings?'
+        : confirmAsk.kind === 'scene-split' ? 'Accept all scene cuts?'
+        : confirmAsk.kind === 'trash-source' ? 'Trash this source?'
+        : 'Empty the trash?'}
+      body={confirmAsk.kind === 'clip-consent' ? 'The first use downloads the model weights (Xenova/clip-vit-base-patch32, Apache-2.0) from huggingface.co to this machine. The perceptual fallback stays available otherwise.'
+        : confirmAsk.kind === 'scene-split' ? `PySceneDetect-style proposals at frames ${confirmAsk.frames.join(', ')}.\n\nAccept ALL and split into child layers? (Children attach visibly to the master; cut points stay editable until children exist.)`
+        : confirmAsk.kind === 'trash-source' ? `Blast radius: ${confirmAsk.layers} layer(s), ${confirmAsk.captions} caption(s). ${confirmAsk.blast}`
+        : 'THIS is the one real delete — and it only ever touches app-owned (uploaded) bytes; referenced originals are untouched. Entries restore no longer.'}
+      danger={confirmAsk.kind === 'empty-trash'}
+      onResolve={(ok) => { const ask = confirmAsk; setConfirmAsk(null); if (ok) void runConfirmAsk(ask) }}
+    />}
+    {promptAsk && <PromptDialog
+      layerId={`ds-prompt-${promptAsk.kind}`}
+      title={promptAsk.kind === 'reference-path' ? 'Reference a file'
+        : promptAsk.kind === 'canvas-path' ? 'Send a canvas take'
+        : promptAsk.kind === 'batch-instruction' ? 'Batch VLM instruction'
+        : 'Re-link missing file'}
+      label={promptAsk.kind === 'reference-path' ? 'Absolute path of the media file to reference (must sit inside the studio home or the output directory — the file stays where it is; anything else: use LAN upload):'
+        : promptAsk.kind === 'canvas-path' ? 'Path of the canvas take/media file to send to the dataset manager:'
+        : promptAsk.kind === 'batch-instruction' ? 'Instruction template (empty = the per-class dense→condense default):'
+        : promptAsk.label}
+      onResolve={(value) => { const ask = promptAsk; setPromptAsk(null); if (value !== null) void runPromptAsk(ask, value) }}
+    />}
     {editing && <CropEditor
       source={editing.source}
       layer={editing.layer}

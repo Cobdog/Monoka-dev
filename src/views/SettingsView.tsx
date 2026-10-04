@@ -2,6 +2,7 @@
  *  H3 stack report, generation defaults, the LLM layer (llama.cpp router +
  *  Ollama fallback), model locations, and output/clip paths. */
 import { useEffect, useState } from 'react'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { GitBranch, Wand2 } from 'lucide-react'
 import { Activity, AlertCircle, Check, ChevronDown, Cpu, Eye, Folder, FolderOpen, Gauge, HardDrive, Info, Layers, Power, RefreshCw, Scale, ServerCog, SlidersHorizontal, Sparkles, Stethoscope, Unplug } from 'lucide-react'
 import { Button } from '../ui/Button'
@@ -90,14 +91,16 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
   // values with a hardcoded set — the maintainer's silent-data-loss class.
   // The defaults object has no "unset" state, so merge-only-unset cannot fit;
   // the honest shape is an explicit reset that NAMES every delta it will
-  // change (the house window.confirm idiom) and refuses to run silently.
+  // change and refuses to run silently. (Task 15, k2q0n9s: the native
+  // window.confirm is gone — the shared ConfirmDialog owns the ask, danger
+  // framing on the destructive reset.)
+  const [resetConsent, setResetConsent] = useState(false)
   const recommendedDeltaNotes = (Object.keys(RECOMMENDED_DEFAULTS) as Array<keyof typeof RECOMMENDED_DEFAULTS>)
     .filter((key) => defaults[key] !== RECOMMENDED_DEFAULTS[key])
     .map((key) => `${DEFAULT_FIELD_LABELS[key]}: ${String(defaults[key])} → ${String(RECOMMENDED_DEFAULTS[key])}`)
   const resetToRecommended = () => {
     if (!recommendedDeltaNotes.length) return
-    if (!window.confirm(`Reset generation defaults to the recommended set?\n\nThis replaces your tuned values:\n${recommendedDeltaNotes.join('\n')}\n\nExisting canvas chains keep their own settings.`)) return
-    updateDefaults({ ...RECOMMENDED_DEFAULTS })
+    setResetConsent(true)
   }
   const samplerOptions = [...new Set([defaults.sampler, 'res_multistep', 'euler', 'gradient_estimation', 'ipndm', 'deis', 'heun', ...choices(info, 'KSamplerSelect', 'sampler_name')])]
   const schedulerOptions = [...new Set([defaults.scheduler, 'simple', 'beta', 'normal', ...choices(info, 'BasicScheduler', 'scheduler')])]
@@ -643,6 +646,13 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
       <p className="settings-note">MiniMax Studio is licensed under the <strong>GNU AGPLv3</strong> (<a href="https://github.com/Cobdog/MINIMAX-DESKTOP/blob/main/LICENSE" target="_blank" rel="noreferrer">full text</a>). The corresponding source lives at <a href="https://github.com/Cobdog/MINIMAX-DESKTOP" target="_blank" rel="noreferrer">github.com/Cobdog/MINIMAX-DESKTOP</a> — if you run a modified copy for others over a network, share your source with them. Third-party components and model-weight licenses are inventoried in <a href="https://github.com/Cobdog/MINIMAX-DESKTOP/blob/main/docs/LICENSES.md" target="_blank" rel="noreferrer">docs/LICENSES.md</a>.</p></details>
 </section>
 </section>
+      {resetConsent && <ConfirmDialog
+        layerId="settings-reset-defaults"
+        title="Reset generation defaults to the recommended set?"
+        danger
+        body={`This replaces your tuned values:\n${recommendedDeltaNotes.join('\n')}\n\nExisting canvas chains keep their own settings.`}
+        onResolve={(ok) => { setResetConsent(false); if (ok) updateDefaults({ ...RECOMMENDED_DEFAULTS }) }}
+      />}
   </div>
 }
 

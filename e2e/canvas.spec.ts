@@ -1013,12 +1013,21 @@ test('documents export + control-track delete reach the UI', async ({ page }) =>
   await expect(tracksSection).toBeVisible({ timeout: 10_000 })
   await tracksSection.locator('summary').click()
   await expect(tracksSection.locator('[data-canvas-control-track-delete]')).toHaveCount(1)
-  page.once('dialog', (dialog) => {
-    expect(dialog.message()).toContain('Delete this pose control track')
-    expect(dialog.message()).toContain("garbage collector")
-    void dialog.accept()
-  })
+  // (k2q0n9s task 15) The native window.confirm is gone: the delete asks
+  // through the shared ConfirmDialog — the blast radius stays in the body,
+  // and Cancel resolves no without deleting before the confirm action does.
   await tracksSection.locator('[data-canvas-control-track-delete]').first().click()
+  const trackDialog = page.getByRole('dialog', { name: /Delete this pose control track/ })
+  await expect(trackDialog).toBeVisible()
+  await expect(trackDialog).toHaveAttribute('aria-modal', 'true')
+  await expect(trackDialog).toContainText('garbage collector')
+  await trackDialog.getByRole('button', { name: 'Cancel' }).click()
+  await expect(trackDialog).toHaveCount(0)
+  await expect(tracksSection.locator('[data-canvas-control-track-delete]')).toHaveCount(1)
+  await tracksSection.locator('[data-canvas-control-track-delete]').first().click()
+  await expect(trackDialog).toBeVisible()
+  await trackDialog.getByRole('button', { name: 'Confirm', exact: true }).click()
+  await expect(trackDialog).toHaveCount(0)
   await expect(page.locator('[data-canvas-toast="success"]').first()).toContainText('Control track deleted', { timeout: 10_000 })
   // The disclosure leaves with the last track (authored-content gating).
   await expect(tracksSection).toHaveCount(0, { timeout: 10_000 })
