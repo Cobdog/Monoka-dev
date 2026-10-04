@@ -2052,6 +2052,96 @@ test('statusToken: the ring, live readout, bar engine, and timeline dot paint th
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// The chip system's selection contract (component vocabulary task 6,
+// Review Focus #2): the BottomBar's lane toggle is an EXCLUSIVE group and
+// carries the COMPLETE radio interaction — roles + aria-checked (which it
+// already declared) PLUS roving tabindex, arrow keys moving selection AND
+// focus, and Tab/Shift+Tab leaving the group as one unit. Independent
+// toggles (the chain lock chip) are PRESSED BUTTONS: aria-pressed flipped
+// by Space/Enter activation, never aria-checked. Failing pre-migration:
+// both lane buttons sit in the tab order (no roving), ArrowRight does
+// nothing, Tab hops between the chips, and the lock chip exposes no
+// pressed state at all.
+test('chip group: ArrowRight moves selection AND focus; Tab exits the group as one unit; independent toggles flip aria-pressed on Space/Enter', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+
+  // Spawn an object, then deselect — with tiles present and nothing selected
+  // the bar's generation surface carries the lane radiogroup (#4a).
+  await dropPng(page, 'chip-group-lanes.png')
+  await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 10_000 })
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-canvas-bottombar]')).toHaveAttribute('data-canvas-bar-context', 'empty')
+  const laneGroup = page.locator('[data-canvas-bar-lane]')
+  await expect(laneGroup).toBeVisible()
+  await expect(laneGroup).toHaveAttribute('role', 'radiogroup')
+  await expect(laneGroup).toHaveAttribute('aria-label', 'Spawn lane')
+
+  const video = page.locator('[data-canvas-bar-lane-toggle="video"]')
+  const image = page.locator('[data-canvas-bar-lane-toggle="image"]')
+  await expect(video).toHaveAttribute('role', 'radio')
+  await expect(video).toHaveAttribute('aria-checked', 'true')
+
+  // Roving tabindex: only the selected chip is tabbable; its sibling is -1.
+  await expect(video).toHaveAttribute('tabindex', '0')
+  await expect(image).toHaveAttribute('tabindex', '-1')
+
+  // ArrowRight moves SELECTION and FOCUS together (the complete contract —
+  // roles alone were never it).
+  await video.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(image).toHaveAttribute('aria-checked', 'true')
+  await expect(video).toHaveAttribute('aria-checked', 'false')
+  await expect(image).toBeFocused()
+  // The bar's own state follows (the placeholder speaks the lane's effect).
+  await expect(page.locator('[data-canvas-bar-prompt]')).toHaveAttribute('placeholder', /still/)
+
+  // ArrowLeft moves back; ArrowRight past the end WRAPS (radiogroup habit).
+  await page.keyboard.press('ArrowLeft')
+  await expect(video).toBeFocused()
+  await expect(video).toHaveAttribute('aria-checked', 'true')
+  await page.keyboard.press('ArrowRight')
+  await page.keyboard.press('ArrowRight')
+  await expect(video).toBeFocused()
+  await expect(video).toHaveAttribute('aria-checked', 'true')
+
+  // Space activates the focused radio (native button activation selects).
+  await page.keyboard.press('ArrowRight')
+  await expect(image).toBeFocused()
+  await page.keyboard.press('Space')
+  await expect(image).toHaveAttribute('aria-checked', 'true')
+  await expect(video).toHaveAttribute('aria-checked', 'false')
+
+  // Tab from any chip EXITS the group as one unit: the next tab stop is the
+  // bar's prompt input (never the sibling chip, which sits at tabindex -1).
+  await page.keyboard.press('Tab')
+  await expect(page.locator('[data-canvas-bar-prompt]')).toBeFocused()
+  // Shift+Tab re-enters ON the selected chip — one unit, one tab stop.
+  await page.keyboard.press('Shift+Tab')
+  await expect(image).toBeFocused()
+
+  // Independent toggle (the chain-context lock chip): a PRESSED BUTTON, not
+  // a radio — Space and Enter each flip aria-pressed (never aria-checked).
+  await page.locator('[data-canvas-bar-prompt]').fill('a locked-down establishing shot')
+  await page.locator('[data-canvas-bar-prompt]').press('Enter')
+  await expect(page.locator('[data-canvas-bottombar]')).toHaveAttribute('data-canvas-bar-context', 'chain', { timeout: 10_000 })
+  const lock = page.locator('[data-canvas-bar-lock]')
+  await expect(lock).toBeVisible()
+  await expect(lock).toHaveAttribute('aria-pressed', 'false')
+  await expect(lock).not.toHaveAttribute('aria-checked')
+  await lock.focus()
+  await page.keyboard.press('Space')
+  await expect(lock).toHaveAttribute('aria-pressed', 'true')
+  await expect(lock).toHaveAttribute('data-canvas-bar-lock', 'locked')
+  await page.keyboard.press('Enter')
+  await expect(lock).toHaveAttribute('aria-pressed', 'false')
+  await expect(lock).toHaveAttribute('data-canvas-bar-lock', 'unlocked')
+
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 test("the 'r' rerunStale gesture clears the stale flags it remediates (M2)", async ({ page }) => {
   const problems = await trackErrors(page)
   await resetSession(page)

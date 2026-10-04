@@ -188,9 +188,9 @@ export function TimelineOverlay() {
           {plans.map((entry, index) => <option key={entry.id} value={entry.id}>Plan {index + 1} — {readPlanDocument(entry.document).segments.length} segments</option>)}
         </select>}
         {!planRow && document && document.chains.some((chain) => chain.outputs.some((output) => output.takes.length)) && (
-          <button type="button" className="canvas-chip" data-canvas-timeline-adopt onClick={() => void store().adoptChronology()}>Plan this chronology</button>
+          <button type="button" className="chip canvas-chip" data-canvas-timeline-adopt onClick={() => void store().adoptChronology()}>Plan this chronology</button>
         )}
-        <button type="button" className="canvas-chip" data-canvas-timeline-new-plan onClick={() => void store().createPlan()}><Plus size={12} /> New plan</button>
+        <button type="button" className="chip canvas-chip" data-canvas-timeline-new-plan onClick={() => void store().createPlan()}><Plus size={12} /> New plan</button>
         <button type="button" className="icon-button" aria-label="Close timeline" data-canvas-timeline-close onClick={close}><X size={14} /></button>
       </header>
 
@@ -250,7 +250,7 @@ export function TimelineOverlay() {
               key={entry.kind}
               type="button"
               role="menuitem"
-              className={`canvas-gap-option ${openGap.kind === entry.kind ? 'active' : ''}`}
+              className={`canvas-gap-option ${openGap.kind === entry.kind ? 'chip--selected' : ''}`}
               data-canvas-gap-option={entry.kind}
               disabled={disabled}
               title={reason ?? entry.verdict}
@@ -290,24 +290,24 @@ export function TimelineOverlay() {
               <SegmentPromptField planRowId={planRow.id} segmentId={segment.id} prompt={segment.prompt} />
               <div className="canvas-plan-segment-refs" aria-label="Reference handoffs">
                 {libraries.characters.map((character) => (
-                  <button key={character.id} type="button" className={`canvas-chip canvas-plan-ref ${segment.referenceCharacterIds.includes(character.id) ? 'active' : ''}`} data-canvas-segment-ref-character={character.id}
+                  <button key={character.id} type="button" className={`chip canvas-chip canvas-plan-ref ${segment.referenceCharacterIds.includes(character.id) ? 'chip--selected' : ''}`} data-canvas-segment-ref-character={character.id}
                     onClick={() => void store().updatePlanSegment(planRow.id, segment.id, { referenceCharacterIds: segment.referenceCharacterIds.includes(character.id) ? segment.referenceCharacterIds.filter((id) => id !== character.id) : [...segment.referenceCharacterIds, character.id] })}>{character.name}</button>
                 ))}
                 {libraries.locations.map((location) => (
-                  <button key={location.id} type="button" className={`canvas-chip canvas-plan-ref ${segment.referenceLocationIds.includes(location.id) ? 'active' : ''}`} data-canvas-segment-ref-location={location.id}
+                  <button key={location.id} type="button" className={`chip canvas-chip canvas-plan-ref ${segment.referenceLocationIds.includes(location.id) ? 'chip--selected' : ''}`} data-canvas-segment-ref-location={location.id}
                     onClick={() => void store().updatePlanSegment(planRow.id, segment.id, { referenceLocationIds: segment.referenceLocationIds.includes(location.id) ? segment.referenceLocationIds.filter((id) => id !== location.id) : [...segment.referenceLocationIds, location.id] })}>{location.name}</button>
                 ))}
               </div>
               <div className="canvas-plan-segment-actions">
-                {!segment.chainId && <button type="button" className="canvas-chip" data-canvas-segment-seed disabled={!segment.prompt.trim()} onClick={() => void seedSegment(segment.id)}>Seed object</button>}
-                {segment.chainId && <button type="button" className="canvas-chip" data-canvas-segment-generate onClick={() => void generateSegment(segment.id)}>Generate</button>}
-                <button type="button" className="canvas-chip" data-canvas-segment-remove onClick={() => void store().removePlanSegment(planRow.id, segment.id)}>Remove</button>
+                {!segment.chainId && <button type="button" className="chip canvas-chip" data-canvas-segment-seed disabled={!segment.prompt.trim()} onClick={() => void seedSegment(segment.id)}>Seed object</button>}
+                {segment.chainId && <button type="button" className="chip canvas-chip" data-canvas-segment-generate onClick={() => void generateSegment(segment.id)}>Generate</button>}
+                <button type="button" className="chip canvas-chip" data-canvas-segment-remove onClick={() => void store().removePlanSegment(planRow.id, segment.id)}>Remove</button>
               </div>
             </div>
           })}
           <div className="canvas-plan-segment-toolbar">
-            <button type="button" className="canvas-chip" data-canvas-plan-add-segment onClick={() => void store().addPlanSegment(planRow.id)}><Plus size={12} /> Add segment</button>
-            <button type="button" className="canvas-chip" data-canvas-plan-episode disabled={episodeStart < 0} title={episodeStart < 0 ? 'Needs two seeded segments joined by an FLF gap' : 'Render the FLF-connected run as ONE latent-chained episode (Motion-Context); every take lands on its own object'}
+            <button type="button" className="chip canvas-chip" data-canvas-plan-add-segment onClick={() => void store().addPlanSegment(planRow.id)}><Plus size={12} /> Add segment</button>
+            <button type="button" className="chip canvas-chip" data-canvas-plan-episode disabled={episodeStart < 0} title={episodeStart < 0 ? 'Needs two seeded segments joined by an FLF gap' : 'Render the FLF-connected run as ONE latent-chained episode (Motion-Context); every take lands on its own object'}
               onClick={() => void store().submitPlanEpisode(planRow.id, plan.segments[episodeStart].id)}><Link2 size={12} /> Render FLF run as latent chain</button>
           </div>
         </div>

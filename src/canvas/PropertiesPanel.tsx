@@ -40,6 +40,7 @@ import { useLlmStream } from '../lib/useLlmStream'
 import type { ModelOverrideSlots } from '../types'
 import { useSessionStore } from '../state/sessionStore'
 import { STATUS_LABEL } from './derive'
+import { Chip, ChipGroup } from '../ui/Chip'
 import { tileToneVars } from '../ui/statusToken'
 import { effectiveMode, modeLabelFor, readChainSettings, type CanvasChainSettings } from './generation'
 import { AUDIO_LANE_PAUSED, AUDIO_LANE_PAUSED_REASON } from './options'
@@ -365,8 +366,8 @@ function LoraTimelineSection(props: {
         </div>
       })}
       <div className="canvas-lora-toolbar">
-        <button type="button" className="canvas-chip" data-canvas-lora-paint onClick={paintRange}>+ paint range</button>
-        {doc && <button type="button" className="canvas-chip" data-canvas-lora-clear onClick={() => onChange(null)}>clear</button>}
+        <button type="button" className="chip canvas-chip" data-canvas-lora-paint onClick={paintRange}>+ paint range</button>
+        {doc && <button type="button" className="chip canvas-chip" data-canvas-lora-clear onClick={() => onChange(null)}>clear</button>}
       </div>
     </div>
 
@@ -400,7 +401,7 @@ function LoraTimelineSection(props: {
     {compile.ok && compile.warnings.length > 0 && <ul className="canvas-lora-warnings" data-canvas-lora-warnings>{compile.warnings.map((warning, index) => <li key={index} data-canvas-lora-warning={index}>{warning}</li>)}</ul>}
     {failure.length > 0 && <ul className="canvas-properties-warning" role="alert">{failure.map((reason, index) => <li key={index}>{reason}</li>)}</ul>}
     <div className="canvas-lora-actions">
-      <button type="button" className="canvas-chip primary" data-canvas-lora-apply disabled={!compile.ok || applying} title="Compile the ranges into a Director Suite plan and seed one chain per segment (nothing auto-submits)"
+      <button type="button" className="chip chip--accent canvas-chip" data-canvas-lora-apply disabled={!compile.ok || applying} title="Compile the ranges into a Director Suite plan and seed one chain per segment (nothing auto-submits)"
         onClick={() => void apply()}>{applying ? 'compiling…' : `compile → ${compile.ok ? compile.segments.length : '—'} segments`}</button>
     </div>
   </section>
@@ -1012,10 +1013,10 @@ export function PropertiesPanel() {
         {/* The structured ⇄ freeform toggle (fh94g76): a first-class co-equal
             mode — same submit path, the concat contract keeps the engine
             string identical. */}
-        <div className="canvas-properties-promptmode" role="radiogroup" aria-label="Prompt mode" data-canvas-prompt-mode={draft.promptMode}>
-          <button type="button" role="radio" aria-checked={draft.promptMode === 'freeform'} data-canvas-prompt-mode-toggle="freeform" className={draft.promptMode === 'freeform' ? 'active' : ''} onClick={() => setPromptMode('freeform')}>freeform</button>
-          <button type="button" role="radio" aria-checked={draft.promptMode === 'structured'} data-canvas-prompt-mode-toggle="structured" className={draft.promptMode === 'structured' ? 'active' : ''} onClick={() => setPromptMode('structured')}>structured</button>
-        </div>
+        <ChipGroup exclusive className="canvas-properties-promptmode" aria-label="Prompt mode" data-canvas-prompt-mode={draft.promptMode} value={draft.promptMode} onChange={(next) => setPromptMode(next as 'freeform' | 'structured')}>
+          <Chip id="freeform" variant="radio" data-canvas-prompt-mode-toggle="freeform">freeform</Chip>
+          <Chip id="structured" variant="radio" data-canvas-prompt-mode-toggle="structured">structured</Chip>
+        </ChipGroup>
         {draft.promptMode === 'structured' ? (
           <StructuredPromptEditor
             draft={structuredDraft!}
@@ -1062,7 +1063,7 @@ export function PropertiesPanel() {
               model is reachable, the Connect action opens Settings docked AT
               the LLM section — one click from the point of need. */}
           {!llmAvailable && (
-            <button type="button" className="canvas-chip" data-canvas-llm-connect
+            <button type="button" className="chip canvas-chip" data-canvas-llm-connect
               title="Connect a local text model — the llama.cpp router or Ollama, docked at the LLM section (nothing leaves this workstation)"
               onClick={() => useCanvasStore.getState().setSettingsDock(true, 'llm')}>
               Connect a text model…
@@ -1114,7 +1115,7 @@ export function PropertiesPanel() {
             {/* (2026-09-28 audio-lane pause) The dock link gates with the
                 pause reason — an existing audio chain keeps its identity and
                 settings; only new authoring is paused. */}
-            <button type="button" className="canvas-chip" data-canvas-open-audio-dock disabled={AUDIO_LANE_PAUSED} title={AUDIO_LANE_PAUSED ? AUDIO_LANE_PAUSED_REASON : undefined} onClick={() => useCanvasStore.getState().setAudioDock({ engine: 'music3', chainId: chain.id })}>
+            <button type="button" className="chip canvas-chip" data-canvas-open-audio-dock disabled={AUDIO_LANE_PAUSED} title={AUDIO_LANE_PAUSED ? AUDIO_LANE_PAUSED_REASON : undefined} onClick={() => useCanvasStore.getState().setAudioDock({ engine: 'music3', chainId: chain.id })}>
               edit in the audio dock…
             </button>
             {AUDIO_LANE_PAUSED && <span className="canvas-properties-hint" data-canvas-audio-paused-hint>{AUDIO_LANE_PAUSED_REASON}</span>}
@@ -1123,45 +1124,41 @@ export function PropertiesPanel() {
         {engineFamily.panel.tier && (
           <div className="canvas-properties-row">
             <span>tier</span>
-            <div className="canvas-properties-tiers" role="radiogroup" aria-label="Speed tier">
+            <ChipGroup exclusive className="canvas-properties-tiers" aria-label="Speed tier" value={draft.turbo} onChange={(next) => patch({ turbo: next as typeof draft.turbo, ...(next !== 'off' ? { vdn: 'off' as const } : {}) })}>
               {TIERS.map((tier) => (
-                <button
-                  type="button"
+                <Chip
                   key={tier.value}
-                  role="radio"
-                  aria-checked={draft.turbo === tier.value}
-                  className={`canvas-chip ${draft.turbo === tier.value ? 'active' : ''}`}
+                  id={tier.value}
+                  variant="radio"
+                  className="canvas-chip"
                   data-canvas-tier={tier.value}
                   /* (V1, perfect-state sweep 2026-09-27) The note rides the
                      tooltip: on the chip it made the third tier wrap alone
                      under the row and read as a stray duplicate. */
                   title={tier.note}
-                  onClick={() => patch({ turbo: tier.value, ...(tier.value !== 'off' ? { vdn: 'off' as const } : {}) })}
                 >
                   {tier.label}
-                </button>
+                </Chip>
               ))}
-            </div>
+            </ChipGroup>
           </div>
         )}
         {engineFamily.panel.tier && (
           <div className="canvas-properties-row">
             <span>VDN</span>
-            <div className="canvas-properties-tiers" role="radiogroup" aria-label="VDN acceleration">
+            <ChipGroup exclusive className="canvas-properties-tiers" aria-label="VDN acceleration" value={draft.vdn} onChange={(next) => patch({ vdn: next as typeof draft.vdn, turbo: 'off' })}>
               {VDN_RUNGS.map((rung) => (
-                <button
-                  type="button"
+                <Chip
                   key={rung.value}
-                  role="radio"
-                  aria-checked={draft.vdn === rung.value}
-                  className={`canvas-chip ${draft.vdn === rung.value ? 'active' : ''}`}
+                  id={rung.value}
+                  variant="radio"
+                  className="canvas-chip"
                   data-canvas-vdn={rung.value}
-                  onClick={() => patch({ vdn: rung.value, turbo: 'off' })}
                 >
                   {rung.label} <small>{rung.note}</small>
-                </button>
+                </Chip>
               ))}
-            </div>
+            </ChipGroup>
             {/* Presence truth, never a dead end: the pack row names the
                 install path; a served pack without stages deep-links the
                 Library at the exact fetch rows (the engine's own
@@ -1177,7 +1174,7 @@ export function PropertiesPanel() {
               ]
               if (missingStages.length) {
                 return (
-                  <button type="button" className="canvas-chip" data-canvas-vdn-fetch
+                  <button type="button" className="chip canvas-chip" data-canvas-vdn-fetch
                     title="Open the library at the model catalog — the VDN stage rows fetch there with consent"
                     onClick={() => useCanvasStore.getState().setLibraryDock(true, missingStages)}>
                     fetch stage{missingStages.length > 1 ? 's' : ''} ({missingStages.length})
@@ -1204,7 +1201,7 @@ export function PropertiesPanel() {
                 truth when the catalog carries none of them. */}
             {turboFamilies.some(({ detection }) => !detection.available) && turboCatalogRows !== null && (
               turboFetchAffordance.fetchable.length > 0
-                ? <button type="button" className="canvas-chip" data-canvas-turbo-fetch
+                ? <button type="button" className="chip canvas-chip" data-canvas-turbo-fetch
                     title="Open the library at the model catalog — the cataloged turbo LoRAs fetch there with consent"
                     onClick={() => useCanvasStore.getState().setLibraryDock(true, turboFetchAffordance.fetchable.flatMap((entry) => entry.catalogEntryIds))}>
                     fetch missing ({turboFetchAffordance.fetchable.length})
@@ -1300,7 +1297,7 @@ export function PropertiesPanel() {
           <div className="canvas-properties-row">
             <label htmlFor="canvas-seed">seed</label>
             <input id="canvas-seed" data-canvas-seed type="number" min={0} max={999_999_999} value={draft.seed} aria-label="Seed" title="Seed (0 to 999,999,999 — the dice rolls this range)" onChange={(event) => patch({ seed: Math.max(0, Math.floor(Number(event.target.value) || 0)) })} />
-            <button type="button" className="canvas-chip" aria-label="Randomize seed" onClick={() => patch({ seed: Math.floor(Math.random() * 1_000_000_000) })}><Dices size={12} /></button>
+            <button type="button" className="chip canvas-chip" aria-label="Randomize seed" onClick={() => patch({ seed: Math.floor(Math.random() * 1_000_000_000) })}><Dices size={12} /></button>
           </div>
         )}
       </section>
@@ -1326,7 +1323,7 @@ export function PropertiesPanel() {
         <ol className="canvas-properties-refs" data-canvas-reference-list>
           {bindings.map((binding, index) => (
             <li key={`${binding.file.path}-${index}`} data-canvas-reference={index}>
-              <span className="canvas-properties-ref-tag">&lt;Picture {index + 1}&gt;</span>
+              <span className="chip chip--accent canvas-properties-ref-tag">&lt;Picture {index + 1}&gt;</span>
               <span className="canvas-properties-ref-label">{binding.label}</span>
               {binding.file.kind === 'image' && (
                 <button
@@ -1350,7 +1347,7 @@ export function PropertiesPanel() {
           <div className="canvas-properties-row">
             <button
               type="button"
-              className="canvas-chip"
+              className="chip canvas-chip"
               data-canvas-clear-refs
               onClick={() => patch({ referenceOutputIds: [] })}
             >
@@ -1412,7 +1409,7 @@ export function PropertiesPanel() {
         )}
         {draft.referenceAssetIds.length > 0 && (
           <div className="canvas-properties-row">
-            <button type="button" className="canvas-chip" data-canvas-clear-assets onClick={() => patch({ referenceAssetIds: [] })}>
+            <button type="button" className="chip canvas-chip" data-canvas-clear-assets onClick={() => patch({ referenceAssetIds: [] })}>
               clear asset refs ({draft.referenceAssetIds.length})
             </button>
           </div>
@@ -1471,7 +1468,7 @@ export function PropertiesPanel() {
         <summary>Keyframe guides <span className="canvas-properties-hint">{draft.timelineGuides.length ? `${draft.timelineGuides.length} guide${draft.timelineGuides.length === 1 ? '' : 's'} · AddGuide frames` : 'AddGuide frames'}</span></summary>
         {draft.timelineGuides.map((guide, index) => (
           <div className="canvas-properties-row" key={`${guide.file.path}-${index}`} data-canvas-guide={index}>
-            <span className="canvas-properties-ref-tag">@</span>
+            <span className="chip chip--accent canvas-properties-ref-tag">@</span>
             <input
               type="number"
               min={-draft.duration}
@@ -1489,7 +1486,7 @@ export function PropertiesPanel() {
         <div className="canvas-properties-row">
           <button
             type="button"
-            className="canvas-chip"
+            className="chip canvas-chip"
             data-canvas-add-guide
             onClick={async () => {
               const picked = await window.minimax.chooseMedia('image')
@@ -1523,7 +1520,7 @@ export function PropertiesPanel() {
         <summary>Control tracks <span className="canvas-properties-hint">{chain!.controlTracks!.length} stored · {chain!.controlTracks!.every((track) => track.kind === chain!.controlTracks![0]!.kind) ? chain!.controlTracks![0]!.kind : 'mixed'}</span></summary>
         {chain!.controlTracks!.map((track) => (
           <div className="canvas-properties-row" key={track.id} data-canvas-control-track={track.id}>
-            <span className="canvas-properties-ref-tag">§</span>
+            <span className="chip chip--accent canvas-properties-ref-tag">§</span>
             <span className="canvas-properties-ref-label">{track.kind}{track.maskRef ? ' · mask' : ''}</span>
             <button
               type="button"

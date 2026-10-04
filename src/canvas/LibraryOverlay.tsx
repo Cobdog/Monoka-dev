@@ -16,6 +16,7 @@ import { documentsApi } from './api'
 import { mediaForOutput, buildOutputIndex } from './generation'
 import { chainTitle } from './derive'
 import { useCanvasStore } from './store'
+import { Chip } from '../ui/Chip'
 import { useWindowedList } from './useWindowedList'
 
 type LibraryRow = {
@@ -134,8 +135,11 @@ export function LibraryOverlay() {
           onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); setLibraryOpen(false) } }}
         />
         <div className="canvas-library-filters" role="group" aria-label="Filter by kind">
+          {/* Manifest §5 independent toggles (task 6): the filter chips are
+              pressed buttons — aria-pressed, flipped by Space/Enter — never
+              aria-checked (exclusive-group territory). */}
           {(['all', 'video', 'image', 'audio'] as const).map((kind) => (
-            <button key={kind} type="button" className={`canvas-chip ${kindFilter === kind ? 'active' : ''}`} data-canvas-library-filter={kind} onClick={() => setKindFilter(kind)}>{kind}</button>
+            <Chip key={kind} variant="toggle" selected={kindFilter === kind} className="canvas-chip" data-canvas-library-filter={kind} onClick={() => setKindFilter(kind)}>{kind}</Chip>
           ))}
         </div>
         <button type="button" className="icon-button" aria-label="Close library" data-canvas-library-close onClick={() => setLibraryOpen(false)}><X size={14} /></button>

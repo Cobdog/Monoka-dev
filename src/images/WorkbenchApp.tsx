@@ -929,7 +929,7 @@ function WorkbenchSurface() {
               {/* (R-19) The unavailable family is never a dead end at the
                   choice point: the Library is one click away (weights and
                   node packs, license verdicts on every row). */}
-              <button type="button" className="canvas-chip" data-iw-open-library
+              <button type="button" className="chip canvas-chip" data-iw-open-library
                 title="Open the library — the missing weights and packs are fetchable there with consent"
                 onClick={() => useCanvasStore.getState().setLibraryDock(true)}>
                 Get the missing pieces…
@@ -1141,7 +1141,7 @@ function WorkbenchSurface() {
                   : `${FIZGIG_H3_STILL_PACK_NAME} ${t1Machinery === 'fizgig-max' ? 'max-quality point (no Turbo, 50 steps)' : 'author recipe (plain FL2VA, turbo @0.38, 20 steps)'} — the video-VAE group decode; best from 2.5 MP up.`}
                 {!fizgigPackOnEngine && t1Machinery !== 'image-studio' && (
                   <>
-                    {' '}The pack is not served by this engine — <button type="button" className="canvas-chip" data-iw-machinery-fetch onClick={() => useCanvasStore.getState().setLibraryDock(true)}>fetch it from the Library…</button> (the lane refuses honestly until then, never a silent stock decode).
+                    {' '}The pack is not served by this engine — <button type="button" className="chip canvas-chip" data-iw-machinery-fetch onClick={() => useCanvasStore.getState().setLibraryDock(true)}>fetch it from the Library…</button> (the lane refuses honestly until then, never a silent stock decode).
                   </>
                 )}
               </p>

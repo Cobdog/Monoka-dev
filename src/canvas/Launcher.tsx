@@ -105,22 +105,22 @@ export function Launcher({ onPickFile }: { onPickFile(): void }) {
           on its timeline button. The datasets chip precedent applies: one
           home per thing. */}
       <div className="canvas-launcher-chips" role="group" aria-label="Entry chips">
-        <button type="button" className={`canvas-chip ${mediaType === 'image' ? 'active' : ''}`} data-canvas-chip="image" title="New seeds spawn as IMAGE chains — a still per take (the workbench's families)" onClick={() => setMediaType('image')}>
+        <button type="button" className={`chip ${mediaType === 'image' ? 'chip--selected' : ''} canvas-chip`} data-canvas-chip="image" title="New seeds spawn as IMAGE chains — a still per take (the workbench's families)" onClick={() => setMediaType('image')}>
           <ImagePlus size={13} /> image prompt
         </button>
-        <button type="button" className={`canvas-chip ${mediaType === 'video' ? 'active' : ''}`} data-canvas-chip="video" title="New seeds spawn as VIDEO chains — the derived mode follows what you later bind (R-23)" onClick={() => setMediaType('video')}>
+        <button type="button" className={`chip ${mediaType === 'video' ? 'chip--selected' : ''} canvas-chip`} data-canvas-chip="video" title="New seeds spawn as VIDEO chains — the derived mode follows what you later bind (R-23)" onClick={() => setMediaType('video')}>
           <FileVideo size={13} /> video prompt
         </button>
         <button
           type="button"
-          className="canvas-chip"
+          className="chip canvas-chip"
           data-canvas-chip="noDialogue"
           title="Adds the no-dialogue policy to the prompt — the render scores the shot with no spoken lines"
           onClick={() => setPrompt((current) => current ? `${current} · no dialogue` : 'no dialogue')}
         >
           <MessageSquareOff size={13} /> no dialogue
         </button>
-        <button type="button" className="canvas-chip" data-canvas-chip="drop" onClick={onPickFile}>
+        <button type="button" className="chip canvas-chip" data-canvas-chip="drop" onClick={onPickFile}>
           <Upload size={13} /> drop / pick media
         </button>
       </div>
@@ -128,7 +128,7 @@ export function Launcher({ onPickFile }: { onPickFile(): void }) {
       <div className="canvas-launcher-resume" aria-label="Resume a canvas">
         <header>
           <strong>Resume</strong>
-          <button type="button" className="canvas-chip" data-canvas-new onClick={() => void createCanvas()}>
+          <button type="button" className="chip canvas-chip" data-canvas-new onClick={() => void createCanvas()}>
             <Plus size={13} /> new canvas
           </button>
         </header>

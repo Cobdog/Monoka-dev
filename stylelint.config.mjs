@@ -199,5 +199,11 @@ export default {
     // overflow-x/overflow-y longhands (often with MIXED values) are the house
     // pattern for scroll containers — explicit axes over shorthand push.
     'declaration-block-no-redundant-longhand-properties': null,
+    // The component-vocabulary modifier convention (task 6, k2q0n9s): shared
+    // recipe classes compose as `chip--{tone}` / `chip--selected` — a kebab
+    // base plus double-dash kebab MODIFIERS (BEM-ish), the interface the
+    // locked plan mandates. Standard kebab-only would reject the modifier
+    // syntax; this is the same alphabet extended, not a suppression.
+    'selector-class-pattern': /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?:--[a-z][a-z0-9]*(?:-[a-z0-9]+)*)?$/,
   },
 }

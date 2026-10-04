@@ -40,8 +40,7 @@
 .ds-search { display: flex; align-items: center; gap: 6px; border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 8px; padding: 4px 8px; }
 .ds-search input { background: none; border: none; color: inherit; outline: none; width: 100%; font-size: var(--text-2xs); }
 .ds-filter-row { display: flex; gap: 4px; flex-wrap: wrap; }
-.ds-chip { padding: 2px 9px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); background: none; color: var(--muted); cursor: pointer; font-size: 10px; }
-.ds-chip.active { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.ds-chip { padding: 2px 9px; border-radius: 999px; border-width: 1px; border-style: solid; cursor: pointer; font-size: 10px; }
 
 .ds-gallery-wrap { flex: 1; min-width: 0; position: relative; }
 .ds-gallery { height: 100%; overflow-y: auto; padding: 12px; }
@@ -70,12 +69,13 @@
 .ds-layer.selected .ds-layer-select { background: var(--accent); border-color: var(--accent); }
 .ds-layer-main { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .ds-layer-name { font-weight: 600; }
-.ds-bucket-badge, .ds-cluster-badge, .ds-stale-badge, .ds-interp-badge, .ds-review-badge, .ds-disposition { font-size: 9px; padding: 1px 6px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); color: var(--muted); }
-.ds-bucket-badge.wall-warn { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 40%, transparent); }
-.ds-bucket-badge.wall-stop { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
-.ds-cluster-badge { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
-.ds-stale-badge { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 45%, transparent); }
-.ds-review-badge { color: var(--accent); }
+/* Badge geometry only (task 6): the tone recipes (neutral base, wall-warn →
+ * chip--warning, wall-stop → chip--danger, cluster/review → chip--accent,
+ * stale → chip--warning) live in src/styles.css's .chip block. ds-disposition
+ * is NOT a chip-system member (outside the manifest census) — its tone stays
+ * here, unchanged. */
+.ds-bucket-badge, .ds-cluster-badge, .ds-stale-badge, .ds-interp-badge, .ds-review-badge, .ds-disposition { font-size: 9px; padding: 1px 6px; border-radius: 999px; border-width: 1px; border-style: solid; }
+.ds-disposition { border-color: color-mix(in srgb, var(--muted) 35%, transparent); color: var(--muted); }
 .ds-layer-caption { width: 100%; font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds-layer-actions { display: flex; gap: 4px; flex-direction: column; align-items: flex-end; }
 .ds-disposition-select { background: none; color: var(--muted); border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 6px; font-size: 9px; padding: 1px 4px; }
@@ -95,8 +95,7 @@
 .ds-field label { display: block; font-size: var(--text-2xs); color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
 .ds-field input { width: 100%; background: none; border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 8px; color: inherit; padding: 5px 8px; font-size: var(--text-2xs); }
 .ds-aspect-strip { display: flex; flex-wrap: wrap; gap: 4px; }
-.ds-aspect-chip { padding: 3px 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); background: none; color: var(--muted); cursor: pointer; font-size: var(--text-2xs); }
-.ds-aspect-chip.active { color: var(--accent); border-color: var(--accent); font-weight: 700; }
+.ds-aspect-chip { padding: 3px 10px; border-radius: 8px; border-width: 1px; border-style: solid; cursor: pointer; font-size: var(--text-2xs); }
 .ds-aspect-chip.custom { border-style: dashed; }
 .ds-hint { font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin: 0; }
 .ds-status { font-size: 10px; color: var(--accent); margin: 0; }
