@@ -5,12 +5,12 @@
 <title>GPU review — blinded A/B</title>
 <style>
   :root { --bg:#0b0e0d; --surface:#101412; --surface2:#151a17; --line:#252c28; --text:#edf3ef; --muted:#8f9b94; --accent:#c6ff63; --danger:#ff7f7f; }
-  * { box-sizing: border-box; }
+  * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 'Segoe UI',system-ui,sans-serif; }
   header { padding:14px 20px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); z-index:10; }
   header h1 { font-size:16px; margin:0 0 4px; }
   header .sub { color:var(--muted); font-size:12px; }
-  main { padding:16px 20px 80px; max-width:1400px; margin:0 auto; }
+  main { padding:16px 20px 90px; max-width:1400px; margin:0 auto; }
   .pair { border:1px solid var(--line); border-radius:12px; background:var(--surface); margin-bottom:22px; overflow:hidden; }
   .pair-head { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
   .pair-head .pid { font-weight:700; font-size:15px; }
@@ -18,24 +18,24 @@
   .mode-btns button { font:inherit; font-size:12px; padding:4px 10px; border:1px solid var(--line); background:var(--surface2); color:var(--muted); border-radius:6px; cursor:pointer; }
   .mode-btns button.on { color:#142000; background:var(--accent); border-color:var(--accent); font-weight:600; }
   .stage { position:relative; background:#000; user-select:none; }
-  .stage video { display:block; width:100%; }
+  .stage video, .stage canvas { display:block; width:100%; }
   .stage.sbs { display:grid; grid-template-columns:1fr 1fr; gap:2px; }
-  .stage.slider, .stage.blink { cursor:ew-resize; }
+  .stage.slider { cursor:ew-resize; }
   .stage.slider .v-top { position:absolute; inset:0; clip-path:inset(0 calc(100% - var(--split,50%)) 0 0); }
-  .stage.blink .v-top { position:absolute; inset:0; visibility:hidden; }
-  .stage.blink.show-top .v-top { visibility:visible; }
-  .stage.blink.show-top .v-base { visibility:hidden; }
   .stage .divider { position:absolute; top:0; bottom:0; width:3px; background:var(--accent); left:var(--split,50%); transform:translateX(-1.5px); pointer-events:none; box-shadow:0 0 8px rgba(198,255,99,.5); }
   .stage .divider::after { content:'⇔'; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:var(--accent); color:#142000; font-size:13px; padding:2px 6px; border-radius:8px; font-weight:700; }
   .stage .tag { position:absolute; top:8px; font-size:11px; background:rgba(0,0,0,.65); padding:2px 8px; border-radius:4px; color:var(--muted); }
   .stage .tag.l { left:8px; } .stage .tag.r { right:8px; }
+  .stage .probe { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(11,14,13,.92); color:var(--muted); font-size:13px; flex-direction:column; gap:8px; text-align:center; padding:0 20px; }
+  .stage .probe progress { width:60%; }
   .transport { display:flex; gap:6px; align-items:center; padding:8px 14px; border-top:1px solid var(--line); flex-wrap:wrap; }
   .transport button { font:inherit; font-size:12px; padding:4px 10px; border:1px solid var(--line); background:var(--surface2); color:var(--text); border-radius:6px; cursor:pointer; }
   .transport button:hover { border-color:var(--muted); }
+  .transport button.on { color:#142000; background:var(--accent); border-color:var(--accent); font-weight:600; }
   .transport .t { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
   .transport .spacer { flex:1; }
-  .transport .rate { color:var(--muted); font-size:12px; }
-  .transport input[type=range] { width:110px; accent-color:var(--accent); }
+  .transport label { color:var(--muted); font-size:12px; display:flex; align-items:center; gap:4px; }
+  .transport input[type=range] { width:90px; accent-color:var(--accent); }
   .meta { padding:8px 14px; border-top:1px solid var(--line); font-size:12px; color:var(--muted); }
   .meta .k { color:var(--text); font-weight:600; }
   .meta .meta-shared span { margin-right:14px; white-space:nowrap; display:inline-block; }
@@ -54,21 +54,15 @@
   footer { position:fixed; bottom:0; left:0; right:0; background:var(--surface); border-top:1px solid var(--line); padding:10px 20px; display:flex; gap:10px; align-items:center; }
   footer .count { color:var(--muted); font-size:12px; }
   footer button { font:inherit; padding:6px 14px; border-radius:8px; border:1px solid var(--accent); background:transparent; color:var(--accent); cursor:pointer; font-weight:600; }
-  .fullscreen-stage:fullscreen { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; background:#000; }
-  .fullscreen-stage:fullscreen video { max-height:100vh; width:auto; max-width:100%; }
-  .stage .blink-canvas { display:block; width:100%; background:#000; }
-  .stage .blink-canvas.hidden { display:none; }
-  .stage.blink video { visibility:hidden; }
-  .drift { font-size:11px; font-variant-numeric:tabular-nums; padding:2px 8px; border-radius:4px; border:1px solid var(--line); color:var(--muted); }
-  .drift.ok { color:var(--accent); border-color:var(--accent); }
-  .drift.warn { color:var(--danger); border-color:var(--danger); }
-  .hidden { display:none; }
+  .stage:fullscreen { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; background:#000; }
+  .stage:fullscreen video, .stage:fullscreen canvas { max-height:100vh; width:auto; max-width:100%; }
+  .hidden { display:none !important; }
 </style>
 </head>
 <body>
 <header>
   <h1>GPU review — blinded A/B</h1>
-  <div class="sub" id="hdr-sub">Left/right assignments are randomized per pair. The key is escrowed — calls recorded before reveal. Ties are valid.</div>
+  <div class="sub" id="hdr-sub">Left/right assignments are randomized per pair; the key is escrowed (calls recorded before reveal); ties are valid. Blink decodes both sides to frame caches on first entry — the two videos then play from the SAME frame index by construction, so any visible blink difference is real content, never sync.</div>
 </header>
 <main id="pairs"></main>
 <footer>
@@ -84,24 +78,27 @@
         <button data-mode="sbs" class="on">Side-by-side</button>
         <button data-mode="slider">Slider</button>
         <button data-mode="blink">Blink</button>
-        <button class="fs" title="Fullscreen (uses current mode)">⛶</button>
+        <button class="fs" title="Fullscreen (current mode)">⛶</button>
       </div>
     </div>
     <div class="stage sbs">
-      <video class="v-base" playsinline></video>
-      <video class="v-top" playsinline></video>
+      <video class="v-base" playsinline preload="auto"></video>
+      <video class="v-top" playsinline preload="auto"></video>
       <canvas class="blink-canvas hidden"></canvas>
       <div class="divider hidden"></div>
       <span class="tag l hidden">L</span><span class="tag r hidden">R</span>
+      <div class="probe hidden"><span class="probe-msg">decoding frames…</span><progress max="100" value="0"></progress></div>
     </div>
     <div class="transport">
       <button class="play">⏯ Play/Pause</button>
       <button class="stepb">⟨ frame</button><button class="stepf">frame ⟩</button>
       <button class="restart">⟲ Restart</button>
       <span class="spacer"></span>
-      <span class="rate hidden">blink: <input type="range" min="1" max="8" step="1" value="3"> Hz</span>
-      <span class="t">0.00s</span>
-      <span class="drift" title="inter-video time offset">Δ --</span>
+      <label class="blink-only hidden">blink <input type="range" class="hz" min="0.5" max="8" step="0.5" value="2"> Hz</label>
+      <span class="blink-only hidden">speed
+        <button class="spd" data-spd="0.25">¼×</button><button class="spd" data-spd="0.5">½×</button><button class="spd on" data-spd="1">1×</button>
+      </span>
+      <span class="t">0.00s / 0f</span>
     </div>
     <div class="meta">
       <div class="meta-shared"></div>
@@ -123,20 +120,80 @@
   var params = new URLSearchParams(location.search);
   var pairList = (params.get('pairs') || 'auto').split(',').filter(Boolean);
   var ext = params.get('ext') || 'mp4';
+  var FPS = parseFloat(params.get('fps') || '24');
+  var MAX_BLINK_FRAMES = parseInt(params.get('maxblink') || '600', 10);
   var storeKey = 'gpu-review-' + (params.get('set') || 'A') + '-responses';
   var responses = {};
   try { responses = JSON.parse(localStorage.getItem(storeKey) || '{}'); } catch (e) { responses = {}; }
 
-  // Pair discovery: probe p01..p40 for pairs/<id>_L.<ext> (file:// cannot list dirs).
-  var wanted = pairList[0] === 'auto' ? null : pairList;
+  /* ======================================================================
+     FrameCache — decode ONE <video> into an in-memory sprite-sheet canvas
+     by seeking frame-by-frame at load. Blink presents ONLY from these
+     caches: both sides render the same frame index from the same clock, so
+     synchronization is by construction (no live decode, no seeks, no drift).
+     ====================================================================== */
+  var ROW = 12;
+  function FrameCache(video, onProgress) {
+    var self = this;
+    self.frames = 0; self.w = 0; self.h = 0; self.sheet = null;
+
+    self.decode = function () {
+      return new Promise(function (resolve, reject) {
+        function go() {
+          var dur = video.duration;
+          if (!isFinite(dur) || dur <= 0) return reject(new Error('unreadable duration'));
+          var total = Math.round(dur * FPS);
+          if (total > MAX_BLINK_FRAMES) return reject(new Error('video exceeds the blink cache limit (' + total + 'f > ' + MAX_BLINK_FRAMES + 'f) — use slider or side-by-side'));
+          self.w = video.videoWidth; self.h = video.videoHeight;
+          var rows = Math.max(1, Math.ceil(total / ROW));
+          self.sheet = document.createElement('canvas');
+          self.sheet.width = self.w * ROW;
+          self.sheet.height = self.h * rows;
+          var ctx = self.sheet.getContext('2d');
+          var i = 0, stalled = null;
+          function finish() { self.frames = total; resolve(self); }
+          function onSeek() {
+            video.removeEventListener('seeked', onSeek);
+            clearTimeout(stalled);
+            ctx.drawImage(video, (i % ROW) * self.w, Math.floor(i / ROW) * self.h);
+            i++;
+            if (onProgress) onProgress(i, total);
+            next();
+          }
+          function next() {
+            if (i >= total) return finish();
+            var t = Math.min(i / FPS, Math.max(0, dur - 0.001));
+            stalled = setTimeout(onSeek, 3000); // a seek that never lands skips ahead, never hangs
+            video.addEventListener('seeked', onSeek);
+            try { video.currentTime = t; } catch (e) { onSeek(); }
+          }
+          video.pause();
+          next();
+        }
+        if (video.readyState >= 1) go();
+        else {
+          video.addEventListener('loadedmetadata', go, { once: true });
+          video.addEventListener('error', function () { reject(new Error('video failed to load')); }, { once: true });
+        }
+      });
+    };
+  }
+  FrameCache.prototype.blit = function (ctx, i, dw, dh) {
+    var sx = (i % ROW) * this.w, sy = Math.floor(i / ROW) * this.h;
+    ctx.drawImage(this.sheet, sx, sy, this.w, this.h, 0, 0, dw, dh);
+  };
+
+  /* ============================ pair wiring ============================ */
   var ids = [];
+  var wanted = pairList[0] === 'auto' ? null : pairList;
   for (var n = 1; n <= (wanted ? 99 : 40); n++) {
     var id = 'p' + (n < 10 ? '0' + n : n);
     if (!wanted || wanted.indexOf(id) >= 0) ids.push(id);
   }
   var main = document.getElementById('pairs');
   var tpl = document.getElementById('pair-tpl');
-  var built = 0;
+
+  function fmt(t) { return (Math.round(t * 100) / 100).toFixed(2) + 's'; }
 
   ids.forEach(function (id) {
     var node = tpl.content.firstElementChild.cloneNode(true);
@@ -148,148 +205,196 @@
     var dropped = false;
     function kill() { if (!dropped) { dropped = true; node.remove(); refreshCount(); } }
     base.addEventListener('error', kill); top.addEventListener('error', kill);
-    base.addEventListener('loadedmetadata', function () { if (!dropped) { built++; wire(node, id, base, top); refreshCount(); } });
+    base.addEventListener('loadedmetadata', function () { if (!dropped) { wire(node, id, base, top); refreshCount(); } });
     main.appendChild(node);
   });
 
-  function fmt(t) { return (Math.round(t * 100) / 100).toFixed(2) + 's'; }
-
   function wire(node, id, base, top) {
-    var stage = node.querySelector('.stage');
+    var stage = node.querySelector('.stage'), canvas = node.querySelector('.blink-canvas');
     var divider = node.querySelector('.divider'), tagL = node.querySelector('.tag.l'), tagR = node.querySelector('.tag.r');
-    var tEl = node.querySelector('.t'), rateWrap = node.querySelector('.rate'), rateEl = node.querySelector('input[type=range]');
-    var mode = 'sbs', blinkTimer = null, blinkOn = false;
-    var syncClock = base; // base is the master; top follows
+    var probe = node.querySelector('.probe'), probeMsg = node.querySelector('.probe-msg'), prog = node.querySelector('progress');
+    var tEl = node.querySelector('.t'), hzEl = node.querySelector('.hz');
+    var mode = 'sbs';
+    var FRAME = 1 / FPS;
 
-    // ---- frame-accurate master/slave sync (rVFC where available, rAF fallback)
-    var FRAME = 1 / 24, syncing = false;
-    var driftEl = node.querySelector('.drift');
+    /* ---- native-video path (side-by-side + slider): gated start, rVFC lock ---- */
+    var syncing = false;
     function alignTop() {
       if (syncing) return;
       syncing = true;
       try { top.currentTime = base.currentTime; } catch (e) {}
       var clear = function () { syncing = false; top.removeEventListener('seeked', clear); };
       top.addEventListener('seeked', clear);
-      setTimeout(clear, 120); // safety: don't lock the corrector on a stuck seek
+      setTimeout(clear, 150);
     }
-    function checkSync() {
-      var d = Math.abs(top.currentTime - base.currentTime);
-      driftEl.textContent = 'Δ ' + Math.round(d * 1000) + 'ms';
-      driftEl.classList.toggle('ok', d <= FRAME * 0.6);
-      driftEl.classList.toggle('warn', d > FRAME * 0.6);
-      if (d > FRAME * 0.5 && !syncing) alignTop();
-      tEl.textContent = fmt(base.currentTime);
-    }
-    if (base.requestVideoFrameCallback) {
-      var rvfc;
-      (rvfc = function () { checkSync(); base.requestVideoFrameCallback(rvfc); })();
-    } else {
-      (function raf() { if (document.contains(node)) { checkSync(); requestAnimationFrame(raf); } })();
-    }
-    // synchronized restart: BOTH must land on 0 before either plays again
-    function restartBoth() {
-      pauseBoth();
+    function checkSync() { if (!base.paused && Math.abs(top.currentTime - base.currentTime) > FRAME * 0.5 && !syncing) alignTop(); }
+    if (base.requestVideoFrameCallback) { (function rv() { checkSync(); base.requestVideoFrameCallback(rv); })(); }
+    function restartNative() {
+      base.pause(); top.pause();
       var pending = 2;
-      function go() { if (--pending === 0) playBoth(); }
+      function go() { if (--pending === 0 && mode !== 'blink') { alignTop(); base.play(); top.play(); } }
       [base, top].forEach(function (v) {
         v.addEventListener('seeked', function h() { v.removeEventListener('seeked', h); go(); });
         try { v.currentTime = 0; } catch (e) { go(); }
       });
     }
-    base.addEventListener('ended', restartBoth);
-    function playBoth() { base.play(); top.play(); }
-    function pauseBoth() { base.pause(); top.pause(); }
+    base.addEventListener('ended', restartNative);
+    function playNative() { base.play(); top.play(); }
+    function pauseNative() { base.pause(); top.pause(); }
 
-    // ---- blink: single-canvas compositing at vsync cadence
-    var canvas = node.querySelector('.blink-canvas'), ctx = canvas.getContext('2d');
-    var blinkAcc = 0, blinkLast = 0, blinkHz = 3;
-    function sizeCanvas() {
-      if (base.videoWidth) { canvas.width = base.videoWidth; canvas.height = base.videoHeight; }
-    }
-    base.addEventListener('loadedmetadata', sizeCanvas);
-    function startBlink(hz) {
-      blinkHz = hz; blinkAcc = 0; blinkLast = performance.now();
-      (function loop(now) {
-        if (mode !== 'blink') return;
-        var dt = now - blinkLast; blinkLast = now; blinkAcc += dt;
-        var period = 1000 / (2 * blinkHz);
-        while (blinkAcc >= period) { blinkAcc -= period; blinkOn = !blinkOn; }
-        var src = blinkOn ? top : base;
-        try { if (src.videoWidth) ctx.drawImage(src, 0, 0, canvas.width, canvas.height); } catch (e) {}
-        blinkTimer = requestAnimationFrame(loop);
-      })(performance.now());
+    /* ---- blink engine: a single frame clock driving both caches ---- */
+    var cacheB = null, cacheT = null, blinkReady = false, blinkFailed = false;
+    var clock = { playing: false, frame: 0, acc: 0, blinkAcc: 0, last: 0, speed: 1, hz: 2, phase: false, raf: null };
+    var bctx = canvas.getContext('2d');
+
+    function ensureBlinkCache() {
+      if (blinkReady || blinkFailed) return Promise.resolve(blinkReady);
+      pauseNative();
+      probe.classList.remove('hidden');
+      probeMsg.textContent = 'decoding both videos to frame caches (first blink only — cached after)…';
+      var pb = new FrameCache(base, function (i, n) { prog.value = Math.round(50 * i / n); });
+      var pt = new FrameCache(top, function (i, n) { prog.value = 50 + Math.round(50 * i / n); });
+      return pb.decode().then(function (b) { cacheB = b; return pt.decode(); }).then(function (t) {
+        cacheT = t;
+        canvas.width = cacheB.w; canvas.height = cacheB.h;
+        if (cacheT.w !== cacheB.w || cacheT.h !== cacheB.h) {
+          throw new Error('side resolutions differ (' + cacheB.w + 'x' + cacheB.h + ' vs ' + cacheT.w + 'x' + cacheT.h + ') — blink needs matched geometry');
+        }
+        blinkReady = true;
+        probe.classList.add('hidden');
+        return true;
+      }).catch(function (err) {
+        blinkFailed = true;
+        probe.classList.remove('hidden');
+        probeMsg.textContent = 'blink unavailable for this pair: ' + err.message;
+        prog.value = 0;
+        return false;
+      });
     }
 
-    // ---- modes
+    function maxFrame() { return Math.min(cacheB.frames, cacheT.frames); }
+    function present() {
+      var f = Math.min(clock.frame, maxFrame() - 1);
+      (clock.phase ? cacheT : cacheB).blit(bctx, f, canvas.width, canvas.height);
+      tEl.textContent = fmt(f / FPS) + ' / ' + f + 'f';
+    }
+    function loop(now) {
+      if (mode !== 'blink' || !blinkReady) { clock.raf = null; return; }
+      var dt = Math.min(100, now - clock.last); // clamp background-tab jumps
+      clock.last = now;
+      if (clock.playing) {
+        clock.acc += dt * clock.speed;
+        var fd = 1000 / FPS;
+        while (clock.acc >= fd) { clock.acc -= fd; clock.frame = (clock.frame + 1) % maxFrame(); }
+        var bp = 1000 / (2 * clock.hz);
+        clock.blinkAcc += dt;
+        while (clock.blinkAcc >= bp) { clock.blinkAcc -= bp; clock.phase = !clock.phase; }
+      }
+      present();
+      clock.raf = requestAnimationFrame(loop);
+    }
+    function startLoop() { if (!clock.raf) { clock.last = performance.now(); clock.raf = requestAnimationFrame(loop); } }
+
+    /* ---- modes ---- */
     function setMode(m) {
+      var requested = m;
+      if (m === 'blink' && blinkFailed) m = 'sbs';
       mode = m;
-      node.querySelectorAll('.mode-btns [data-mode]').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-mode') === m); });
+      node.querySelectorAll('.mode-btns [data-mode]').forEach(function (b) {
+        b.classList.toggle('on', b.getAttribute('data-mode') === (requested === 'blink' && blinkFailed ? 'sbs' : m));
+      });
       stage.className = 'stage ' + m;
       divider.classList.toggle('hidden', m !== 'slider');
       tagL.classList.toggle('hidden', m === 'sbs');
       tagR.classList.toggle('hidden', m === 'sbs');
-      rateWrap.classList.toggle('hidden', m !== 'blink');
-      if (blinkTimer) { cancelAnimationFrame(blinkTimer); blinkTimer = null; }
       canvas.classList.toggle('hidden', m !== 'blink');
-      if (m === 'slider') { setSplit(split); }
+      node.querySelectorAll('.blink-only').forEach(function (el) { el.classList.toggle('hidden', m !== 'blink'); });
+      if (m === 'slider') setSplit(split);
       if (m === 'blink') {
-        stage.classList.remove('show-top');
-        startBlink(parseFloat(rateEl.value));
+        ensureBlinkCache().then(function (ok) { if (ok && mode === 'blink') { clock.playing = true; startLoop(); } });
+      } else {
+        clock.playing = false;
+        if (clock.raf) { cancelAnimationFrame(clock.raf); clock.raf = null; }
+        if (base.readyState >= 3 && top.readyState >= 3 && base.paused) { alignTop(); playNative(); }
       }
     }
     node.querySelectorAll('.mode-btns [data-mode]').forEach(function (b) {
       b.addEventListener('click', function () { setMode(b.getAttribute('data-mode')); });
     });
 
-    // ---- slider drag (pointer events; works with touch)
+    /* ---- slider drag ---- */
     var split = 0.5;
-    function setSplit(f) {
-      split = Math.max(0.02, Math.min(0.98, f));
-      stage.style.setProperty('--split', (split * 100) + '%');
-    }
-    function onDrag(ev) {
-      var r = stage.getBoundingClientRect();
-      setSplit((ev.clientX - r.left) / r.width);
-      ev.preventDefault();
-    }
+    function setSplit(f) { split = Math.max(0.02, Math.min(0.98, f)); stage.style.setProperty('--split', (split * 100) + '%'); }
+    function onDrag(ev) { var r = stage.getBoundingClientRect(); setSplit((ev.clientX - r.left) / r.width); ev.preventDefault(); }
     var dragging = false;
     stage.addEventListener('pointerdown', function (ev) {
-      if (mode === 'sbs') return;
+      if (mode === 'blink') { clock.phase = !clock.phase; return; } // tap = manual flip
       if (mode === 'slider') { dragging = true; stage.setPointerCapture(ev.pointerId); onDrag(ev); }
-      if (mode === 'blink') { blinkOn = !blinkOn; } // manual phase flip (canvas redraws next rAF)
     });
     stage.addEventListener('pointermove', function (ev) { if (dragging) onDrag(ev); });
     stage.addEventListener('pointerup', function () { dragging = false; });
     stage.addEventListener('pointercancel', function () { dragging = false; });
 
-    // ---- transport
-    node.querySelector('.play').addEventListener('click', function () { base.paused ? playBoth() : pauseBoth(); });
-    node.querySelector('.restart').addEventListener('click', function () { base.currentTime = 0; top.currentTime = 0; playBoth(); });
-    node.querySelector('.stepf').addEventListener('click', function () { pauseBoth(); step(1 / 24); });
-    node.querySelector('.stepb').addEventListener('click', function () { pauseBoth(); step(-1 / 24); });
-    function step(dt) {
-      var t = Math.max(0, Math.min(base.duration || 1e9, base.currentTime + dt));
-      base.currentTime = t; top.currentTime = t; tEl.textContent = fmt(t);
+    /* ---- transport (mode-aware) ---- */
+    node.querySelector('.play').addEventListener('click', function () {
+      if (mode === 'blink') { if (blinkReady) { clock.playing = !clock.playing; clock.last = performance.now(); } }
+      else { base.paused ? playNative() : pauseNative(); }
+    });
+    node.querySelector('.restart').addEventListener('click', function () {
+      if (mode === 'blink') { clock.frame = 0; clock.acc = 0; clock.playing = true; if (blinkReady) present(); }
+      else { restartNative(); }
+    });
+    function step(frames) {
+      if (mode === 'blink') {
+        if (!blinkReady) return;
+        clock.playing = false;
+        clock.frame = Math.max(0, Math.min(maxFrame() - 1, clock.frame + frames));
+        present();
+      } else {
+        pauseNative();
+        var t = Math.max(0, Math.min(base.duration || 1e9, base.currentTime + frames / FPS));
+        base.currentTime = t; top.currentTime = t;
+        tEl.textContent = fmt(t) + ' / ' + Math.round(t * FPS) + 'f';
+      }
     }
-    rateEl.addEventListener('input', function () {
-      if (mode !== 'blink' || blinkTimer === null) return;
-      cancelAnimationFrame(blinkTimer);
-      startBlink(parseFloat(rateEl.value));
+    node.querySelector('.stepf').addEventListener('click', function () { step(1); });
+    node.querySelector('.stepb').addEventListener('click', function () { step(-1); });
+    hzEl.addEventListener('input', function () { clock.hz = parseFloat(hzEl.value); });
+    node.querySelectorAll('.spd').forEach(function (b) {
+      b.addEventListener('click', function () {
+        node.querySelectorAll('.spd').forEach(function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        clock.speed = parseFloat(b.getAttribute('data-spd'));
+      });
     });
 
-    // ---- fullscreen (stage only)
+    /* ---- fullscreen ---- */
     node.querySelector('.fs').addEventListener('click', function () {
-      stage.classList.add('fullscreen-stage');
-      var done = function () { document.removeEventListener('fullscreenchange', done); stage.classList.remove('fullscreen-stage'); };
-      document.addEventListener('fullscreenchange', done);
       if (document.fullscreenElement) document.exitFullscreen(); else stage.requestFullscreen();
     });
 
-    // ---- keyboard: space/arrow keys operate the LAST-HOVERED pair
+    /* ---- hover keyboard ---- */
     node.addEventListener('mouseenter', function () { window.__activePair = node; });
     node.addEventListener('mouseleave', function () { if (window.__activePair === node) window.__activePair = null; });
 
-    // ---- calls
+    /* ---- metadata bar ---- */
+    var metaShared = node.querySelector('.meta-shared'), metaSides = node.querySelector('.meta-sides');
+    var pm = (window.PAIR_META || {})[id];
+    function renderMeta(reveal) {
+      if (!pm) { metaShared.innerHTML = '<span class="rev-note">no pairs-metadata.js emitted for this set</span>'; return; }
+      var sh = pm.shared || {};
+      metaShared.innerHTML = Object.keys(sh).map(function (k) { return '<span><span class="k">' + k + '</span> ' + sh[k] + '</span>'; }).join('');
+      if (!reveal) { metaSides.classList.add('hidden'); metaSides.innerHTML = '<span class="rev-note">per-side details reveal after your call</span>'; return; }
+      metaSides.classList.remove('hidden');
+      function side(label, d) {
+        if (!d) return '';
+        return '<span class="side"><span class="badge">' + label + '</span>' + Object.keys(d).map(function (k) { return '<span class="k">' + k + '</span> ' + d[k] + '</span>'; }).join(' ') + '</span>';
+      }
+      metaSides.innerHTML = side('L', pm.L) + side('R', pm.R) + (pm.note ? '<span class="rev-note">' + pm.note + '</span>' : '');
+    }
+    renderMeta(false);
+
+    /* ---- calls ---- */
     var savedEl = node.querySelector('.saved');
     function save() {
       responses[id] = responses[id] || {};
@@ -314,51 +419,27 @@
       responses[id].note = this.value;
       save();
     });
-    // ---- metadata bar (PAIR_META from pairs-metadata.js if the generator emitted it)
-    var metaShared = node.querySelector('.meta-shared'), metaSides = node.querySelector('.meta-sides');
-    var pm = (window.PAIR_META || {})[id];
-    function renderMeta(reveal) {
-      if (!pm) { metaShared.innerHTML = '<span class="rev-note">no pairs-metadata.js emitted for this set</span>'; return; }
-      var sh = pm.shared || {};
-      metaShared.innerHTML = Object.keys(sh).map(function (k) { return '<span><span class="k">' + k + '</span> ' + sh[k] + '</span>'; }).join('');
-      if (!reveal) { metaSides.classList.add('hidden'); metaSides.innerHTML = '<span class="rev-note">per-side details (wall clock, arm specifics) reveal after your call</span>'; return; }
-      metaSides.classList.remove('hidden');
-      function side(label, d) {
-        if (!d) return '';
-        return '<span class="side"><span class="badge">' + label + '</span>' + Object.keys(d).map(function (k) { return '<span class="k">' + k + '</span> ' + d[k] + '</span>'; }).join(' ') + '</span>';
-      }
-      metaSides.innerHTML = side('L', pm.L) + side('R', pm.R) + (pm.note ? '<span class="rev-note">' + pm.note + '</span>' : '');
-    }
-    renderMeta(false);
-
-    // restore prior state
     var prior = responses[id];
     if (prior) {
       if (prior.call) { var b = node.querySelector('.calls [data-call="' + prior.call + '"]'); if (b) b.classList.add('sel'); renderMeta(true); }
       if (prior.note) node.querySelector('.note').value = prior.note;
     }
-    // default: videos start ONLY when BOTH are ready (aligned start kills the canplay-race desync)
+
+    /* ---- native start: only when BOTH sides are ready, aligned ---- */
     base.muted = top.muted = true;
     var readyB = false, readyT = false;
-    function tryStart() { if (readyB && readyT && base.paused) { alignTop(); playBoth(); } }
+    function tryStart() { if (readyB && readyT && base.paused && mode !== 'blink') { alignTop(); playNative(); } }
     base.addEventListener('canplay', function () { readyB = true; tryStart(); });
     top.addEventListener('canplay', function () { readyT = true; tryStart(); });
-    setMode('sbs');
   }
 
-  // keyboard (global): space play/pause, arrows step, on hovered pair
+  /* ---- global keyboard on the hovered pair ---- */
   window.addEventListener('keydown', function (ev) {
     var node = window.__activePair;
     if (!node || ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA') return;
-    var base = node.querySelector('.v-base'), top = node.querySelector('.v-top');
-    if (ev.code === 'Space') { ev.preventDefault(); base.paused ? (base.play(), top.play()) : (base.pause(), top.pause()); }
-    if (ev.key === 'ArrowRight' || ev.key === 'ArrowLeft') {
-      ev.preventDefault(); base.pause(); top.pause();
-      var dt = (ev.key === 'ArrowRight' ? 1 : -1) / 24;
-      var t = Math.max(0, Math.min(base.duration || 1e9, base.currentTime + dt));
-      base.currentTime = t; top.currentTime = t;
-      node.querySelector('.t').textContent = fmt(t);
-    }
+    if (ev.code === 'Space') { ev.preventDefault(); node.querySelector('.play').click(); }
+    if (ev.key === 'ArrowRight') { ev.preventDefault(); node.querySelector('.stepf').click(); }
+    if (ev.key === 'ArrowLeft') { ev.preventDefault(); node.querySelector('.stepb').click(); }
   });
 
   function refreshCount() {
