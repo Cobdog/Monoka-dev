@@ -60,6 +60,7 @@ const SUITES = {
   'chip-classes': { build: null, windows: false, python: false, ffmpeg: false },
   'ci-map': { build: null, windows: false, python: false, ffmpeg: false },
   datasets: { build: 'full', windows: false, python: false, ffmpeg: true },
+  'dockOrder': { build: null, windows: false, python: false, ffmpeg: false },
   documents: { build: 'full', windows: false, python: false, ffmpeg: false },
   'engine-process': { build: 'server', windows: true, python: false, ffmpeg: false },
   'engine-contract': { build: null, windows: false, python: false, ffmpeg: false },
@@ -95,7 +96,7 @@ const BOOTING = ['datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'l
 const PORT_USERS = ['datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 
 /** The suites that load client TS through the VM harness (scripts/lib/ts-vm.cjs). */
-const VM_SUITES = ['camera', 'canvas', 'engine-families', 'enginewatch', 'h3img', 'poserig', 'registry', 'resync', 'vdn', 'workflows']
+const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'engine-families', 'enginewatch', 'h3img', 'poserig', 'registry', 'resync', 'vdn', 'workflows']
 
 /** Every vitest suite — the FULL fallback set. */
 const ALL_SUITES = Object.keys(SUITES).sort()
@@ -127,9 +128,9 @@ const RULES = [
   },
   {
     match: ['eslint.config.mjs', 'stylelint.config.mjs', 'src/styles.css', '.gitattributes', '.gitignore'],
-    suites: ['stylelint-guard', 'chip-classes', 'button-classes', 'progressbar-classes', 'notice-classes'],
+    suites: ['stylelint-guard', 'chip-classes', 'button-classes', 'progressbar-classes', 'notice-classes', 'dockOrder'],
     lintAll: true,
-    reason: 'lint/config — the stylelint guard suite owns stylelint.config.mjs and the :root type ramp it parses out of src/styles.css (a ramp change can flip the guard); the chip-classes suite walks the same sheet\'s .chip recipe block (existence, tone-only properties, :root-defined tokens — task 6); the button-classes suite walks the sheet\'s .btn recipe block the same way (task 7); the progressbar-classes suite walks the sheet\'s .progressbar recipe block + the migrated fetch/tile dialect rules in styles.css and canvas.css (task 8); the notice-classes suite walks the sheet\'s .toast-host/.notice-banner recipe blocks + the §8 dead-CSS retirement pins (task 9); the full lint runs on any of these.',
+    reason: 'lint/config — the stylelint guard suite owns stylelint.config.mjs and the :root type ramp it parses out of src/styles.css (a ramp change can flip the guard); the chip-classes suite walks the same sheet\'s .chip recipe block (existence, tone-only properties, :root-defined tokens — task 6); the button-classes suite walks the sheet\'s .btn recipe block the same way (task 7); the progressbar-classes suite walks the sheet\'s .progressbar recipe block + the migrated fetch/tile dialect rules in styles.css and canvas.css (task 8); the notice-classes suite walks the sheet\'s .toast-host/.notice-banner recipe blocks + the §8 dead-CSS retirement pins (task 9); the dockOrder suite pins the §0.1 z-token ladder in the same :root block (--z-dock-base < --z-modal < --z-consent, toasts above modal) plus the toast/consent rule lockstep (task 11); the full lint runs on any of these.',
   },
   {
     match: ['playwright.config.ts', 'e2e/**'],
@@ -359,6 +360,12 @@ const RULES = [
     match: ['src/ui/ToastHost.tsx', 'src/ui/NoticeBanner.tsx', 'src/ui/noticeClasses.ts', 'src/canvas/toastAdapter.tsx', 'src/images/workbench.css', 'src/datasets/datasets.css'],
     suites: ['notice-classes'],
     reason: 'the toast/notice family\'s pure placement/tone/aria class math + the P07 adapter\'s store-wiring pass-through (component vocabulary task 9): the notice-classes suite loads noticeClasses.ts through the VM harness, pins the retained canvas-toast item vocabulary byte-identical to the retired strip expression, walks the .toast-host/.notice-banner recipe blocks in src/styles.css (recipe lockstep both directions, property whitelists per P06, :root-defined tokens), re-runs the C1 net over every NoticeBanner-composed surface class, and pins the §7/§8 migrations (the workbench inline strip, the .iw-notice/.iw-toasts rules, the datasets banner tone rules, the manifest §8 dead-CSS families — workbench.css/datasets.css carry the retained edge rows).',
+  },
+  {
+    match: ['src/ui/dockOrder.ts', 'src/ui/useDockRank.ts', 'src/canvas/SettingsDock.tsx', 'src/canvas/DiagnosticsDock.tsx', 'src/canvas/PoseRigDock.tsx', 'src/canvas/AudioDock.tsx', 'src/canvas/RemediationDock.tsx', 'src/canvas/PropertiesPanel.tsx', 'src/components/LibraryDock.tsx'],
+    suites: ['dockOrder'],
+    forceE2e: true,
+    reason: 'the reactive dock-rank model + the eight dock consumers (component vocabulary task 11, spec §0.1 z-band): the dockOrder suite loads the module through the VM harness and proves the pure band math (consecutive renormalization on every raise, monotone recency, non-top unregister, publish) plus the z-token ladder against the real sheets at run time. HONEST LIMIT: the React binding — useDockRank subscribing every dock, registration riding each dock\'s open effect, the rendered calc(var(--z-dock-base) + rank) z — only executes in a browser, so these diffs force the e2e leg (e2e/canvas.spec.ts drives 50-raise band, modal-over-docks, and consent-over-modal at the real docks).',
   },
   {
     match: ['src/ui/layerRegistry.ts', 'src/ui/StudioDialogLayered.tsx', 'src/components/PromptLibraryBrowser.tsx'],

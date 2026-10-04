@@ -278,11 +278,6 @@ type CanvasState = {
    *  FetchBrowser inside the Library dock — the openFetchBrowser deep-link
    *  machinery, R-15/R-19). */
   libraryFocus: string[] | null
-  /** Dock stacking counter (review M11, 2026-09-19): a dock that opens or is
-   *  grabbed takes the NEXT z — three open docks no longer stack at the same
-   *  z with DOM order deciding the winner. Each dock keeps its own assigned
-   *  value; only this counter is shared. */
-  dockZ: number
   /** Phase 5: the PII-scrubbed diagnostics surface docked (inventory row 10:
    *  "diagnostics ride the radar/engine chip"). */
   diagnosticsDock: boolean
@@ -347,9 +342,6 @@ type CanvasActions = {
   setSettingsDock(open: boolean, section?: string): void
   /** R-15: open the Library / Get-models overlay (optionally focusing catalog entries). */
   setLibraryDock(open: boolean, focusEntryIds?: string[]): void
-  /** Dock stacking (review M11): take the next z for a dock opening or
-   *  being grabbed; returns the value to apply. */
-  raiseDock(): number
   setDiagnosticsDock(open: boolean): void
   setAudioDock(dock: { engine: 'music3'; chainId?: string } | null): void
   /** One audio chain submit (Music 3 as ops): the dock creates the chain
@@ -831,7 +823,6 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     settingsDockSection: null,
     libraryDock: false,
     libraryFocus: null,
-    dockZ: 60,
     diagnosticsDock: false,
     audioDock: null,
     cameraCommands: [],
@@ -1313,11 +1304,6 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     },
     setLibraryDock: (open, focusEntryIds) => {
       set({ libraryDock: open, ...(open && focusEntryIds ? { libraryFocus: focusEntryIds } : {}) })
-    },
-    raiseDock: () => {
-      const next = get().dockZ + 1
-      set({ dockZ: next })
-      return next
     },
     setDiagnosticsDock: (open) => set({ diagnosticsDock: open }),
     setAudioDock: (dock) => set({ audioDock: dock }),

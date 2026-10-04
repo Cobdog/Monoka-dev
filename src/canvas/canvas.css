@@ -256,7 +256,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
  * .toast-host--bottom-left recipe in styles.css; THIS rule is the retained
  * CONTAINER geometry (the grid/gap/max-width dialect) composed alongside,
  * and the .canvas-toast ITEM vocabulary below is retained verbatim. */
-.canvas-toasts { z-index: 60; display: grid; gap: 7px; max-width: 460px; }
+.canvas-toasts { z-index: var(--z-toast); display: grid; gap: 7px; max-width: 460px; }
 .canvas-toast { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); color: var(--color-text-soft); font-size: var(--text-md); box-shadow: 0 12px 30px rgba(0, 0, 0, .35); }
 .canvas-toast.error { border-color: color-mix(in srgb, var(--danger) 48%, transparent); color: var(--danger); }
 .canvas-toast.success { border-color: color-mix(in srgb, var(--accent) 44%, transparent); color: var(--accent); }
@@ -619,8 +619,11 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 /* display needs !important: react-rnd writes `display: inline-block` as an INLINE
    style on the same element, which otherwise beats this rule — the grid rows never
    apply, the body never gets constrained by minmax(0,1fr), and the dock becomes a
-   12k-px unscrollable clip (first-boot lock: no scroll, no Close, no engine pick). */
-.canvas-settings-dock { z-index: 60; display: grid !important; grid-template-rows: auto minmax(0, 1fr); border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); box-shadow: 0 18px 48px rgba(0,0,0,.5); overflow: hidden; }
+   12k-px unscrollable clip (first-boot lock: no scroll, no Close, no engine pick).
+   z-index pin retired at task 11 (k2q0n9s): every dock now carries its reactive
+   rank inline (src/ui/dockOrder.ts — calc(var(--z-dock-base) + rank)), and a
+   class z would reintroduce the at-rest DOM-order tie the ranks killed. */
+.canvas-settings-dock { display: grid !important; grid-template-rows: auto minmax(0, 1fr); border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); box-shadow: 0 18px 48px rgba(0,0,0,.5); overflow: hidden; }
 .canvas-settings-dock .canvas-inspector-header svg { color: var(--accent); flex: none; }
 .canvas-settings-body { min-height: 0; overflow: auto; }
 /* (W4, perfect-state sweep 2026-09-27) The footer is IN FLOW below the

@@ -53,6 +53,8 @@ import {
 import { GAP_KINDS, GAP_LABEL, type PlanGapKind } from './plan'
 import { useCanvasStore } from './store'
 import { documentsApi } from './api'
+import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
+import { useDockRank } from '../ui/useDockRank'
 import type { DocumentChain } from './derive'
 
 /** AR-first resolution picking (ruling 2026-09-26): the ratio drives the
@@ -424,12 +426,13 @@ export function PropertiesPanel() {
   const submitChain = useCanvasStore((state) => state.submitChain)
   const validateChain = useCanvasStore((state) => state.validateChain)
   const cancelChainJob = useCanvasStore((state) => state.cancelChainJob)
-  const raiseDock = useCanvasStore((state) => state.raiseDock)
-  // Dock stacking (review M11): this dock's own z, raised on open and on any
-  // pointer grab — independent of the other docks' z values. The stranded
-  // z-40 CSS pin is retired; the store owns ordering.
-  const [dockZ, setDockZ] = useState(60)
-  useEffect(() => { if (open) setDockZ(raiseDock()) }, [open, raiseDock])
+  // Dock stacking (task 11, spec §0.1): the reactive rank — no local z, no
+  // CSS pin; registration rides the inspector's open lifetime.
+  const dockRank = useDockRank('inspector')
+  useEffect(() => {
+    if (open) raiseDock('inspector')
+    return () => unregisterDock('inspector')
+  }, [open])
 
   const models = useSessionStore((state) => state.models)
   const info = useSessionStore((state) => state.info)
@@ -985,8 +988,8 @@ export function PropertiesPanel() {
     className="canvas-inspector canvas-properties"
     data-canvas-inspector
     data-canvas-properties
-    style={{ zIndex: dockZ }}
-    onPointerDownCapture={() => setDockZ(raiseDock())}
+    style={{ zIndex: dockZCss(dockRank) }}
+    onPointerDownCapture={() => raiseDock('inspector')}
     default={{ x: window.innerWidth - 396, y: 64, width: 356, height: Math.min(760, window.innerHeight - 140) }}
     minWidth={300}
     minHeight={240}

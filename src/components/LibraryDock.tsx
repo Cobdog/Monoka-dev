@@ -22,6 +22,8 @@ import { useSessionStore } from '../state/sessionStore'
 import { CanvasSessionContext } from '../canvas/sessionContext'
 import { dockDefaultGeometry } from '../canvas/dockGeometry'
 import { useCanvasStore } from '../canvas/store'
+import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
+import { useDockRank } from '../ui/useDockRank'
 
 /** The pack-board refresh event (the CHARACTER_LIBRARY_EVENT precedent —
  *  cross-component refresh without store churn): fired after any fetch
@@ -33,12 +35,16 @@ export function LibraryDock() {
   const open = useCanvasStore((state) => state.libraryDock)
   const focus = useCanvasStore((state) => state.libraryFocus)
   const setLibraryDock = useCanvasStore((state) => state.setLibraryDock)
-  const raiseDock = useCanvasStore((state) => state.raiseDock)
   const context = useContext(CanvasSessionContext)
   const settings = useSessionStore((state) => state.settings)
   const setSettings = useSessionStore((state) => state.setSettings)
-  const [dockZ, setDockZ] = useState(60)
-  useEffect(() => { if (open) setDockZ(raiseDock()) }, [open, raiseDock])
+  // Dock stacking (task 11, spec §0.1): the reactive rank — no local z; the
+  // consent the FetchBrowser inside fires rides --z-consent above the band.
+  const dockRank = useDockRank('library')
+  useEffect(() => {
+    if (open) raiseDock('library')
+    return () => unregisterDock('library')
+  }, [open])
   // Consume the focus ids once the browser has acted on them.
   const [heldFocus, setHeldFocus] = useState<string[] | null>(null)
   useEffect(() => {
@@ -54,8 +60,8 @@ export function LibraryDock() {
   return <Rnd
     className="canvas-settings-dock canvas-library-dock"
     data-canvas-library-dock
-    style={{ zIndex: dockZ }}
-    onPointerDownCapture={() => setDockZ(raiseDock())}
+    style={{ zIndex: dockZCss(dockRank) }}
+    onPointerDownCapture={() => raiseDock('library')}
     default={dockDefaultGeometry({ x: 200, y: 120, width: 760, height: Math.min(780, window.innerHeight - 180) })}
     minWidth={460}
     minHeight={300}
