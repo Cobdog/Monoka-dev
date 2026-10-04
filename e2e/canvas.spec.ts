@@ -81,6 +81,15 @@ function dockZ(dock: Locator): Promise<number> {
   return dock.evaluate((element) => Number(getComputedStyle(element).zIndex))
 }
 
+/** A :root stacking token's resolved value — NaN when the token is not
+ *  defined (the red signal for the z-band contract's named tiers). */
+function zToken(page: Page, name: string): Promise<number> {
+  return page.evaluate((tokenName) => {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(tokenName).trim()
+    return raw === '' ? Number.NaN : Number(raw)
+  }, name)
+}
+
 /** A real pointer GRAB on a dock header: mouse down + up with no travel, on
  *  the header's left third (clear of the close button). Fires the dock's
  *  pointer-capture raise without dragging anything or clicking a control. */
@@ -1687,21 +1696,203 @@ test('dock stacking: the pose rig dock raises on open and on grab — newest gra
   // Raise-on-open: the dock tops the inspector the moment it opens.
   await expect.poll(async () => (await dockZ(pose)) - (await dockZ(inspector))).toBeGreaterThan(0)
 
-  // A header grab is a real raise through the store — the z itself moves
-  // (a frozen z-55 never does).
-  const poseZOpen = await dockZ(pose)
-  await grabHeader(page, pose.locator('.canvas-poserig-header'))
-  await expect.poll(() => dockZ(pose)).toBeGreaterThan(poseZOpen)
-
-  // The reverse: a grab on the inspector takes the top back.
+  // A header grab is a real raise through the rank store — the z itself
+  // moves. With the reactive ranks (task 11), grabbing the ALREADY-TOP dock
+  // is idempotent BY DESIGN (renormalization re-tops it to the same rank),
+  // so the z-climb guard runs from the BOTTOM slot: the inspector takes the
+  // top first, then the pose grab must climb the pose z back above it.
   await grabHeader(page, inspector.locator('.canvas-inspector-header'))
   await expect.poll(async () => (await dockZ(inspector)) - (await dockZ(pose))).toBeGreaterThan(0)
-
-  // And the pose rig takes it back — newest interacted wins, both ways.
+  const poseZBottom = await dockZ(pose)
   await grabHeader(page, pose.locator('.canvas-poserig-header'))
+  await expect.poll(() => dockZ(pose)).toBeGreaterThan(poseZBottom)
   await expect.poll(async () => (await dockZ(pose)) - (await dockZ(inspector))).toBeGreaterThan(0)
+
+  // And the inspector takes it back again — newest interacted wins, both ways.
+  await grabHeader(page, inspector.locator('.canvas-inspector-header'))
+  await expect.poll(async () => (await dockZ(inspector)) - (await dockZ(pose))).toBeGreaterThan(0)
   await pose.locator('[data-canvas-poserig-close]').click()
   await expect(pose).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// Component vocabulary task 11 — the reactive dock ranks + the z-band (spec
+// §0.1): raiseDock's retired store counter grew WITHOUT BOUND (it crossed
+// the bench panel's z-70 after ~10 raises and would eventually sit above
+// any modal constant). The replacement is a keyed reactive rank source —
+// useDockRank(id) + raiseDock(id) — where every raise RENORMALIZES the
+// participants to consecutive values inside --z-dock-base's band and
+// PUBLISHES the new ranks to every dock (no local z retention anywhere).
+// These tests pin the three contract clauses: the bounded band with
+// relative order preserved, the modal band above EVERY dock, and consent
+// above modal.
+test('reactive dock ranks: 50 raises stay in the band, relative order preserved (renormalization, not a counter)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=canvas')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('reactive ranks: 50 raises in the band')
+  await page.locator('[data-canvas-submit]').click()
+  const inspector = page.locator('[data-canvas-inspector]')
+  await expect(inspector).toBeVisible({ timeout: 10_000 })
+  await page.locator('[data-canvas-settings-button]').click()
+  const settings = page.locator('[data-canvas-settings-dock]')
+  await expect(settings).toBeVisible()
+  // The audio lane stays flag-paused (nn5ld47) — the probe surface drives
+  // the REAL setter (the same seam task 3 added for its stacking tests).
+  const opened = await page.evaluate(() => (window as unknown as { __canvasScenario(name: string): Promise<{ ok: boolean; reason?: string }> }).__canvasScenario('open-audio-dock'))
+  expect(opened.ok).toBe(true)
+  const audio = page.locator('[data-canvas-audio-dock]')
+  await expect(audio).toBeVisible()
+
+  const docks: Array<{ id: string; loc: Locator; header: Locator }> = [
+    { id: 'inspector', loc: inspector, header: inspector.locator('.canvas-inspector-header') },
+    { id: 'settings', loc: settings, header: settings.locator('.canvas-inspector-header') },
+    { id: 'audio', loc: audio, header: audio.locator('.canvas-inspector-header') },
+  ]
+  const readZ = async () => Promise.all(docks.map(async (dock) => ({ id: dock.id, z: await dockZ(dock.loc) })))
+  const orderBottomToTop = async () => (await readZ()).sort((a, b) => a.z - b.z).map((entry) => entry.id)
+
+  // The band floor is a NAMED TOKEN (spec §0.1) — undefined today, so the
+  // contract reds right here before any implementation detail is touched.
+  const base = await zToken(page, '--z-dock-base')
+  expect(Number.isFinite(base)).toBe(true)
+
+  // Position the audio dock clear of the settings dock's rectangle first:
+  // its default geometry (x:96) sits INSIDE the raised settings dock's
+  // (x:120..840), so a grab there would hit the covering surface. A real
+  // header drag — down, travel, up — to the gap between settings and the
+  // inspector (the drag itself raises it; the recency sequence starts
+  // fresh below).
+  const audioHeaderBox = await audio.locator('.canvas-inspector-header').boundingBox()
+  expect(audioHeaderBox).toBeTruthy()
+  await page.mouse.move(audioHeaderBox!.x + audioHeaderBox!.width * 0.3, audioHeaderBox!.y + audioHeaderBox!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(audioHeaderBox!.x + 900, audioHeaderBox!.y + 120, { steps: 8 })
+  await page.mouse.up()
+
+  // A known starting recency: grab each dock once, inspector first.
+  for (const dock of docks) await grabHeader(page, dock.header)
+  let expected = ['inspector', 'settings', 'audio']
+  await expect.poll(orderBottomToTop).toEqual(expected)
+
+  // 50 raises over a deterministic cycle that hits the top (idempotent
+  // re-top), the bottom (the full re-rank), and the middle. After EVERY
+  // raise: unique z values (no two docks share a slot — the at-rest tie is
+  // dead), all inside the 8-slot band, and the z order EQUALS the recorded
+  // raise order (monotone recency).
+  for (let index = 0; index < 50; index += 1) {
+    const target = docks[(index * 7) % docks.length]
+    expected = expected.filter((id) => id !== target.id).concat(target.id)
+    await grabHeader(page, target.header)
+    await expect.poll(async () => {
+      const entries = await readZ()
+      const unique = new Set(entries.map((entry) => entry.z)).size === entries.length
+      const top = entries.reduce((left, right) => (right.z > left.z ? right : left))
+      return unique && top.id === target.id ? '' : `unique=${unique} top=${top.id} (want ${target.id})`
+    }).toBe('')
+    const entries = await readZ()
+    for (const entry of entries) {
+      expect(entry.z).toBeGreaterThanOrEqual(base)
+      expect(entry.z).toBeLessThan(base + 8)
+    }
+    expect(await orderBottomToTop()).toEqual(expected)
+  }
+
+  // Renormalization PUBLISHES: grabbing the BOTTOM dock re-ranks the former
+  // top DOWN — its z DECREASES. The retired counter only ever grew; a z
+  // that can come back down is the reactive-rank proof.
+  const bottom = docks.find((dock) => dock.id === expected[0])!
+  const topId = expected[expected.length - 1]
+  const topBefore = (await readZ()).find((entry) => entry.id === topId)!.z
+  await grabHeader(page, bottom.header)
+  await expect.poll(async () => (await readZ()).find((entry) => entry.id === topId)!.z).toBeLessThan(topBefore)
+
+  await settings.locator('[data-canvas-settings-close]').click()
+  await audio.locator('[data-canvas-audio-close]').click()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('the modal band sits above every dock after arbitrary raises (§0.1)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('modal band above the docks')
+  await page.locator('[data-canvas-submit]').click()
+  const inspector = page.locator('[data-canvas-inspector]')
+  await expect(inspector).toBeVisible({ timeout: 10_000 })
+  await page.locator('[data-canvas-settings-button]').click()
+  const settings = page.locator('[data-canvas-settings-dock]')
+  await expect(settings).toBeVisible()
+
+  // 12 alternating grabs — the retired counter crossed z-70 (the bench
+  // tier) after ~10 raises; a modal must never lose to a dock again.
+  for (let index = 0; index < 12; index += 1) {
+    await grabHeader(page, (index % 2 === 0 ? settings : inspector).locator('.canvas-inspector-header'))
+  }
+  // The inspector last, so its library button is the exposed trigger.
+  await grabHeader(page, inspector.locator('.canvas-inspector-header'))
+  await page.locator('[data-canvas-prompt-library]').click()
+  const dialog = page.locator('.prompt-library-modal')
+  await expect(dialog).toBeVisible({ timeout: 10_000 })
+
+  // The dialog's backdrop carries the modal band's z; EVERY dock — however
+  // raised — stays under it, and the band clears the whole dock band, not
+  // just today's top.
+  const modalZ = await page.locator('.modal-backdrop').evaluate((element) => Number(getComputedStyle(element).zIndex))
+  expect(modalZ).toBeGreaterThan(await dockZ(inspector))
+  expect(modalZ).toBeGreaterThan(await dockZ(settings))
+  const base = await zToken(page, '--z-dock-base')
+  expect(Number.isFinite(base)).toBe(true)
+  expect(modalZ).toBeGreaterThan(base + 7)
+
+  // Leave the surface clean: the registry routes Escape to the dialog.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('the consent tier sits above the modal band (the fetch consent, §0.1)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-settings-button]').click()
+  const settings = page.locator('[data-canvas-settings-dock]')
+  await expect(settings).toBeVisible()
+  const openLibrary = settings.locator('[data-open-library]')
+  await openLibrary.scrollIntoViewIfNeeded()
+  await openLibrary.click()
+  const library = page.locator('[data-canvas-library-dock]')
+  await expect(library).toBeVisible()
+
+  // The catalog is server-side data (no engine involved): any row's Fetch
+  // opens the license consent — a top-layer interruption fired from INSIDE
+  // a raised dock (the exact surface that shipped behind it once).
+  const firstRow = library.locator('[data-fetch-entry]').first()
+  await expect(firstRow).toBeVisible({ timeout: 10_000 })
+  await firstRow.getByRole('button', { name: /^Fetch/ }).click()
+  const consent = page.locator('.fetch-consent-modal')
+  await expect(consent).toBeVisible()
+
+  // The whole ladder in one place: consent > the modal band > every dock.
+  const consentBackdropZ = await page.locator('.fetch-consent-backdrop').evaluate((element) => Number(getComputedStyle(element).zIndex))
+  const modalBandZ = await zToken(page, '--z-modal')
+  expect(Number.isFinite(modalBandZ)).toBe(true)
+  expect(consentBackdropZ).toBeGreaterThan(modalBandZ)
+  expect(modalBandZ).toBeGreaterThan(await dockZ(library))
+  expect(modalBandZ).toBeGreaterThan(await dockZ(settings))
+  // The topmost tier is a NAMED token and the rendered consent rides it
+  // exactly (--z-consent; the pre-contract workaround borrowed
+  // --z-dialog-top, which said "dialog", not "consent").
+  const consentToken = await zToken(page, '--z-consent')
+  expect(Number.isFinite(consentToken)).toBe(true)
+  expect(consentBackdropZ).toBe(consentToken)
+
+  // Decline: the consent's Cancel owns dismissal — nothing was fetched.
+  await consent.getByRole('button', { name: 'Cancel' }).click()
+  await expect(consent).toHaveCount(0)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
@@ -2819,7 +3010,14 @@ test('toast host: roles, placement prop, × handler, and the store\'s own timeou
     expect(hostComputed.left).toBe('14px')
     expect(hostComputed.bottom).toBe('44px')
     expect(hostComputed.display, 'the retained .canvas-toasts container geometry still wins the cascade').toBe('grid')
-    expect(hostComputed.zIndex).toBe('60')
+    // (task 11) The toast tier rides --z-toast — above the modal band, as it
+    // already was above the old --z-modal:50 — and the resolved z EQUALS the
+    // token (asserted against the sheet, never a magic number).
+    const toastTier = await zToken(page, '--z-toast')
+    const modalTier = await zToken(page, '--z-modal')
+    expect(Number.isFinite(toastTier)).toBe(true)
+    expect(hostComputed.zIndex).toBe(String(toastTier))
+    expect(toastTier).toBeGreaterThan(modalTier)
 
     // Roles: the error toast is an ALERT — assertive (the store's severity
     // contract: a failure the user must act on outlives a success toast).

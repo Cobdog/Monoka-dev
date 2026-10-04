@@ -70,14 +70,27 @@
   --space-8: 32px;
   --space-9: 36px;
   --space-10: 40px;
-  /* Stacking ladder — values unchanged from the literals they replace. */
+  /* Stacking ladder — the §0.1 layering CONTRACT tiers (component
+   * vocabulary task 11, k2q0n9s) plus the reserved slots from the original
+   * literal fold. The contract: docks live in a BOUNDED band at
+   * --z-dock-base + consecutive reactive ranks (0..7 for the 8-Rnd census —
+   * src/ui/dockOrder.ts renormalizes on every raise; the retired store
+   * counter grew unboundedly and crossed fixed chrome after ~10 raises);
+   * modal sits above the ENTIRE band; consent stays topmost; toasts above
+   * modal (the pre-contract order, kept). --z-modal revalued 50 → 70 the
+   * day the contract landed: at 50 every dialog rendered UNDER the docks —
+   * the exact bug the fetch-consent's old --z-dialog-top workaround papered
+   * over. The unused reserved slots (--z-modal-raised, --z-overlay,
+   * --z-overlay-raised, --z-max) keep their historical values. */
   --z-sticky: 10;
   --z-dropdown: 40;
-  --z-modal: 50;
+  --z-dock-base: 60;
+  --z-modal: 70;
   --z-modal-raised: 60;
   --z-overlay: 70;
   --z-toast: 75;
   --z-overlay-raised: 80;
+  --z-consent: 90;
   --z-dialog-top: 90;
   --z-max: 100;
   /* Focus ring — the keyboard-first affordance, composed from the accent. */
@@ -397,7 +410,7 @@ select { text-overflow: ellipsis; }
  * a notice leg). The × button rule is shared (identical in all three
  * retired rules). The class math that emits these lives in
  * src/ui/noticeClasses.ts (node-tested against THIS block). */
-.toast-host { display: flex; flex-direction: column; gap: 8px; z-index: 60; }
+.toast-host { display: flex; flex-direction: column; gap: 8px; z-index: var(--z-toast); }
 .toast-host--bottom-left { position: absolute; left: 14px; bottom: 44px; }
 .toast-host--bottom-right { position: fixed; bottom: 16px; right: 16px; }
 .notice-banner { display: flex; align-items: center; gap: 10px; padding: 6px 14px; font-size: var(--text-md); }
@@ -742,14 +755,13 @@ select { text-overflow: ellipsis; }
    discipline so a future recipe border-color can never be clobbered. */
 .fetch-progress-bar { display: block; height: 5px; border-radius: 999px; background: var(--surface); border-width: 1px; border-style: solid; border-color: var(--line); overflow: hidden; }
 /* Consent stacking (maintainer flag 2026-09-19: "the fetch authorization box
-   appears behind the settings panel"): the standard modal layer (--z-modal:50)
-   sits UNDER the react-rnd docks (z-index:60), so a consent fired from the
-   FetchBrowser inside the docked Settings rendered behind it. The consent is
-   a top-layer interruption — raise both layers to --z-dialog-top (90), the
-   same tier the frame-bookmark dialog uses (the source-media-center
-   precedent for per-variant z overrides). */
-.modal-backdrop.fetch-consent-backdrop { z-index: var(--z-dialog-top); }
-.ui-dialog-center.fetch-consent-center { z-index: var(--z-dialog-top); }
+   appears behind the settings panel"). RESOLVED by the §0.1 layering
+   contract (task 11, k2q0n9s): --z-modal now sits above the entire dock
+   band, and consent is the contract's own TOPMOST tier --z-consent (the
+   2026-09-19 workaround borrowed --z-dialog-top, which said "dialog", not
+   "consent" — the tier is now named for what it is). */
+.modal-backdrop.fetch-consent-backdrop { z-index: var(--z-consent); }
+.ui-dialog-center.fetch-consent-center { z-index: var(--z-consent); }
 .fetch-consent-modal header span { color: var(--accent); font-size: var(--text-xs); font-weight: 700; letter-spacing: .13em; }
 .fetch-consent-body { display: grid; gap: 12px; }
 .fetch-consent-body > p { margin: 0; color: var(--muted); line-height: 1.5; }

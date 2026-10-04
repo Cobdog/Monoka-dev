@@ -19,16 +19,25 @@ import { PREFLIGHT_REFUSAL_EVENT, type MissingNodeClass } from '../lib/preflight
 import { remediationRows, type RemediationRow } from '../lib/preflightRemediation'
 import { dockDefaultGeometry } from './dockGeometry'
 import { useCanvasStore } from './store'
+import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
+import { useDockRank } from '../ui/useDockRank'
 
 export function RemediationDock() {
-  const raiseDock = useCanvasStore((state) => state.raiseDock)
   const setLibraryDock = useCanvasStore((state) => state.setLibraryDock)
   const setSettingsDock = useCanvasStore((state) => state.setSettingsDock)
   const toast = useCanvasStore((state) => state.toast)
   const [rows, setRows] = useState<RemediationRow[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [installed, setInstalled] = useState<Set<string>>(new Set())
-  const [dockZ, setDockZ] = useState(60)
+  // Dock stacking (task 11, spec §0.1): the reactive rank — no local z. The
+  // dock's open lifetime is the rows' presence (the refusal event fills
+  // them; close/unmount empties them), so registration rides exactly that.
+  const open = rows !== null && rows.length > 0
+  const dockRank = useDockRank('remediation')
+  useEffect(() => {
+    if (open) raiseDock('remediation')
+    return () => unregisterDock('remediation')
+  }, [open])
 
   useEffect(() => {
     const onRefusal = (event: Event) => {
@@ -36,11 +45,10 @@ export function RemediationDock() {
       if (!detail || !Array.isArray(detail.missing) || !detail.missing.length) return
       setRows(remediationRows(detail.missing))
       setInstalled(new Set())
-      setDockZ(raiseDock())
     }
     window.addEventListener(PREFLIGHT_REFUSAL_EVENT, onRefusal)
     return () => window.removeEventListener(PREFLIGHT_REFUSAL_EVENT, onRefusal)
-  }, [raiseDock])
+  }, [])
 
   if (!rows || rows.length === 0) return null
 
@@ -63,8 +71,8 @@ export function RemediationDock() {
   return <Rnd
     className="canvas-settings-dock canvas-remediation-dock"
     data-canvas-remediation-dock
-    style={{ zIndex: dockZ }}
-    onPointerDownCapture={() => setDockZ(raiseDock())}
+    style={{ zIndex: dockZCss(dockRank) }}
+    onPointerDownCapture={() => raiseDock('remediation')}
     default={dockDefaultGeometry({ x: 240, y: 150, width: 560, height: Math.min(560, window.innerHeight - 260) })}
     minWidth={420}
     minHeight={240}

@@ -11,9 +11,12 @@
  *
  * Settings UX wave (g5x37k8, 2026-09-19): the default geometry is
  * viewport-clamped (dockDefaultGeometry) and the dock raises to the top of
- * the dock stack on open and on any grab (store.raiseDock) — three open
- * docks no longer stack at near-identical positions with DOM order picking
- * the winner.
+ * the dock stack on open and on any grab — three open docks no longer stack
+ * at near-identical positions with DOM order picking the winner. The raise
+ * mechanism is the reactive rank band (task 11, k2q0n9s: useDockRank +
+ * raiseDock in src/ui/dockOrder.ts — the store-counter stopgap and this
+ * dock's local z state are deleted; this file was the pattern's first
+ * carrier and is now the pattern's grave).
  *
  * Wave 3 (R-15, tg52kaq): the STICKY SAVE footer — the save affordance is
  * pinned to the dock (not the page heading 15k px away, audit M1) and it is
@@ -35,6 +38,8 @@ import { CanvasSessionContext } from './sessionContext'
 import { dockDefaultGeometry } from './dockGeometry'
 import { WIZARD_REOPEN_EVENT } from './FirstRunNotice'
 import { useCanvasStore } from './store'
+import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
+import { useDockRank } from '../ui/useDockRank'
 
 export function SettingsDock() {
   const open = useCanvasStore((state) => state.settingsDock)
@@ -46,13 +51,17 @@ export function SettingsDock() {
   // the hook order is unconditional.
   const infoEpoch = useSessionStore((state) => state.engineWatch.infoEpoch)
   const toast = useCanvasStore((state) => state.toast)
-  const raiseDock = useCanvasStore((state) => state.raiseDock)
   const context = useContext(CanvasSessionContext)
   const [diagnosticRunning, setDiagnosticRunning] = useState(false)
-  // Dock stacking (review M11): this dock's own z, raised on open and on
-  // any pointer grab — independent of the other docks' z values.
-  const [dockZ, setDockZ] = useState(60)
-  useEffect(() => { if (open) setDockZ(raiseDock()) }, [open, raiseDock])
+  // Dock stacking (task 11, spec §0.1): the z is the REACTIVE rank — no
+  // local retention. Registration rides this dock's open lifetime (raise on
+  // open, unregister on close/unmount); every raise renormalizes the band
+  // and publishes, so a grab re-ranks the other docks too.
+  const dockRank = useDockRank('settings')
+  useEffect(() => {
+    if (open) raiseDock('settings')
+    return () => unregisterDock('settings')
+  }, [open])
 
   // The dirty-aware save (R-15/M1): the last PERSISTED snapshot. Adopted on
   // first settings arrival; rewritten after every successful save; the
@@ -107,8 +116,8 @@ export function SettingsDock() {
   return <Rnd
     className="canvas-settings-dock"
     data-canvas-settings-dock
-    style={{ zIndex: dockZ }}
-    onPointerDownCapture={() => setDockZ(raiseDock())}
+    style={{ zIndex: dockZCss(dockRank) }}
+    onPointerDownCapture={() => raiseDock('settings')}
     default={dockDefaultGeometry({ x: 120, y: 96, width: 720, height: Math.min(760, window.innerHeight - 160) })}
     minWidth={420}
     minHeight={280}

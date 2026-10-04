@@ -15,6 +15,8 @@ import { Rnd } from 'react-rnd'
 import { LoaderCircle } from 'lucide-react'
 import { documentsApi } from './api'
 import { useCanvasStore } from './store'
+import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
+import { useDockRank } from '../ui/useDockRank'
 
 // The rig keeps its own lazy chunk (three.js + the pose modules) — the
 // canvas chunk never pays for it until the dock opens.
@@ -28,13 +30,15 @@ export function PoseRigDock() {
   const documents = useCanvasStore((state) => state.documents)
   const activeProjectId = useCanvasStore((state) => state.activeProjectId)
   const tiles = useCanvasStore((state) => state.tiles)
-  const raiseDock = useCanvasStore((state) => state.raiseDock)
   const [exporting, setExporting] = useState(false)
-  // Dock stacking (review M11): this dock's own z, raised on open and on any
-  // pointer grab — independent of the other docks' z values. The stranded
-  // z-55 CSS pin is retired; the store owns ordering.
-  const [dockZ, setDockZ] = useState(60)
-  useEffect(() => { if (panel) setDockZ(raiseDock()) }, [panel, raiseDock])
+  // Dock stacking (task 11, spec §0.1): the reactive rank — no local z, no
+  // CSS pin; registration rides the dock's open lifetime (the panel object's
+  // identity, so a reopen re-raises exactly as before).
+  const dockRank = useDockRank('pose-rig')
+  useEffect(() => {
+    if (panel) raiseDock('pose-rig')
+    return () => unregisterDock('pose-rig')
+  }, [panel])
 
   if (!panel) return null
   const doc = activeProjectId ? documents[activeProjectId] : null
@@ -68,8 +72,8 @@ export function PoseRigDock() {
   return <Rnd
     className="canvas-poserig-dock"
     data-canvas-poserig
-    style={{ zIndex: dockZ }}
-    onPointerDownCapture={() => setDockZ(raiseDock())}
+    style={{ zIndex: dockZCss(dockRank) }}
+    onPointerDownCapture={() => raiseDock('pose-rig')}
     default={{ x: 96, y: 72, width: Math.min(1180, window.innerWidth - 120), height: Math.min(720, window.innerHeight - 160) }}
     minWidth={720}
     minHeight={420}

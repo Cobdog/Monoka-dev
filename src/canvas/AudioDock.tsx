@@ -15,6 +15,8 @@ import { Rnd } from 'react-rnd'
 import { AudioLines, Play, X } from 'lucide-react'
 import { useCanvasStore } from './store'
 import { AUDIO_LANE_PAUSED, AUDIO_LANE_PAUSED_REASON } from './options'
+import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
+import { useDockRank } from '../ui/useDockRank'
 
 export function AudioDock() {
   const dock = useCanvasStore((state) => state.audioDock)
@@ -27,17 +29,18 @@ export function AudioDock() {
   const selection = useCanvasStore((state) => state.selection)
   const documents = useCanvasStore((state) => state.documents)
   const activeProjectId = useCanvasStore((state) => state.activeProjectId)
-  const raiseDock = useCanvasStore((state) => state.raiseDock)
-
   const [caption, setCaption] = useState('')
   const [lyrics, setLyrics] = useState('')
   const [duration, setDuration] = useState(60)
   const [submitting, setSubmitting] = useState(false)
-  // Dock stacking (review M11): this dock's own z, raised on open and on any
-  // pointer grab — independent of the other docks' z values. The stranded
-  // z-55 CSS pin is retired; the store owns ordering.
-  const [dockZ, setDockZ] = useState(60)
-  useEffect(() => { if (dock) setDockZ(raiseDock()) }, [dock, raiseDock])
+  // Dock stacking (task 11, spec §0.1): the reactive rank — no local z, no
+  // CSS pin. ONE id for both branches (paused notice + authoring form are
+  // the same dock); registration rides the dock object's open lifetime.
+  const dockRank = useDockRank('audio')
+  useEffect(() => {
+    if (dock) raiseDock('audio')
+    return () => unregisterDock('audio')
+  }, [dock])
 
   if (!dock) return null
   const engine = dock.engine
@@ -91,8 +94,8 @@ export function AudioDock() {
       data-canvas-audio-dock
       data-canvas-audio-engine={engine}
       data-canvas-audio-paused="true"
-      style={{ zIndex: dockZ }}
-      onPointerDownCapture={() => setDockZ(raiseDock())}
+      style={{ zIndex: dockZCss(dockRank) }}
+      onPointerDownCapture={() => raiseDock('audio')}
       default={{ x: 96, y: 120, width: 400, height: 560 }}
       minWidth={320}
       minHeight={300}
@@ -116,8 +119,8 @@ export function AudioDock() {
     className="canvas-audio-dock"
     data-canvas-audio-dock
     data-canvas-audio-engine={engine}
-    style={{ zIndex: dockZ }}
-    onPointerDownCapture={() => setDockZ(raiseDock())}
+    style={{ zIndex: dockZCss(dockRank) }}
+    onPointerDownCapture={() => raiseDock('audio')}
     default={{ x: 96, y: 120, width: 400, height: 560 }}
     minWidth={320}
     minHeight={300}

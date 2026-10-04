@@ -16,7 +16,8 @@
  *  below every earlier dock's header and above every later dock's top:
  *  all three titles stay visible. A dock opened LATER covers earlier
  *  headers within its rectangle (standard window-manager cascade) —
- *  grabbing any exposed part raises it (store.raiseDock). Pure — called
+ *  grabbing any exposed part raises it (the reactive rank band,
+ *  src/ui/dockOrder.ts — task 11). Pure — called
  *  once per dock mount with that dock's preferred rectangle. */
 export function dockDefaultGeometry(preferred: { x: number; y: number; width: number; height: number }): { x: number; y: number; width: number; height: number } {
   const width = Math.min(preferred.width, Math.max(320, window.innerWidth - 24))

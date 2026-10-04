@@ -7,30 +7,35 @@
  * the shell, and the surface now opens from the titlebar next to Settings.
  * Everything stays on the machine (PII-scrubbed by construction).
  */
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Rnd } from 'react-rnd'
 import { Stethoscope, X } from 'lucide-react'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { DiagnosticsView } from '../views/DiagnosticsView'
 import { dockDefaultGeometry } from './dockGeometry'
 import { useCanvasStore } from './store'
+import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
+import { useDockRank } from '../ui/useDockRank'
 
 export function DiagnosticsDock() {
   const open = useCanvasStore((state) => state.diagnosticsDock)
   const setDiagnosticsDock = useCanvasStore((state) => state.setDiagnosticsDock)
-  const raiseDock = useCanvasStore((state) => state.raiseDock)
-  // Dock stacking (review M11): raised on open + on any grab; the default
-  // position cascades below Settings and Studios so no dock buries a sibling.
-  const [dockZ, setDockZ] = useState(60)
-  useEffect(() => { if (open) setDockZ(raiseDock()) }, [open, raiseDock])
+  // Dock stacking (task 11, spec §0.1): the reactive rank — no local z; the
+  // default position cascades below Settings and Studios so no dock buries a
+  // sibling.
+  const dockRank = useDockRank('diagnostics')
+  useEffect(() => {
+    if (open) raiseDock('diagnostics')
+    return () => unregisterDock('diagnostics')
+  }, [open])
 
   if (!open) return null
 
   return <Rnd
     className="canvas-settings-dock"
     data-canvas-diagnostics-dock
-    style={{ zIndex: dockZ }}
-    onPointerDownCapture={() => setDockZ(raiseDock())}
+    style={{ zIndex: dockZCss(dockRank) }}
+    onPointerDownCapture={() => raiseDock('diagnostics')}
     default={dockDefaultGeometry({ x: 480, y: 192, width: 760, height: Math.min(720, window.innerHeight - 180) })}
     minWidth={460}
     minHeight={300}
