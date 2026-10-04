@@ -19,6 +19,7 @@ import { classifyFailure } from '../lib/failureTaxonomy'
 import { sanitizeErrorMessage } from '../lib/logSanitize'
 import type { DoctorReport } from '../lib/doctor'
 import { formatBytes } from '../lib/format'
+import { doctorCheckVars, healthPillVars } from '../ui/statusToken'
 import { useSessionStore } from '../state/sessionStore'
 import { useJobsStore } from '../state/jobsStore'
 
@@ -230,9 +231,9 @@ export function DiagnosticsView() {
     <section className="settings-section" aria-label="Engine">
       <div className="settings-heading">
         <div><Activity size={19} /><span><strong>Engine connection</strong><small>ComfyUI reachability, version, and graph compatibility.</small></span></div>
-        <span className={`health-pill ${status.connected ? 'online' : ''}`}>{status.connected ? `Connected · ${status.latencyMs} ms` : 'Offline'}</span>
+        <span className="health-pill" data-connection={status.connected ? 'online' : 'offline'} style={healthPillVars(status.connected ? 'online' : 'offline')}>{status.connected ? `Connected · ${status.latencyMs} ms` : 'Offline'}</span>
       </div>
-      <div className={`doctor-check ${drift ? 'warn' : 'ok'}`}>
+      <div className={`doctor-check ${drift ? 'warn' : 'ok'}`} style={doctorCheckVars(drift ? 'warn' : 'ok')}>
         <span>{drift ? <AlertCircle size={14} /> : <Check size={14} />}</span>
         <div>
           <strong>{drift ? 'ComfyUI updated since graph verification' : 'Graphs verified against this engine'}</strong>
@@ -249,7 +250,7 @@ export function DiagnosticsView() {
     {settings.engine.mode === 'managed' && <section className="settings-section managed-engine-section" aria-label="Managed runtime">
       <div className="settings-heading">
         <div><Stethoscope size={19} /><span><strong>Managed runtime</strong><small>The studio-supervised ComfyUI process state and its (sanitized) log tail.</small></span></div>
-        <span className={`health-pill ${engineRuntime?.state === 'running' ? 'online' : ''}`}>{engineRuntime?.state ?? 'unknown'}</span>
+        <span className="health-pill" data-connection={engineRuntime?.state === 'running' ? 'online' : 'offline'} style={healthPillVars(engineRuntime?.state === 'running' ? 'online' : 'offline')}>{engineRuntime?.state ?? 'unknown'}</span>
       </div>
       <p className="settings-note managed-engine-note">
         {engineRuntime
@@ -263,7 +264,7 @@ export function DiagnosticsView() {
     <section className="settings-section" aria-label="Failure history">
       <div className="settings-heading">
         <div><AlertCircle size={19} /><span><strong>Recent job failures</strong><small>Which node and stage failed, the sanitized reason, and the mapped human cause — never prompt content.</small></span></div>
-        <span className="health-pill">{failedJobs.length} failed</span>
+        <span className="health-pill" data-connection="offline" style={healthPillVars('offline')}>{failedJobs.length} failed</span>
       </div>
       {failedJobs.length === 0
         ? <p className="settings-note">No failed jobs recorded on this device.</p>
@@ -272,7 +273,7 @@ export function DiagnosticsView() {
             {recentFailures.map((job) => {
               const bucket = classifyFailure(`${job.error ?? ''} ${nodeFromError(job.error) ?? ''}`)
               const graph = graphFromManifest(job.manifest as Record<string, unknown> | undefined)
-              return <div className={`doctor-check ${bucket.id === 'unknown' ? 'warn' : 'fail'}`} key={job.id}>
+              return <div className={`doctor-check ${bucket.id === 'unknown' ? 'warn' : 'fail'}`} style={doctorCheckVars(bucket.id === 'unknown' ? 'warn' : 'fail')} key={job.id}>
                 <span><AlertCircle size={14} /></span>
                 <div>
                   <strong>{bucket.label}{nodeFromError(job.error) ? ` · node ${nodeFromError(job.error)}` : ''}</strong>
@@ -290,7 +291,7 @@ export function DiagnosticsView() {
     <section className="settings-section" aria-label="Sanitizer self-test">
       <div className="settings-heading">
         <div><ShieldCheck size={19} /><span><strong>Sanitizer self-test</strong><small>Feeds canary prompt-shaped strings through the report's scrubber and proves they cannot survive.</small></span></div>
-        <span className={`health-pill ${selfTest.passed ? 'online' : ''}`}>{selfTest.passed ? 'Pass' : 'Fail'}</span>
+        <span className="health-pill" data-connection={selfTest.passed ? 'online' : 'offline'} style={healthPillVars(selfTest.passed ? 'online' : 'offline')}>{selfTest.passed ? 'Pass' : 'Fail'}</span>
       </div>
       <p className="settings-note">{selfTest.passed
         ? `${selfTest.cases.filter((one) => one.passed).length}/${selfTest.cases.length} canary cases redacted — the report is safe to paste publicly.`
@@ -302,7 +303,7 @@ export function DiagnosticsView() {
         <div><Stethoscope size={19} /><span><strong>Setup doctor</strong><small>Local toolchain checks — FFmpeg, HTTPS tooling, engine device, attention backends.</small></span></div>
         <button className="secondary-button" onClick={() => void runDoctor()} disabled={doctorRunning}>{doctorRunning ? <LoaderCircle size={16} className="spin" /> : <Stethoscope size={16} />}{doctorRunning ? 'Checking…' : 'Run checks'}</button>
       </div>
-      {doctor && <div className="doctor-report">{doctor.checks.map((check) => <div className={`doctor-check ${check.status}`} key={check.id}><span>{check.status === 'ok' ? <Check size={14} /> : <AlertCircle size={14} />}</span><div><strong>{check.label}</strong><small>{check.detail}</small>{check.recommendation && <p>{check.recommendation}</p>}</div></div>)}</div>}
+      {doctor && <div className="doctor-report">{doctor.checks.map((check) => <div className={`doctor-check ${check.status}`} style={doctorCheckVars(check.status)} key={check.id}><span>{check.status === 'ok' ? <Check size={14} /> : <AlertCircle size={14} />}</span><div><strong>{check.label}</strong><small>{check.detail}</small>{check.recommendation && <p>{check.recommendation}</p>}</div></div>)}</div>}
     </section>
 
     <section className="settings-section" aria-label="Diagnostic report">

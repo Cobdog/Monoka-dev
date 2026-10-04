@@ -40,6 +40,7 @@ import { useLlmStream } from '../lib/useLlmStream'
 import type { ModelOverrideSlots } from '../types'
 import { useSessionStore } from '../state/sessionStore'
 import { STATUS_LABEL } from './derive'
+import { tileToneVars } from '../ui/statusToken'
 import { effectiveMode, modeLabelFor, readChainSettings, type CanvasChainSettings } from './generation'
 import { AUDIO_LANE_PAUSED, AUDIO_LANE_PAUSED_REASON } from './options'
 import {
@@ -1555,7 +1556,7 @@ export function PropertiesPanel() {
       }} />}
       <footer className="canvas-properties-submit">
         <div className="canvas-properties-state">
-          <span className="canvas-tile-ring" data-status={tile.status} /> {STATUS_LABEL[tile.status]}
+          <span className="canvas-tile-ring" data-status={tile.status} style={tileToneVars(tile.status)} /> {STATUS_LABEL[tile.status]}
         </div>
         {validation && <p className="canvas-properties-warning" data-canvas-validation role="alert">{validation}</p>}
         {/* (A02) Save state beside the action — a failed save blocks

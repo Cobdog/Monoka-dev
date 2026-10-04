@@ -1947,6 +1947,111 @@ test('a job seeded onto a >100-job home persists across the reload — the windo
   }
 })
 
+// Component vocabulary task 4 (Flux k2q0n9s): statusToken — the tile ring,
+// the live readout, the bar's engine chip, and the timeline dot must paint
+// the TOKENS the map names, with browser-computed values as the final
+// authority (the unit suite proved the map data; this proves the bridge
+// renders). Every expectation is normalized through a throwaway probe
+// element so token strings and computed colors compare as plain strings —
+// no hand-maintained literal rides in the assertion. The stale ring state
+// is the one ladder state not driven here (it needs document-level stale
+// surgery); its token is covered by the map suite and shares the ring's
+// single bridge with the four states below.
+test('statusToken: the ring, live readout, bar engine, and timeline dot paint their mapped tokens', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=canvas')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  // Two seed chains (the scenario seams need unlinked seed tiles): the
+  // first from the launcher's prompt (the empty-canvas surface), the second
+  // from the bar's prompt (the with-objects surface).
+  await page.locator('[data-canvas-prompt]').fill('tone ladder probe a')
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 10_000 })
+  // Deselect: the bar's prompt renders only in the empty-selection context.
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.canvas-tile.selected')).toHaveCount(0)
+  await page.locator('[data-canvas-bar-prompt]').fill('tone ladder probe b')
+  await page.locator('[data-canvas-bar-prompt]').press('Enter')
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 10_000 })
+
+  const probeColor = (cssColor: string) => page.evaluate((formula) => {
+    const probe = document.createElement('span')
+    probe.style.color = formula
+    document.body.appendChild(probe)
+    const computed = getComputedStyle(probe).color
+    probe.remove()
+    return computed
+  }, cssColor)
+  const ringBorder = (chainId: string) => page.evaluate((id) => {
+    const ring = document.querySelector(`[data-canvas-tile="${id}"] .canvas-tile-ring`)
+    return ring ? getComputedStyle(ring).borderColor : 'MISSING-RING'
+  }, chainId)
+  const scenario = async <T extends { ok: boolean; reason?: string; chainId?: string }>(name: string): Promise<T> =>
+    page.evaluate((scenarioName) => (window as unknown as { __canvasScenario(scenarioName: string): T }).__canvasScenario(scenarioName), name)
+
+  // IDLE — a fresh seed tile: the ring's hairline is the map's --text at
+  // the ring's calm 14% recipe.
+  const tiles = page.locator('[data-canvas-tile]')
+  const idleId = await tiles.nth(0).getAttribute('data-canvas-tile')
+  await expect(tiles.nth(0).locator('.canvas-tile-ring')).toHaveAttribute('data-status', 'idle')
+  expect(await ringBorder(idleId!)).toBe(await probeColor('color-mix(in srgb, var(--text) 14%, transparent)'))
+
+  // The bar's engine chip (nothing selected → the bar's empty context):
+  // offline is the calm muted-2 absence on BOTH dot and text.
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.canvas-tile.selected')).toHaveCount(0)
+  const barEngine = page.locator('[data-canvas-bar-engine]')
+  await expect(barEngine).toBeVisible()
+  const barTone = await page.evaluate(() => {
+    const chip = document.querySelector('[data-canvas-bar-engine]')
+    const dot = chip?.querySelector('.status-dot') ?? null
+    return chip && dot ? { text: getComputedStyle(chip).color, dot: getComputedStyle(dot).backgroundColor } : null
+  })
+  expect(barTone).not.toBeNull()
+  expect(barTone!.dot).toBe(await probeColor('var(--muted-2)'))
+  expect(barTone!.text).toBe(await probeColor('var(--muted-2)'))
+
+  // QUEUED-GPU — the mock job parks the pre-GPU wait: muted-2 at 70%.
+  const queued = await scenario('seed-mock')
+  expect(queued.ok, queued.reason ?? 'seed-mock parks a queued job').toBe(true)
+  await expect(page.locator(`[data-canvas-tile="${queued.chainId}"] .canvas-tile-ring`)).toHaveAttribute('data-status', 'queued-gpu')
+  expect(await ringBorder(queued.chainId!)).toBe(await probeColor('color-mix(in srgb, var(--muted-2) 70%, transparent)'))
+
+  // RUNNING — the second seed tile carries the live window: the ring
+  // paints info, and the live READOUT keeps info too (the documented
+  // whole-active-window divergence — queued would read muted-2 on the ring).
+  const running = await scenario('live-progress')
+  expect(running.ok, running.reason ?? 'live-progress parks a running job').toBe(true)
+  await expect(page.locator(`[data-canvas-tile="${running.chainId}"] .canvas-tile-ring`)).toHaveAttribute('data-status', 'running')
+  expect(await ringBorder(running.chainId!)).toBe(await probeColor('var(--color-info)'))
+  const readoutTone = await page.evaluate((id) => {
+    const readout = document.querySelector(`[data-canvas-tile="${id}"] .canvas-tile-live-readout`)
+    return readout ? getComputedStyle(readout).borderColor : 'MISSING-READOUT'
+  }, running.chainId!)
+  expect(readoutTone).toBe(await probeColor('color-mix(in srgb, var(--color-info) 38%, transparent)'))
+
+  // FAILED — the durable failure lands on the first linked chain: danger.
+  const failed = await scenario('fail-worst')
+  expect(failed.ok, failed.reason ?? 'fail-worst flips the first linked job').toBe(true)
+  await expect(page.locator(`[data-canvas-tile="${failed.chainId}"] .canvas-tile-ring`)).toHaveAttribute('data-status', 'failed')
+  expect(await ringBorder(failed.chainId!)).toBe(await probeColor('var(--danger)'))
+
+  // TIMELINE — the strip's own adapter: an unseeded segment paints the
+  // calm muted-2 placeholder (the adapter's extension word).
+  await page.keyboard.press('v')
+  const overlay = page.locator('[data-canvas-timeline]')
+  await expect(overlay).toBeVisible()
+  await overlay.locator('[data-canvas-timeline-new-plan]').click()
+  await overlay.locator('[data-canvas-plan-add-segment]').click()
+  const unseededDot = overlay.locator('[data-canvas-timeline-item-status="unseeded"]')
+  await expect(unseededDot).toHaveCount(1, { timeout: 10_000 })
+  const dotTone = await unseededDot.evaluate((element) => getComputedStyle(element).backgroundColor)
+  expect(dotTone).toBe(await probeColor('var(--muted-2)'))
+
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 test("the 'r' rerunStale gesture clears the stale flags it remediates (M2)", async ({ page }) => {
   const problems = await trackErrors(page)
   await resetSession(page)

@@ -162,6 +162,34 @@ test('node-pack status board — badges, versions, managed notices, refresh, no 
     const radianceRow = page.locator('.node-pack-row').filter({ hasText: 'ComfyUI-MiniMax-H3-Turbo' })
     await expect(radianceRow.locator('[data-node-pack-chip]')).toHaveAttribute('data-node-pack-chip', 'missing', { timeout: 15_000 })
 
+    // ---- task 4 (statusToken): every install tone renders from the map --
+    // This board shows all four install states at once (warn = restart-
+    // needed marker, info = managed by ComfyUI, ok = instance install,
+    // muted = missing); each chip's computed color must equal its status's
+    // token, normalized through a probe element (browser-computed values as
+    // the final authority — the chip classes stay as recipe keys).
+    const chipTones = await page.evaluate(() => {
+      const rootStyle = getComputedStyle(document.documentElement)
+      const normalized = (cssColor: string) => {
+        const probe = document.createElement('span')
+        probe.style.color = cssColor
+        document.body.appendChild(probe)
+        const computed = getComputedStyle(probe).color
+        probe.remove()
+        return computed
+      }
+      const tokenFor: Record<string, string> = { ok: '--accent', warn: '--danger', info: '--warning', muted: '--muted' }
+      return Array.from(document.querySelectorAll('.node-pack-installed')).map((chip) => {
+        const status = Array.from(chip.classList).find((name) => name !== 'node-pack-installed') ?? 'none'
+        return { status, color: getComputedStyle(chip).color, expected: tokenFor[status] ? normalized(rootStyle.getPropertyValue(tokenFor[status]).trim()) : 'NO-TOKEN' }
+      })
+    })
+    expect(chipTones.length).toBeGreaterThanOrEqual(5)
+    expect(new Set(chipTones.map((chip) => chip.status)), 'the board renders all four install states').toEqual(new Set(['ok', 'warn', 'info', 'muted']))
+    for (const chip of chipTones) {
+      expect(chip.color, `the "${chip.status}" chip paints its statusToken tone`).toBe(chip.expected)
+    }
+
     // ---- AC-1: no path prompts anywhere once the target is known ----------
     await expect(page.locator('.node-pack-source')).toHaveCount(0)
     // A missing network pack's install affordance is Fetch… (no Install

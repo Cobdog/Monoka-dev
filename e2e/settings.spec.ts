@@ -228,6 +228,107 @@ test('R-31: the external health card reads latency, version, and queue depth fro
   }
 })
 
+// Component vocabulary task 4 (Flux k2q0n9s): statusToken — the connection
+// domain's health pill and the doctor domain's check rows must paint the
+// tokens the map names, browser-computed values as the final authority.
+// The pill's offline is its documented DIVERGENCE from the engine chip's
+// calm muted-2 (danger — the pill's offline IS the failure it reports);
+// online is the normalized --color-status-ok. Both engine targets are
+// hermetic: a reserved-then-released dead port (offline), then the same
+// read-only fake engine R-31 uses (online).
+test('statusToken: the health pill and doctor rows paint their mapped tokens', async ({ page }) => {
+  const problems = await trackErrors(page)
+  test.setTimeout(120_000)
+  const original = await originalSettings(page)
+
+  const holder = http.createServer(() => undefined)
+  const deadPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as { port: number }).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const engine = http.createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://engine.local')
+    if (url.pathname === '/system_stats') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ system: { comfyui_version: 'v0.3.46-e2e' }, devices: [] }))
+      return
+    }
+    if (url.pathname === '/models' || url.pathname === '/models/diffusion_models') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify(url.pathname === '/models' ? ['diffusion_models'] : ['e2e-tone-diffusion.safetensors']))
+      return
+    }
+    res.writeHead(404)
+    res.end()
+  })
+  const enginePort = await new Promise<number>((resolve) => engine.listen(0, '127.0.0.1', () => resolve((engine.address() as { port: number }).port)))
+
+  const probeColor = (cssColor: string) => page.evaluate((formula) => {
+    const probe = document.createElement('span')
+    probe.style.color = formula
+    document.body.appendChild(probe)
+    const computed = getComputedStyle(probe).color
+    probe.remove()
+    return computed
+  }, cssColor)
+
+  const bootAt = async (comfyUrl: string) => {
+    await page.request.post('/api/lan/settings', { data: { settings: {
+      ...original,
+      comfyUrl,
+      engine: { ...(original.engine as Record<string, unknown>), mode: 'external' },
+    } } })
+    await resetSession(page)
+    await page.goto('/')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await openSettings(page)
+  }
+
+  try {
+    // ---- OFFLINE: the dead port ------------------------------------------
+    await bootAt(`http://127.0.0.1:${deadPort}`)
+    const offlinePill = page.locator('[data-settings-section="engine"] .health-pill')
+    await expect(offlinePill).toHaveAttribute('data-connection', 'offline', { timeout: 15_000 })
+    await expect(offlinePill).toHaveText('Offline')
+    const offlineTone = await offlinePill.evaluate((element) => ({ color: getComputedStyle(element).color, background: getComputedStyle(element).backgroundColor }))
+    expect(offlineTone.color).toBe(await probeColor('var(--danger)'))
+    expect(offlineTone.background).toBe(await probeColor('color-mix(in srgb, var(--danger) 7%, transparent)'))
+
+    // ---- DOCTOR: severity tokens on the check rows ------------------------
+    await page.getByRole('button', { name: /run checks/i }).first().click()
+    const report = page.locator('.doctor-report')
+    await expect(report.locator('.doctor-check').first()).toBeVisible({ timeout: 15_000 })
+    const doctorTone = await page.evaluate(() => {
+      const tokens: Record<string, string> = { ok: '--accent', warn: '--warning', fail: '--danger' }
+      return Array.from(document.querySelectorAll('.doctor-report .doctor-check')).map((row) => {
+        const severity = Object.keys(tokens).find((word) => row.classList.contains(word)) ?? 'none'
+        const span = row.querySelector('span')
+        return { severity, color: span ? getComputedStyle(span).color : 'MISSING' }
+      })
+    })
+    expect(doctorTone.length).toBeGreaterThanOrEqual(3)
+    expect(new Set(doctorTone.map((row) => row.severity))).toContain('ok')
+    expect(new Set(doctorTone.map((row) => row.severity))).toContain('fail')
+    const doctorToken: Record<string, string> = { ok: '--accent', warn: '--warning', fail: '--danger' }
+    for (const row of doctorTone) {
+      const expected = await probeColor(`var(${doctorToken[row.severity] ?? '--muted'})`)
+      expect(row.color, `the "${row.severity}" doctor check paints its mapped token`).toBe(expected)
+    }
+
+    // ---- ONLINE: the fake engine -----------------------------------------
+    await bootAt(`http://127.0.0.1:${enginePort}`)
+    const onlinePill = page.locator('[data-settings-section="engine"] .health-pill')
+    await expect(onlinePill).toHaveAttribute('data-connection', 'online', { timeout: 15_000 })
+    await expect(onlinePill).toContainText('Connected')
+    const onlineTone = await onlinePill.evaluate((element) => ({ color: getComputedStyle(element).color, background: getComputedStyle(element).backgroundColor }))
+    expect(onlineTone.color).toBe(await probeColor('var(--color-status-ok)'))
+    expect(onlineTone.background).toBe(await probeColor('var(--accent-soft)'))
+
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await restoreSettings(page, original).catch(() => undefined)
+    engine.close()
+  }
+})
+
 // M4 — the server computes save-warnings ("…does not exist yet") and the
 // client used to drop them for a flat success toast. The toast must carry
 // them. Persisted settings are restored in finally.

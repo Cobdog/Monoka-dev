@@ -12,6 +12,7 @@
 import { Activity, LayoutList, Library, Settings, Stethoscope } from 'lucide-react'
 import { useJobsStore } from '../state/jobsStore'
 import { SurfaceSwitcher } from '../surfaces/SurfaceSwitcher'
+import { engineToneVars, type ConnectionStatus } from '../ui/statusToken'
 import { attention } from './derive'
 import { useCanvasStore } from './store'
 
@@ -105,6 +106,7 @@ export function Radar() {
       data-engine-ready={engine.modelReady}
       title={engine.connected ? (engine.modelReady ? 'Local engine connected — MiniMax H3 ready' : 'Engine connected but H3 model components are missing — install them and refresh') : 'Engine offline — click to open Settings at the engine section'}
       onClick={() => useCanvasStore.getState().setSettingsDock(true, 'engine')}
+      style={engineToneVars((engine.connected ? (engine.modelReady ? 'online' : 'degraded') : 'offline') as ConnectionStatus)}
     >
       <span className="status-dot" /> {engine.connected ? (engine.modelReady ? 'H3 engine ready' : 'engine on · models missing') : 'engine offline'}
     </button>

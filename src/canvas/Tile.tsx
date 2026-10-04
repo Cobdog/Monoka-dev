@@ -26,6 +26,7 @@ import { documentsApi } from './api'
 import { opPreviewStyle } from './ops'
 import type { ZoomBand } from './camera'
 import { STATUS_LABEL, type Tile } from './derive'
+import { liveReadoutVars, tileToneVars } from '../ui/statusToken'
 import { useCanvasStore } from './store'
 
 /** Canvas bridge, direction 1 (dataset-manager spec §11): send this object's
@@ -128,7 +129,9 @@ function LiveFrame({ promptKey }: { promptKey: string }) {
 function TileLiveProgress({ jobId }: { jobId: string }) {
   const job = useJobsStore((state) => state.jobs.find((item) => item.id === jobId && (item.status === 'running' || item.status === 'queued')) ?? null)
   if (!job) return null
-  return <div className="canvas-tile-live" data-canvas-live={job.status}>
+  // Tone from the live-readout adapter (statusToken task 4): one info tone
+  // for the whole active window — the documented queued-gpu divergence.
+  return <div className="canvas-tile-live" data-canvas-live={job.status} style={liveReadoutVars(job.status === 'running' ? 'running' : 'queued')}>
     {job.promptId ? <LiveFrame promptKey={job.promptId} /> : null}
     <div className="canvas-tile-live-readout" data-canvas-live-readout>
       {job.progress > 0 ? <span className="canvas-tile-live-pct">{Math.round(job.progress)}%</span> : null}
@@ -182,7 +185,7 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
       onClick={(event) => { event.stopPropagation(); onEndpoint(tile.id, 'produce') }}
     />
 
-    <div className="canvas-tile-media">
+    <div className="canvas-tile-media" style={tileToneVars(tile.status)}>
       <TilePreview tile={tile} previewUrl={previewUrl} />
       {/* F6 live progress: percent + label + in-progress sampler frames on
           the generating tile (nothing when the linked job is terminal). */}

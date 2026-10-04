@@ -16,6 +16,7 @@ import { ChevronUp, CircleDot, FileVideo, GitFork, ImagePlus, Layers, Lock, Lock
 import { collectOutputRefs, STATUS_LABEL } from './derive'
 import { modeLabelFor, readChainSettings } from './generation'
 import { opKindsFor } from './ops'
+import { engineToneVars, tileToneVars, type ConnectionStatus } from '../ui/statusToken'
 import { useCanvasStore } from './store'
 
 export function BottomBar() {
@@ -112,6 +113,11 @@ export function BottomBar() {
   // derives for the tile's media kind.
   const offeredOpKinds = primary ? opKindsFor(primary.mediaKind) : []
 
+  // The engine chip's connection status (the statusToken adapter input —
+  // the class conditional below is state derivation, the TONE comes from
+  // the map).
+  const connection: ConnectionStatus = engine.connected ? (engine.modelReady ? 'online' : 'degraded') : 'offline'
+
   return <footer className="canvas-bottombar" data-canvas-bottombar data-canvas-bar-context={context}>
     {context === 'empty' && (
       <>
@@ -136,10 +142,11 @@ export function BottomBar() {
           </>}
         <button
           type="button"
-          className={`canvas-bar-engine ${engine.connected ? (engine.modelReady ? 'online' : 'degraded') : ''}`}
+          className={`canvas-bar-engine ${connection !== 'offline' ? connection : ''}`}
           data-canvas-bar-engine
           title={engine.connected ? (engine.modelReady ? 'Local engine connected — MiniMax H3 ready' : 'Engine connected but H3 model components are missing') : 'Engine offline — click to open Settings at the engine section'}
           onClick={() => useCanvasStore.getState().setSettingsDock(true, 'engine')}
+          style={engineToneVars(connection)}
         >
           <span className="status-dot" /> {engine.connected ? (engine.modelReady ? 'H3 ready' : 'models missing') : 'engine offline'}
         </button>
@@ -150,7 +157,7 @@ export function BottomBar() {
       <>
         <span className="canvas-bar-title" title={primary.prompt}>{primary.title}</span>
         <span className="canvas-bar-mode" data-canvas-bar-mode>{modeLabelFor(readChainSettings(primaryChain?.settings ?? {}))}</span>
-        <span className="canvas-bar-state"><span className="canvas-tile-ring" data-status={primary.status} /> {STATUS_LABEL[primary.status]}</span>
+        <span className="canvas-bar-state"><span className="canvas-tile-ring" data-status={primary.status} style={tileToneVars(primary.status)} /> {STATUS_LABEL[primary.status]}</span>
         <span className="canvas-bar-identity" data-canvas-bar-identity>
           <CircleDot size={11} />
           {primary.identity?.subjectText ? `identity “${primary.identity.subjectText.slice(0, 24)}” · ${primary.identity.strength.toFixed(2)}` : 'no identity payload'}
