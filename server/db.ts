@@ -247,7 +247,10 @@ export function migrateDatabase(db: Database.Database, list: Migration[] = migra
     // migration table — passes only as a structurally valid migration slug
     // so a corrupted home cannot launder prose through the exemption.
     if (expected.name !== applied[index].name) {
-      const appliedName = /^[0-9]{3}-[a-z0-9-]+$/.test(applied[index].name) ? applied[index].name : sanitizeErrorMessage(applied[index].name)
+      // (N02 minor, round 6) The slug is length-bounded: a corrupted home
+      // must not push megabytes through the (deliberately uncapped)
+      // app-authored channel.
+      const appliedName = /^[0-9]{3}-[a-z0-9-]{1,64}$/.test(applied[index].name) ? applied[index].name : sanitizeErrorMessage(applied[index].name)
       throw appAuthoredDiagnostic(`Migration ${expected.id} was amended on this branch: this home applied '${appliedName}' but the code ships '${expected.name}'. Rebuild the scratch home (delete its studio.db / reset MINIMAX_STUDIO_HOME) — an amended migration never re-runs against an applied history.`)
     }
   }

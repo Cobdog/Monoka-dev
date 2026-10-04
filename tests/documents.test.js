@@ -277,6 +277,9 @@ test('(a2) an interim-005 home logs the actionable refusal verbatim — the sani
     assert.ok(refusal.includes('Migration 5 was amended on this branch'), `the refusal names the amended migration verbatim (got: ${refusal})`)
     assert.ok(refusal.includes('005-chain-revision-gates'), 'the shipped migration name survives')
     assert.ok(refusal.includes('Rebuild the scratch home'), 'the rebuild instruction survives')
+    // (N02 minor, round 6) The tail sits past char 200 of the message —
+    // pinning that the app-authored channel is uncapped as designed.
+    assert.ok(refusal.includes('an amended migration never re-runs against an applied history.'), 'the message TAIL (past the 200-char sanitizer cap) survives — the exemption is uncapped')
     assert.ok(!refusal.includes('[redacted]'), 'no redacted soup in the app-authored refusal')
   } finally {
     booted.child.kill()
