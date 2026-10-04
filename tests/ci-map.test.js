@@ -116,7 +116,7 @@ test('(5b) docs-only diffs run nothing', () => {
 test('(5c) build tiers ride the suite catalog (the stale-dist rule)', () => {
   eq(resolve(['tests/launcher.test.js']).buildTier, 'full', 'launcher needs web + server dist (real start.sh boot)')
   eq(resolve(['tests/instance.test.js']).buildTier, 'full', 'instance route sections need the web build')
-  eq(resolve(['tests/storage.test.js']).buildTier, 'server', 'storage boots dist-server')
+  eq(resolve(['tests/storage.test.js']).buildTier, 'full', 'storage boots dist-server/server/index.js, which hard-exits without dist/index.html (the dormant fast-leg flaw, fixed 2026-10-04)')
   eq(resolve(['tests/canvas.test.js']).buildTier, null, 'VM-harness suites need no build')
 })
 
