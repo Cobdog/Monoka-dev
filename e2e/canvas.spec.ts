@@ -4611,4 +4611,42 @@ test('an external settings change is still adopted — the raw comparison did no
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// (I-R5, round 6 2026-10-03 — introduced by the N03 rawSettings fix) The
+// panel's OWN settings commit changes the persisted raw while
+// known.rawSettings still holds the pre-save record, so the post-save
+// reload fires the FULL-ADOPTION branch — which adopted subject/strength
+// UNCONDITIONALLY (no divergence guard, unlike the else-if). A
+// mid-debounce identity edit was visibly rolled back and its eventual
+// commit no-op'd at the acked gate: silently dropped. The branch's identity
+// adoption is now gated on non-divergence, mirroring the else-if.
+test('a settings save landing mid-typing cannot roll back the identity edit (I-R5)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, subject, panel } = await openSparseChainAtSubject(page, { prompt: 'i-r5 seed prompt', mediaType: 'video', seed: 1, audio: { seed: 1 } }, 'i-r5 seeded subject line')
+  // Deterministic interleave: the settings save's fetch is delayed 600 ms,
+  // so it lands ~1.1 s after the prompt edit — squarely inside the slow
+  // subject typing that starts before it.
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await page.waitForTimeout(600)
+    try { await route.continue() } catch { /* a dying page aborts its write */ }
+  })
+  const prompt = panel.locator('[data-canvas-section="prompt"] textarea').first()
+  await prompt.fill('i-r5 edited prompt that saves mid-typing')
+  await subject.click()
+  await subject.press('Control+A')
+  await subject.pressSequentially('i-r5 typed subject line', { delay: 150 }) // ~3.3 s of typing; the save lands mid-way
+  // The typed subject is intact, visible …
+  await expect(subject).toHaveValue('i-r5 typed subject line')
+  // … and persists through its own debounced save.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText
+  }, { timeout: 10_000 }).toBe('i-r5 typed subject line')
+  await page.reload()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainId}"]`).click()
+  await expect(page.locator('[data-canvas-identity-subject]')).toHaveValue('i-r5 typed subject line', { timeout: 10_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 
