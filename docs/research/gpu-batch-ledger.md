@@ -960,3 +960,17 @@ Measured tracked footprint at directive time: setA 152 files/242 MiB · setB 35/
 
 ## AMENDMENT 7 — the review instrument's shared-context obligation (from the maintainer's setD review, 2026-10-04)
 The maintainer's own words: "I had a hard time with this one, since I have no idea what each pass was supposed to represent." Every set's pairs-metadata MUST carry, in the `shared` block ABOVE the calls: (1) the EXPERIMENTAL QUESTION in maintainer terms (not arm codes); (2) WHAT TO JUDGE on this pair (identity vs edit-success vs motion vs stability — one judging criterion, named); (3) whether the pair is side-swapped; (4) for expected-tie/null pairs, the words "identical content expected — flicker or divergence is a TOOLING BUG, report it." A pair whose question cannot be stated plainly is a pair the set generator does not understand well enough to have built. Amendment 4's instrument contract extends; the null-pair gate is unchanged.
+
+## THE PDMD SET (letter P, registered 2026-10-04 on the maintainer's go — "get both going")
+**The question:** does the PDMD 4-NFE distillation (arXiv 2609.35768; the critic-error-projection fix for DMD at low NFE) displace the turbo king on OUR stack — at half the NFE? Registered as P (not E — the ledger's E is X7, which runs immediately after P in the sprint wrap).
+
+**Arms (all on minimax_h3_ref2va_pruned_int8_convrot, text-only conditioning, same graph — only LoRA + steps vary):**
+1. turbo-8 v1.0 (the former king, incumbent) — 8 steps, its pinned recipe (X6's simple/8)
+2. turbo-4 v0.1 (the official 4-step) — matched-NFE control: isolates PDMD-the-method from 4-steps-the-regime
+3. PDMD-4 (v6 LoRA @ strength 1.0 ONLY, 4 steps, shift 12/3, no CFG, `pdmd` trigger prefix per the card — the prefix rides the PDMD arms only; it is part of that arm's operating point)
+
+6 board prompts × 3 arms × 1 seed (Amendment 5) ≈ 18 gens + null + canary. **Off-label caveat recorded:** the student was distilled from full-precision T2VA; the conversion verified keys against the ref2va layout but behavior on the int8 ref2va base is unproven — if arm 3 misbehaves (artifacts/collapse), an optional arm 3b (PDMD on its native-base operating point) isolates base-dependence before any verdict.
+
+**Primary contrast (pre-registered):** PDMD-4 vs turbo-8, the maintainer's blind forced-choice — the eye is the decision layer (Amendment 7 metadata on every pair). **Secondary/exploratory:** PDMD-4 vs turbo-4 (attribution); the six audio metrics at 4 NFE (the paper's strongest H3 claim — audio held at 4 steps; our 39-frame phase-exactness doctrine applies); wall-clock per gen.
+
+**Standing terms:** the 67bb129 instrument verbatim; extraction at assembly; the null pair (PDMD-4 duplicate through a fresh VAE alias) gates the review; the cache ruling (any replicate varies a neutral signature lever); canary-stop insurance; GPU-priority etiquette (the maintainer preempts; teardown on request). **Asset:** minimax_h3_pdmd_4nfe_comfyui_v6.safetensors (1.96 GB, sha-verified at fetch; Apache-2.0; registry row lands with the fetch).
