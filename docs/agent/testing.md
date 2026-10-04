@@ -295,6 +295,19 @@ always draw suite ports through `tests/lib/ports.cjs` (probe-verified,
 per-suite disjoint ranges) and never assume 4178/5173/4199 are free: other
 agents and the maintainer's own studio live on this box.
 
+## Concurrent e2e runs share one outputDir (learned 2026-10-04, two-sided)
+
+The port allocator scopes PORTS, not Playwright's `outputDir`
+(`test-results/pw`, which Playwright wipes at run start — the config
+documents the wipe). Two concurrent `npx playwright` invocations from this
+repo therefore clobber each other's artifacts mid-run: trace ENOENT at
+`browserContext.close`, screenshot/trace attachments failing teardown —
+failures that look like flaky tests but are pure artifact races (both pass
+clean in isolation). Confirmed from BOTH sides in one hour (a controller
+scoped run vs an implementer's full leg). **Operational rule: one Playwright
+run at a time per checkout** — stagger scoped runs while another agent runs
+legs; if you see trace-ENOENT teardown noise, re-run before diagnosing.
+
 ## Windows-leg failure classes (learned 2026-09-16 — read before writing file-generating or file-importing code)
 
 The Windows CI leg catches what a Linux checkout structurally cannot. Two classes so far; both have standing fixes — use them proactively:
