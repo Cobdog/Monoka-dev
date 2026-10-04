@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 import { WebSocketServer } from 'ws'
 import { composeStructuredPrompt, parseStructuredPrompt } from '../src/lib/structuredPrompt'
 import { H3_REGISTRY_LISTINGS, serveModelRegistry, serveObjectInfo, stockObjectInfo } from './fakeEngineInfo'
@@ -71,6 +71,24 @@ async function dropPng(page: Page, name: string) {
     transfer.items.add(new File([bytes], fileName, { type: 'image/png' }))
     document.querySelector('[data-canvas-root]')!.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }))
   }, name)
+}
+
+/** A floating dock's effective z — computed style covers both the inline
+ *  store-raised z (the landed pattern) and the class-pinned z of docks that
+ *  have not joined raiseDock yet. */
+function dockZ(dock: Locator): Promise<number> {
+  return dock.evaluate((element) => Number(getComputedStyle(element).zIndex))
+}
+
+/** A real pointer GRAB on a dock header: mouse down + up with no travel, on
+ *  the header's left third (clear of the close button). Fires the dock's
+ *  pointer-capture raise without dragging anything or clicking a control. */
+async function grabHeader(page: Page, header: Locator) {
+  const box = await header.boundingBox()
+  expect(box).toBeTruthy()
+  await page.mouse.move(box!.x + box!.width * 0.3, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.up()
 }
 
 /** The active project's document, straight from the documents API. */
@@ -1567,6 +1585,122 @@ test('the pose rig docks as a canvas panel and exports a control track (§5.2)',
 
   await dock.locator('[data-canvas-poserig-close]').click()
   await expect(dock).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// Dock stacking, PR-1b (k2q0n9s): the four stranded Rnds join raiseDock —
+// the newest-interacted dock wins, in BOTH directions. The red these tests
+// pin: the inspector is CSS-pinned at z-40 (it can never top a raised dock),
+// and the audio + pose-rig docks are pinned at z-55 (a grab never raises
+// them through the store). Settings already carries the landed pattern
+// (g5x37k8), so it plays the raised opponent.
+test('dock stacking: the inspector and the settings dock — newest grab wins', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  // A seed chain opens the inspector — the stranded z-40 dock under repair.
+  await page.locator('[data-canvas-prompt]').fill('stacking: inspector vs settings')
+  await page.locator('[data-canvas-submit]').click()
+  const inspector = page.locator('[data-canvas-inspector]')
+  await expect(inspector).toBeVisible({ timeout: 10_000 })
+
+  // Settings opens above it (raise-on-open, the landed pattern).
+  await page.locator('[data-canvas-settings-button]').click()
+  const settings = page.locator('[data-canvas-settings-dock]')
+  await expect(settings).toBeVisible()
+  await expect.poll(async () => (await dockZ(settings)) - (await dockZ(inspector))).toBeGreaterThan(0)
+
+  // A grab on the inspector takes the top back — impossible at a pinned 40.
+  await grabHeader(page, inspector.locator('.canvas-inspector-header'))
+  await expect.poll(async () => (await dockZ(inspector)) - (await dockZ(settings))).toBeGreaterThan(0)
+
+  // And settings takes it back again — newest interacted wins, both ways.
+  await grabHeader(page, settings.locator('.canvas-inspector-header'))
+  await expect.poll(async () => (await dockZ(settings)) - (await dockZ(inspector))).toBeGreaterThan(0)
+  await settings.locator('[data-canvas-settings-close]').click()
+  await expect(settings).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('dock stacking: the inspector and the audio dock (paused branch) — newest grab wins', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=canvas')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('stacking: inspector vs audio')
+  await page.locator('[data-canvas-submit]').click()
+  const inspector = page.locator('[data-canvas-inspector]')
+  await expect(inspector).toBeVisible({ timeout: 10_000 })
+
+  // The audio lane is flag-paused (nn5ld47) — every UI entry point is
+  // disabled — so the probe surface drives the REAL setter the rows would
+  // call. The paused-notice branch is the one reachable while authoring
+  // stays paused; the authoring branch carries the same pattern and returns
+  // with the lane when the flag flips.
+  const opened = await page.evaluate(() => (window as unknown as { __canvasScenario(name: string): Promise<{ ok: boolean; reason?: string }> }).__canvasScenario('open-audio-dock'))
+  expect(opened.ok).toBe(true)
+  const audio = page.locator('[data-canvas-audio-dock]')
+  await expect(audio).toBeVisible()
+  await expect(audio).toHaveAttribute('data-canvas-audio-paused', 'true')
+
+  // Open order: the audio dock (opened second) sits above the inspector.
+  await expect.poll(async () => (await dockZ(audio)) - (await dockZ(inspector))).toBeGreaterThan(0)
+
+  // A grab on the inspector takes the top back — impossible at a pinned 40.
+  await grabHeader(page, inspector.locator('.canvas-inspector-header'))
+  await expect.poll(async () => (await dockZ(inspector)) - (await dockZ(audio))).toBeGreaterThan(0)
+
+  // And the audio dock takes it back — a real raise through the store, not
+  // its frozen z-55 (the z itself must move).
+  const audioZBefore = await dockZ(audio)
+  await grabHeader(page, audio.locator('.canvas-inspector-header'))
+  await expect.poll(() => dockZ(audio)).toBeGreaterThan(audioZBefore)
+  await expect.poll(async () => (await dockZ(audio)) - (await dockZ(inspector))).toBeGreaterThan(0)
+  await audio.locator('[data-canvas-audio-close]').click()
+  await expect(audio).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('dock stacking: the pose rig dock raises on open and on grab — newest grab wins', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('stacking: inspector vs pose rig')
+  await page.locator('[data-canvas-submit]').click()
+  const tile = page.locator('[data-canvas-tile]').first()
+  await expect(tile).toBeVisible({ timeout: 10_000 })
+  const inspector = page.locator('[data-canvas-inspector]')
+  await expect(inspector).toBeVisible()
+  await page.waitForTimeout(600)
+
+  // Open through the real entry point: the typed-hole consume menu.
+  await tile.locator('[data-canvas-endpoint="head"]').click()
+  const menu = page.locator('[data-canvas-endpoint-menu="consume"]')
+  await expect(menu).toBeVisible()
+  await menu.locator('[data-canvas-menu-row="consume:pose-rig"]').click()
+  const pose = page.locator('[data-canvas-poserig]')
+  await expect(pose).toBeVisible({ timeout: 15_000 })
+
+  // Raise-on-open: the dock tops the inspector the moment it opens.
+  await expect.poll(async () => (await dockZ(pose)) - (await dockZ(inspector))).toBeGreaterThan(0)
+
+  // A header grab is a real raise through the store — the z itself moves
+  // (a frozen z-55 never does).
+  const poseZOpen = await dockZ(pose)
+  await grabHeader(page, pose.locator('.canvas-poserig-header'))
+  await expect.poll(() => dockZ(pose)).toBeGreaterThan(poseZOpen)
+
+  // The reverse: a grab on the inspector takes the top back.
+  await grabHeader(page, inspector.locator('.canvas-inspector-header'))
+  await expect.poll(async () => (await dockZ(inspector)) - (await dockZ(pose))).toBeGreaterThan(0)
+
+  // And the pose rig takes it back — newest interacted wins, both ways.
+  await grabHeader(page, pose.locator('.canvas-poserig-header'))
+  await expect.poll(async () => (await dockZ(pose)) - (await dockZ(inspector))).toBeGreaterThan(0)
+  await pose.locator('[data-canvas-poserig-close]').click()
+  await expect(pose).toHaveCount(0)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
