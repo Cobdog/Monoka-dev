@@ -34,8 +34,9 @@ three separate places.
 - 24/24 tasks, each with an implementer report and a blind review verdict
   in `.superpowers/sdd/2026-10-03-component-vocabulary/` (progress.md is
   the running ledger; task-N-report.md ×24; review-N.diff packages ×24).
-- Two tasks needed fix rounds (T1 enumeration, T16 unpinned claims +
-  geometry), both re-reviewed to APPROVED; one regression fix (12R) for a
+- Three tasks needed fix rounds (T1 enumeration, T6 the selected-paint
+  regression, T16 unpinned claims + geometry), each re-reviewed to
+  APPROVED — count corrected per Codex C04; one regression fix (12R) for a
   T12-introduced listener bug T13's implementer root-caused.
 
 ## 3. The instruments (read in this order)
