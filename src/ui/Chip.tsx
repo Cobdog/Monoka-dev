@@ -9,12 +9,16 @@
  * EXCLUSIVE groups — roles and aria-checked alone were never the contract:
  *   - `<ChipGroup exclusive aria-label value onChange>` renders
  *     role="radiogroup" with CONTROLLED selection (`value` + `onChange`).
- *   - Roving tabindex: the selected chip (or the first, when nothing is
- *     selected) is the group's single tab stop — Tab/Shift+Tab move past the
- *     whole group as one unit.
- *   - ArrowRight/Down and ArrowLeft/Up move SELECTION AND FOCUS together,
- *     wrapping at the ends (native button activation — Space/Enter — selects
- *     the focused chip through the ordinary click path).
+ *   - Roving tabindex: the selected chip (or the first AVAILABLE one, when
+ *     nothing is selected) is the group's single tab stop — Tab/Shift+Tab
+ *     move past the whole group as one unit.
+ *   - ArrowRight/Down and ArrowLeft/Up move SELECTION AND FOCUS together
+ *     over the AVAILABLE members only, wrapping at the ends (native button
+ *     activation — Space/Enter — selects the focused chip through the
+ *     ordinary click path). Unavailable (disabled) members are excluded
+ *     from traversal AND from the initial tab-stop selection (C03, the
+ *     2026-10-05 Codex audit: arrows used to select a disabled neighbor
+ *     while focus could not move onto it).
  *   - Independent toggles are PRESSED BUTTONS instead: `<Chip
  *     variant="toggle" selected>` renders `aria-pressed` flipped by the
  *     button's own Space/Enter activation — never aria-checked (the r3
@@ -35,6 +39,9 @@ type ChipGroupValue = {
   value: string | null
   /** The ordered group keys (each member Chip's `id`), source order. */
   ids: string[]
+  /** The AVAILABLE members' ids, source order (C03): the roving tab stop
+   *  and the arrow traversal never land on a disabled chip. */
+  availableIds: string[]
   select(next: string): void
 }
 
@@ -77,7 +84,7 @@ export function Chip({ tone, variant = 'action', selected, busy, className, chil
   const keyed = group !== null && id !== undefined && group.ids.indexOf(id) !== -1
   const isSelected = keyed && group.exclusive ? group.value === id : Boolean(selected)
   const tabIndex = keyed && group.exclusive && variant === 'radio'
-    ? isSelected || (group.value === null && group.ids[0] === id) ? 0 : -1
+    ? isSelected || (group.value === null && group.availableIds[0] === id) ? 0 : -1
     : undefined
   if (import.meta.env.DEV && rest['aria-label'] === undefined && !hasTextContent(children)) {
     console.warn('Chip: icon-only chips require an aria-label (the accessible name is the icon otherwise).')
@@ -119,20 +126,26 @@ export function ChipGroup({ exclusive = false, value = null, onChange, className
     console.warn('ChipGroup: exclusive groups are controlled — pass value + onChange (arrow keys and clicks have nowhere to land otherwise).')
   }
   const ids: string[] = []
+  const availableIds: string[] = []
   Children.forEach(children, (child) => {
     if (isValidElement(child)) {
-      const id = (child.props as { id?: unknown }).id
-      if (typeof id === 'string' && ids.indexOf(id) === -1) ids.push(id)
+      const props = child.props as { id?: unknown; disabled?: unknown }
+      if (typeof props.id === 'string' && ids.indexOf(props.id) === -1) {
+        ids.push(props.id)
+        if (props.disabled !== true) availableIds.push(props.id)
+      }
     }
   })
-  const group: ChipGroupValue = { exclusive, value, ids, select: (next: string) => { onChange?.(next) } }
+  const group: ChipGroupValue = { exclusive, value, ids, availableIds, select: (next: string) => { onChange?.(next) } }
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(event)
     if (!exclusive || event.defaultPrevented) return
     const step = ARROW_STEP[event.key]
     if (step === undefined) return
-    const chips = Array.prototype.slice.call(event.currentTarget.querySelectorAll<HTMLElement>('[data-chip-value]')) as HTMLElement[]
+    // C03: traversal runs over the AVAILABLE members only — a disabled chip
+    // can be neither selected nor focused by the arrow walk.
+    const chips = Array.prototype.slice.call(event.currentTarget.querySelectorAll<HTMLElement>('[data-chip-value]')).filter((chip) => !chip.hasAttribute('disabled')) as HTMLElement[]
     if (chips.length < 2) return
     let anchor = -1
     for (let index = 0; index < chips.length; index += 1) {
