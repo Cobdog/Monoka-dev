@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Brush, Eraser, Lock, Plus, Undo2 } from 'lucide-react'
-import { StudioDialog } from '../ui/StudioDialog'
+import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 import { StudioSelect } from '../ui/StudioSelect'
 import { documentsApi } from './api'
 import { moveOpPermutation, opKindsFor, OP_META, opPreviewStyle, opSummary, readOpSettings, type MaskStroke } from './ops'
@@ -221,7 +221,14 @@ export function OpEditor() {
 
   const open = Boolean(opEditor && chain && tile)
 
-  return <StudioDialog
+  return <StudioDialogLayered
+    /* (task 24, k2q0n9s — the §3.1 wrap) The registry join: Escape routes to
+     * the TOPMOST layer (a ⌘K overlay over this dialog takes its own Escape,
+     * the mis-ownership class task 10's interim hazard named). Base UI's own
+     * dismissal still owns outside-press; the ⌘Z per-op undo listener below
+     * is a SHORTCUT, not a dismissal idiom — it stays window-level and
+     * pass-through (the registry routes Escape only). */
+    layerId="canvas-op-editor"
     open={open}
     onClose={() => setOpEditor(null)}
     backdropClassName="canvas-opmodal-backdrop"
@@ -453,5 +460,5 @@ export function OpEditor() {
         </footer>
       </aside>
     </div>
-  </StudioDialog>
+  </StudioDialogLayered>
 }

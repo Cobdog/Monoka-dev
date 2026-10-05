@@ -14,7 +14,7 @@
  */
 import { useMemo, useRef, useState } from 'react'
 import { Camera, Crosshair, Move3d, Trash2 } from 'lucide-react'
-import { StudioDialog } from '../ui/StudioDialog'
+import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 import { StudioSelect } from '../ui/StudioSelect'
 import {
   CAMERA_MOVE_PRESETS, applyCameraBoxText, applyCameraMovePreset, cameraBoxText, compileCameraDoc,
@@ -205,7 +205,10 @@ export function CameraPathEditor(props: {
     onApply({ boxText: applyCameraBoxText(boxText, compile.boxText), doc })
   }
 
-  return <StudioDialog
+  return <StudioDialogLayered
+    /* (task 24, k2q0n9s — the §3.1 wrap) The registry join: Escape routes to
+     * the topmost layer, one dismissal per keystroke. */
+    layerId="camera-path-editor"
     open={open}
     onClose={onClose}
     backdropClassName="canvas-opmodal-backdrop"
@@ -467,5 +470,5 @@ export function CameraPathEditor(props: {
       </div>
     </footer>
     </div>
-  </StudioDialog>
+  </StudioDialogLayered>
 }
