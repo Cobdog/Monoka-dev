@@ -202,7 +202,7 @@ test('(d2) saveRetryLabel names the retry after what it retries', () => {
 
 test('(e) saveStatusWarnFor flags props that cannot render on the given state; honest pairs stay silent', () => {
   eq(saveStatusWarnFor({ state: 'failed', detail: 'x', onRetry: () => {} }), null, 'failed with both props is the full contract')
-  eq(saveStatusWarnFor({ state: 'failed' }), null, 'failed with neither (a save can fail with no reason and no retry path — the session-gone guard)')
+  eq(saveStatusWarnFor({ state: 'failed' }), null, 'failed with neither (a save can fail with no reason; the workbench still wires retry on failed — this is the math-only resting pair)')
   eq(saveStatusWarnFor({ state: 'saving' }), null, 'saving with neither prop is honest')
   eq(saveStatusWarnFor({ state: 'saved', detail: undefined, onRetry: undefined }), null, 'explicit undefineds are absent')
   ok(String(saveStatusWarnFor({ state: 'saved', onRetry: () => {} })).includes('onRetry'), 'onRetry on saved warns — the affordance renders only on failed')
