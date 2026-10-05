@@ -67,7 +67,7 @@ export function SaveStatus({ state, detail, onRetry, label, size = 12, className
   const text = saveStatusText({ state, label, detail })
   if (!aria || text === null) return null
   return (
-    <p className={saveStatusClasses({ state, className })} data-save-state={state} {...aria}>
+    <p key={state} className={saveStatusClasses({ state, className })} data-save-state={state} {...aria}>
       {state === 'saving' ? <LoaderCircle size={size} className="spin" /> : null}
       {text}
       {state === 'failed' && onRetry ? (

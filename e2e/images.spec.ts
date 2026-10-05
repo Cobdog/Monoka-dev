@@ -1009,6 +1009,27 @@ test('session writes surface save state; a failed write retries through the same
     const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
     return chain?.settings?.keepDial ?? null
   }, { timeout: 15_000 }).toBe(0.81)
+
+  // The front-merge property's UNRELATED-flush half (the review's I1): a
+  // FAILED op (keepDial 0.87) is retained; a LATER edit to the SAME key
+  // (0.94) flushes on a healed route with NO retry click — both compose
+  // into one flush ([...retained, ...pending]) and the NEWER edit wins
+  // the key collision. The API is the truth: 0.94, never 0.87.
+  await page.unroute('**/api/lan/documents/chains/update')
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'T20 front-merge down' }) })
+  })
+  await page.locator('[data-iw-keep-dial]').fill('0.87')
+  await expect(root.locator('[data-save-state="failed"]')).toBeVisible({ timeout: 10_000 })
+  await page.unroute('**/api/lan/documents/chains/update')
+  await page.route('**/api/lan/documents/chains/update', async (route) => { await route.continue() })
+  await page.locator('[data-iw-keep-dial]').fill('0.94')
+  await expect(root.locator('[data-save-state="saved"]')).toBeVisible({ timeout: 10_000 })
+  await expect.poll(async () => {
+    const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+    const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+    return chain?.settings?.keepDial ?? null
+  }, { timeout: 15_000 }).toBe(0.94)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
