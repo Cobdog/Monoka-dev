@@ -12,6 +12,7 @@ import { ProgressBar } from '../ui/ProgressBar'
 import type { AppSettings, FetchEntryStatus, FetchProgress } from '../types'
 import { formatBytes } from '../lib/format'
 import { StudioDialogLayered } from '../ui/StudioDialogLayered'
+import { Field } from '../ui/Field'
 import { subscribe } from '../lib/useRealtime'
 
 const GROUPS: Array<{ id: FetchEntryStatus['group']; label: string; note: string }> = [
@@ -240,10 +241,9 @@ export function FetchBrowser({ settings, setSettings, onAfterFetch, onAdoptCheck
           {consentFor.destination.kind === 'model-root' && (settings.engine.mode === 'managed'
             ? <div className="llm-test-result ok" role="status" data-fetch-visibility="managed"><Check size={14} /><span>Instance visibility: the managed engine mirrors this folder (extra_model_paths.yaml) — the engine serves these files from its next start.</span></div>
             : <div className="llm-test-result fail" role="status" data-fetch-visibility="external"><AlertCircle size={14} /><span>Instance visibility: the connected external engine cannot see this folder by itself. The fetch lands on disk, but the engine will not serve it until you link or move the files where it reads (its own models tree, or extra_model_paths.yaml) and refresh — the studio's model list comes from the engine's registry alone.</span></div>)}
-          {consentFor.destination.kind === 'engine-checkout' && <div className="field-group grow">
-            <label htmlFor="fetch-engine-destination">Checkout directory (optional)</label>
+          {consentFor.destination.kind === 'engine-checkout' && <Field className="grow" label="Checkout directory (optional)" htmlFor="fetch-engine-destination">
             <input id="fetch-engine-destination" value={destinationDir} placeholder="empty = studio-managed location" onChange={(event) => setDestinationDir(event.target.value)} />
-          </div>}
+          </Field>}
           <label className="settings-check fetch-consent-check">
             <input ref={checkboxRef} type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} />
             <span><strong>I understand the license terms and want this downloaded now</strong><small>This is the only consent the studio needs or accepts: the download starts on your explicit request, the license above is recorded with it, and nothing else touches the network.</small></span>
