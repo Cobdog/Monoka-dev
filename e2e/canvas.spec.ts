@@ -3886,6 +3886,108 @@ test('effective-setting row: chain reset reveals global without deleting it; ref
   }
 })
 
+// (task 24, k2q0n9s — the T19 handoff) The Generate PRE-GATE: the submit
+// ladder has refused wrong-kind override picks since euxwdva, but only AFTER
+// the click (h3Submit's rung surfaces as the validation paragraph). The T21
+// doctrine — a gate's refusal is stated AT the gate, visible and announced,
+// never a hover tooltip or a post-click surprise — now applies to the panel's
+// own override refusals: the FIRST refusal (the submit rung's precedence,
+// refusals[0]) renders the shared Refusal tier beside Generate, derived at
+// render through the same seam the submission resolves with. The satisfy
+// hatch follows the T19 OWNERSHIP discipline: a chain-layer pick clears from
+// this panel (the row's own reset seam), a global pick opens Settings — the
+// panel never writes the global layer.
+test('generate pre-gate: the override refusal states itself at Generate before any click (T19 handoff, k2q0n9s)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const http = await import('node:http')
+
+  const engine = http.createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://engine.local')
+    if (url.pathname === '/system_stats') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ system: {}, devices: [] }))
+      return
+    }
+    if (serveObjectInfo(url, stockObjectInfo(), res)) return
+    if (serveModelRegistry(url, H3_REGISTRY_LISTINGS, res)) return
+    res.writeHead(404)
+    res.end()
+  })
+  const enginePort = await new Promise<number>((resolve) => engine.listen(0, '127.0.0.1', () => resolve((engine.address() as { port: number }).port)))
+
+  const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${enginePort}`,
+    } } })
+    await resetSession(page)
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await page.locator('[data-canvas-prompt]').fill('generate pre-gate — the refusal rides the gate')
+    await page.locator('[data-canvas-submit]').click()
+    await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 10_000 })
+    const panel = page.locator('[data-canvas-properties]')
+    await expect(panel).toBeVisible()
+    const refusal = panel.locator('.canvas-properties-submit [data-refusal]')
+
+    // ---- Arm 1: the GLOBAL refusal at the gate --------------------------------
+    // The refused pick is set through the app's own Settings UI (the T19
+    // arm-3 precedent): the settings-LOAD seam heals stored cross-class
+    // wedges on boot (normalizeStoredOverrideSlots), so a boot-time POST
+    // would never reach the panel as a refusal — the LIVE store is the honest
+    // path, and it flips the panel reactively with no remount.
+    await expect(refusal).toHaveCount(0)
+    await page.locator('[data-canvas-settings-button]').click()
+    const dock = page.locator('[data-canvas-settings-dock]')
+    await expect(dock).toBeVisible()
+    await dock.locator('[data-model-override-family="minimax"] [data-model-override-slot="videoVae"] select').selectOption('minimax_h3_audio_vae_fp32.safetensors')
+    await dock.locator('button.primary-button', { hasText: 'Save settings' }).click()
+    await page.locator('[data-canvas-settings-close]').click()
+    // The Refusal tier renders in the submit footer (beside Generate), not
+    // only in the models section's per-row paragraphs: the alert pair, the
+    // submit rung's own precedence (the FIRST refusal), and the layer named.
+    await expect(refusal).toBeVisible()
+    await expect(refusal).toHaveAttribute('role', 'alert')
+    await expect(refusal.locator('[data-refusal-title]')).toContainText('Model override refused')
+    await expect(refusal.locator('[data-refusal-title]')).toContainText('Video VAE')
+    await expect(refusal.locator('[data-refusal-reason]')).toContainText('audio-class VAE')
+    await expect(refusal.locator('[data-refusal-reason]')).toContainText('global Settings pick')
+    // The global layer's satisfy OPENS SETTINGS (R-19 never-a-dead-end; this
+    // panel owns the chain layer only — T19's ownership discipline).
+    await expect(refusal.locator('[data-refusal-satisfy]')).toHaveText('Open Settings → Model overrides')
+    await refusal.locator('[data-refusal-satisfy]').click()
+    await expect(page.locator('[data-canvas-settings-dock]')).toBeVisible()
+    await page.locator('[data-canvas-settings-close]').click()
+
+    // ---- Arm 2: the CHAIN refusal, set through the panel's own select --------
+    const modelsSection = panel.locator('details[data-canvas-section="models"]')
+    await modelsSection.locator('summary').click()
+    await expect(modelsSection).toHaveAttribute('open', '')
+    await modelsSection.locator('[data-canvas-model-override-select="videoVae"]').selectOption('minimax_h3_audio_vae_fp32.safetensors')
+    // The chain pick supersedes the global one: the refusal's layer flips to
+    // chain and the satisfy becomes THIS panel's own clear action.
+    await expect(refusal.locator('[data-refusal-reason]')).toContainText("this chain's pick")
+    await expect(refusal.locator('[data-refusal-satisfy]')).toHaveText("Clear this chain's pick (auto)")
+    // Satisfying clears the chain pick: the refusal stands down (the global
+    // pick surfaces again — arm 1's state returns), nothing upstream touched.
+    await refusal.locator('[data-refusal-satisfy]').click()
+    await expect(refusal.locator('[data-refusal-reason]')).toContainText('global Settings pick')
+    await expect(modelsSection.locator('[data-canvas-model-override-select="videoVae"]')).toHaveValue('')
+    // No chain-layer pick was committed (the debounced draft commit lands).
+    await expect.poll(async () => {
+      const document = await activeDocument(page)
+      const chain = document.chains.find((entry) => entry.kind === 'generation')
+      return ((chain?.settings as Record<string, unknown>)?.modelOverrides as Record<string, string> | undefined)?.videoVae ?? null
+    }, { timeout: 15_000 }).toBe(null)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    await resetSession(page).catch(() => undefined)
+    await new Promise<void>((resolve) => engine.close(() => resolve()))
+  }
+})
+
 // (rq0lsax → Wave 2 R-12) The maintainer's H3/ssd case as an e2e, now the
 // registry-only NORM: an engine-relative checkpoint name listed ONLY by the
 // connected instance applies as an override — no form vocabulary exists (the

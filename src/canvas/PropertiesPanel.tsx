@@ -27,6 +27,7 @@ import { StudioDock } from '../ui/StudioDock'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { EffectiveSettingRow } from '../ui/EffectiveSettingRow'
 import { SaveStatus, type SaveState } from '../ui/SaveStatus'
+import { Refusal } from '../ui/Refusal'
 import { SmartPromptEditor, type SmartPromptEditorHandle } from '../components/SmartPromptEditor'
 import { StructuredPromptEditor } from '../components/StructuredPromptEditor'
 import { PromptLibraryBrowser } from '../components/PromptLibraryBrowser'
@@ -35,7 +36,7 @@ import { detectOptimizations, engineFamilyForChain, vdnAvailability } from '../l
 // graph/index.ts wedges index↔turbo into mutual chunk dependencies (the
 // Rollup circular-chunk warning's own suggested fix).
 import { turboFetchPlan } from '../lib/graph/turbo'
-import { effectiveSlotSetting, inferredOverrideSlotFile, migrateLegacyModelOverrideSlots, modelClassHint, modelFamilyInfo, overrideLayerCounts, overrideLayerSummary, SLOT_LABELS, type ModelFamilyId, type ModelOverrideSlotName } from '../lib/modelOverrides'
+import { effectiveSlotSetting, inferredOverrideSlotFile, mergeModelOverrides, migrateLegacyModelOverrideSlots, modelClassHint, modelFamilyInfo, overrideLayerCounts, overrideLayerSummary, resolveModelOverrides, SLOT_LABELS, type ModelFamilyId, type ModelOverrideSlotName } from '../lib/modelOverrides'
 import { guideFrameWarning } from '../lib/workflow'
 import { ASPECT_RATIOS, optimalResolutionFor, parseResolution, ratioKeyOf, resolutionsForRatio, snapResolutionDim, tieredResolutionGroups } from '../lib/aspectResolutions'
 import type { ImageMachinery } from '../lib/aspectResolutions'
@@ -851,6 +852,21 @@ export function PropertiesPanel() {
     else delete next[slot]
     patch({ modelOverrides: next })
   }
+  // (task 24, k2q0n9s — the T19 handoff) The Generate PRE-GATE: the submit
+  // ladder has refused wrong-kind override picks since euxwdva, but only
+  // AFTER the click (h3Submit's rung → the validation paragraph). The same
+  // resolution the submission runs, derived at render through modelOverrides'
+  // ONE seam, states the FIRST refusal (the rung's own precedence) at the
+  // gate via the shared Refusal tier — visible and announced before any
+  // click, the T21 doctrine. The satisfy hatch respects T19's ownership
+  // discipline: a chain pick clears HERE (the row's own seam), a global pick
+  // opens Settings — this panel never writes the global layer.
+  const overrideRefusal = resolveModelOverrides(
+    modelFamilyId,
+    models,
+    mergeModelOverrides(chainSlots, globalSlots),
+    { chain: chainSlots, global: globalSlots },
+  ).refusals[0] ?? null
   const referenceSlots = bindings.length
   const guideWarnings = draft.timelineGuides.map((guide) => guideFrameWarning(guide.seconds, draft.duration)).filter(Boolean) as string[]
 
@@ -1578,6 +1594,20 @@ export function PropertiesPanel() {
           <span className="canvas-tile-ring" data-status={tile.status} style={tileToneVars(tile.status)} /> {STATUS_LABEL[tile.status]}
         </div>
         {validation && <p className="canvas-properties-warning" data-canvas-validation role="alert">{validation}</p>}
+        {/* (task 24, k2q0n9s) The override-refusal PRE-GATE (the T19
+            handoff): the shared Refusal tier states the first blocking
+            override pick at the gate — the submit-time rung stays the
+            click-time authority (every rung in order), this is the honest
+            pre-condition display the T21 doctrine asks for at gates. */}
+        {overrideRefusal && (
+          <Refusal
+            title={`Model override refused — ${SLOT_LABELS[overrideRefusal.slot]}`}
+            reason={`${overrideRefusal.reason} — ${overrideRefusal.layer === 'chain' ? "this chain's pick" : 'the global Settings pick'}.`}
+            satisfy={overrideRefusal.layer === 'chain'
+              ? { label: "Clear this chain's pick (auto)", action: () => setChainModelOverride(overrideRefusal.slot, '') }
+              : { label: 'Open Settings → Model overrides', action: () => useCanvasStore.getState().setSettingsDock(true) }}
+          />
+        )}
         {/* (A02; task 20, k2q0n9s) Save state beside the action — a failed
             save blocks submission (Generate re-attempts the write first,
             A02), so it must be readable here, not only in a vanishing toast.
