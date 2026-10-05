@@ -1211,6 +1211,64 @@ test('session writes surface save state; a failed write retries through the same
 })
 
 // ---------------------------------------------------------------------------
+// (C01, Codex code audit 2026-10-05 — the sixth silent-loss) A successful
+// PUT followed by a FAILED reload left the cached document stale, and the
+// NEXT flush composed its full settings object from that stale cache — the
+// server REPLACES the settings, so the acknowledged edit reverted despite
+// both writes succeeding. The flush now keeps the ACKNOWLEDGED settings
+// (the composed object the PUT landed) as the composition base until a
+// reload SUCCEEDS; the write/refresh distinction is preserved — the landed
+// write is never retained for a blind retry (the tier reads saved, no
+// retry affordance), and the second flush never re-runs the first edit.
+test('a failed reload after a successful write never reverts the acknowledged edit (C01)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const seeded = await seedSession(request)
+  await page.goto('/?images=1')
+  await expect(page.locator('[data-iw-intent]')).toBeVisible({ timeout: 15_000 })
+  // Fault injection: after the FIRST settings write is seen on the wire,
+  // fail exactly ONE document reload GET (the C1/§0.6 held-route pattern);
+  // every later GET heals.
+  let updateSeen = false
+  let reloadFailureConsumed = false
+  const puts: string[] = []
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    updateSeen = true
+    puts.push(route.request().postData() ?? '')
+    await route.continue()
+  })
+  await page.route('**/api/lan/documents/project?*', async (route) => {
+    if (updateSeen && !reloadFailureConsumed) {
+      reloadFailureConsumed = true
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'C01 reload down' }) })
+      return
+    }
+    await route.continue()
+  })
+  // Edit 1 (keepDial): its PUT succeeds, its reload GET fails.
+  await page.locator('[data-iw-keep-dial]').fill('0.42')
+  await expect(page.locator('[data-save-state="saved"]')).toBeVisible({ timeout: 10_000 })
+  // The WRITE is the fate the tier reports: saved, never failed, and NO
+  // retry affordance — a landed mutation is never blindly re-run.
+  await expect(page.locator('[data-save-state="failed"]')).toHaveCount(0)
+  await expect(page.locator('[data-save-retry]')).toHaveCount(0)
+  // Edit 2 (an UNRELATED key): its flush must compose from the acknowledged
+  // base, never the stale GET cache.
+  await page.locator('[data-iw-intent]').fill('C01 SECOND EDIT MUST LAND')
+  // The API is the truth: BOTH edits durable after the route healed.
+  await expect.poll(async () => {
+    const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+    const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+    return { keepDial: chain?.settings?.keepDial ?? null, intent: chain?.settings?.intent ?? null }
+  }, { timeout: 15_000 }).toEqual({ keepDial: 0.42, intent: 'C01 SECOND EDIT MUST LAND' })
+  // Exactly the two writes ran (no blind re-PUT of the landed edit), and the
+  // second carried the acknowledged keepDial forward instead of the stale
+  // cache's 0.55.
+  expect(puts.length, 'two edits, two flushes — the landed write was never re-run').toBe(2)
+  expect(puts[1]).toContain('"keepDial":0.42')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
 // (Audit A11, task 3tu6ei6) The poserig handoff was consumed BEFORE the
 // workbench session existed: on a cold navigation the inbox key was removed
 // on the first effect pass, patchSettings early-returned on !sessionChain,

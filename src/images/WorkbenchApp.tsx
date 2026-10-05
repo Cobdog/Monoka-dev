@@ -308,6 +308,16 @@ function WorkbenchSurface() {
   // second array was built before the first write's reload landed.
   const pendingPatchesRef = useRef<SessionSettingsPatch[]>([])
   const writeQueueRef = useRef<Promise<boolean>>(Promise.resolve(true))
+  // (C01, Codex audit 2026-10-05 — the sixth silent-loss) The ACKNOWLEDGED
+  // settings base: the composed object a successful PUT landed. A failed
+  // reload after that PUT leaves the store's document cache stale, and the
+  // next flush must never compose from that cache — the server REPLACES the
+  // whole settings object, so a stale base silently reverts the
+  // acknowledged edit. The base stands until a reload SUCCEEDS (then the
+  // store is fresher than the snapshot); a failed reload never re-queues
+  // the landed ops — write ≠ refresh, and a landed mutation is never
+  // blindly retried.
+  const acknowledgedSettingsRef = useRef<{ chainId: string; settings: WorkbenchSessionSettings } | null>(null)
   // (Task 20, k2q0n9s) The session writes' save fate, beside Generate — the
   // shared SaveStatus tier. Failures previously surfaced as a vanishing
   // NoticeBanner line; the inline tier owns them now (the server reason
@@ -338,20 +348,30 @@ function WorkbenchSurface() {
     try {
       setSaveState('saving')
       setSaveDetail(null)
-      // The queued ops compose IN ORDER over the fresh base: plain
+      // The queued ops compose IN ORDER over the composition base: plain
       // partials overlay per-key (the original fold semantics); functions
       // re-derive their collections from a base that already carries every
       // earlier op — and a straddling flush starts from the previous
       // write's durable result. Retained (previously failed) ops compose
       // first, so retry and later writes re-apply them without clobbering
-      // anything newer.
-      let next = readSessionSettings(freshChain.settings)
+      // anything newer. The BASE itself (C01): the acknowledged settings of
+      // the last landed write when that write's reload FAILED (the store
+      // cache is stale — never compose from it), otherwise the fresh store
+      // read (a succeeded reload left it current).
+      const acknowledged = acknowledgedSettingsRef.current
+      let next = acknowledged && acknowledged.chainId === freshChain.id ? acknowledged.settings : readSessionSettings(freshChain.settings)
       for (const op of ops) {
         const partial = typeof op === 'function' ? op(next) : op
         if (partial) next = { ...next, ...partial }
       }
       await documentsApi.updateChain({ id: freshChain.id, settings: next as unknown as Record<string, unknown> })
-      await state.reloadActiveDocument()
+      // The write LANDED: the composed settings are the acknowledged truth
+      // from this moment — kept even when the reload below fails.
+      acknowledgedSettingsRef.current = { chainId: freshChain.id, settings: next }
+      const reloaded = await state.reloadActiveDocument()
+      if (reloaded) acknowledgedSettingsRef.current = null
+      // A failed reload is NOT a write failure (write ≠ refresh): the ops
+      // stay spent, the tier reports the save's own fate — saved.
       setSaveState('saved')
       return true
     } catch (error) {
