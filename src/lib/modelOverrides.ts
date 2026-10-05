@@ -574,7 +574,10 @@ export function overridePickOutcome(familyId: ModelFamilyId, slot: ModelOverride
  *    value   the effective setting: the applied file; when the strongest
  *            pick FAILED (refused/degraded), the setting the layer BENEATH
  *            it puts in force — the surviving lower override, else the auto
- *            inference. A failed pick never becomes the effective value.
+ *            inference. A failed pick never becomes the effective value
+ *            (per-pick: a failed chain over a FAILED global renders the
+ *            surviving global pick verbatim — the single-attempt interface
+ *            cannot express the double failure).
  *    attempt the tried-but-not-in-force pick, carried SEPARATELY from the
  *            effective fallback: {level, 'refused'|'degraded'}. A migrated
  *            legacy pick that auto-cleared ('cleared') has no conscious
