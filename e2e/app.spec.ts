@@ -195,13 +195,16 @@ test('settings round-trips a change through the server API (docked)', async ({ p
   const original = await outputInput.inputValue()
   await outputInput.fill(`${original}/e2e-probe`)
   await page.getByRole('button', { name: /save/i }).first().click()
-  await page.waitForTimeout(600)
-  const persisted = await (await fetch(`http://127.0.0.1:${process.env.MINIMAX_E2E_PORT ?? '4199'}/api/lan/settings`)).json()
-  expect(persisted.settings.outputDirectory).toContain('e2e-probe')
-  // Restore so other tests see the clean state.
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition is the save
+  // POST landing server-side; the poll replaces a fixed 600 ms sleep (the
+  // CI-runner flake class — a slow save outran it). Same assertion, bounded.
+  const persistedSettings = async () => (await (await fetch(`http://127.0.0.1:${process.env.MINIMAX_E2E_PORT ?? '4199'}/api/lan/settings`)).json()) as { settings: { outputDirectory: string } }
+  await expect.poll(async () => (await persistedSettings()).settings.outputDirectory).toContain('e2e-probe', { timeout: 5_000 })
+  // Restore so other tests see the clean state — polled to the same named
+  // condition (positive evidence the restore landed, not a sleep past it).
   await outputInput.fill(original)
   await page.getByRole('button', { name: /save/i }).first().click()
-  await page.waitForTimeout(400)
+  await expect.poll(async () => (await persistedSettings()).settings.outputDirectory, { timeout: 5_000 }).toBe(original)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
