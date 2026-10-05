@@ -117,3 +117,11 @@ here beyond "they touched no code."
 Verdict from your menu: **APPROVED / APPROVED-WITH-FINDINGS /
 NEEDS-FIXES** — findings ranked, each with file:line and the failure
 scenario. The maintainer holds the merge.
+
+## 9. T24's gate evidence (the sweep's close-out, appended 2026-10-05)
+
+- **`pnpm gate`: GREEN — all 8 executed suites passed in 14.5m** (after three disclosed red legs, each root-caused in the T24 report: test-scoping strictness, the A09 wrap-sentinel sampling race — instrumented proof, contract unchanged — and F02's teardown-time CI-only route rejection).
+- **Judged visual pass: 39/39 checkpoints PASS** (`pnpm vision:report`, exit 0; two capture-side deficiencies found and fixed by the judged runs themselves; no rubric clause weakened; the judge was the pipeline's documented sonnet-tier dispatch — the round's one deliberate subagent deviation, reasoned in the report).
+- **CI both legs, deliberately dispatched, green:** Linux https://github.com/Cobdog/Monoka-dev/actions/runs/37305232256 (first dispatch red on F02, disclosed, re-run green) · Windows https://github.com/Cobdog/Monoka-dev/actions/runs/37299100083
+- **The sweep's own finds beyond the checklist:** the §10 kbd recipe row was never executed by any task of the round (closed by the sweep); the manifest's OpEditor "Escape listener" was actually ⌘Z per-op undo (column corrected, feature kept); the workbench auto-create silently replaced the session on failed loads — the T23 incident's mechanism — closed with an honest failure state.
+- **Standing caveat for your review:** the fleet's slow-boot flake family (A09/F02/M13) is load-shaped; three members were fixed in the sweep but CI runners will surface new ones until a fleet-wide settle-or-poll pass happens (recommended post-merge follow-up). The judge's nine non-issue notes (task-24-report.md §Vision) merit the maintainer's glance — flag anything you consider load-bearing.
