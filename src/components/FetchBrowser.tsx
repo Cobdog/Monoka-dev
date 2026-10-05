@@ -152,6 +152,10 @@ export function FetchBrowser({ settings, setSettings, onAfterFetch, onAdoptCheck
       <div><Globe size={19} /><span><strong>Fetchable items</strong><small>Optional models, packs and the reference engine — fetched from the network ONLY when you ask, with the license on screen first. Nothing fetches on its own; the app stays fully offline otherwise.</small></span></div>
       <button type="button" className="secondary-button" onClick={() => void refresh()}><RefreshCw size={16} />Refresh</button>
     </div>
+    {/* (T24 review M3) This row stays hand-rolled, not Field: the manifest
+        §15's stay-reason — the search input carries no label/error/hint
+        association contract (icon + placeholder IS the affordance here);
+        migrating it would add an unlabeled-adjacent wrapper for nothing. */}
     <div className="connection-row fetch-search-row">
       <div className="field-group grow"><label htmlFor="fetch-filter">Search</label>
         <div className="fetch-search">

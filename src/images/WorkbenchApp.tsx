@@ -1092,7 +1092,7 @@ function WorkbenchSurface() {
                     {t1Take && <em className="iw-t1-note" data-iw-t1-note>T=1 output — structurally soft by profile; refining is your call.</em>}
                     {refineDown.length > 0 && (
                       <Refusal
-                        title={`Refine is not available — ${refineDown.map((engine) => engine.label).join(' and ')}`}
+                        title={`${refineDown.length > 1 ? 'Refine is not available' : `Refine via ${refineDown[0].label} is not available`} — ${refineDown.map((engine) => engine.label).join(' and ')} ${refineDown.length > 1 ? 'are down' : 'is down'}`}
                         reason={refineDown.some((engine) => engine.detection)
                           ? refineDown.map((engine) => `${engine.label}: ${engine.detection ? [...engine.detection.missingModels, ...engine.detection.missingNodes].join('; ') || 'no missing pieces named' : 'the engine has not answered'}`).join(' · ')
                           : 'the engine is not connected, so the refine engines\' requirements cannot be checked yet'}

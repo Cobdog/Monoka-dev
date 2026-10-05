@@ -1593,7 +1593,15 @@ export function PropertiesPanel() {
         <div className="canvas-properties-state">
           <span className="canvas-tile-ring" data-status={tile.status} style={tileToneVars(tile.status)} /> {STATUS_LABEL[tile.status]}
         </div>
-        {validation && <p className="canvas-properties-warning" data-canvas-validation role="alert">{validation}</p>}
+        {/* (T24 review I1) The override-rung validation paragraph is
+            SUPPRESSED while the Refusal renders: validateChain recomputes
+            per render, so both announcers fired on the same condition —
+            the one-announcer doctrine the round enforces elsewhere. The
+            Refusal owns the override condition at the gate; every other
+            validation rung keeps its paragraph. */}
+        {validation && !(overrideRefusal && validation.startsWith('Model override refused')) && (
+          <p className="canvas-properties-warning" data-canvas-validation role="alert">{validation}</p>
+        )}
         {/* (task 24, k2q0n9s) The override-refusal PRE-GATE (the T19
             handoff): the shared Refusal tier states the first blocking
             override pick at the gate — the submit-time rung stays the
