@@ -119,6 +119,7 @@ instance; same fetch-consent discipline):
 | fxtdstudios/radiance | `64fee414…` | GPL-3.0 `[API-2026-09-15]` | fetch-consent, flagged (Float32ColorCorrect) |
 | ComfyUI reference checkout (`engine-comfyui` catalog id) | tag `v0.34.0` → `12d52794…` | **GPL-3.0.** The checkout exists only on the user's machine, produced by their consented fetch; we convey nothing | fetch-consent, flagged; the §8 tool-vs-program analysis applied to the whole engine |
 | ComfyUI_MinimaxH3_AutoContext deep-read sources, Motion Context (NikoDemon80), LBH upscaler | — | Motion Context: **GPL-3.0** `[DOC]` (devdocs MANIFEST); LBH: no provenance yet | GAP rows from the node-pack curation pass: license/pin verification happens AT ROW TIME before they enter `ENGINE_NODE_PACKS` |
+| Adudeguyman/ComfyUI-HyperFlow-H3 (the Saganaki22 continuation — upstream repo deleted/404, resolved by this fork; v1.4.0) | `99778905…` | Apache-2.0 `[API + LOCAL 2026-10-04 — LICENSE read from the staged clone at this rev]` | fetch-consent (vendor candidate); staged at `/home/agent/models/hyperflow-dl/` for J8's tier-ladder rung — the `ApplyHyperFlowH3` two-time machinery + curve-fits for our exact local pruned int8 bases (no extra download); its drbaph weights row is §5a |
 
 ## 5. Model weights and checkpoints (never in the repo; linked, never copied)
 
@@ -147,6 +148,8 @@ READMEs, not legal advice.
 | `matlowai-fused-turbo-int8-convrot` (`matlowai-fused-turbo-int8` catalog id) | merged weights stay MiniMax-H3 derivatives (folded turbo/base conversion are Apache-2.0 sides) `[API-2026-09-15]` | fetch-consent |
 | `taeh3-preview-decoder` (Kijai) | **Apache-2.0 repo**; the weights are a MiniMax-H3 derivative trained by Kijai `[API-2026-09-18]` | fetch-consent |
 | `minimax_h3_pdmd_4nfe_comfyui_v6` (Iwannapose conversion of pdmd2026/pdmd_4NFE_lora — the PDMD 4-NFE student, arXiv 2609.35768) | Apache-2.0 upstream AND conversion `[API-2026-10-04]` — an H3-33B-derived distill; sha-verified at fetch (1.96 GB) | fetch-consent |
+| `meridian_teacher_lora` + `meridian_turbo_lora` (Viggle/Meridian, the ComfyUI flavor + frozen embeds + recam code — J2's camera/retime pair) | weights: **MiniMax H3 Community License** (LICENSE read at fetch: Applicable Territory excludes EU/UK/ROK/USA; >$20M/yr commercial needs written MiniMax authorization; AUP; outputs follow the same terms) — the §5a grant, not VGGT-FAIR-NC; code Apache-2.0 (LICENSE-CODE) `[API + LICENSE-read 2026-10-04]`; sha-verified at fetch (1.88 GB × 2) | fetch-consent; **FLAGGED** — the geometry dependency VGGT-Omega carries the FAIR-NC gate (§5i), surfaces at consent with it |
+| `custom_node_hyperflow_8step_v1.0_comfyui` (drbaph conversion of Video-Rebirth/hyperflow — J8's tier-ladder rung) | `license: other` with `license_name: minimax-h3-community-license-agreement` on the card `[API-2026-10-04]` — an H3 Model Derivative, §5a family; sha256 cross-checked at fetch against BOTH the HF LFS etag and the node pack's own `assets/hyperflow.json` pin (`b10b1a78…cd71`) | fetch-consent |
 | Viggle/Viggle-Animate; t8star Vdn-Minimax-H3-Comfy; FastVideo FastH3; Tutu 20→8 NFE LoRA | `minimax-h3-community-license` class `[API]`/`[DOC]` | watch tier |
 
 ### 5b. The Krea 2 community-license family
@@ -222,6 +225,7 @@ the research grant.
 | Asset | License | Mode |
 | --- | --- | --- |
 | `dwpose-onnx` (yzd-v), `dwpose-torchscript` (hr16), `da3-base` (Comfy-Org Depth-Anything-3) | Apache-2.0 `[API-2026-09-14]` | fetch-consent; notice-clean |
+| `moge_2_vitl_normal_fp16` (Comfy-Org/MoGe repack of Ruicheng/moge-2-vitl — J2's geometry-warp comparator) | **MIT both sides** — the mirror's tag AND the upstream weights repo's tag `[API-2026-10-04]`; the MoGe integration is core ComfyUI (`nodes_moge.py` + `geometry_estimation/`), no pack; sha-verified at fetch (662 MB) | fetch-consent; notice-clean |
 | `hed-annotator`, `mlsd-annotator` (lllyasviel/Annotators) | **NO-LICENSE** — repo carries only a `license: other` tag, no file `[API]` | fetch-consent, flagged; never redistributed |
 
 ### 5h. The Wan lane (Set D engines — SCAIL-2, Wan-Animate-2)
@@ -242,6 +246,26 @@ against the HF LFS etags at fetch time, staged in
 | `lightx2v_I2V_14B_480p_cfg_step_distill_rank64` | Apache-2.0 (the LightX2V distill; distributed via Comfy-Org/Wan-Animate-2 — also the official SCAIL-2 template's speed LoRA @ 0.8) `[API-2026-10-04]` | fetch-consent |
 | `wan2.1_SCAIL_2_DPO_lora` + `wan2.1_SCAIL_2_relight_lora` | MIT (SCAIL-2's own — DPO: hands/lip/eye sync @ 1.0; relight: replacement-mode lighting blend) `[API-2026-10-04]` | fetch-consent |
 | `sam3.1_multiplex_fp16` (the official SCAIL-2 replacement workflow's tracker) | **SAM License** (Meta community-style, dated 2025-11-19 — royalty-free use/modify/distribute grant with acceptable-use + trade-controls riders; LICENSE read at fetch) `[API + LICENSE-read 2026-10-04]` | fetch-consent, **flagged** (custom license; surfaced at consent, never vendored) |
+
+### 5i. The Set J fresh-eyes lane (VOID + the gated trio)
+
+Fetched 2026-10-04 for the GPU batch's Set J pilots (task ourbqum), Set D's
+verified-path discipline verbatim — HF API sizes + LFS-etag sha256s, both
+verified after download; staged under `/home/agent/models/{void,moge,
+meridian,hyperflow}-dl/` pending J dispatch (manifest
+`/home/agent/models/setJ-fetch-manifest.json`; 51/51 files PASS, 38.1 GiB).
+VOID and MoGe are **core ComfyUI** at the shared install (`nodes_void.py`,
+`nodes_moge.py` + the official blueprints) — weights only, no node packs.
+Three assets are **maintainer-staged** (gated/login-walled — surfaced, never
+routed around), recorded below with everything the maintainer's own download
+needs.
+
+| Asset | License record | Mode |
+| --- | --- | --- |
+| `void_pass1` + `void_pass2` + `cogvideox_vae` + `raft_large_C_T_SKHT_V2` + `t5xxl_fp16` (Comfy-Org/void-model — J3's deterministic removal) | **Apache-2.0** (the Comfy mirror of Netflix VOID, per fresh-eyes §3.2; the blueprint's own URLs) `[API-2026-10-04]`; riders: the RAFT file is torchvision BSD-3-Clause lineage, t5xxl is comfyanonymous/flux_text_encoders lineage (Apache-2.0), and the sam3.1 tracker the blueprint also names is already §5h; sha-verified at fetch (pass1/pass2 11.14 GB each) | fetch-consent |
+| **VGGT-Omega** (`vggt_omega_1b_512.pt`, facebook/VGGT-Omega — Meridian's REQUIRED geometry dependency) | **gated:manual** (HF access request + acceptance) + **Meta FAIR Noncommercial Research License v1** — noncommercial-only on the materials AND their outputs/results (quoted in Meridian `docs/installation.md` §2; LICENSE.txt sits behind the gate — anonymous fetch 401) `[API-2026-10-04]` | **maintainer-staged, FLAGGED** — the ledger's "VGGT-FAIR-NC surfaces at consent" confirmed: it rides the dependency, not the Meridian weights (§5a) |
+| `Anime2Realsim__H3.safetensors` (CivitAI model 2783657, version "Minimax H3 ref2v v1.0" id 3356617 — J5) | **CivitAI user-upload terms**, per-model flags: no-credit OK, commercial OK (Image/Rent/RentCivit/Sell/SellMerge), derivatives OK `[API-2026-10-04]`; metadata anonymously readable but the download is login-walled (401) — API sha256 `BCE58949…DE2A3E` recorded for post-download verification | **maintainer-staged** (user's own download, the CivitAI user-fetch class) |
+| UniLumos (`unilumos.pt` + `vae.pth` + `models_t5_umt5-xxl-enc-bf16.pth`, Alibaba-DAMO-Academy/UniLumos — J8's relight challenger) | weights tag **apache-2.0** `[API-2026-10-04]`; the CODE repo (github.com/alibaba-damo-academy/Lumos-Custom, NeurIPS'25 / arXiv 2511.01678) has **NO LICENSE file** — fresh-eyes' "code unlicensed → fetch-weights + own glue" stands; **gated:auto** (any logged-in HF account) | **maintainer-staged** (11.4 GB of the repo is a bf16 umt5-xxl; whether our local fp8 substitutes is unproven — J8's call) |
 ## 6. Fonts, icons, cursor (the shibui plan — none shipped yet)
 
 Planned per [shibui-fonts-icons.md](../research/shibui-fonts-icons.md); rows
