@@ -16,15 +16,17 @@
  *      reads through a ref, so parent re-renders (inline closures get fresh
  *      identities every render) never re-register the layer mid-stack.
  *    - `onKeyDown` goes on the same panel. Tab cycles INSIDE the panel
- *      (settled containment — focus cannot escape the surface by keyboard),
- *      and every NON-chrome key stays local: the window chain — the canvas's
- *      background shortcuts first among them — never sees a key pressed
- *      inside an open overlay (§0.2 "background canvas shortcuts cannot fire
- *      through a modal"). Chrome chords (⌘K's own toggle, Alt+digits, ⌘Z)
- *      pass through untouched. Compose the surface's OWN keys after this in
- *      the same handler — the palette's arrows stay the palette's, and the
- *      flip family's V calls cycleProjection locally (the registry owns
- *      Escape-class dismissal only, never navigation).
+ *      (settled containment — focus cannot escape the surface by keyboard,
+ *      including at the cardinality edges, C02: one tabbable cycles back to
+ *      itself, zero keep focus on the panel), and every NON-chrome key stays
+ *      local: the window chain — the canvas's background shortcuts first
+ *      among them — never sees a key pressed inside an open overlay (§0.2
+ *      "background canvas shortcuts cannot fire through a modal"). Chrome
+ *      chords (⌘K's own toggle, Alt+digits, ⌘Z) pass through untouched.
+ *      Compose the surface's OWN keys after this in the same handler — the
+ *      palette's arrows stay the palette's, and the flip family's V calls
+ *      cycleProjection locally (the registry owns Escape-class dismissal
+ *      only, never navigation).
  *    - `focusOnOpen()` the consumer calls from its open effect: focus moves
  *      INTO the surface — the first text field when it has one, the panel
  *      itself otherwise (tabIndex -1). On close, focus returns to the
@@ -37,7 +39,7 @@
  *  and CanvasApp's background chain suspends while anyModalLayer() holds.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { registerLayer } from './layerRegistry'
+import { anyModalLayer, registerLayer } from './layerRegistry'
 import { keepsKeyLocal, tabCycleTarget, type KeySeed } from './overlayBehavior'
 
 export type UseOverlayBehaviorOptions = {
@@ -58,6 +60,12 @@ export type OverlayBehavior = {
   ref: (node: HTMLDivElement | null) => void
   onKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void
   focusOnOpen(): void
+  /** True while this surface registers ABOVE an already-registered MODAL
+   *  layer (V01, the 2026-10-05 Codex audit): the consumer's paint must sit
+   *  above that layer's --z-modal band — PopoverMenu's backdrop composes
+   *  its over-modal modifier from this. Read at registration, before this
+   *  layer joins the stack, so it names the layers BENEATH this one. */
+  overModal: boolean
 }
 
 /** The panel's tabbables in DOM order (the Tab cycle's domain). */
@@ -89,6 +97,9 @@ export function useOverlayBehavior({ id, onDismiss, modal = true }: UseOverlayBe
   const nodeRef = useRef<HTMLDivElement | null>(null)
   const openerRef = useRef<HTMLElement | null>(null)
   const [node, setNode] = useState<HTMLDivElement | null>(null)
+  // Paint-order ownership (V01): whether modal layers sit BENEATH this one in
+  // the registry stack — computed at registration, before this layer pushes.
+  const [overModal, setOverModal] = useState(false)
 
   // The dismissal reads through a ref — inline closures churn identity every
   // render, and re-registering on each would reorder the stack (the
@@ -105,6 +116,9 @@ export function useOverlayBehavior({ id, onDismiss, modal = true }: UseOverlayBe
   // Register on panel mount, unregister on unmount.
   useEffect(() => {
     if (!node) return undefined
+    // Read BEFORE this registration pushes: the flag names the modal layers
+    // already beneath this one (the dialog this surface opened over).
+    setOverModal(anyModalLayer())
     const unregister = registerLayer({ id, modal, onEscape: () => onDismissRef.current() })
     return () => {
       unregister()
@@ -135,7 +149,13 @@ export function useOverlayBehavior({ id, onDismiss, modal = true }: UseOverlayBe
       const target = tabCycleTarget(tabbables.length, activeIndex, event.shiftKey)
       if (target !== null) {
         event.preventDefault()
-        tabbables[target].focus()
+        if (target >= 0) {
+          tabbables[target].focus()
+        } else {
+          // -1 (C02): no tabbables — the panel itself holds the keystroke.
+          panel.tabIndex = -1
+          panel.focus()
+        }
       }
     }
     // Local keys stay local — the window chain never sees them.
@@ -156,5 +176,5 @@ export function useOverlayBehavior({ id, onDismiss, modal = true }: UseOverlayBe
     panel.focus()
   }, [])
 
-  return { ref, onKeyDown, focusOnOpen }
+  return { ref, onKeyDown, focusOnOpen, overModal }
 }
