@@ -207,3 +207,124 @@ J2 identity-warp + the no-LoRA lane; J3 untouched passthrough + both no-op
 regens; J4 unstyled propagate; J6 guidance-1; J7 no-annealing; J8 base-20) —
 the set's exit criterion. Economics: 52 gens / 115.6 GPU-min / peak VRAM flat
 ~24.1 GiB all cells.
+
+## ADDENDUM — the maintainer's blind review, reconciled (2026-10-05)
+
+20 pairs: 10 left · 4 right · 3 tie · 2 cannot-assess · 1 uncalled (14 notes). Responses verbatim below.
+
+### The null gate, by eye
+**p01 (J6 null through the alias) = TIE.** Held.
+
+### The clarifications the maintainer asked for — answered
+1. **p08 (Meridian vs MoGe — you asked for more information):** L was **Meridian** (the LoRA pair @ 3-NFE), R was **MoGe** (the no-adapter warp fallback); the question was which achieves the requested SLIDE camera more faithfully at better quality. The metric's read: near-parity (Meridian +0.03 compliance on MoGe-conditioned refs) — your "the camera is shifted a bit more on either one" is exactly what near-parity looks like. A re-call is welcome but the metric suggests it would not separate them; the honest disposition is PARITY, MoGe preferred on modularity (no LoRA, no license, first-party).
+2. **p10 (my finding, not yours): the dmask cell DID NOT REMOVE.** p09.R and p10.L are byte-identical strips — one video served both — and your p10 note is decisive: the person remains on the dmask side, re-oriented (full regeneration through the denoise region, not removal). The executor's table line "the person gone (judge p09/p10)" was an EXPECTATION, not an observation — a report-accuracy miss, corrected here.
+
+### Verdict adjustments from the eye
+- **J3 corrected:** the preservation ceiling (36.92 dB outside the region) STANDS — it measured outside-region pixels only. But "removal by denoise-alone" failed on this clip (regenerated, not removed); the INSTRUCTION lane removes (p09/p11, your calls + notes). The lane's honest shape: adopt the dmask machinery for preservation-critical INSTRUCTED fills; plain removal rides the instruction lane.
+- **J1 nuance (exploratory, not adoption):** your calls preferred Fizgig-positive (p02) and dose-1.0 (p05), preferred SB@0.10 over null (p03 — the metric called it inert; your eye disagrees), and REJECTED T8 on visible banding (p04). The adherence verdict (unbought) stands — the buy criterion was plan adherence — but the aesthetic layer is recorded: Fizgig's positive arm and SB@0.10 do something visible.
+- **J4 eye-confirmed ADOPT-track:** both your calls went to the styled propagate ("style transposed and holds throughout… it DOES work"; "very good style transfer"). Note: the tasting-vs-stirring drift recurs — the batch's FOURTH same-seed-different-actions datum.
+- **J6 stands, with the eye's blessing:** no quality damage at CFG (your notes: "quality overall is good," "no complaints on either"); your slight preference for guidance-1 on P2 keeps the doctrine's default where it was — "guidance-1 default, headroom open" is now eye-corroborated on the no-damage leg.
+- **J7 strengthened away from default:** your notes make the metric's "fidelity cost" concrete and worse — "right video flickers" (p16) and "covered in artifacts and mosaic patterns for the first four frames. Frame 1 has two balls" (p17). CADS stays a lever, parked far from defaults.
+- **J8 eye-consistent:** base ≥ HyperFlow (better shadows/lighting vs more detail; ties elsewhere) — NONE-at-this-rung confirmed.
+
+### Verbatim responses
+```
+{
+  "exported": "2026-10-05T09:57:44.863Z",
+  "responses": {
+    "p01": {
+      "call": "tie",
+      "ts": "2026-10-05T09:36:55.553Z"
+    },
+    "p02": {
+      "call": "right",
+      "ts": "2026-10-05T09:37:17.246Z"
+    },
+    "p03": {
+      "call": "left",
+      "ts": "2026-10-05T09:38:04.003Z"
+    },
+    "p04": {
+      "call": "right",
+      "note": "Right has more detail, but some banding on the back wall (Could be video compression artifacts though,) Left does not have these, but less detail.",
+      "ts": "2026-10-05T09:39:05.865Z"
+    },
+    "p05": {
+      "call": "left",
+      "ts": "2026-10-05T09:40:16.381Z"
+    },
+    "p06": {
+      "call": "right",
+      "ts": "2026-10-05T09:40:41.230Z"
+    },
+    "p07": {
+      "call": "left",
+      "ts": "2026-10-05T09:41:50.860Z"
+    },
+    "p08": {
+      "call": "cannot-assess",
+      "note": "Not too sure here, the quality is similar, but the camera is indeed shifted to the side a bit more on either one. Ill need more information this one to call it.",
+      "ts": "2026-10-05T09:43:29.172Z"
+    },
+    "p09": {
+      "call": "left",
+      "note": "Person entirely removed. Background remains fully intact. minimal distortion or change when using the slider to gauge.",
+      "ts": "2026-10-05T09:44:18.153Z"
+    },
+    "p10": {
+      "note": "Person remains in both, left has him facing the wall, right has him facing away from the wall."
+    },
+    "p11": {
+      "call": "right",
+      "note": "Right has the person removed though the camera moves and behaves differently. Camera pans down in the left, pans up in the right.",
+      "ts": "2026-10-05T09:46:39.548Z"
+    },
+    "p12": {
+      "call": "left",
+      "note": "Style has been transposed and holds throughout the scene, but similar drift where she tastes the soup on the left and stirs on the right. It DOES work however.",
+      "ts": "2026-10-05T09:47:53.438Z"
+    },
+    "p13": {
+      "call": "left",
+      "note": "Same as P12. Very good style transfer however.",
+      "ts": "2026-10-05T09:49:09.347Z"
+    },
+    "p14": {
+      "call": "left",
+      "note": "They taste the soup in both. I imagine the one on the left is guided. The background on the right is very different from the usual batch. But quality overall is good for both. The motion remained consistant with both.",
+      "ts": "2026-10-05T09:49:57.550Z"
+    },
+    "p15": {
+      "call": "cannot-assess",
+      "note": "Same as P14, I want to guess that right is the standard method, and left is the guided.  Quality is good, compositon has changed slightly. No complaints on either one. Prompts seems to have been adhered to.",
+      "ts": "2026-10-05T09:51:48.756Z"
+    },
+    "p16": {
+      "call": "left",
+      "note": "Right video flickers. Left looks normal.",
+      "ts": "2026-10-05T09:52:10.814Z"
+    },
+    "p17": {
+      "call": "left",
+      "note": "Left is normal. Right is covered in artifacts and mosaic patterns for the first four frames. Frame 1 has two balls. Frame 5 onward seems fine.",
+      "ts": "2026-10-05T09:53:23.286Z"
+    },
+    "p18": {
+      "call": "left",
+      "note": "Right seems to have more detail, both are good however. Left seems to have better shadows and lighting and overall matches the usual baseline compositon more.",
+      "ts": "2026-10-05T09:54:51.894Z"
+    },
+    "p19": {
+      "call": "tie",
+      "note": "Both are good, I prefer left only slightly. Background is slightly more detailed in the right. Both follow the similar \"tasting the soup.\" instead of stirring. But eithe would likely be fine in production.",
+      "ts": "2026-10-05T09:55:42.923Z"
+    },
+    "p20": {
+      "call": "tie",
+      "note": "Smoother motion on the right. both are good, better lighting on the left, similar composition.",
+      "ts": "2026-10-05T09:57:39.682Z"
+    }
+  },
+  "set": "J"
+}
+```
