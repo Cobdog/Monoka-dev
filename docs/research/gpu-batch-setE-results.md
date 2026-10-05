@@ -306,3 +306,116 @@ between the eye and the automated reads escalates as a protocol event. The
 pre-registered tensions to watch: p02–p04 (the HF 1.2–1.3 axis — the primary's
 verdict flips if the eye reads detail), and p08–p10 (the eye should call ties
 where the metrics read 44 dB).
+
+## ADDENDUM — the maintainer's blind review, reconciled (2026-10-05)
+
+19/19 called: 4 tie · 7 right · 5 left · 3 cannot-assess (each with a substantive note). Responses preserved verbatim below (the no-test-sets directive's in-doc convention).
+
+### The null gate, by eye
+**p01 (the staged E-b duplicate through the alias lever) = TIE.** The instrument held.
+
+### S7 is EYE-CONFIRMED PARKED — the control wins the primary
+The PRIMARY pairs (staged E-b vs segcut E-a′ at matched 11 NFE): the eye gives the **control 2-1** — staged wins the low-motion cell (p02), the control wins the face cell (p03) and the high-motion cell (p04). The metric's lean (plan 1-1, staged HF-higher) and the eye agree in direction: **the staged handoff does not beat cutting the schedule.** The CEILING pairs confirm the metric exactly: native turbo-8 owns low and medium (p05/p06), the staged arm's one win is high motion (p07) — "E-b below the E-c ceiling" read true.
+
+### The deep handoff's cost is VISIBLE — "snowing"
+The STRESS pairs (deep E-b′ vs shallow E-b) carry the set's most quotable eye-finding, verbatim: *"Right seems higher quality, but it looks like it is snowing or something on the right one, if that was not prompted, then obviously the left one followed the prompt"* (p14 — right = the deep handoff) and *"Same as P14"* (p16); p15 called: **shallow wins**. The metric measured the deep handoff's 2.4-4.5× alternation as numbers; the maintainer SAW it as snow. **The hand-off-late rule is now eye-confirmed.**
+
+### The frontier's quiet upset
+The FRONTIER pairs (full base-20 vs the segcut control): the **control won both called cells** (p17 low, p19 high; p18 cannot-assess). The 11-NFE cut of the base schedule was PREFERRED by eye over the full 20-NFE run — the comparator family is genuinely load-bearing, and the base's extra 9 evaluations bought nothing visible on this board. p18's note adds the batch's third content-divergence datum (verbatim): *"Left is tasting the soup, right is just stirring. Lighting is different, environment is different."* — same seed, different actions, echoing setD's p21 finding: prompt/schedule structure shapes WHAT HAPPENS, not just how well.
+
+### The machine-arm equivalence held by eye
+MACH-BASE (p08-p10): one tie, one each way — the base-split and native base are perceptually indistinguishable (the 44 dB gate made visible). MACH-TURBO (p11-p13): two ties, one lean to the turbo-split — no rebasing artifact reached the eye.
+
+### Final X7 verdict (metric + eye)
+**S7 PARKED, eye-confirmed: the staged base→turbo handoff does not displace schedule-cutting at matched NFE.** The m-scalar engine rule stands regardless (its own evidence chain). The practical doctrine: cut the schedule; if you must hand off, hand off LATE — shallow beats deep, and deep shows snow.
+
+### Verbatim responses
+```
+{
+  "exported": "2026-10-05T06:36:54.697Z",
+  "responses": {
+    "p01": {
+      "call": "tie",
+      "ts": "2026-10-05T06:18:54.310Z"
+    },
+    "p02": {
+      "call": "right",
+      "ts": "2026-10-05T06:20:29.796Z"
+    },
+    "p03": {
+      "call": "right",
+      "ts": "2026-10-05T06:22:31.467Z"
+    },
+    "p04": {
+      "call": "left",
+      "ts": "2026-10-05T06:22:57.812Z"
+    },
+    "p05": {
+      "call": "left",
+      "ts": "2026-10-05T06:23:41.332Z"
+    },
+    "p06": {
+      "call": "left",
+      "ts": "2026-10-05T06:24:29.002Z"
+    },
+    "p07": {
+      "call": "right",
+      "ts": "2026-10-05T06:24:47.699Z"
+    },
+    "p08": {
+      "call": "tie",
+      "ts": "2026-10-05T06:25:26.462Z"
+    },
+    "p09": {
+      "call": "right",
+      "ts": "2026-10-05T06:26:03.075Z"
+    },
+    "p10": {
+      "call": "right",
+      "ts": "2026-10-05T06:26:38.072Z"
+    },
+    "p11": {
+      "call": "tie",
+      "ts": "2026-10-05T06:27:16.506Z"
+    },
+    "p12": {
+      "call": "left",
+      "ts": "2026-10-05T06:28:11.534Z"
+    },
+    "p13": {
+      "call": "tie",
+      "ts": "2026-10-05T06:28:46.557Z"
+    },
+    "p14": {
+      "call": "cannot-assess",
+      "note": "Right seems higher quality, but it looks like it is snowing or something on the right one, if that was not prompted, then obviously the left one followed the prompt better.",
+      "ts": "2026-10-05T06:30:23.600Z"
+    },
+    "p15": {
+      "call": "left",
+      "note": "These both have some artifacting, minor. Hard to make a complete assessment but left is slightly better maybe?",
+      "ts": "2026-10-05T06:32:36.652Z"
+    },
+    "p16": {
+      "call": "cannot-assess",
+      "note": "Same as P14.",
+      "ts": "2026-10-05T06:33:39.376Z"
+    },
+    "p17": {
+      "call": "right",
+      "note": "",
+      "ts": "2026-10-05T06:33:58.982Z"
+    },
+    "p18": {
+      "call": "cannot-assess",
+      "note": "Two very different outcomes, the quality is very similar. Left is tasting the soup, right is just stirring. Lighting is different, environment is different. Not really better, not really worse.",
+      "ts": "2026-10-05T06:35:32.854Z"
+    },
+    "p19": {
+      "call": "right",
+      "ts": "2026-10-05T06:36:48.686Z"
+    }
+  },
+  "set": "E"
+}
+```
