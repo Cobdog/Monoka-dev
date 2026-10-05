@@ -11,7 +11,7 @@ import { Button } from '../ui/Button'
 import { ProgressBar } from '../ui/ProgressBar'
 import type { AppSettings, FetchEntryStatus, FetchProgress } from '../types'
 import { formatBytes } from '../lib/format'
-import { StudioDialog } from '../ui/StudioDialog'
+import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 import { subscribe } from '../lib/useRealtime'
 
 const GROUPS: Array<{ id: FetchEntryStatus['group']; label: string; note: string }> = [
@@ -206,7 +206,11 @@ export function FetchBrowser({ settings, setSettings, onAfterFetch, onAdoptCheck
     {error && <div className="llm-test-result fail" role="status"><AlertCircle size={14} /><span>{error}</span></div>}
     <p className="settings-note">Downloads land in the studio's fetch cache and are <strong>linked</strong> into your model roots — bytes are never duplicated, and your own files are never overwritten. Removing an item removes the studio's links only.</p>
 
-    <StudioDialog
+    <StudioDialogLayered
+      /* (task 24, k2q0n9s — the §3.1 wrap) The registry join: the consent is
+       * the topmost tier by paint (--z-consent) AND by Escape routing now —
+       * one dismissal per keystroke whatever sits beneath it. */
+      layerId="fetch-consent"
       open={consentFor !== null}
       onClose={() => setConsentFor(null)}
       backdropClassName="fetch-consent-backdrop"
@@ -255,7 +259,7 @@ export function FetchBrowser({ settings, setSettings, onAfterFetch, onAdoptCheck
           </div>
         </footer>
       </>}
-    </StudioDialog>
+    </StudioDialogLayered>
   </section>
 }
 

@@ -1918,6 +1918,76 @@ test('the command overlays paint the modal band — above the whole dock band (z
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// (task 24, k2q0n9s — the §3.1 leftovers) The manifest §3.1 names FOUR
+// StudioDialog consumers for registry integration; task 10 wrapped the first
+// (prompt library). The other three — the op editor, the camera path editor,
+// the fetch consent — were still plain StudioDialog: Escape came from Base UI
+// alone and the ⌘K-over-dialog mis-ownership class (task 10's known interim
+// hazard, retired for the library at task 14) stayed open over them. All
+// three ride StudioDialogLayered now: each open registers a layer
+// (?probe=layers is the seam), Escape unwinds topmost-first, and a command
+// overlay over the op editor takes its Escape ALONE.
+test('the §3.1 leftovers join the layer registry: op editor, camera path editor, fetch consent (k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=layers')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  const stackVia = () => page.evaluate(() => (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe?.layerIds() ?? [])
+
+  // ---- the op editor: a dropped still + Enter opens it (§7's only editor) --
+  await dropPng(page, 'registry-opeditor.png')
+  const tile = page.locator('[data-canvas-tile]').first()
+  await expect(tile).toBeVisible({ timeout: 10_000 })
+  await tile.click()
+  await page.keyboard.press('Enter')
+  const opModal = page.locator('.canvas-opmodal')
+  await expect(opModal).toBeVisible()
+  await expect.poll(async () => stackVia(), { timeout: 5_000 }).toContain('canvas-op-editor')
+  // ⌘K OVER the dialog: the index registers ABOVE it and takes the Escape
+  // alone (the mis-ownership class, retired for this pair too).
+  await page.keyboard.press('ControlOrMeta+k')
+  const index = page.locator('[data-canvas-index]')
+  await expect(index).toBeVisible()
+  await expect.poll(async () => stackVia(), { timeout: 5_000 }).toEqual(expect.arrayContaining(['canvas-op-editor', 'canvas-index']))
+  await page.keyboard.press('Escape')
+  await expect(index).toHaveCount(0)
+  await expect(opModal).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(opModal).toHaveCount(0)
+
+  // ---- the fetch consent: any catalog row's Fetch (server-side data) ------
+  await page.locator('[data-canvas-settings-button]').click()
+  const settings = page.locator('[data-canvas-settings-dock]')
+  await expect(settings).toBeVisible()
+  const openLibrary = settings.locator('[data-open-library]')
+  await openLibrary.scrollIntoViewIfNeeded()
+  await openLibrary.click()
+  const library = page.locator('[data-canvas-library-dock]')
+  await expect(library).toBeVisible()
+  const firstRow = library.locator('[data-fetch-entry]').first()
+  await expect(firstRow).toBeVisible({ timeout: 10_000 })
+  await firstRow.getByRole('button', { name: /^Fetch/ }).click()
+  const consent = page.locator('.fetch-consent-modal')
+  await expect(consent).toBeVisible()
+  await expect.poll(async () => stackVia(), { timeout: 5_000 }).toContain('fetch-consent')
+  await page.keyboard.press('Escape')
+  await expect(consent).toHaveCount(0)
+
+  // ---- the camera path editor: the structured Camera box's edit path -----
+  const panel = page.locator('[data-canvas-properties]')
+  await expect(panel).toBeVisible()
+  await panel.locator('[data-canvas-prompt-mode-toggle="structured"]').click()
+  const editor = panel.locator('[data-structured-editor]')
+  await expect(editor).toBeVisible()
+  await editor.locator('[data-structured-box="camera"] [data-structured-camera-path-edit]').click()
+  const cameraModal = page.locator('[data-camera-path-editor]')
+  await expect(cameraModal).toBeVisible()
+  await expect.poll(async () => stackVia(), { timeout: 5_000 }).toContain('camera-path-editor')
+  await page.keyboard.press('Escape')
+  await expect(cameraModal).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 test('the consent tier sits above the modal band (the fetch consent, §0.1)', async ({ page }) => {
   const problems = await trackErrors(page)
   await resetSession(page)
