@@ -4965,7 +4965,7 @@ test('a failed settings save aborts Generate — the persisted prompt never subm
     await generate.click()
 
     // The failure surfaces beside the action, with the server's reason …
-    const saveState = page.locator('[data-canvas-save-state="failed"]')
+    const saveState = page.locator('[data-save-state="failed"]')
     await expect(saveState).toBeVisible()
     await expect(saveState).toContainText('AUDIT save unavailable')
     // (Final review I2) The failed-save alert is decision prose — the same
@@ -5175,7 +5175,7 @@ test('a draft left unacknowledged by a FAILED save still flushes on navigation (
     await route.continue()
   })
   await prompt.fill('FAILED-THEN-NAVIGATED SENTINEL')
-  await expect(page.locator('[data-canvas-save-state="failed"]')).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('[data-save-state="failed"]')).toBeVisible({ timeout: 10_000 })
   // Navigate AFTER the failure: the flush must retry the unacknowledged
   // draft instead of trusting the save that claimed it.
   await page.locator('[data-surface-switcher] [data-surface="images"]').click()
@@ -5189,6 +5189,146 @@ test('a draft left unacknowledged by a FAILED save still flushes on navigation (
   await page.locator(`[data-canvas-tile="${chainId}"]`).click()
   await expect(page.locator('[data-canvas-properties] [data-canvas-section="prompt"] textarea').first()).toHaveValue('FAILED-THEN-NAVIGATED SENTINEL', { timeout: 10_000 })
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (Component vocabulary task 20, k2q0n9s) SaveStatus — the save-state tier
+// (idle/saving/saved/failed) at its FIRST consumer, the inspector's Generate
+// row, through the panel's real save seam with held routes: the four states,
+// the busy idiom (the Button busy precedent — LoaderCircle + the shared
+// .spin), the muted confirmation (T18's landed ruling), the danger tone with
+// the SERVER REASON verbatim (never swallowed), and the failed→retry→saving
+// loop. The retry re-runs the SAME seam Generate uses (saveDraft with the
+// freshest draft — A02's write-then-submit discipline).
+test('save status: the four states at the inspector, the reason verbatim, the failed→retry loop (task 20)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  const { chainId, panel, prompt } = await openInspectorAtSeed(page, 'task 20 save status seed')
+
+  // idle = silent: nothing rendered at rest (the retired instance rendered
+  // nothing for its null state; the tier keeps that contract).
+  await expect(panel.locator('[data-save-state]')).toHaveCount(0)
+
+  // saving = the busy idiom, announced politely. The write is held
+  // mid-flight so the state is observable.
+  let releaseFirst!: () => void
+  const firstHeld = new Promise<void>((resolve) => { releaseFirst = resolve })
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await firstHeld
+    await route.continue()
+  })
+  await prompt.fill('the saving arm text')
+  const saving = panel.locator('[data-save-state="saving"]')
+  await expect(saving).toBeVisible({ timeout: 10_000 })
+  await expect(saving).toHaveAttribute('role', 'status')
+  await expect(saving).toHaveAttribute('aria-live', 'polite')
+  await expect(saving).toContainText('Saving draft…')
+  await expect(saving.locator('.spin')).toBeVisible() // the Button busy precedent, not a new animation
+
+  // saving → saved: the muted confirmation (T18's ruling — the accent-ok
+  // dialect stays dead), still polite.
+  releaseFirst()
+  const saved = panel.locator('[data-save-state="saved"]')
+  await expect(saved).toBeVisible({ timeout: 10_000 })
+  await expect(saved).toContainText('Draft saved.')
+  await expect(saved).toHaveAttribute('role', 'status')
+  await expect(saved).toHaveCSS('color', 'rgb(117, 129, 121)') // var(--muted-2) — the muted confirmation
+
+  // saved → failed: the danger tone at the decision-prose floor, the SERVER
+  // REASON verbatim, an alert, and the retry affordance.
+  await page.unroute('**/api/lan/documents/chains/update')
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'T20 inspector save down' }) })
+  })
+  await prompt.fill('the failed arm text')
+  const failed = panel.locator('[data-save-state="failed"]')
+  await expect(failed).toBeVisible({ timeout: 10_000 })
+  await expect(failed).toHaveAttribute('role', 'alert')
+  await expect(failed).toHaveAttribute('aria-live', 'assertive')
+  await expect(failed).toContainText('T20 inspector save down')
+  await expect(failed).toHaveCSS('color', 'rgb(255, 127, 127)') // var(--danger)
+  const failedSize = await failed.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+  expect(failedSize, 'the failed arm renders at the >=11px decision-prose floor (the A02/A10 class)').toBeGreaterThanOrEqual(11)
+  const retry = failed.locator('[data-save-retry]')
+  await expect(retry).toBeVisible()
+
+  // failed → retry → saving → saved: the route heals, the click re-runs the
+  // seam (held once more so the saving state is observable), and the write
+  // lands durably — the API is the truth.
+  await page.unroute('**/api/lan/documents/chains/update')
+  let releaseRetry!: () => void
+  const retryHeld = new Promise<void>((resolve) => { releaseRetry = resolve })
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await retryHeld
+    await route.continue()
+  })
+  await retry.click()
+  await expect(panel.locator('[data-save-state="saving"]')).toBeVisible({ timeout: 5_000 })
+  releaseRetry()
+  await expect(panel.locator('[data-save-state="saved"]')).toBeVisible({ timeout: 10_000 })
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.settings.prompt
+  }, { timeout: 10_000 }).toBe('the failed arm text')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// (Component vocabulary task 20, k2q0n9s) The docked settings save — the
+// manifest's membership row — gains the tier's outcome states: the dirty/clean
+// standing line stays the ADJACENT dirty-set vocabulary (retained geometry),
+// and the save attempt itself now surfaces saving/failed inline (failures
+// were a 15s toast's worth of vanish before) with the retry affordance.
+test('save status: the docked settings save surfaces failure inline with retry (task 20)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const original = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    await resetSession(page)
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await page.locator('[data-canvas-settings-button]').click()
+    const dock = page.locator('[data-canvas-settings-dock]')
+    await expect(dock).toBeVisible()
+    // idle: the footer shows the standing dirty line; no save-status element.
+    await expect(dock.locator('[data-settings-dirty]')).toHaveAttribute('data-settings-dirty', 'saved')
+    await expect(dock.locator('[data-save-state]')).toHaveCount(0)
+
+    // saving, held mid-flight …
+    let release!: () => void
+    const held = new Promise<void>((resolve) => { release = resolve })
+    await page.route('**/api/lan/settings', async (route) => {
+      if (route.request().method() !== 'POST') {
+        await route.continue()
+        return
+      }
+      await held
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'T20 settings save down' }) })
+    })
+    await dock.locator('#output-path').fill(path.join(os.tmpdir(), 't20-settings-definitely-missing'))
+    await dock.locator('[data-save-settings]').click()
+    const saving = dock.locator('[data-save-state="saving"]')
+    await expect(saving).toBeVisible({ timeout: 10_000 })
+    await expect(saving.locator('.spin')).toBeVisible()
+    // … then the failure: inline, the reason verbatim, an alert, retry
+    // present — and the dirty line yields the slot to the outcome states.
+    release()
+    const failed = dock.locator('[data-save-state="failed"]')
+    await expect(failed).toBeVisible({ timeout: 10_000 })
+    await expect(failed).toHaveAttribute('role', 'alert')
+    await expect(failed).toContainText('T20 settings save down')
+    await expect(failed.locator('[data-save-retry]')).toBeVisible()
+    await expect(dock.locator('[data-settings-dirty]')).toHaveCount(0)
+
+    // retry with the route healed: back through saving to the standing line.
+    await page.unroute('**/api/lan/settings')
+    await failed.locator('[data-save-retry]').click()
+    await expect(dock.locator('[data-save-state="saving"]')).toBeVisible({ timeout: 10_000 })
+    await expect(dock.locator('[data-save-state]')).toHaveCount(0, { timeout: 30_000 })
+    await expect(dock.locator('[data-settings-dirty]')).toHaveAttribute('data-settings-dirty', 'saved')
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await page.unroute('**/api/lan/settings').catch(() => undefined)
+    await request.post('/api/lan/settings', { data: { settings: original } }).catch(() => undefined)
+  }
 })
 
 // (R2, scoped re-review 2026-10-03) F01's exact race class on the identity

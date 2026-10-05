@@ -39,6 +39,7 @@ import { CanvasSessionContext } from './sessionContext'
 import { dockDefaultGeometry } from './dockGeometry'
 import { WIZARD_REOPEN_EVENT } from './FirstRunNotice'
 import { StudioDock } from '../ui/StudioDock'
+import { SaveStatus } from '../ui/SaveStatus'
 import { useCanvasStore } from './store'
 
 export function SettingsDock() {
@@ -67,12 +68,23 @@ export function SettingsDock() {
   }
   if (open && settings && savedRef.current === null) savedRef.current = snapshotOf(settings)
   const dirty = Boolean(open && settings && savedRef.current !== null && snapshotOf(settings) !== savedRef.current)
+  // (Task 20, k2q0n9s) The save ATTEMPT's outcome states — the shared
+  // SaveStatus tier. Failures were a 15 s toast's worth of vanish before;
+  // now they hold inline with the server reason verbatim + retry. The
+  // standing dirty/clean line below stays the ADJACENT dirty-set vocabulary
+  // (a condition, not an attempt): the two share the footer's one slot, the
+  // attempt owns it while in flight or failed, and success returns to the
+  // line (clean = saved: savedRef advanced in the same tick).
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'failed'>('idle')
+  const [saveDetail, setSaveDetail] = useState<string | null>(null)
 
   if (!open || !context || !settings) return null
   const { session, runDiagnostics } = context
   const { setSettings, models, scanning, status, checking, ollamaModels, scanModels, checkConnection, refreshOllama } = session
 
   const save = async () => {
+    setSaveState('saving')
+    setSaveDetail(null)
     try {
       // The old shell's exact save sequence: persist FIRST, then re-pull the
       // inventory + recheck + refresh the LLM providers. M4 (review
@@ -90,7 +102,10 @@ export function SettingsDock() {
       toast('success', saved.warnings?.length
         ? `Settings saved and the engine registry refreshed. Warnings: ${saved.warnings.join(' · ')}`
         : 'Settings saved and the engine registry refreshed.')
+      setSaveState('idle')
     } catch (error) {
+      setSaveDetail(error instanceof Error ? error.message : String(error))
+      setSaveState('failed')
       toast('error', `Settings could not be saved: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
@@ -150,9 +165,23 @@ export function SettingsDock() {
         view mounts, then clear it so reopen lands at the top. */}
     {focusSection && <SettingsSectionFocus section={focusSection} onConsumed={() => useCanvasStore.setState({ settingsDockSection: null })} />}
     <footer className="canvas-settings-footer" data-settings-save-footer>
-      <span className={`settings-dirty-state ${dirty ? 'dirty' : ''}`} data-settings-dirty={dirty ? 'unsaved' : 'saved'} role="status">
-        {dirty ? 'Unsaved changes' : 'All changes saved'}
-      </span>
+      {/* The footer's one state slot: the dirty/clean STANDING line (R-15,
+          the retained adjacent vocabulary) yields to the save ATTEMPT's
+          outcome states while a save is in flight or failed (task 20 — the
+          tier renders saving/failed; a landed save IS the clean line, and
+          the toast still names the event). */}
+      {saveState === 'idle' ? (
+        <span className={`settings-dirty-state ${dirty ? 'dirty' : ''}`} data-settings-dirty={dirty ? 'unsaved' : 'saved'} role="status">
+          {dirty ? 'Unsaved changes' : 'All changes saved'}
+        </span>
+      ) : (
+        <SaveStatus
+          state={saveState}
+          label="settings"
+          detail={saveDetail ?? undefined}
+          onRetry={saveState === 'failed' ? save : undefined}
+        />
+      )}
       <button type="button" className="primary-button" data-save-settings onClick={() => void save()}>
         <Save size={15} /> Save settings
       </button>

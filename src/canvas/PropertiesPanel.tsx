@@ -26,6 +26,7 @@ import { StudioSelect } from '../ui/StudioSelect'
 import { StudioDock } from '../ui/StudioDock'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { EffectiveSettingRow } from '../ui/EffectiveSettingRow'
+import { SaveStatus, type SaveState } from '../ui/SaveStatus'
 import { SmartPromptEditor, type SmartPromptEditorHandle } from '../components/SmartPromptEditor'
 import { StructuredPromptEditor } from '../components/StructuredPromptEditor'
 import { PromptLibraryBrowser } from '../components/PromptLibraryBrowser'
@@ -456,9 +457,10 @@ export function PropertiesPanel() {
   const [subjectText, setSubjectText] = useState('')
   const [strength, setStrength] = useState(1)
   const [submitting, setSubmitting] = useState(false)
-  // (A02) The draft's save fate, beside the Generate action: null = nothing
-  // in flight since the last look, otherwise the last save attempt's state.
-  const [saveState, setSaveState] = useState<'saving' | 'saved' | 'failed' | null>(null)
+  // (A02; task 20 k2q0n9s) The draft's save fate, beside the Generate
+  // action, through the shared SaveStatus tier: idle = nothing in flight
+  // since the last look (silent), otherwise the last save attempt's state.
+  const [saveState, setSaveState] = useState<SaveState>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
   // Phase 4: the CreateView capabilities this panel absorbs.
   const [libraryOpen, setLibraryOpen] = useState(false)
@@ -864,6 +866,14 @@ export function PropertiesPanel() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  // (Task 20, k2q0n9s) The SaveStatus retry at this consumer re-runs the
+  // SAME seam Generate commits through — saveDraft carries the FRESHEST
+  // draft at write time, so a retry never resurrects a stale snapshot (the
+  // write-queue discipline unchanged).
+  const retryDraftSave = () => {
+    if (chainId && draft) void saveDraft(chainId, draft)
   }
 
   // Control-track delete (§2.1): the blast radius stated up front — the row
@@ -1568,18 +1578,18 @@ export function PropertiesPanel() {
           <span className="canvas-tile-ring" data-status={tile.status} style={tileToneVars(tile.status)} /> {STATUS_LABEL[tile.status]}
         </div>
         {validation && <p className="canvas-properties-warning" data-canvas-validation role="alert">{validation}</p>}
-        {/* (A02) Save state beside the action — a failed save blocks
-            submission, so it must be readable here, not only in a vanishing
-            toast. Existing notice classes, no new tokens. */}
-        {saveState && <p
-          className={saveState === 'failed' ? 'canvas-properties-warning' : 'canvas-properties-note'}
-          data-canvas-save-state={saveState}
-          role={saveState === 'failed' ? 'alert' : 'status'}
-        >
-          {saveState === 'saving' ? 'Saving draft…'
-            : saveState === 'saved' ? 'Draft saved.'
-            : `Draft not saved — ${saveError ?? 'the save failed'}. Generate retries the save before submitting.`}
-        </p>}
+        {/* (A02; task 20, k2q0n9s) Save state beside the action — a failed
+            save blocks submission (Generate re-attempts the write first,
+            A02), so it must be readable here, not only in a vanishing toast.
+            The shared SaveStatus tier renders it: idle silent, the busy
+            idiom, the muted confirmation, the danger tone with the server
+            reason verbatim + the retry affordance. */}
+        <SaveStatus
+          state={saveState}
+          label="draft"
+          detail={saveError ?? undefined}
+          onRetry={saveState === 'failed' ? retryDraftSave : undefined}
+        />
         {tile.jobId && (tile.status === 'running' || tile.status === 'queued-gpu')
           ? <button type="button" className="canvas-properties-generate" data-canvas-cancel onClick={() => void cancelChainJob(chain.id)}><Square size={12} /> stop</button>
           : <button type="button" className="canvas-properties-generate" data-canvas-generate onClick={() => void generate()} disabled={submitting}>

@@ -19,6 +19,7 @@ import { ImagePlus, Layers, LoaderCircle, Lock, Send, Settings, Sparkles, Wand2,
 import { Button } from '../ui/Button'
 import { StudioSelect } from '../ui/StudioSelect'
 import { NoticeBanner } from '../ui/NoticeBanner'
+import { SaveStatus, type SaveState } from '../ui/SaveStatus'
 import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 import { CanvasToastAdapter } from '../canvas/toastAdapter'
 import { useStudioSession } from '../hooks/useStudioSession'
@@ -269,42 +270,72 @@ function WorkbenchSurface() {
   // second array was built before the first write's reload landed.
   const pendingPatchesRef = useRef<SessionSettingsPatch[]>([])
   const writeQueueRef = useRef<Promise<boolean>>(Promise.resolve(true))
+  // (Task 20, k2q0n9s) The session writes' save fate, beside Generate — the
+  // shared SaveStatus tier. Failures previously surfaced as a vanishing
+  // NoticeBanner line; the inline tier owns them now (the server reason
+  // verbatim + retry). The FAILED ops are RETAINED until they land — the
+  // inspector's F02 ackedRef doctrine applied to this queue: a later flush
+  // re-composes the retained ops over the fresh base FIRST (never silently
+  // abandoning an unlanded edit), and the retry re-runs the same flush, so
+  // it can never revert a newer edit either.
+  const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [saveDetail, setSaveDetail] = useState<string | null>(null)
+  const failedPatchesRef = useRef<SessionSettingsPatch[] | null>(null)
+  const flushSessionWrites = useCallback(async (): Promise<boolean> => {
+    const retained = failedPatchesRef.current ?? []
+    const pending = pendingPatchesRef.current
+    if (!retained.length && !pending.length) return true
+    pendingPatchesRef.current = []
+    failedPatchesRef.current = null
+    const ops = [...retained, ...pending]
+    const state = useCanvasStore.getState()
+    const projectId = state.activeProjectId
+    const freshChain = (projectId ? state.documents[projectId] ?? null : null)?.chains.find((chain) => isWorkbenchChain(chain)) ?? null
+    if (!freshChain) {
+      setSaveState('failed')
+      setSaveDetail('the workbench session is gone')
+      failedPatchesRef.current = ops
+      return false
+    }
+    try {
+      setSaveState('saving')
+      setSaveDetail(null)
+      // The queued ops compose IN ORDER over the fresh base: plain
+      // partials overlay per-key (the original fold semantics); functions
+      // re-derive their collections from a base that already carries every
+      // earlier op — and a straddling flush starts from the previous
+      // write's durable result. Retained (previously failed) ops compose
+      // first, so retry and later writes re-apply them without clobbering
+      // anything newer.
+      let next = readSessionSettings(freshChain.settings)
+      for (const op of ops) {
+        const partial = typeof op === 'function' ? op(next) : op
+        if (partial) next = { ...next, ...partial }
+      }
+      await documentsApi.updateChain({ id: freshChain.id, settings: next as unknown as Record<string, unknown> })
+      await state.reloadActiveDocument()
+      setSaveState('saved')
+      return true
+    } catch (error) {
+      setSaveState('failed')
+      setSaveDetail(error instanceof Error ? error.message : String(error))
+      failedPatchesRef.current = ops
+      return false
+    }
+  }, [])
   const patchSettings = useCallback((patch: SessionSettingsPatch): Promise<boolean> => {
     pendingPatchesRef.current = [...pendingPatchesRef.current, patch]
-    const flush = async (): Promise<boolean> => {
-      const pending = pendingPatchesRef.current
-      if (!pending.length) return true
-      pendingPatchesRef.current = []
-      const state = useCanvasStore.getState()
-      const projectId = state.activeProjectId
-      const freshChain = (projectId ? state.documents[projectId] ?? null : null)?.chains.find((chain) => isWorkbenchChain(chain)) ?? null
-      if (!freshChain) {
-        setNotice('The session could not be saved: the workbench session is gone.')
-        return false
-      }
-      try {
-        // The queued ops compose IN ORDER over the fresh base: plain
-        // partials overlay per-key (the original fold semantics); functions
-        // re-derive their collections from a base that already carries every
-        // earlier op — and a straddling flush starts from the previous
-        // write's durable result.
-        let next = readSessionSettings(freshChain.settings)
-        for (const op of pending) {
-          const partial = typeof op === 'function' ? op(next) : op
-          if (partial) next = { ...next, ...partial }
-        }
-        await documentsApi.updateChain({ id: freshChain.id, settings: next as unknown as Record<string, unknown> })
-        await state.reloadActiveDocument()
-        return true
-      } catch (error) {
-        setNotice(`The session could not be saved: ${error instanceof Error ? error.message : String(error)}`)
-        return false
-      }
-    }
-    const write = writeQueueRef.current.then(flush)
+    const write = writeQueueRef.current.then(flushSessionWrites)
     writeQueueRef.current = write.catch(() => false)
     return write
-  }, [])
+  }, [flushSessionWrites])
+  // The SaveStatus retry: the SAME queue, the SAME flush — the retained ops
+  // are still held, so the click re-attempts exactly the unlanded edits.
+  const retrySessionSave = useCallback((): void => {
+    const write = writeQueueRef.current.then(flushSessionWrites)
+    writeQueueRef.current = write.catch(() => false)
+    void write
+  }, [flushSessionWrites])
 
   // The takes of the session (the pick surface), newest-first.
   const takes = useMemo(() => {
@@ -1170,6 +1201,18 @@ function WorkbenchSurface() {
           >
             Generate {family?.profile === 't1' ? '(T=1 fast — structurally soft)' : family?.profile === 'sharp' ? `(fast-sharp — ${settings.tier}-frame context, one slice)` : `(${family?.kind === 'generate-directed' ? '39-frame packet' : packetTierLabel(settings.tier, studioPackOnEngine)})`}
           </Button>
+          {/* (Task 20, k2q0n9s) The session writes' save state beside the
+              action — the shared SaveStatus tier: idle silent, the busy
+              idiom while the serialized queue flushes, the muted
+              confirmation when it lands, and failures INLINE with the
+              server reason verbatim + retry (the retired vanishing notice
+              line is gone). */}
+          <SaveStatus
+            state={saveState}
+            label="session"
+            detail={saveDetail ?? undefined}
+            onRetry={saveState === 'failed' ? retrySessionSave : undefined}
+          />
           <p className="iw-staging-note" data-iw-staging>Staging: Generate → free → Refine/Burst → free → Exit (24 GB discipline — stages never run concurrently).</p>
 
           <div className="iw-handoffs" data-iw-handoffs>
