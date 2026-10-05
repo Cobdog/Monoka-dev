@@ -1127,3 +1127,6 @@ P2-6 WET ROAD — `integrated_multimodal_description: [Shot 1] Cinematic night e
 [Shot 2] At 00:06.5, the camera cuts to a static wide as the coupe recedes down the avenue, wipers ticking, its wake glittering under the sodium streetlights.
 overall_soundscape: Steady rain on bodywork and pavement, wiper sweeps, a V8 idle rising through the wheelspin with a brief bark, tires hissing on wet asphalt, and distant city traffic.
 non_diegetic_music: N/A`
+
+## AMENDMENT 8 — the horizon caveat (from the maintainer's framerate question, 2026-10-05)
+All H3-family sets (B/E/P) ran at 39f = 1.625s @ 24fps — the only phase-exact audio length (the audio batteries demanded it) and the screening economics the audit mandated. D2's engine cells ran 81f ≈ 5s at Wan-native 16fps. **Every motion/physics/coherence verdict in this batch is therefore a SHORT-HORIZON verdict** (motion onset, ~1.6s windows): X1's falsification, the X2 cliff, PDMD's 6-0, S7's parking. The fps was correct throughout; the horizon was the screening choice. **Set P2 (243f ≈ 10.1s) is the batch's FIRST long-horizon test** — the screen-then-confirm doctrine's confirm stage; no short-horizon verdict may be cited as general until its long-horizon confirmation runs. Future screens keep 39f where audio phase-exactness or economics demand it, with the horizon labeled in every verdict line.
