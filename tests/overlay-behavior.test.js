@@ -75,9 +75,19 @@ test('(c) non-chrome keydowns stay local to the open surface', () => {
 
 // ---- (d) the Tab-cycle wrap ---------------------------------------------------
 
-test('(d) Tab wraps inside the panel at the ends; the middle passes through', () => {
-  eq(tabCycleTarget(0, -1, false), null, 'no tabbables — nothing to wrap (the panel itself holds focus)')
-  eq(tabCycleTarget(1, 0, false), null, 'one tabbable cannot wrap')
+// (C02, Codex code audit 2026-10-05) The CONTRACT CHANGED: containment holds
+// at the cardinality edges too. The old shape returned null for count <= 1,
+// handing Tab to the browser — a one-control overlay lost focus to the
+// background, an empty one likewise. The new shape: -1 means the PANEL itself
+// holds the keystroke (zero tabbables); a single tabbable cycles back to
+// itself from either direction.
+test('(d) Tab wraps inside the panel at the ends; containment holds at the 0/1 edges (C02)', () => {
+  eq(tabCycleTarget(0, -1, false), -1, 'no tabbables — the panel itself holds the keystroke, never the background')
+  eq(tabCycleTarget(0, -1, true), -1, 'no tabbables, Shift+Tab — the panel holds it too')
+  eq(tabCycleTarget(1, 0, false), 0, 'one tabbable: Tab cycles back to it — never escaping the surface')
+  eq(tabCycleTarget(1, 0, true), 0, 'one tabbable: Shift+Tab cycles back to it')
+  eq(tabCycleTarget(1, -1, false), 0, 'one tabbable, focus on the panel: Tab pulls into the control')
+  eq(tabCycleTarget(1, -1, true), 0, 'one tabbable, focus on the panel: Shift+Tab pulls into the control')
   eq(tabCycleTarget(4, 0, true), 3, 'Shift+Tab at the first wraps to the last')
   eq(tabCycleTarget(4, 3, false), 0, 'Tab at the last wraps to the first')
   eq(tabCycleTarget(4, 1, false), null, 'Tab mid-list takes the browser\'s own order')

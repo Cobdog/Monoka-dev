@@ -44,12 +44,18 @@ export function keepsKeyLocal(seed: KeySeed): boolean {
   return !isChromeChord(seed)
 }
 
-/** The Tab-cycle wrap target, or null when the browser's own Tab order
- *  should stand. `activeIndex` is the current focus's position among the
- *  panel's tabbables, -1 when focus sits outside them (on the panel itself
- *  or escaped) — then Tab pulls it back in from the matching end. */
+/** The Tab-cycle wrap target, null when the browser's own Tab order should
+ *  stand. `activeIndex` is the current focus's position among the panel's
+ *  tabbables, -1 when focus sits outside them (on the panel itself or
+ *  escaped) — then Tab pulls it back in from the matching end. Containment
+ *  holds at the EDGES too (C02, the 2026-10-05 Codex audit): with exactly
+ *  one tabbable, every Tab and Shift+Tab resolves to it (0 — the wrap
+ *  degenerates to staying put, never escaping to the background); with
+ *  none, the return is -1 — the PANEL itself keeps the keystroke (the hook
+ *  preventDefaults and holds focus on the panel; an empty overlay must not
+ *  leak focus either). */
 export function tabCycleTarget(count: number, activeIndex: number, backwards: boolean): number | null {
-  if (count <= 1) return null
+  if (count <= 0) return -1
   if (activeIndex < 0) return backwards ? count - 1 : 0
   if (backwards) return activeIndex === 0 ? count - 1 : null
   return activeIndex === count - 1 ? 0 : null
