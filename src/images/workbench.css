@@ -47,7 +47,9 @@
 .iw-refine-tap { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); font-weight: 700; cursor: pointer; font-size: var(--text-2xs); }
 .iw-refine-tap.quality { border-color: color-mix(in srgb, var(--muted) 45%, transparent); background: color-mix(in srgb, var(--muted) 8%, transparent); color: var(--text, #edf3ef); font-weight: 500; }
 .iw-refine-tap:disabled { opacity: 0.5; cursor: default; }
-.iw-t1-note, .iw-engine-note { font-style: normal; font-size: var(--text-md); color: var(--muted); }
+/* (task 24, k2q0n9s) .iw-engine-note died into the shared Refusal tier at
+   the refine affordance — its tone/size ride the .refusal recipe now. */
+.iw-t1-note { font-style: normal; font-size: var(--text-md); color: var(--muted); }
 .iw-burst-row { display: flex; gap: 8px; align-items: center; }
 .iw-burst, .iw-tone-lock { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); background: none; color: var(--muted); cursor: pointer; font-size: var(--text-2xs); }
 .iw-burst.gated { opacity: 0.55; }
