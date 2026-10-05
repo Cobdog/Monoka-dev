@@ -286,7 +286,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
     </nav>
     <section className="settings-group" data-settings-group="setup" aria-label="Setup">
 <h2 className="settings-group-heading">Setup <small>once — engine, node packs, the model library, input &amp; output</small></h2>
-<section className="settings-section" data-settings-section="engine"><div className="settings-heading"><div><Activity size={19} /><span><strong>ComfyUI engine</strong><small>The desktop app communicates only with this local address.</small></span></div><span className="health-pill" data-connection={status.connected ? 'online' : 'offline'} style={healthPillVars(status.connected ? 'online' : 'offline')}>{status.connected ? 'Connected' : 'Offline'}</span></div><div className="connection-row"><div className="field-group grow"><label htmlFor="comfy-url">Server URL</label><input id="comfy-url" value={settings.comfyUrl} onChange={(event) => setSettings({ ...settings, comfyUrl: event.target.value })} /></div><Button variant="secondary" className="secondary-button test-button" size={16} busy={checking} icon={<RefreshCw size={16} />} onClick={onCheck}>Test connection</Button></div>
+<section className="settings-section" data-settings-section="engine"><div className="settings-heading"><div><Activity size={19} /><span><strong>ComfyUI engine</strong><small>The desktop app communicates only with this local address.</small></span></div><span className="health-pill" data-connection={status.connected ? 'online' : 'offline'} style={healthPillVars(status.connected ? 'online' : 'offline')}>{status.connected ? 'Connected' : 'Offline'}</span></div><div className="connection-row"><Field className="grow" label="Server URL" htmlFor="comfy-url"><input id="comfy-url" value={settings.comfyUrl} onChange={(event) => setSettings({ ...settings, comfyUrl: event.target.value })} /></Field><Button variant="secondary" className="secondary-button test-button" size={16} busy={checking} icon={<RefreshCw size={16} />} onClick={onCheck}>Test connection</Button></div>
     {/* M3 (review 2026-09-19): the status route's `error` used to be dead
         weight — a failed test showed only the stale "Offline" pill with no
         acknowledgment the test ran or why it failed. Render the reason with
@@ -316,6 +316,13 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
             launch this engine — point it at the instance's own custom_nodes
             folder and node packs install/clone into it (same pinned-revision
             and foreign-refusal discipline as the managed checkout). */}
+        {/* (task 24, the T18 sweep adjudication) These two path rows keep the
+            raw field-group: PathCheckNote is a STATEFUL STATUS note (a
+            different vocabulary — T18's own ruling), and its grid placement
+            under the control has no Field home (Field's one-control contract
+            would evict it to a flex sibling; wrapping Field in the div it
+            replaces is cosmetic membership). The label association these rows
+            would gain already exists (htmlFor/id). */}
         <div className="connection-row"><div className="field-group grow"><label htmlFor="external-custom-nodes">External custom nodes folder</label><input id="external-custom-nodes" data-external-custom-nodes value={settings.engine.externalCustomNodesDir} placeholder="/path/to/ComfyUI/custom_nodes — pack installs land here" onChange={(event) => updateEngine({ externalCustomNodesDir: event.target.value })} /><PathCheckNote path={settings.engine.externalCustomNodesDir} /></div></div>
         <p className="settings-note managed-engine-note" data-external-custom-nodes-note>External mode keeps the connection above as the engine. With a custom nodes folder set, the node packs below install into it — from a local copy here, or one consented fetch of the pinned revision (Fetchable items). Model inventory is pulled from the instance itself, so no local model roots are required.</p>
         {/* (R-31, audit C F9) The honest external health card: there is no
@@ -334,16 +341,16 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
         <div className="connection-row"><div className="field-group grow"><label htmlFor="managed-checkout">ComfyUI checkout (existing)</label><input id="managed-checkout" value={settings.engine.checkoutPath} placeholder="/path/to/ComfyUI — must contain main.py" onChange={(event) => updateEngine({ checkoutPath: event.target.value })} /><PathCheckNote path={settings.engine.checkoutPath} /></div></div>
         <p className="settings-note managed-engine-note">No checkout yet? The <strong>Fetchable items</strong> section below can fetch the reference ComfyUI revision (v0.34.0, GPL-3.0, consent-gated) and then nominate it here with one click.</p>
         <div className="connection-row">
-          <div className="field-group grow"><label htmlFor="managed-python">Python executable</label><input id="managed-python" value={settings.engine.pythonPath} placeholder="empty = python3 (python on Windows)" onChange={(event) => updateEngine({ pythonPath: event.target.value })} /></div>
-          <div className="field-group"><label htmlFor="managed-port">Preferred port</label><input id="managed-port" type="number" min={0} max={65535} value={settings.engine.portPreference || ''} placeholder="auto" onChange={(event) => updateEngine({ portPreference: Number(event.target.value) || 0 })} /></div>
+          <Field className="grow" label="Python executable" htmlFor="managed-python"><input id="managed-python" value={settings.engine.pythonPath} placeholder="empty = python3 (python on Windows)" onChange={(event) => updateEngine({ pythonPath: event.target.value })} /></Field>
+          <Field label="Preferred port" htmlFor="managed-port"><input id="managed-port" type="number" min={0} max={65535} value={settings.engine.portPreference || ''} placeholder="auto" onChange={(event) => updateEngine({ portPreference: Number(event.target.value) || 0 })} /></Field>
           <label className="settings-check managed-autostart"><input type="checkbox" checked={settings.engine.autoStart} onChange={(event) => updateEngine({ autoStart: event.target.checked })} /><span><strong>Start with the server</strong><small>Boot adopts a healthy running instance instead of double-starting.</small></span></label>
         </div>
         <div className="connection-row">
-          <div className="field-group"><label htmlFor="managed-profile">Launch profile</label>
+          <Field label="Launch profile" htmlFor="managed-profile">
             <StudioSelect wrapClassName="select-wrap" chevronSize={15} id="managed-profile" value={settings.engine.profile} onChange={(event) => updateEngine({ profile: event.target.value })}>
               {profileIds.map((id) => <option key={id} value={id}>{settings.engine.profiles[id].label}</option>)}
             </StudioSelect>
-          </div>
+          </Field>
           <p className="settings-note managed-engine-note">{activeProfile?.description}</p>
         </div>
         <div className="profile-env-editor">
@@ -351,8 +358,8 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
           {profileEnvEntries.length === 0 && <p className="settings-note">No variables set. The VDN_H3_* toggles are runtime lab switches read by the node itself — add one here only if you mean to set it for every launch.</p>}
           {profileEnvEntries.map(([name, value], index) => (
             <div className="connection-row profile-env-row" key={index}>
-              <div className="field-group"><label htmlFor={`profile-env-name-${index}`}>Name</label><input id={`profile-env-name-${index}`} value={name} placeholder="VDN_H3_…" onChange={(event) => setProfileEnv(profileEnvEntries.map((entry, at) => at === index ? [event.target.value, entry[1]] : entry))} /></div>
-              <div className="field-group grow"><label htmlFor={`profile-env-value-${index}`}>Value</label><input id={`profile-env-value-${index}`} value={value} onChange={(event) => setProfileEnv(profileEnvEntries.map((entry, at) => at === index ? [entry[0], event.target.value] : entry))} /></div>
+              <Field label="Name" htmlFor={`profile-env-name-${index}`}><input id={`profile-env-name-${index}`} value={name} placeholder="VDN_H3_…" onChange={(event) => setProfileEnv(profileEnvEntries.map((entry, at) => at === index ? [event.target.value, entry[1]] : entry))} /></Field>
+              <Field className="grow" label="Value" htmlFor={`profile-env-value-${index}`}><input id={`profile-env-value-${index}`} value={value} onChange={(event) => setProfileEnv(profileEnvEntries.map((entry, at) => at === index ? [entry[0], event.target.value] : entry))} /></Field>
               <button type="button" className="secondary-button icon-only" aria-label="Remove variable" onClick={() => setProfileEnv(profileEnvEntries.filter((_, at) => at !== index))}><Unplug size={14} /></button>
             </div>
           ))}
