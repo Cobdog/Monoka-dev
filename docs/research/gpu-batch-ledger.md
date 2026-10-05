@@ -989,3 +989,74 @@ Set P (PDMD) DISPATCHED (17:57, opus; testbed PID 3937245; all three LoRAs sha-v
 
 ## SPRINT WRAP EXPANDED (maintainer 2026-10-04: "Do J too")
 Set J joins the wrap: P (running) → E (X7) → J (the eight fresh-eyes pilots, each independently null-gated) → closure. J's fetch-prep agent DISPATCHED (network-parallel — downloads run during P/E's GPU ownership; staging-only, no symlinks until J dispatch). J's known license surfaces: Meridian's VGGT-FAIR-NC (confirm at fetch, flagged row) and Anime-to-Realism's CivitAI class (anonymous-fetch attempted; if gated, maintainer-staged — never routed around). Sets F/G/H/I stay queued-not-run.
+
+## SET J FETCH COMPLETE (2026-10-04 — network-parallel during P/E's GPU ownership)
+
+Set D's discipline verbatim, independently re-verified after download (HF API
+sizes + LFS-etag sha256s re-pulled; 51/51 files PASS, 0 FAIL, 38.13 GiB
+staged). **Staging only — nothing symlinked into the shared install** (J
+dispatch owns installation). Log `/home/agent/models/setJ-fetch.log`, manifest
+`/home/agent/models/setJ-fetch-manifest.json`, registry rows §5a/§5g/§5i +
+the §4 pack row.
+
+**Fetched + verified:**
+- **VOID** (J3): pass1 + pass2 (11.14 GB each) + cogvideox VAE + RAFT-large +
+  t5xxl_fp16 from Comfy-Org/void-model (Apache-2.0) — the official blueprint's
+  own URLs; sam3.1 (the blueprint's tracker) already local from Set D. **VOID
+  and MoGe are core ComfyUI at the shared install** (`nodes_void.py`,
+  `nodes_moge.py` + blueprints) — weights only, no node packs to install.
+- **MoGe-2 ViT-L fp16** (J2's non-LoRA comparator): Comfy-Org/MoGe, MIT both
+  mirror and upstream weights repo; the core blueprint's own default file
+  (662 MB).
+- **Meridian** (J2): the ComfyUI-flavor LoRA pair (1.88 GB × 2, the flavor the
+  testbed workflow loads) + frozen embeds + silence audio + recam code + the
+  geometry node/workflows + example clips. Weights = **MiniMax H3 Community
+  License** (read at fetch — §5a family, territory/AUP/$20M terms); code
+  Apache-2.0. **The A6 "Meridian INT8 34 GB" row was already satisfied** — the
+  adapters ride `minimax_h3_fl2va_int8_convrot.safetensors` (34.0 GB, on disk
+  since 09-16); not re-fetched. The diffusers-flavor pair (2.67 GB × 2) NOT
+  fetched — that path needs the 62 GiB bf16 base + ≥96 GB VRAM
+  (docs/installation.md), unreachable on this rig.
+- **HyperFlow** (J8's tier-ladder rung): the full-base converted build
+  `custom_node_hyperflow_8step_v1.0_comfyui.safetensors` (3.94 GB, drbaph;
+  MiniMax H3 Community License per the card's license_name; sha triple-checked
+  — HF etag = the node pack's own pin `b10b1a78…cd71`) + the node pack
+  **Adudeguyman/ComfyUI-HyperFlow-H3 @ `99778905` (v1.4.0, Apache-2.0)**
+  cloned to staging. The pack is the **official continuation of
+  Saganaki22/ComfyUI-Hyperflow** (deleted upstream — resolves fresh-eyes'
+  "Saganaki22 revival (still 404)" not-found) and ships curve-fits for our
+  exact local pruned int8 bases at no extra download; our full int8 bases are
+  "fully supported" per its README.
+
+**Maintainer-staged (gated — surfaced, never routed around):**
+1. **VGGT-Omega** (facebook/VGGT-Omega, gated:manual + Meta FAIR
+   Noncommercial Research License v1) — REQUIRED by Meridian's geometry
+   subprocess (`comfyui/meridian_geometry.py` shells out to
+   `inference/sample.py --preview-only`, which loads it); the ledger's
+   "VGGT-FAIR-NC surfaces at consent" is CONFIRMED — the NC gate rides this
+   dependency, not the Meridian weights. File to stage after access:
+   `vggt_omega_1b_512.pt` (4.58 GB) + the facebookresearch/vggt-omega code
+   checkout. **J2's MoGe comparator arm is VGGT-free by design and can run
+   before it lands.**
+2. **Anime-to-Realism** (CivitAI 2783657, version "Minimax H3 ref2v v1.0" id
+   3356617, `Anime2Realsim__H3.safetensors` 296 MB, trigger "LumiReal"):
+   metadata anonymously readable (200) but the download is login-walled (401)
+   — the CivitAI user-fetch class; API sha256 recorded in the manifest for
+   post-download verification. Staging hint: `/home/agent/models/loras/`.
+3. **UniLumos** (Alibaba-DAMO-Academy/UniLumos, gated:auto): weights Apache-
+   2.0, code repo (Lumos-Custom) unlicensed — the own-glue plan stands. 11.4
+   GB of the repo is a bf16 umt5-xxl we may already cover with the local fp8
+   copy (unproven — J8 tests; if it substitutes, the stage burden drops to
+   unilumos.pt + vae.pth, 3.6 GB).
+
+**J1 mechanism-pack check (A6's last row):** NONE of the three adherence
+mechanisms is installed at the shared install (verified by git-remote listing
++ content grep of `/home/agent/comfyui/custom_nodes/`): Fizgig-Tweaks
+(shootthesound, MIT, pin `5f8b48a` per the assessment) absent; T8mars
+(`h3-audio-t8`, GPL-3.0-or-later, registry row exists) absent; **Semantic
+Bridge located this pass** at github.com/Speach1sdef178/MiniMax-H3-Semantic-
+Bridge (11 MB conditioning-space adapter weights, license "other" — the
+fresh-eyes "unstated — check before any catalog row" flag stands; NOT
+fetched). J1 dispatch installs/ports Fizgig + T8mars and resolves Semantic
+Bridge's license or drops to the two-mechanism bake-off (both null-gated
+either way).
