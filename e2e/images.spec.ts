@@ -938,6 +938,81 @@ test('same-collection ref removals persist together (A03 fix round 2): remove b 
 })
 
 // ---------------------------------------------------------------------------
+// (Component vocabulary task 20, k2q0n9s) The workbench's SESSION WRITES
+// (the plan's second named consumer — the serialized patchSettings seam)
+// surface the save-state tier beside Generate: idle silent, the busy idiom
+// while a write is in flight, the muted confirmation when it lands, and —
+// new — the failed state with the SERVER REASON verbatim plus retry. The
+// retired failure path was a NoticeBanner line ('The session could not be
+// saved: …'); the inline tier owns the failure now (one announcer, no
+// double-report), and the retry re-runs the retained write through the SAME
+// queue (nothing reverts a newer edit — the failed ops re-compose over the
+// fresh base).
+test('session writes surface save state; a failed write retries through the same queue (task 20)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const seeded = await seedSession(request)
+  await page.goto('/?images=1')
+  await expect(page.locator('[data-iw-intent]')).toBeVisible({ timeout: 15_000 })
+  const root = page.locator('[data-iw-root]')
+  const status = root.locator('[data-save-state]')
+
+  // idle = silent.
+  await expect(status).toHaveCount(0)
+
+  // saving → saved through the real seam, the write held mid-flight.
+  let releaseFirst!: () => void
+  const firstHeld = new Promise<void>((resolve) => { releaseFirst = resolve })
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await firstHeld
+    await route.continue()
+  })
+  await page.locator('[data-iw-intent]').fill('the saving arm intent')
+  const saving = root.locator('[data-save-state="saving"]')
+  await expect(saving).toBeVisible({ timeout: 10_000 })
+  await expect(saving).toHaveAttribute('role', 'status')
+  await expect(saving).toContainText('Saving session…')
+  await expect(saving.locator('.spin')).toBeVisible() // the Button busy precedent
+  releaseFirst()
+  const saved = root.locator('[data-save-state="saved"]')
+  await expect(saved).toBeVisible({ timeout: 10_000 })
+  await expect(saved).toContainText('Session saved.')
+
+  // failed: the server reason verbatim, an alert, retry present — and the
+  // retired NoticeBanner double-report does NOT also fire.
+  await page.unroute('**/api/lan/documents/chains/update')
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'T20 session save down' }) })
+  })
+  await page.locator('[data-iw-keep-dial]').fill('0.81')
+  const failed = root.locator('[data-save-state="failed"]')
+  await expect(failed).toBeVisible({ timeout: 10_000 })
+  await expect(failed).toHaveAttribute('role', 'alert')
+  await expect(failed).toHaveAttribute('aria-live', 'assertive')
+  await expect(failed).toContainText('T20 session save down')
+  await expect(page.locator('[data-iw-note]')).toHaveCount(0) // one announcer — the retired notice stays retired
+
+  // retry: the route heals — saving again (held so it is observable), then
+  // saved, and the write lands DURABLY (the API is the truth).
+  await page.unroute('**/api/lan/documents/chains/update')
+  let releaseRetry!: () => void
+  const retryHeld = new Promise<void>((resolve) => { releaseRetry = resolve })
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await retryHeld
+    await route.continue()
+  })
+  await failed.locator('[data-save-retry]').click()
+  await expect(root.locator('[data-save-state="saving"]')).toBeVisible({ timeout: 5_000 })
+  releaseRetry()
+  await expect(root.locator('[data-save-state="saved"]')).toBeVisible({ timeout: 10_000 })
+  await expect.poll(async () => {
+    const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+    const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+    return chain?.settings?.keepDial ?? null
+  }, { timeout: 15_000 }).toBe(0.81)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
 // (Audit A11, task 3tu6ei6) The poserig handoff was consumed BEFORE the
 // workbench session existed: on a cold navigation the inbox key was removed
 // on the first effect pass, patchSettings early-returned on !sessionChain,

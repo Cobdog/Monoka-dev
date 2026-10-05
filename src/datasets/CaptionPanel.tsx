@@ -26,6 +26,7 @@ import { History, MessageSquareText, ShieldAlert, Sparkles, X } from 'lucide-rea
 import { datasetsApi, type LibraryLayer, type TriggerVerdict } from './api'
 import { Button } from '../ui/Button'
 import { Field } from '../ui/Field'
+import { SaveStatus, type SaveState } from '../ui/SaveStatus'
 import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 
 type Props = {
@@ -39,10 +40,16 @@ type HistoryEntry = { text: string; author: string; authorModel: string | null; 
 export function CaptionPanel({ layer, onClose, onChanged }: Props) {
   const [text, setText] = useState(layer.caption?.text ?? '')
   const [validation, setValidation] = useState<TriggerVerdict | null>(null)
-  const [savedAt, setSavedAt] = useState<number | null>(null)
   const [history, setHistory] = useState<HistoryEntry[] | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  // (Task 20, k2q0n9s) The caption SAVE outcome rides the shared SaveStatus
+  // tier (busy/error/savedAt were three ad-hoc locals before; busy now
+  // derives from the machine — the C1 guard and the Button stay honest).
+  // `historyError` is NOT a save state: the history listing's own failure
+  // keeps the plain ds-error paragraph.
+  const [saveState, setSaveState] = useState<SaveState>('idle')
+  const [saveDetail, setSaveDetail] = useState<string | null>(null)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const busy = saveState === 'saving'
   // VLM modal state
   const [vlmOpen, setVlmOpen] = useState(false)
   const [vlmInstruction, setVlmInstruction] = useState('')
@@ -79,16 +86,15 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
   }
 
   const save = async () => {
-    setBusy(true)
-    setError(null)
+    setSaveState('saving')
+    setSaveDetail(null)
     try {
       await datasetsApi.setCaption(layer.id, text)
-      setSavedAt(Date.now())
+      setSaveState('saved')
       onChanged()
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : String(saveError))
-    } finally {
-      setBusy(false)
+      setSaveDetail(saveError instanceof Error ? saveError.message : String(saveError))
+      setSaveState('failed')
     }
   }
 
@@ -130,8 +136,8 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
     try {
       const result = await datasetsApi.captionHistory(layer.id)
       setHistory(result.history)
-    } catch (historyError) {
-      setError(historyError instanceof Error ? historyError.message : String(historyError))
+    } catch (loadError) {
+      setHistoryError(loadError instanceof Error ? loadError.message : String(loadError))
     }
   }
 
@@ -197,8 +203,19 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
         />
       </Field>
       <div className="ds-caption-foot">
-        {error && <p className="ds-error">{error}</p>}
-        {savedAt && !busy && !error && <p className="ds-status">Saved (hand-written; batch VLM will never silently overwrite it).</p>}
+        {/* (Task 20, k2q0n9s) The SAVE outcome is the shared SaveStatus tier
+            (the retired pair: a roleless danger paragraph + the saved-line
+            timestamp row) — failures announce with the server reason verbatim
+            and retry through the same seam; the confirmation is the tier's
+            muted line. The history listing's own failure keeps the ds-error
+            paragraph (a listing failure, not a save state). */}
+        {historyError && <p className="ds-error">{historyError}</p>}
+        <SaveStatus
+          state={saveState}
+          label="caption"
+          detail={saveDetail ?? undefined}
+          onRetry={saveState === 'failed' ? save : undefined}
+        />
         <Button variant="primary" className="ds-btn" size={13} busy={busy} onClick={save} data-ds-save-caption>
           Save caption
         </Button>

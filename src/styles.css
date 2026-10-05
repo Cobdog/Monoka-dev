@@ -186,6 +186,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .effective-setting-row .effective-setting-value { color: var(--text); overflow-wrap: anywhere; }
 .effective-setting-row .effective-setting-chip { display: inline-flex; align-items: center; padding: 1px 7px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-sm); line-height: 1.4; }
 .effective-setting-row .effective-setting-reset { cursor: pointer; }
+/* Component vocabulary task 20 (k2q0n9s) — SaveStatus, the save-state tier
+   (idle/saving/saved/failed). P06: the recipe owns the STATE's tone/type and
+   the line's internal flow; the consuming surface's class (className)
+   carries placement geometry. The busy arm is the Button busy idiom verbatim
+   (LoaderCircle + the shared .spin — no new animation); saved is T18's
+   landed confirmation ruling (MUTED — the retired accent-ok dialect's
+   successor; the OK-tone question stays open with the maintainer); failed is
+   the danger tone at the decision-prose floor (--text-md, the A02/A10
+   >=11px class) with the server reason verbatim + the retry affordance
+   (an inheritance-reset text button — the notice-banner × precedent: resets
+   and cursor, never box geometry). The class math lives in
+   src/ui/saveStatusClasses.ts (node-tested against THIS block). */
+.save-status { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--muted-2); font-size: var(--text-2xs); line-height: 1.4; }
+.save-status--failed { color: var(--danger); font-size: var(--text-md); }
+.save-status-retry { background: none; border: none; padding: 0; color: inherit; font-size: inherit; line-height: inherit; text-decoration: underline; cursor: pointer; }
 textarea, .field-group input, .field-group select { width: 100%; border: 1px solid var(--line); border-radius: 8px; background:var(--color-surface-sunken); color: var(--text); transition: border-color .15s ease; }
 textarea:hover, .field-group input:hover, .field-group select:hover { border-color: var(--line-strong); }
 textarea:focus, .field-group input:focus, .field-group select:focus { border-color: #738f42; outline: none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent); }

@@ -185,7 +185,7 @@ test('the caption editor: live trigger validation and the stale badge flow', asy
   await textarea.fill('ph0t0r34l, a colorful test pattern drifting slowly; no audible sound')
   await expect(page.locator('[data-ds-validation-ok]')).toBeVisible({ timeout: 5_000 })
   await page.locator('[data-ds-save-caption]').click()
-  await expect(page.locator('.ds-status', { hasText: 'Saved' })).toBeVisible()
+  await expect(page.locator('[data-save-state="saved"]')).toBeVisible()
   // Editing the crop afterwards flags the caption stale (§4).
   await page.locator('[data-ds-caption] .ds-btn.btn--ghost', { hasText: 'Close' }).click()
   await page.locator('[data-ds-layer]').first().getByRole('button', { name: 'crop/trim' }).click()
@@ -841,7 +841,7 @@ test('the uniform busy guard: while the caption save is in flight Escape, outsid
   release()
   // (presence form — the object is options, not an expected value: the flag is GONE)
   await expect(save).not.toHaveAttribute('aria-busy', { timeout: 10_000 })
-  await expect(page.locator('.ds-status', { hasText: 'Saved' })).toBeVisible()
+  await expect(page.locator('[data-save-state="saved"]')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(captionDialog).toHaveCount(0)
   await expect(captionTrigger).toBeFocused()
@@ -855,6 +855,63 @@ test('the uniform busy guard: while the caption save is in flight Escape, outsid
   await expect(captionDialog).toBeVisible()
   await page.mouse.click(8, 300)
   await expect(captionDialog).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (Component vocabulary task 20, k2q0n9s) The caption panel's SAVE outcome —
+// the manifest's membership row — rides the shared SaveStatus tier now (the
+// retired ad-hoc pair was a roleless `.ds-error` paragraph + the `.ds-status`
+// savedAt line): a failed save announces (role=alert) with the SERVER REASON
+// verbatim, the retry affordance re-runs the save through the same seam, and
+// the busy guard releases either way.
+test('caption save status: a failure surfaces the server reason and the retry re-runs the save (task 20)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  const { captionTrigger } = await seedLayerWithCaptionTarget(page)
+  await captionTrigger.click()
+  const captionDialog = page.getByRole('dialog', { name: /Caption —/ })
+  await expect(captionDialog).toBeVisible()
+
+  // idle = silent.
+  await expect(captionDialog.locator('[data-save-state]')).toHaveCount(0)
+
+  // Attempt 1 fails: the reason verbatim, an alert, the retry present, and
+  // the C1 busy guard released (not stuck saving).
+  let attempt = 0
+  let releaseHeld!: () => void
+  const held = new Promise<void>((resolve) => { releaseHeld = resolve })
+  await page.route('**/api/lan/datasets/captions', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue()
+      return
+    }
+    attempt += 1
+    if (attempt === 1) {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'T20 caption save down' }) })
+      return
+    }
+    if (attempt === 2) await held // the retried write, held so saving is observable
+    await route.continue()
+  })
+  await page.locator('[data-ds-caption-textarea]').fill('c20_retry the verbatim reason pin')
+  await page.locator('[data-ds-save-caption]').click()
+  const failed = captionDialog.locator('[data-save-state="failed"]')
+  await expect(failed).toBeVisible({ timeout: 10_000 })
+  await expect(failed).toHaveAttribute('role', 'alert')
+  await expect(failed).toHaveAttribute('aria-live', 'assertive')
+  await expect(failed).toContainText('T20 caption save down')
+  await expect(failed.locator('[data-save-retry]')).toBeVisible()
+  await expect(page.locator('[data-ds-save-caption]')).not.toHaveAttribute('aria-busy')
+
+  // The retry: saving again (held), then the saved confirmation — through
+  // the same seam, against the real server.
+  await failed.locator('[data-save-retry]').click()
+  await expect(captionDialog.locator('[data-save-state="saving"]')).toBeVisible({ timeout: 5_000 })
+  releaseHeld()
+  const saved = captionDialog.locator('[data-save-state="saved"]')
+  await expect(saved).toBeVisible({ timeout: 10_000 })
+  await expect(saved).toContainText('Caption saved.')
+  await expect(saved).toHaveAttribute('role', 'status')
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
