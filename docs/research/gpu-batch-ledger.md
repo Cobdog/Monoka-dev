@@ -1102,3 +1102,4 @@ registry rows in lockstep, the MoGe-warp J2 conditioning built offline (identity
 holes / slide 9–10 % disocclusion — the VGGT substitution disclosed per-cell).
 **Deferred:** J5 (CivitAI-gated), J2's VGGT-conditioned rung + J8's UniLumos arm
 (maintainer-staged gates — surfaced, never routed around).
+SET J RESUMED (maintainer release 2026-10-04 night): testbed PID 321617 (verified 302 MiB baseline first, 24.8 GB free); the fresh resume canary c1b runs FIRST per the adopted ruling, then J2-J8 (~31 cells, 60-75 GPU-min), canaries c2/c3 + null N1, review surface, final teardown — the sprint's last GPU work.
