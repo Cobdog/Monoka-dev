@@ -273,3 +273,68 @@ half-cost economics held exactly (0.55×) — if the eye still crowns PDMD at
 p02–p07, the default-change case is confirmation-complete; if the king's
 card recipe takes cells back, the crown question reopens at the recipe
 level, not the NFE level.
+
+## ADDENDUM — the maintainer's blind review, reconciled (2026-10-05) — THE CROWN DECISION
+
+7/7 pairs: 6 directional + 1 tie (the null). Responses verbatim below.
+
+### The null gate, by eye
+**p01 (PDMD duplicate through the alias) = TIE.** Held — the confirmation's instrument clean.
+
+### THE VERDICT — PDMD wins the confirmation SIX–ZERO
+Every directional call named the PDMD side (the side randomization was exact: three left, three right — and all six called cells were PDMD). With the prefix stripped, the king at its own card recipe, and ten seconds of in-distribution physics:
+- **p02 CONTACT**: PDMD — *"the ramp [on turbo's side] is about 17 kilometers long. Prompt feels much more coherent on the left… quality feels better too."* (Instruction-following-under-complexity, decided.)
+- **p03 GYMNASTICS**: PDMD — *"the environment is pretty comical in both, but right is still better."*
+- **p04 BASKET TOSS**: PDMD by the call — **with a recorded discordance**: the note reads *"quality, motion and detail are better on the right"* (right = turbo-8). The call and the note disagree; recorded as called, flagged for the maintainer's amendment if the note was the true read (the sweep stands 5-0-1 either way).
+- **p05 AIRCRAFT**: PDMD — *"neither was fully able to completely grasp the prompt, but right did the better job and looks better."*
+- **p06 FISH TANK**: PDMD, no note — the cell where the alternation metric measured PDMD worst (warp residual 5.3×). **The eye did not see it.**
+- **p07 WET ROAD**: PDMD, no note.
+
+### The two cross-cutting findings this settles
+1. **The alternation metric's salience is below the deciding eye's JND.** The metric said PDMD flickers more on 6/6 cells (up to 2.85×; warp 5.3× on the tank) — and the maintainer called all six for PDMD anyway, citing coherence and quality. Amendment 1's doctrine (the eye is the decision layer) now carries a recorded consequence: the alternation/warp metrics get a SALIENCE CAVEAT on distilled arms at length — measured, real, and not what the user perceives on this board. The metrics keep recording; they stop being verdict inputs without an eye-corroborated case.
+2. **The prefix question closes**: the sweep ran with prompts verbatim (no `pdmd,` anywhere) — the trigger prefix is confirmed UNNECESSARY (and was never upstream-documented). PDMD's operating point: the v6 LoRA @ 1.0, 4 steps, shift 12/3, no CFG, plain prompts.
+
+### THE RECIPE LEDGER LINE (the sprint's final verdict)
+**PDMD-4 deposes turbo-8 as the fast-lane default — confirmation-complete: 6-0 at 39f/544p (Set P), 6-0 at 243f/0.66MP recipe-fair and prefix-free (this set), 0.55× wall at half NFE, audio holding (no collapse at 4 NFE).** The former king keeps its lane where its stability profile matters (the alternation numbers are real even if not eye-salient) and stays the R2V-family default until PDMD's ref2va off-label status gets its own confirmation. Turbo-4 v0.1 remains the official 4-step fallback.
+
+### Verbatim responses
+```
+{
+  "exported": "2026-10-05T17:59:30.420Z",
+  "responses": {
+    "p01": {
+      "call": "tie",
+      "ts": "2026-10-05T17:55:08.178Z"
+    },
+    "p02": {
+      "call": "left",
+      "note": "The ramp they are walking up on the right is about 17 kilometers long. Prompt feels much more coherent on the left one. Quality feels better too.",
+      "ts": "2026-10-05T17:55:30.762Z"
+    },
+    "p03": {
+      "call": "right",
+      "note": "The environment is pretty comical in both, but right is still better.",
+      "ts": "2026-10-05T17:56:51.412Z"
+    },
+    "p04": {
+      "call": "left",
+      "note": "Quality, motion and detail are better on the right.",
+      "ts": "2026-10-05T17:57:33.855Z"
+    },
+    "p05": {
+      "call": "right",
+      "note": "Neither was fully able to completely grasp the prompt, but right did the better job and looks better.",
+      "ts": "2026-10-05T17:58:12.291Z"
+    },
+    "p06": {
+      "call": "left",
+      "ts": "2026-10-05T17:59:09.179Z"
+    },
+    "p07": {
+      "call": "right",
+      "ts": "2026-10-05T17:59:23.647Z"
+    }
+  },
+  "set": "P2"
+}
+```
