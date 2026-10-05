@@ -17,13 +17,14 @@
  *    honest unplanned chronology; gaps implicit hard cuts) + the
  *    adopt-chronology upgrade ("Plan this chronology").
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Film, Image as ImageIcon, LayoutList, Link2, Music2, Plus, Scissors, X } from 'lucide-react'
 import { documentsApi } from './api'
 import { STATUS_LABEL } from './derive'
 import { deriveTimeline, GAP_LABEL, GAP_MECHANISM_LABEL, GAP_MENU, readPlanDocument, type PlanGapKind, type TimelineGapView } from './plan'
 import { TIMELINE_TONE } from '../ui/statusToken'
-import { isTypingTarget } from '../ui/overlayBehavior'
+import { Chip, ChipGroup } from '../ui/Chip'
+import { arrowRowTarget, isTypingTarget } from '../ui/overlayBehavior'
 import { StudioSelect } from '../ui/StudioSelect'
 import { useOverlayBehavior } from '../ui/useOverlayBehavior'
 import { useCanvasStore } from './store'
@@ -104,15 +105,53 @@ function KindIcon({ kind }: { kind: 'video' | 'image' | 'audio' | null }) {
  *  the projection panel (absolute, z 5 under the panel's own layer) — the
  *  shared component's body-level portal would re-anchor it to the viewport
  *  and paint it under the panel. The stale-gapMenu flag cleanup rides the
- *  overlay (the effect below). */
+ *  overlay (the effect below).
+ *
+ * (Codex S02, near-term C, k2q0n9s) The menu's KEYBOARD MODEL — roles were
+ * never the whole contract: on open, focus ENTERS on the current option
+ * (first enabled when nothing is checked); ArrowUp/ArrowDown/Home/End walk
+ * the ENABLED options with wrap over the pure arrowRowTarget (the task-16
+ * PopoverMenu idiom — disabled engine-work rows are skipped, they cannot
+ * hold focus); options are controlled tab stops (tabIndex -1 — menu items
+ * live on arrows, not Tab; the overlay's Tab containment owns the cycle);
+ * Enter/Space activate the focused option natively and the exclusive
+ * checked state follows through the activation. */
 function TimelineGapMenu({ gap, footer, onChoose, onClose }: {
   gap: TimelineGapView
   footer: string
   onChoose(kind: PlanGapKind): void
   onClose(): void
 }) {
-  const overlay = useOverlayBehavior({ id: 'canvas-gap-menu', onDismiss: onClose })
-  return <div className="canvas-gap-menu" data-canvas-gap-menu role="menu" aria-label="Transition" ref={overlay.ref} onKeyDown={overlay.onKeyDown}>
+  const { ref: registerPanel, onKeyDown: overlayKeyDown } = useOverlayBehavior({ id: 'canvas-gap-menu', onDismiss: onClose })
+  // The panel node for the focus-entry effect, composed with the hook's
+  // registration ref (both must ride the SAME element; the hook's ref keeps
+  // its stable identity, so the composed callback does too).
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const setPanel = useCallback((node: HTMLDivElement | null) => {
+    panelRef.current = node
+    registerPanel(node)
+  }, [registerPanel])
+  // Focus ENTRY (the hook's focusOnOpen would land on the panel itself —
+  // no entry field here): the CURRENT option first, the first enabled one
+  // otherwise. Runs on mount (the panel's mount IS the open lifetime).
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+    const options = Array.from(panel.querySelectorAll<HTMLElement>('[data-canvas-gap-option]:not([disabled])'))
+    const current = options.find((option) => option.getAttribute('aria-checked') === 'true') ?? options[0]
+    current?.focus()
+  }, [])
+  return <div className="canvas-gap-menu" data-canvas-gap-menu role="menu" aria-label="Transition" ref={setPanel} onKeyDown={(event) => {
+    overlayKeyDown(event)
+    // The menu's own arrows (local; the pure walk from overlayBehavior —
+    // the PopoverMenu idiom; Escape stays the registry's, never navigation).
+    const options = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[data-canvas-gap-option]:not([disabled])'))
+    const target = arrowRowTarget(options.length, options.indexOf(document.activeElement as HTMLElement), event.key)
+    if (target !== null) {
+      event.preventDefault()
+      options[target].focus()
+    }
+  }}>
     <header>
       <strong>Transition</strong>
       <span>{GAP_LABEL[gap.kind]} · choose the measured path</span>
@@ -126,11 +165,22 @@ function TimelineGapMenu({ gap, footer, onChoose, onClose }: {
         : flfBlocked
           ? 'render the LEFT segment first — the splice wires from its final rendered frame'
           : null
-      return <button
+      // (near-term C, k2q0n9s — §0.3 long-tail) The options are the MENU's
+      // own selection shape: menuitemradio + aria-checked (chipAria's
+      // checked state with the menu-native role overriding role=radio).
+      // This is the migration's ONE documented ChipGroup outlier — a
+      // radiogroup cannot nest inside role=menu (menus own menuitem*
+      // descendants), so the selection contract's keyboard half rides the
+      // menu's OWN model above (focus entry + the arrow walk + controlled
+      // tab stops); the class composition rides the kit's Chip (one
+      // authority). tabIndex -1 = the controlled menu-item tab stop.
+      return <Chip
         key={entry.kind}
-        type="button"
-        role="menuitem"
-        className={`chip canvas-gap-option ${gap.kind === entry.kind ? 'chip--selected' : ''}`}
+        tabIndex={-1}
+        variant="radio"
+        role="menuitemradio"
+        selected={gap.kind === entry.kind}
+        className="canvas-gap-option"
         data-canvas-gap-option={entry.kind}
         disabled={disabled}
         title={reason ?? entry.verdict}
@@ -143,7 +193,7 @@ function TimelineGapMenu({ gap, footer, onChoose, onClose }: {
         </span>
         <span className="canvas-gap-option-verdict" data-canvas-gap-verdict>{entry.verdict}</span>
         {reason && <span className="canvas-gap-option-reason">{reason}</span>}
-      </button>
+      </Chip>
     })}
     <footer>{footer} — verdicts: tranche-1 measurements</footer>
   </div>
@@ -348,16 +398,21 @@ export function TimelineOverlay() {
                   : <span className="canvas-plan-segment-state muted">no object</span>}
               </div>
               <SegmentPromptField planRowId={planRow.id} segmentId={segment.id} prompt={segment.prompt} />
-              <div className="canvas-plan-segment-refs" aria-label="Reference handoffs">
+              {/* (near-term C, k2q0n9s — §0.3 long-tail) The reference chips
+                  are GENUINE multi-toggles — pressed buttons (aria-pressed)
+                  in a labeled group, never aria-checked (the r3 correction's
+                  toggle/radio split); the container's previously dead
+                  aria-label on a roleless div is now a real group name. */}
+              <ChipGroup className="canvas-plan-segment-refs" aria-label="Reference handoffs">
                 {libraries.characters.map((character) => (
-                  <button key={character.id} type="button" className={`chip canvas-chip canvas-plan-ref ${segment.referenceCharacterIds.includes(character.id) ? 'chip--selected' : ''}`} data-canvas-segment-ref-character={character.id}
-                    onClick={() => void store().updatePlanSegment(planRow.id, segment.id, { referenceCharacterIds: segment.referenceCharacterIds.includes(character.id) ? segment.referenceCharacterIds.filter((id) => id !== character.id) : [...segment.referenceCharacterIds, character.id] })}>{character.name}</button>
+                  <Chip key={character.id} variant="toggle" selected={segment.referenceCharacterIds.includes(character.id)} className="canvas-chip canvas-plan-ref" data-canvas-segment-ref-character={character.id}
+                    onClick={() => void store().updatePlanSegment(planRow.id, segment.id, { referenceCharacterIds: segment.referenceCharacterIds.includes(character.id) ? segment.referenceCharacterIds.filter((id) => id !== character.id) : [...segment.referenceCharacterIds, character.id] })}>{character.name}</Chip>
                 ))}
                 {libraries.locations.map((location) => (
-                  <button key={location.id} type="button" className={`chip canvas-chip canvas-plan-ref ${segment.referenceLocationIds.includes(location.id) ? 'chip--selected' : ''}`} data-canvas-segment-ref-location={location.id}
-                    onClick={() => void store().updatePlanSegment(planRow.id, segment.id, { referenceLocationIds: segment.referenceLocationIds.includes(location.id) ? segment.referenceLocationIds.filter((id) => id !== location.id) : [...segment.referenceLocationIds, location.id] })}>{location.name}</button>
+                  <Chip key={location.id} variant="toggle" selected={segment.referenceLocationIds.includes(location.id)} className="canvas-chip canvas-plan-ref" data-canvas-segment-ref-location={location.id}
+                    onClick={() => void store().updatePlanSegment(planRow.id, segment.id, { referenceLocationIds: segment.referenceLocationIds.includes(location.id) ? segment.referenceLocationIds.filter((id) => id !== location.id) : [...segment.referenceLocationIds, location.id] })}>{location.name}</Chip>
                 ))}
-              </div>
+              </ChipGroup>
               <div className="canvas-plan-segment-actions">
                 {!segment.chainId && <button type="button" className="chip canvas-chip" data-canvas-segment-seed disabled={!segment.prompt.trim()} onClick={() => void seedSegment(segment.id)}>Seed object</button>}
                 {segment.chainId && <button type="button" className="chip canvas-chip" data-canvas-segment-generate onClick={() => void generateSegment(segment.id)}>Generate</button>}

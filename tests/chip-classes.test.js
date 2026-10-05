@@ -223,10 +223,18 @@ test('(f) every var() the recipes reference is :root-defined', () => {
 // element's SURFACE class tokens out of the TSX, then fail on any rule in
 // the src sheets that references such a token and declares a border
 // shorthand. Surface geometry rules must use the border-width/border-style
-// LONGHANDS (the migration discipline recorded in canvas.css).
+// LONGHANDS (the migration discipline recorded in canvas.css). The walk is
+// CHIP-COMPONENT-AWARE (near-term C, k2q0n9s): className expressions inside
+// a `<Chip …>` open tag count as chip-composed even without a literal
+// `chip` token — the component emits the recipe tokens itself.
 
 /** All className attribute values (static strings AND brace-matched template
- *  expressions, ternary branches included) in one TSX file's source. */
+ *  expressions, ternary branches included) in one TSX file's source, WITH
+ *  their source spans — the (g) net needs to know whether an expression
+ *  sits inside a <Chip …> open tag (a migrated surface writes
+ *  `<Chip className="…">` with no literal `chip` token, yet the rendered
+ *  element composes the recipes exactly as the retired hand-written
+ *  template did — near-term C, k2q0n9s). */
 function collectClassNameExpressions(source) {
   const expressions = []
   let at = 0
@@ -237,7 +245,7 @@ function collectClassNameExpressions(source) {
     if (source[valueStart] === '"') {
       const close = source.indexOf('"', valueStart + 1)
       if (close === -1) break
-      expressions.push(source.slice(valueStart + 1, close))
+      expressions.push({ expression: source.slice(valueStart + 1, close), start: valueStart, end: close })
       at = close + 1
       continue
     }
@@ -251,13 +259,48 @@ function collectClassNameExpressions(source) {
         else if (char === '}') depth -= 1
         cursor += 1
       }
-      expressions.push(source.slice(valueStart + 1, cursor - 1))
+      expressions.push({ expression: source.slice(valueStart + 1, cursor - 1), start: valueStart, end: cursor - 1 })
       at = cursor
       continue
     }
     at = valueStart
   }
   return expressions
+}
+
+/** The [start, end) spans of every `<Chip …>` OPEN tag in the source
+ *  (`<ChipGroup` deliberately excluded — the boundary lookahead requires
+ *  whitespace, `/`, or `>` after `<Chip`; the GROUP container is geometry
+ *  the surface may legitimately style, never a chip-composed element).
+ *  The tag end is a quote/brace-aware scan for the closing `>` so
+ *  attribute strings containing '>' cannot end it early. */
+function collectChipTagRanges(source) {
+  const ranges = []
+  const pattern = /<Chip(?=[\s/>])/g
+  let match = pattern.exec(source)
+  while (match !== null) {
+    let cursor = match.index + match[0].length
+    let quote = null
+    let depth = 0
+    while (cursor < source.length) {
+      const char = source[cursor]
+      if (quote !== null) {
+        if (char === quote) quote = null
+      } else if (char === '"' || char === "'" || char === '`') {
+        quote = char
+      } else if (char === '{') {
+        depth += 1
+      } else if (char === '}') {
+        depth -= 1
+      } else if (char === '>' && depth <= 0) {
+        break
+      }
+      cursor += 1
+    }
+    ranges.push([match.index, Math.min(cursor + 1, source.length)])
+    match = pattern.exec(source)
+  }
+  return ranges
 }
 
 function walkFiles(dir, suffix, into) {
@@ -312,9 +355,14 @@ test('(g) no chip-composed surface class is styled by a border shorthand', () =>
   ok(tsxFiles.length > 20, `the TSX walk found the source tree (${tsxFiles.length} files)`)
   for (const file of tsxFiles) {
     const source = fs.readFileSync(file, 'utf8')
-    for (const expression of collectClassNameExpressions(source)) {
+    // Chip-aware (near-term C): a className expression composes the recipes
+    // when its tokens say so OR when it belongs to a <Chip …> open tag —
+    // the component emits the `chip chip--*` tokens itself.
+    const chipTagRanges = collectChipTagRanges(source)
+    const insideChipTag = (span) => chipTagRanges.some(([open, close]) => span.start >= open && span.end <= close)
+    for (const { expression, ...span } of collectClassNameExpressions(source)) {
       const tokens = classTokensOf(expression)
-      const composesChip = tokens.some((token) => token === 'chip' || token.startsWith('chip--'))
+      const composesChip = tokens.some((token) => token === 'chip' || token.startsWith('chip--')) || insideChipTag(span)
       if (!composesChip) continue
       for (const token of tokens) {
         if (token !== 'chip' && !token.startsWith('chip--')) surfaceTokens.add(token)
@@ -322,7 +370,7 @@ test('(g) no chip-composed surface class is styled by a border shorthand', () =>
     }
   }
   ok(surfaceTokens.has('canvas-chip'), 'the walk sees the census surface tokens (parse sanity: canvas-chip)')
-  ok(surfaceTokens.has('canvas-gap-option'), 'the walk sees the C1 token (parse sanity: canvas-gap-option)')
+  ok(surfaceTokens.has('canvas-gap-option'), 'the walk sees the C1 token (parse sanity: canvas-gap-option — via the Chip-component arm since the long-tail migration)')
 
   // 2. Any rule in the src sheets referencing a surface token that declares
   //    a border shorthand (whole or per-edge) — the hazard at equal-or-higher

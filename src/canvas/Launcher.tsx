@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Clapperboard, FileVideo, ImagePlus, MessageSquareOff, Plus, Upload } from 'lucide-react'
 import { FirstRunNotice } from './FirstRunNotice'
 import { FirstRunWizard } from './FirstRunWizard'
+import { Chip, ChipGroup } from '../ui/Chip'
 import { anyModalLayer } from '../ui/layerRegistry'
 import { useCanvasStore } from './store'
 
@@ -112,12 +113,21 @@ export function Launcher({ onPickFile }: { onPickFile(): void }) {
           on its timeline button. The datasets chip precedent applies: one
           home per thing. */}
       <div className="canvas-launcher-chips" role="group" aria-label="Entry chips">
-        <button type="button" className={`chip ${mediaType === 'image' ? 'chip--selected' : ''} canvas-chip`} data-canvas-chip="image" title="New seeds spawn as IMAGE chains — a still per take (the workbench's families)" onClick={() => setMediaType('image')}>
-          <ImagePlus size={13} /> image prompt
-        </button>
-        <button type="button" className={`chip ${mediaType === 'video' ? 'chip--selected' : ''} canvas-chip`} data-canvas-chip="video" title="New seeds spawn as VIDEO chains — the derived mode follows what you later bind (R-23)" onClick={() => setMediaType('video')}>
-          <FileVideo size={13} /> video prompt
-        </button>
+        {/* (near-term C, k2q0n9s — §0.3 long-tail) The media-type pair is an
+            EXCLUSIVE chip group nested in the entry-chips row (a radiogroup
+            inside the labeled action group is the honest ARIA shape — the
+            two actions below are NOT radios). The group's geometry class is
+            display: contents so the flat flex row is pixel-identical (P06);
+            the chip ids carry the launcher prefix because the BottomBar's
+            lane group can mount in the same document on an empty canvas. */}
+        <ChipGroup exclusive className="canvas-launcher-lane" data-canvas-launcher-lane aria-label="Prompt media type" value={`launcher-${mediaType}`} onChange={(next) => setMediaType(next === 'launcher-image' ? 'image' : 'video')}>
+          <Chip id="launcher-image" variant="radio" className="canvas-chip" data-canvas-chip="image" title="New seeds spawn as IMAGE chains — a still per take (the workbench's families)">
+            <ImagePlus size={13} /> image prompt
+          </Chip>
+          <Chip id="launcher-video" variant="radio" className="canvas-chip" data-canvas-chip="video" title="New seeds spawn as VIDEO chains — the derived mode follows what you later bind (R-23)">
+            <FileVideo size={13} /> video prompt
+          </Chip>
+        </ChipGroup>
         <button
           type="button"
           className="chip canvas-chip"
