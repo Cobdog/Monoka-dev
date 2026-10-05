@@ -27,11 +27,11 @@
  *
  *      const rank = useDockRank('settings')            // reactive rank
  *      useEffect(() => {                               // registration rides
- *        if (open) raiseDock('settings')               //   the dock's OPEN
- *        return () => unregisterDock('settings')       //   lifetime: raise
- *      }, [open])                                      //   on open, leave on
- *      <Rnd style={{ zIndex: dockZCss(rank) }}         //   close/unmount
- *           onPointerDownCapture={() => raiseDock('settings')} />
+ *        raiseDock('settings')                         //   the shell's
+ *        return () => unregisterDock('settings')       //   MOUNT lifetime
+ *      }, [id])                                        //   (every consumer
+ *      <Rnd style={{ zIndex: dockZCss(rank) }}         //   early-returns
+ *           onPointerDownCapture={() => raiseDock('settings')} /> // null closed)
  *
  *  Like the layer registry (task 10), this is a UI-layer mechanism the
  *  canvas surfaces CONSUME — it holds no domain state and imports nothing.
