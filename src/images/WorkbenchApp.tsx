@@ -1538,7 +1538,7 @@ function WorkbenchSurface() {
           popupClassName="iw-dialog"
           labelledBy="iw-exit-title"
         >
-          <IwDialogHead id="iw-exit-title" title="Start-frame exit" closeLabel="Close the start-frame exit" onClose={closeExit} />
+          <WorkbenchDialogHead id="iw-exit-title" title="Start-frame exit" closeLabel="Close the start-frame exit" onClose={closeExit} />
           <p>Seed a video chain from the picked frame — <strong>created and selected, never submitted</strong>. The frame rides the FL2VA first-frame anchor (the measured strongest concrete anchor).</p>
           <div className="iw-exit-choices">
             <button type="button" data-iw-exit-choice="anchor" onClick={() => setExitPlan('anchor')} disabled={busy}>Anchor only (first frame)</button>
@@ -1606,7 +1606,7 @@ async function addToneLockOp(chain: DocumentChain): Promise<void> {
  *  wrapper — it composes the workbench's own geometry class and the shared
  *  Button; the shared dialog semantics already live in StudioDialogLayered).
  *  DOM-identical to what it replaces. */
-function IwDialogHead({ id, title, closeLabel, onClose }: {
+function WorkbenchDialogHead({ id, title, closeLabel, onClose }: {
   id: string
   title: string
   closeLabel: string
@@ -1655,7 +1655,7 @@ function CanvasRefPicker({ doc, onClose, onPick, title, body }: {
       popupClassName="iw-dialog"
       labelledBy="iw-canvas-picker-title"
     >
-      <IwDialogHead id="iw-canvas-picker-title" title={title} closeLabel="Close the canvas picker" onClose={onClose} />
+      <WorkbenchDialogHead id="iw-canvas-picker-title" title={title} closeLabel="Close the canvas picker" onClose={onClose} />
       <p>{body}</p>
       <div className="iw-canvas-refs">
         {entries.length === 0 && <span className="iw-takes-empty">No image takes on this canvas yet.</span>}
@@ -1845,7 +1845,7 @@ function MaskPainterDialog({ file, onCancel, onUse }: {
       popupClassName="iw-dialog iw-mask-dialog"
       labelledBy="iw-mask-painter-title"
     >
-      <IwDialogHead id="iw-mask-painter-title" title="Paint the region to regenerate" closeLabel="Close the mask painter" onClose={onCancel} />
+      <WorkbenchDialogHead id="iw-mask-painter-title" title="Paint the region to regenerate" closeLabel="Close the mask painter" onClose={onCancel} />
       <p>Everything you paint regenerates from the instruction; the rest of the image is restored pixel-exactly after the render. Transparent pixels ARE the mask (the Mask-Editor convention).</p>
       <div className="iw-mask-stage">
         {file.preview ? <img ref={setImgNode} src={file.preview} alt="source" className="iw-mask-under" /> : <span className="iw-frame-evicted">no preview</span>}
