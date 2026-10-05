@@ -20,6 +20,7 @@ import { Button } from '../ui/Button'
 import { StudioSelect } from '../ui/StudioSelect'
 import { NoticeBanner } from '../ui/NoticeBanner'
 import { Refusal } from '../ui/Refusal'
+import { HandoffResult } from '../ui/HandoffResult'
 import { SaveStatus, type SaveState } from '../ui/SaveStatus'
 import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 import { CanvasToastAdapter } from '../canvas/toastAdapter'
@@ -169,6 +170,32 @@ type SessionSettingsPatch = Partial<WorkbenchSessionSettings> | ((current: Workb
  *  a session; the timestamp keeps them unique across reloads. */
 let refSlotSeq = 0
 const nextRefSlotId = () => `ref-${Date.now()}-${(refSlotSeq += 1)}`
+
+/** One start-frame-exit step's TWO INDEPENDENT facts (component vocabulary
+ *  task 22, spec §0.5/C2): `write` — did the server mutation land;
+ *  `refresh` — does the local view reflect it. A failed refresh after a
+ *  successful write is NOT a write failure: the shared HandoffResult tier
+ *  renders it done-with-stale-marker. `detail` is whichever fact failed's
+ *  reason, verbatim. */
+type ExitStepFacts = { write: 'pending' | 'done' | 'failed'; refresh: 'pending' | 'fresh' | 'failed'; detail?: string }
+
+/** One exit RUN: both steps' facts plus the RETAINED identifiers that make
+ *  retry safe (spec §0.5): a landed mutation is never re-POSTed — each pin
+ *  mutation's id is kept as it lands, so the retry re-runs only what never
+ *  landed, and a failed refresh retries the reload ALONE. */
+type ExitRun = {
+  pin: ExitStepFacts
+  chain: ExitStepFacts
+  pinChainId: string | null
+  pinOutputId: string | null
+}
+
+const FRESH_EXIT_RUN: ExitRun = {
+  pin: { write: 'pending', refresh: 'pending' },
+  chain: { write: 'pending', refresh: 'pending' },
+  pinChainId: null,
+  pinOutputId: null,
+}
 
 function WorkbenchSurface() {
   const boot = useCanvasStore((state) => state.boot)
@@ -709,6 +736,30 @@ function WorkbenchSurface() {
   }, [experiments, sessionChain, selectedTake, frames, effectivePick])
 
   // Canvas handoffs (consent-gated) --------------------------------------------
+  /** The pin's write sequence (the media chain + its output + the frame
+   *  take) — the ONE core behind both the standalone pin button and the
+   *  exit's first step. `landed` carries the RETAINED identifiers: each
+   *  mutation checks its own id first, so a retry re-runs only what never
+   *  landed (spec §0.5 — a succeeded write is never re-POSTed). Whatever
+   *  lands is recorded in `landed` even when a later mutation throws. */
+  const runPinWrites = useCallback(async (framePath: string, landed: { chainId: string | null; outputId: string | null }): Promise<void> => {
+    if (!doc) return
+    if (!landed.chainId) {
+      const chain = await documentsApi.createChain({
+        projectId: doc.project.id,
+        kind: 'media',
+        inputSpec: { fresh: { media: { name: `workbench-frame-${effectivePick}.png`, kind: 'image', path: framePath } } },
+        settings: { name: `workbench frame (${family?.label ?? 'workbench'})`, mediaType: 'image' },
+      })
+      landed.chainId = chain.id
+    }
+    if (!landed.outputId) {
+      const output = await documentsApi.createOutput({ chainId: landed.chainId, substrates: ['decoded'] })
+      landed.outputId = output.id
+    }
+    await documentsApi.appendTake({ outputId: landed.outputId, artifacts: [framePath], metrics: { kind: 'image', name: `workbench-frame-${effectivePick}.png`, sourcePath: framePath } })
+  }, [doc, effectivePick, family])
+
   const pinFrameToCanvas = useCallback(async (): Promise<string | null> => {
     if (!doc || !selectedTake) return null
     const frame = frames[effectivePick]
@@ -720,65 +771,152 @@ function WorkbenchSurface() {
       setNotice('The picked frame has no landed artifact yet.')
       return null
     }
+    const landed = { chainId: null as string | null, outputId: null as string | null }
     try {
-      const chain = await documentsApi.createChain({
-        projectId: doc.project.id,
-        kind: 'media',
-        inputSpec: { fresh: { media: { name: `workbench-frame-${effectivePick}.png`, kind: 'image', path: framePath } } },
-        settings: { name: `workbench frame (${family?.label ?? 'workbench'})`, mediaType: 'image' },
-      })
-      const output = await documentsApi.createOutput({ chainId: chain.id, substrates: ['decoded'] })
-      await documentsApi.appendTake({ outputId: output.id, artifacts: [framePath], metrics: { kind: 'image', name: `workbench-frame-${effectivePick}.png`, sourcePath: framePath } })
+      await runPinWrites(framePath, landed)
       await useCanvasStore.getState().reloadActiveDocument()
       // Journey sweep #4b (audit F8/M5): the regeneration gate is named AT
       // PIN TIME, not generate time — the T=1 family's own detection drives
       // the text (models lead, so the Mamad8 VAE file is first).
       const t1Detection = detectionOf(H3_ONE_FRAME_FAMILY)
       useCanvasStore.getState().toast('success', pinRegenerationNotice(Boolean(t1Detection?.available), [...(t1Detection?.missingModels ?? []), ...(t1Detection?.missingNodes ?? [])]))
-      return output.id
+      return landed.outputId
     } catch (error) {
       setNotice(`The frame could not be pinned: ${error instanceof Error ? error.message : String(error)}`)
       return null
     }
-  }, [doc, selectedTake, frames, effectivePick, family, detectionOf])
+  }, [doc, selectedTake, frames, effectivePick, runPinWrites, detectionOf])
 
-  // The start-frame exit: consent-gated, created-never-submitted.
+  // The start-frame exit: consent-gated, created-never-submitted. (Task 22,
+  // k2q0n9s — spec §0.5/C2) Each step carries its write and refresh facts
+  // INDEPENDENTLY, reported through the shared HandoffResult tier; the run
+  // RETAINS every landed identifier so retry re-runs only the failed
+  // mutation (a failed chain write never re-POSTs the landed pin; a failed
+  // refresh retries the reload alone).
   const [exitPlan, setExitPlan] = useState<'anchor' | 'anchor-plus-refs' | null>(null)
-  const runExit = useCallback(async () => {
-    if (!doc || !exitPlan) return
+  const [exitRun, setExitRun] = useState<ExitRun | null>(null)
+  // The run's source of truth: retry entries read it through the ref, never
+  // a render-scope snapshot (state set across awaits goes stale in
+  // closures — the failedPatchesRef doctrine).
+  const exitRunRef = useRef<ExitRun | null>(null)
+  // The tier's retry buttons have no disabled gate of their own — this ref
+  // is the one-flight guard (the confirm button's disabled={busy} sibling).
+  const exitBusyRef = useRef(false)
+  const commitExitRun = useCallback((run: ExitRun): void => {
+    exitRunRef.current = run
+    setExitRun(run)
+  }, [])
+  /** Advances the exit run. `entry` names where control entered: 'confirm'
+   *  starts a FRESH run at the pin; a retry names its step — that step
+   *  re-runs (skipping every landed fact via the retained ids) and, when a
+   *  pin retry completes while the chain step never ran (its predecessor
+   *  failed first), the run CONTINUES into the chain — never a dead end. A
+   *  failed refresh NEVER blocks the next step: the writes landed. */
+  const advanceExit = useCallback(async (entry: 'confirm' | 'pin' | 'chain'): Promise<void> => {
+    if (!doc || !exitPlan || exitBusyRef.current) return
+    exitBusyRef.current = true
     setBusy(true)
     try {
-      const pinnedOutputId = await pinFrameToCanvas()
-      if (!pinnedOutputId) return
-      const defaults = chainSettingsDefaults(sessionState.settings)
-      const nextSettings = {
-        ...defaults,
-        prompt: contract,
-        duration: defaults.duration,
-        // The frame rides FIRST_FRAME (the FL2VA frame-latent anchor — the
-        // measured strongest concrete anchor). anchor-plus-refs rides the
-        // reference slots too: hybrid both-at-once when available, else the
-        // stock first-frame-or-refs limitation is named.
-        firstFrameOutputId: pinnedOutputId,
-        ...(exitPlan === 'anchor-plus-refs' ? { referenceOutputIds: settings.refs.flatMap((slot) => slot.source.kind === 'canvas' ? [slot.source.outputId] : []) } : {}),
+      let run: ExitRun
+      if (entry === 'confirm') {
+        run = { pin: { ...FRESH_EXIT_RUN.pin }, chain: { ...FRESH_EXIT_RUN.chain }, pinChainId: null, pinOutputId: null }
+      } else {
+        const base = exitRunRef.current
+        if (!base) return
+        run = { ...base, pin: { ...base.pin }, chain: { ...base.chain } }
       }
-      try {
-        await documentsApi.createChain({ projectId: doc.project.id, kind: 'generate', settings: nextSettings as unknown as Record<string, unknown> })
-        await useCanvasStore.getState().reloadActiveDocument()
-      } catch (error) {
-        // (Audit A05) the exit's second step fails LOUDLY and names both
-        // steps — the pin completed, the chain creation did not — never an
-        // unhandled rejection with the dialog frozen on a cleared spinner.
-        setNotice(`The frame was pinned to the canvas, but the video chain could not be created: ${error instanceof Error ? error.message : String(error)}`)
-        return
+      commitExitRun(run)
+
+      // ---- the pin step ------------------------------------------------------
+      if (entry !== 'chain') {
+        if (run.pin.write !== 'done') {
+          run = { ...run, pin: { ...run.pin, write: 'pending', detail: undefined } }
+          commitExitRun(run)
+          const frame = frames[effectivePick]
+          // The landed frame may be an output-contained path OR its
+          // registered content-addressed blob — both real, servable.
+          const framePath = frame?.path ?? frame?.blob ?? null
+          const landed = { chainId: run.pinChainId, outputId: run.pinOutputId }
+          try {
+            if (!framePath) throw new Error('the picked frame has no landed artifact yet')
+            await runPinWrites(framePath, landed)
+            run = { ...run, pinChainId: landed.chainId, pinOutputId: landed.outputId, pin: { ...run.pin, write: 'done' } }
+            commitExitRun(run)
+          } catch (error) {
+            // Whatever landed is RETAINED in the run — the retry resumes
+            // from exactly the failed mutation, never re-POSTing a success.
+            run = { ...run, pinChainId: landed.chainId, pinOutputId: landed.outputId, pin: { ...run.pin, write: 'failed', detail: error instanceof Error ? error.message : String(error) } }
+            commitExitRun(run)
+            return
+          }
+        }
+        if (run.pin.refresh !== 'fresh') {
+          run = { ...run, pin: { ...run.pin, refresh: 'pending' } }
+          commitExitRun(run)
+          const reloaded = await useCanvasStore.getState().reloadActiveDocument()
+          // C2: a failed reload is the REFRESH fact — never a write failure,
+          // and never a block on the chain step (the writes landed).
+          run = { ...run, pin: { ...run.pin, refresh: reloaded ? 'fresh' : 'failed' } }
+          commitExitRun(run)
+        }
       }
-      useCanvasStore.getState().toast('success', 'The video chain is seeded from this frame — created and selected, never submitted. Open the canvas to direct it.')
-      setExitOpen(false)
-      setExitPlan(null)
+
+      // ---- the chain step ------------------------------------------------------
+      const chainVirgin = run.chain.write === 'pending'
+      if (run.pin.write === 'done' && (entry === 'confirm' || entry === 'chain' || (entry === 'pin' && chainVirgin))) {
+        if (run.chain.write !== 'done') {
+          run = { ...run, chain: { ...run.chain, write: 'pending', detail: undefined } }
+          commitExitRun(run)
+          try {
+            const defaults = chainSettingsDefaults(sessionState.settings)
+            const nextSettings = {
+              ...defaults,
+              prompt: contract,
+              duration: defaults.duration,
+              // The frame rides FIRST_FRAME (the FL2VA frame-latent anchor —
+              // the measured strongest concrete anchor). anchor-plus-refs
+              // rides the reference slots too: hybrid both-at-once when
+              // available, else the stock first-frame-or-refs limitation is
+              // named (the note above the choices).
+              firstFrameOutputId: run.pinOutputId,
+              ...(exitPlan === 'anchor-plus-refs' ? { referenceOutputIds: settings.refs.flatMap((slot) => slot.source.kind === 'canvas' ? [slot.source.outputId] : []) } : {}),
+            }
+            await documentsApi.createChain({ projectId: doc.project.id, kind: 'generate', settings: nextSettings as unknown as Record<string, unknown> })
+            run = { ...run, chain: { ...run.chain, write: 'done' } }
+            commitExitRun(run)
+          } catch (error) {
+            // (Audit A05's shape, C2-refactored) the failed chain write is
+            // the CHAIN step's own fact — reported beside the landed pin,
+            // never an unhandled rejection with the dialog frozen on a
+            // cleared spinner.
+            run = { ...run, chain: { ...run.chain, write: 'failed', detail: error instanceof Error ? error.message : String(error) } }
+            commitExitRun(run)
+            return
+          }
+        }
+        if (run.chain.refresh !== 'fresh') {
+          run = { ...run, chain: { ...run.chain, refresh: 'pending' } }
+          commitExitRun(run)
+          const reloaded = await useCanvasStore.getState().reloadActiveDocument()
+          run = { ...run, chain: { ...run.chain, refresh: reloaded ? 'fresh' : 'failed' } }
+          commitExitRun(run)
+        }
+      }
+
+      // ---- completion: every write landed AND every view fresh -----------------
+      if (run.pin.write === 'done' && run.chain.write === 'done' && run.pin.refresh === 'fresh' && run.chain.refresh === 'fresh') {
+        useCanvasStore.getState().toast('success', 'The video chain is seeded from this frame — created and selected, never submitted. Open the canvas to direct it.')
+        setExitOpen(false)
+        setExitPlan(null)
+      }
+      // Anything else leaves the tier standing in the dialog — a failed
+      // write with its retry, or a landed write with a stale view and its
+      // refresh: the report IS the state.
     } finally {
+      exitBusyRef.current = false
       setBusy(false)
     }
-  }, [doc, exitPlan, pinFrameToCanvas, sessionState.settings, contract, settings.refs])
+  }, [doc, exitPlan, frames, effectivePick, runPinWrites, sessionState.settings, contract, settings.refs, commitExitRun])
 
   const hybridAvailable = detectionOf('h3img.exit.anchor')?.hybrid ?? false
   // The image tiers' machinery key (the decode-leg-aware optimal markers):
@@ -1246,7 +1384,7 @@ function WorkbenchSurface() {
             <button type="button" className="iw-pin" data-iw-pin disabled={!selectedTake} onClick={() => void pinFrameToCanvas()} title="Pin the picked frame to the canvas as a media object (consent-gated: this explicit action)">
               <Send size={12} /> Pin frame to canvas
             </button>
-            <button type="button" className="iw-exit" data-iw-exit disabled={!selectedTake} onClick={() => setExitOpen(true)} title="Seed a video chain anchored on this frame (created, never submitted)">
+            <button type="button" className="iw-exit" data-iw-exit disabled={!selectedTake} onClick={() => { exitRunRef.current = null; setExitRun(null); setExitOpen(true) }} title="Seed a video chain anchored on this frame (created, never submitted)">
               <Send size={12} /> Start-frame exit →
             </button>
           </div>
@@ -1359,9 +1497,21 @@ function WorkbenchSurface() {
               ? 'The hybrid profile is available: first frame AND references ride one model (both-at-once).'
               : 'Stock checkpoints silently drop one of (first frame | references) — the exit anchors the FRAME and names the limitation; install the hybrid loader (Settings → Fetchable items) for both-at-once.'}
           </p>
+          {/* (Task 22, k2q0n9s) the exit's per-step tier — write ≠ refresh,
+              the two INDEPENDENT facts per step; a retry names its step and
+              re-runs only that step's failed fact (the retained ids). */}
+          {exitRun && (
+            <HandoffResult
+              steps={[
+                { id: 'pin', label: 'Pin the frame to the canvas', ...exitRun.pin },
+                { id: 'chain', label: 'Seed the video chain', ...exitRun.chain },
+              ]}
+              onRetry={(stepId) => void advanceExit(stepId === 'pin' ? 'pin' : 'chain')}
+            />
+          )}
           <footer>
             <button type="button" className="secondary" onClick={() => { setExitOpen(false); setExitPlan(null) }}>Cancel</button>
-            <button type="button" className="primary" data-iw-exit-confirm disabled={!exitPlan || busy} onClick={() => void runExit()}><Send size={12} /> Seed the chain</button>
+            <button type="button" className="primary" data-iw-exit-confirm disabled={!exitPlan || busy} onClick={() => void advanceExit('confirm')}><Send size={12} /> Seed the chain</button>
           </footer>
         </StudioDialogLayered>
       )}

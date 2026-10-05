@@ -353,8 +353,12 @@ type CanvasActions = {
   openProject(id: string, options?: { restoreCamera?: boolean }): Promise<void>
   /** Re-reads the ACTIVE project document + rederives (surfaces that
    *  write through documentsApi directly — the image workbench — refresh
-   *  through this instead of reaching into store internals). */
-  reloadActiveDocument(): Promise<void>
+   *  through this instead of reaching into store internals). Returns
+   *  whether the document actually reloaded — the write ≠ refresh seam
+   *  (spec §0.5/C2): a landed write whose reload failed is NOT a write
+   *  failure, and the caller needs the distinction to report the two
+   *  facts independently. */
+  reloadActiveDocument(): Promise<boolean>
   /** The trash front door (ruling 2026-09-26): tombstones a scene (chain)
    *  and refreshes every loaded document that held it. Returns the store's
    *  row count — 0 means it was already gone (the caller reports honestly,
@@ -1368,13 +1372,14 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
 
     reloadActiveDocument: async () => {
       const activeId = get().activeProjectId
-      if (!activeId) return
+      if (!activeId) return false
       const refreshed = await loadDocument(activeId)
       if (refreshed) {
         recomputeTiles()
         void landCompletions()
       }
       void get().refreshProjects()
+      return Boolean(refreshed)
     },
 
     deleteScene: async (chainId) => {
