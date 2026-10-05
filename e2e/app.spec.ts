@@ -459,6 +459,63 @@ test('launcher core flow is keyboard-operable (focus rings + dialog discipline)'
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// Near-term dispatch (A), item 1 — the 2026-10-05 Codex audit's acceptance
+// qualification: the launcher's global `/` handler consulted typing targets
+// but never anyModalLayer(), so a slash keyed on a NON-TEXT control inside
+// an open modal could yank focus out of the modal's keyboard ownership
+// (§0.2: background shortcuts never fire through a modal). The surface here
+// is a REAL production modal that does NOT contain its own keys — the
+// settings reset consent (a StudioDialogLayered ConfirmDialog, portaled to
+// body, so its keydowns reach the window chain) — open while the
+// empty-canvas launcher holds its window listener; the ?probe=layers handle
+// machine-checks the registration premise.
+test('launcher `/` never steals focus through an open modal layer (§0.2 gate)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?settings=1&probe=layers')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  const prompt = page.locator('[data-canvas-prompt]')
+  await expect(prompt).toBeVisible()
+
+  // Open the production modal (the B2 flow): a defaults delta makes the
+  // reset available; the consent ConfirmDialog opens over the dock.
+  const duration = page.locator('.generation-defaults-grid input[type="number"]').first()
+  await duration.scrollIntoViewIfNeeded()
+  await duration.fill('10')
+  const reset = page.locator('button').filter({ hasText: /Apply to Create|Reset to recommended/ }).first()
+  await reset.click()
+  const dialog = page.getByRole('dialog', { name: /Reset generation defaults/ })
+  await expect(dialog).toBeVisible()
+
+  // The premise, machine-checked: the consent IS a registered layer.
+  type LayerProbe = { layerIds(): string[] }
+  await expect.poll(() => page.evaluate(() => {
+    const probe = (window as unknown as { __studioLayerProbe?: LayerProbe }).__studioLayerProbe
+    return probe ? probe.layerIds().join('|') : '(probe not bound)'
+  })).toContain('settings-reset-defaults')
+
+  // Focus deliberately on a NON-TEXT control inside the modal — the
+  // typing-target exclusion must not be what protects the keystroke.
+  const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true })
+  await cancel.focus()
+  await expect(cancel).toBeFocused()
+
+  // `/` through the open modal: focus does NOT move to the launcher, and
+  // the modal keeps both its focus and its openness.
+  await page.keyboard.press('/')
+  await expect(prompt).not.toBeFocused()
+  await expect(cancel).toBeFocused()
+  await expect(dialog).toBeVisible()
+
+  // No modal: §7 unchanged — `/` still focuses the launcher from anywhere.
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+  await page.keyboard.press('/')
+  await expect(prompt).toBeFocused()
+
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 // Component vocabulary task 10 — the layer-ownership registry's first real
 // consumer. PromptLibraryBrowser (a StudioDialog surface) participates in
 // the registry: it registers while open, and Escape is ROUTED — the ONE

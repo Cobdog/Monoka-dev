@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Clapperboard, FileVideo, ImagePlus, MessageSquareOff, Plus, Upload } from 'lucide-react'
 import { FirstRunNotice } from './FirstRunNotice'
 import { FirstRunWizard } from './FirstRunWizard'
+import { anyModalLayer } from '../ui/layerRegistry'
 import { useCanvasStore } from './store'
 
 export function Launcher({ onPickFile }: { onPickFile(): void }) {
@@ -27,12 +28,18 @@ export function Launcher({ onPickFile }: { onPickFile(): void }) {
   const [submitting, setSubmitting] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // The launcher owns the global `/` focus (§7): typing starts here.
+  // The launcher owns the global `/` focus (§7): typing starts here. The
+  // CanvasApp chain's rule (§0.2): a registered MODAL layer owns the
+  // keyboard while open — slash on a non-text control inside a modal must
+  // stay that modal's keystroke, never summon the background prompt bar
+  // (the 2026-10-05 audit's qualification; the wizard below is launcher-
+  // owned surface, not a registry layer, and keeps its in-surface `/`).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === '/' && document.activeElement !== inputRef.current && !event.metaKey && !event.ctrlKey && !event.altKey) {
         const target = event.target as HTMLElement | null
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+        if (anyModalLayer()) return
         event.preventDefault()
         inputRef.current?.focus()
       }
