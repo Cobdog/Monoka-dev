@@ -308,6 +308,17 @@ scoped run vs an implementer's full leg). **Operational rule: one Playwright
 run at a time per checkout** — stagger scoped runs while another agent runs
 legs; if you see trace-ENOENT teardown noise, re-run before diagnosing.
 
+## Concurrent agents share one git INDEX (learned 2026-10-04, the staging race)
+
+Two agents committing in one checkout share the staging area: an `git add`
+in session A followed by a commit in session B sweeps A's paths into B's
+commit (a T17 commit briefly carried a GPU set's files; amended away, a
+9-line attribution rider remains). **Operational rule: under concurrent
+agents, commit by PATHSPEC — `git commit -m … -- <paths>` — never
+`git add` + bare `git commit`;** the pathspec form never touches the shared
+index. If a sweep happens anyway, the recovery is `git rm --cached` for
+untracked sweeps + a pathspec-scoped amend BEFORE pushing.
+
 ## Windows-leg failure classes (learned 2026-09-16 — read before writing file-generating or file-importing code)
 
 The Windows CI leg catches what a Linux checkout structurally cannot. Two classes so far; both have standing fixes — use them proactively:
