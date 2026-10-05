@@ -374,7 +374,19 @@ test('the crop editor is a named, focus-contained dialog with keyboard-settable 
     return active !== null && (node === active || node.contains(active))
   }), 'focus settles inside the dialog on open').toBe(true)
   for (let index = 0; index < 30; index += 1) await page.keyboard.press('Tab')
-  expect(await page.evaluate(() => document.activeElement?.closest('[data-ds-editor]') ?? null)).not.toBeNull()
+  // (task 24, k2q0n9s — a sampling race fixed) The retired form snapshotted
+  // activeElement IMMEDIATELY after the last Tab and could catch Base UI's
+  // focus-wrap mid-flight: the trap's wrap lands focus on a transient
+  // sentinel node OUTSIDE [data-ds-editor] before cycling to the first
+  // tabbable — a fast sample sees null and fails a walk the trap actually
+  // contained (proven by an instrumented run: focusin sentinel → focusin the
+  // first control, no escape). The poll waits out the wrap; genuine escapes
+  // still fail on the timeout. The contract is unchanged: Tab stays inside
+  // no matter how far it walks.
+  await expect.poll(
+    () => page.evaluate(() => document.activeElement?.closest('[data-ds-editor]') ?? null),
+    { timeout: 3_000 },
+  ).not.toBeNull()
 
   // Keyboard geometry (C10): the numeric fields set the crop — the 480×832
   // seed snaps to the 32-grid, so 256 and 224 land exactly.
