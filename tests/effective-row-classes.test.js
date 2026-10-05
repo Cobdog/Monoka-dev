@@ -19,7 +19,7 @@
 //       has a rule in src/styles.css, and every `.effective-setting*`
 //       rule there is one the component can name.
 //   (f) P06 + tokens — the row rules carry flow/tone/type plus the row's
-//       OWN scoped chip geometry (`.effective-setting-row .chip` — the
+//       OWN scoped chip geometry (`.effective-setting-row .effective-setting-chip` — the
 //       shared .chip class stays geometry-free), and every var() they
 //       reference is DEFINED in src/styles.css's :root (P02 membership).
 //   (g) the resolver mapping — effectiveSlotSetting derives value/origin/
@@ -225,7 +225,7 @@ test('(f) P06 — flow/tone/type + the row-scoped chip geometry only; every var(
   ok(seen.has('color') && seen.has('font-size'), 'the recipe owns tone/type')
   ok(seen.has('display') && seen.has('gap'), 'the recipe owns its internal flow')
   // The shared .chip class stays geometry-free: the compact pill shape is
-  // SCOPED to the row (`.effective-setting-row .chip`), never global.
+  // SCOPED to the row (`.effective-setting-row .effective-setting-chip`), never global.
   const sharedChip = collectRules(stripComments(STYLES)).find((rule) => rule.selectorText.trim() === '.chip')
   ok(sharedChip, 'the shared .chip tone rule exists')
   ok(!/padding|border-radius|font-size/.test(sharedChip.body), 'the shared .chip rule carries no geometry (the row scopes its own)')

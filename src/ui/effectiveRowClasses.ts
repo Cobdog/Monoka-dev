@@ -24,7 +24,7 @@
  *     the half it can see — a reset handler against a non-override origin.
  *   - CLASSES: effectiveRowClasses() composes `effective-setting-row
  *     [surface…]` — the recipe owns the row's internal flow/tone and its
- *     chips' compact geometry (scoped `.effective-setting-row .chip`,
+ *     chips' compact geometry (scoped `.effective-setting-row .effective-setting-chip`,
  *     never the shared .chip class); the surface's geometry class lands
  *     last, deduped (P06, the mergeTail doctrine).
  */
