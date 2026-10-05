@@ -144,9 +144,9 @@ convention). Per-arm means:
 
 | Arm | rms dBFS | centroid Hz | rolloff85 Hz | treble | flatness | zcr /s |
 |---|---|---|---|---|---|---|
-| turbo-8 | −38.1 (wide: −53.1…−16.4) | 844 | 494 | 0.0079 | 0.166 | 841 |
-| turbo-4 | −29.0 | 657 | 349 | 0.0092 | 0.110 | 676 |
-| PDMD-4 | −29.2 | 967 | 571 | 0.0111 | 0.186 | 908 |
+| turbo-8 | −38.1 (wide: −53.1…−16.4) | 843 | 494 | 0.0079 | 0.166 | 815 |
+| turbo-4 | −31.5 | 657 | 398 | 0.0092 | 0.110 | 672 |
+| PDMD-4 | −30.9 | 984 | 579 | 0.0111 | 0.188 | 933 |
 
 Paired PDMD−turbo-8 means: **+7.2 dBFS louder**, +141 Hz centroid, +85 Hz
 rolloff, +0.0032 treble, +0.021 flatness, +119 zcr/s. Against turbo-4 the
