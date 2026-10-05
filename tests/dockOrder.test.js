@@ -200,3 +200,61 @@ test('(g) dockZCss composes the token formula; the band ceiling stays under moda
   ok(settingsRule !== null, 'the .canvas-settings-dock rule exists')
   ok(!/z-index/.test(settingsRule[0]), '.canvas-settings-dock carries no z-index pin (the reactive rank owns stacking)')
 })
+
+// ---- (h) the StudioDock thin shell (task 17) — the manifest §4 mechanical
+// acceptance, checked against the real tree at run time (the retired/
+// retained-selector columns): the resize wiring literal leaves the dock
+// surfaces for the shell's resizePolicy, the Rnd itself collapses to the
+// ONE shell module, the pose rig's distinct policy (720×420, every edge)
+// stays expressible as the resizePolicy argument — never coerced to the
+// common default — and the vestigial resize-handle class dies with the
+// wiring (no rule ever styled it; grep-verified at pin time).
+
+test('(h) the dock shell owns the resize wiring: zero surface literals, one Rnd, the pose rig policy intact', () => {
+  const read = (rel) => fs.readFileSync(path.resolve(__dirname, '..', ...rel.split('/')), 'utf8')
+  const collect = (dir, into) => {
+    for (const entry of fs.readdirSync(path.resolve(__dirname, '..', ...dir.split('/')), { withFileTypes: true })) {
+      const rel = `${dir}/${entry.name}`
+      if (entry.isDirectory()) collect(rel, into)
+      else if (/\.(tsx|ts)$/.test(entry.name)) into.push(rel)
+    }
+    return into
+  }
+  // The manifest §4 retired-selector grep, over its exact scope: every
+  // src/canvas component surface (recursive) + the LibraryDock (which lives
+  // in src/components).
+  const surfaceFiles = collect('src/canvas', []).concat(['src/components/LibraryDock.tsx'])
+  for (const file of surfaceFiles) {
+    const source = read(file)
+    eq(
+      (source.match(/minWidth=\{\d+\}|minHeight=\{\d+\}/g) ?? []).length,
+      0,
+      `${file} carries no raw Rnd minWidth/minHeight literal (the wiring moved into StudioDock's resizePolicy)`,
+    )
+  }
+  // The shell census: exactly ONE Rnd left in the tree, and it IS the shell
+  // (.tsx only — dockOrder.ts's docblock quotes the migration shape's <Rnd).
+  const rndSites = collect('src', []).filter((rel) => rel.endsWith('.tsx') && /<Rnd[\s>/]/.test(read(rel)))
+  eq(rndSites, ['src/ui/StudioDock.tsx'], 'the Rnd lives only in the shell — the eight dock sites render StudioDock')
+  // The pose rig's DISTINCT policy stays expressible as the resizePolicy
+  // argument (the manifest's retained-geometry column: 720 PRESENT, never
+  // coerced to the common default).
+  const poseRig = read('src/canvas/PoseRigDock.tsx')
+  ok(
+    /resizePolicy=\{\{\s*minWidth:\s*720,\s*minHeight:\s*420,\s*edges:\s*true\s*\}\}/.test(poseRig),
+    'PoseRigDock passes its distinct policy (720×420, every edge) as the resizePolicy argument',
+  )
+  // The common gate the shell defaults to: grow down/right ONLY (the
+  // verbatim census shape), stated in the shell for the surfaces that do
+  // not name their own edges.
+  const shell = read('src/ui/StudioDock.tsx')
+  ok(/bottom:\s*true/.test(shell) && /right:\s*true/.test(shell) && /bottomRight:\s*true/.test(shell), 'the shell states the common gate (bottom, right, bottomRight)')
+  ok(/left:\s*false/.test(shell) && /top:\s*false/.test(shell), 'the common gate refuses the up/left edges')
+  ok(/data-studio-dock/.test(shell), 'the shell stamps its census marker (data-studio-dock) — the e2e family pin')
+  // The vestigial resize-handle class retired with the wiring: no rule in
+  // any sheet ever styled it, so no surface passes it anymore.
+  const cssSheets = ['src/styles.css', 'src/canvas/canvas.css']
+  for (const file of [...surfaceFiles, ...cssSheets]) {
+    eq(read(file).includes('settings-resize-handle-br'), false, `${file} no longer carries the vestigial settings-resize-handle-br wiring`)
+  }
+})

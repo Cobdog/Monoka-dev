@@ -16,7 +16,10 @@
  * mechanism is the reactive rank band (task 11, k2q0n9s: useDockRank +
  * raiseDock in src/ui/dockOrder.ts — the store-counter stopgap and this
  * dock's local z state are deleted; this file was the pattern's first
- * carrier and is now the pattern's grave).
+ * carrier and is now the pattern's grave). Task 17 buried the chrome too:
+ * the Rnd, the rank subscription, the header and the close button are the
+ * StudioDock shell's (src/ui/StudioDock.tsx) — this surface owns its
+ * content, geometry and policy numbers alone.
  *
  * Wave 3 (R-15, tg52kaq): the STICKY SAVE footer — the save affordance is
  * pinned to the dock (not the page heading 15k px away, audit M1) and it is
@@ -27,19 +30,16 @@
  * context) — opening it never replaces the view.
  */
 import { useContext, useEffect, useRef, useState } from 'react'
-import { Rnd } from 'react-rnd'
-import { Save, Settings, X } from 'lucide-react'
+import { Save, Settings } from 'lucide-react'
 import { h3StackReport } from '../lib/h3Stack'
-import { ErrorBoundary } from '../components/ErrorBoundary'
 import { PACKS_CHANGED_EVENT } from '../components/LibraryDock'
 import { SettingsView } from '../views/SettingsView'
 import { useSessionStore } from '../state/sessionStore'
 import { CanvasSessionContext } from './sessionContext'
 import { dockDefaultGeometry } from './dockGeometry'
 import { WIZARD_REOPEN_EVENT } from './FirstRunNotice'
+import { StudioDock } from '../ui/StudioDock'
 import { useCanvasStore } from './store'
-import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
-import { useDockRank } from '../ui/useDockRank'
 
 export function SettingsDock() {
   const open = useCanvasStore((state) => state.settingsDock)
@@ -53,15 +53,6 @@ export function SettingsDock() {
   const toast = useCanvasStore((state) => state.toast)
   const context = useContext(CanvasSessionContext)
   const [diagnosticRunning, setDiagnosticRunning] = useState(false)
-  // Dock stacking (task 11, spec §0.1): the z is the REACTIVE rank — no
-  // local retention. Registration rides this dock's open lifetime (raise on
-  // open, unregister on close/unmount); every raise renormalizes the band
-  // and publishes, so a grab re-ranks the other docks too.
-  const dockRank = useDockRank('settings')
-  useEffect(() => {
-    if (open) raiseDock('settings')
-    return () => unregisterDock('settings')
-  }, [open])
 
   // The dirty-aware save (R-15/M1): the last PERSISTED snapshot. Adopted on
   // first settings arrival; rewritten after every successful save; the
@@ -113,55 +104,45 @@ export function SettingsDock() {
     }
   }
 
-  return <Rnd
-    className="canvas-settings-dock"
+  return <StudioDock
+    id="settings"
+    dockClassName="canvas-settings-dock"
     data-canvas-settings-dock
-    style={{ zIndex: dockZCss(dockRank) }}
-    onPointerDownCapture={() => raiseDock('settings')}
-    default={dockDefaultGeometry({ x: 120, y: 96, width: 720, height: Math.min(760, window.innerHeight - 160) })}
-    minWidth={420}
-    minHeight={280}
-    bounds="parent"
-    dragHandleClassName="canvas-inspector-header"
-    resizeHandleClasses={{ bottomRight: 'settings-resize-handle-br' }}
-    enableResizing={{ bottom: true, bottomRight: true, right: true, bottomLeft: false, topLeft: false, topRight: false, left: false, top: false }}
+    title={<><Settings size={13} /> <strong>Settings — docked</strong></>}
+    closeLabel="Close settings"
+    closeDataAttr="data-canvas-settings-close"
+    onClose={() => setSettingsDock(false)}
+    errorBoundary="settings"
+    geometry={dockDefaultGeometry({ x: 120, y: 96, width: 720, height: Math.min(760, window.innerHeight - 160) })}
+    resizePolicy={{ minWidth: 420, minHeight: 280 }}
   >
-    <header className="canvas-inspector-header">
-      <Settings size={13} />
-      <strong>Settings — docked</strong>
-      <button type="button" aria-label="Close settings" data-canvas-settings-close onClick={() => setSettingsDock(false)}><X size={13} /></button>
-    </header>
     <div className="canvas-settings-body" data-canvas-settings-body>
-      {/* Per-surface boundary — the discipline the old shell's per-view
-          wrappers carried (a crashing surface must not take the app down). */}
-      <ErrorBoundary label="settings">
-        <SettingsView
-          settings={settings}
-          setSettings={(value) => void setSettings(value)}
-          info={session.info}
-          infoEpoch={infoEpoch}
-          models={models}
-          h3Report={h3StackReport(models, settings.modelOverrides?.minimax, session.info)}
-          scanning={scanning}
-          status={status}
-          checking={checking}
-          diagnosticRunning={diagnosticRunning}
-          ollamaModels={ollamaModels}
-          onRefreshOllama={() => void refreshOllama(settings)}
-          onScan={() => void scanModels(settings, { refresh: true })}
-          onCheck={() => void checkConnection(settings.comfyUrl)}
-          onRunDiagnostics={() => void runDiagnosticsNow()}
-          onOpenLibrary={(focusEntryIds) => setLibraryDock(true, focusEntryIds)}
-          onReopenWizard={() => {
-            // Journey sweep #9: the wizard's on-demand way back in — the
-            // same reopen signal the FirstRunNotice's Resume CTA fires. The
-            // dock closes so the wizard owns the moment (one journey at a
-            // time, the R-16 presenting rule).
-            setSettingsDock(false)
-            window.dispatchEvent(new CustomEvent(WIZARD_REOPEN_EVENT))
-          }}
+      <SettingsView
+        settings={settings}
+        setSettings={(value) => void setSettings(value)}
+        info={session.info}
+        infoEpoch={infoEpoch}
+        models={models}
+        h3Report={h3StackReport(models, settings.modelOverrides?.minimax, session.info)}
+        scanning={scanning}
+        status={status}
+        checking={checking}
+        diagnosticRunning={diagnosticRunning}
+        ollamaModels={ollamaModels}
+        onRefreshOllama={() => void refreshOllama(settings)}
+        onScan={() => void scanModels(settings, { refresh: true })}
+        onCheck={() => void checkConnection(settings.comfyUrl)}
+        onRunDiagnostics={() => void runDiagnosticsNow()}
+        onOpenLibrary={(focusEntryIds) => setLibraryDock(true, focusEntryIds)}
+        onReopenWizard={() => {
+          // Journey sweep #9: the wizard's on-demand way back in — the
+          // same reopen signal the FirstRunNotice's Resume CTA fires. The
+          // dock closes so the wizard owns the moment (one journey at a
+          // time, the R-16 presenting rule).
+          setSettingsDock(false)
+          window.dispatchEvent(new CustomEvent(WIZARD_REOPEN_EVENT))
+        }}
         />
-      </ErrorBoundary>
     </div>
     {/* R-15/M1: the sticky, dirty-aware save — always at the dock's foot,
         never a 15k-px scroll away. */}
@@ -176,7 +157,7 @@ export function SettingsDock() {
         <Save size={15} /> Save settings
       </button>
     </footer>
-  </Rnd>
+  </StudioDock>
 }
 
 /** Scrolls the settings body to the deep-linked section once, then reports

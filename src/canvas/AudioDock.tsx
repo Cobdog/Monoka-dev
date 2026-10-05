@@ -10,13 +10,11 @@
  * projection like every output. (The ACE-Step dock arm was removed with
  * the engine, 2026-09-21 — nn5ld47.)
  */
-import { useEffect, useState } from 'react'
-import { Rnd } from 'react-rnd'
-import { AudioLines, Play, X } from 'lucide-react'
+import { useState } from 'react'
+import { AudioLines, Play } from 'lucide-react'
+import { StudioDock } from '../ui/StudioDock'
 import { useCanvasStore } from './store'
 import { AUDIO_LANE_PAUSED, AUDIO_LANE_PAUSED_REASON } from './options'
-import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
-import { useDockRank } from '../ui/useDockRank'
 
 export function AudioDock() {
   const dock = useCanvasStore((state) => state.audioDock)
@@ -33,14 +31,6 @@ export function AudioDock() {
   const [lyrics, setLyrics] = useState('')
   const [duration, setDuration] = useState(60)
   const [submitting, setSubmitting] = useState(false)
-  // Dock stacking (task 11, spec §0.1): the reactive rank — no local z, no
-  // CSS pin. ONE id for both branches (paused notice + authoring form are
-  // the same dock); registration rides the dock object's open lifetime.
-  const dockRank = useDockRank('audio')
-  useEffect(() => {
-    if (dock) raiseDock('audio')
-    return () => unregisterDock('audio')
-  }, [dock])
 
   if (!dock) return null
   const engine = dock.engine
@@ -88,51 +78,33 @@ export function AudioDock() {
   // the dock itself renders the notice for any path that still reaches it
   // (a stale chain link, a re-enabled flag catching a mounted panel). The
   // form below stays compiled — one flag flip restores the lane whole.
+  //
+  // Task 17: both branches are the same StudioDock with the same chrome —
+  // ONE 'audio' rank id, registration riding the dock object's open
+  // lifetime (the shell mounts while the dock object exists).
+  const shell = {
+    id: 'audio' as const,
+    dockClassName: 'canvas-audio-dock',
+    'data-canvas-audio-dock': true,
+    'data-canvas-audio-engine': engine,
+    title: (<><AudioLines size={13} /> <strong>Music 3 — complete song</strong></>),
+    closeLabel: 'Close audio dock',
+    closeDataAttr: 'data-canvas-audio-close',
+    onClose: () => setAudioDock(null),
+    geometry: { x: 96, y: 120, width: 400, height: 560 },
+    resizePolicy: { minWidth: 320, minHeight: 300 },
+  }
+
   if (AUDIO_LANE_PAUSED) {
-    return <Rnd
-      className="canvas-audio-dock"
-      data-canvas-audio-dock
-      data-canvas-audio-engine={engine}
-      data-canvas-audio-paused="true"
-      style={{ zIndex: dockZCss(dockRank) }}
-      onPointerDownCapture={() => raiseDock('audio')}
-      default={{ x: 96, y: 120, width: 400, height: 560 }}
-      minWidth={320}
-      minHeight={300}
-      bounds="parent"
-      dragHandleClassName="canvas-inspector-header"
-      enableResizing={{ bottom: true, bottomRight: true, right: true, bottomLeft: false, topLeft: false, topRight: false, left: false, top: false }}
-    >
-      <header className="canvas-inspector-header">
-        <AudioLines size={13} />
-        <strong>Music 3 — complete song</strong>
-        <button type="button" aria-label="Close audio dock" data-canvas-audio-close onClick={() => setAudioDock(null)}><X size={13} /></button>
-      </header>
+    return <StudioDock {...shell} data-canvas-audio-paused="true">
       <div className="canvas-inspector-body">
         <p className="canvas-properties-note" data-canvas-audio-paused-note role="status">{AUDIO_LANE_PAUSED_REASON}</p>
         <p className="canvas-properties-note">Existing audio chains stay on their objects and keep playing — only new authoring is paused.</p>
       </div>
-    </Rnd>
+    </StudioDock>
   }
 
-  return <Rnd
-    className="canvas-audio-dock"
-    data-canvas-audio-dock
-    data-canvas-audio-engine={engine}
-    style={{ zIndex: dockZCss(dockRank) }}
-    onPointerDownCapture={() => raiseDock('audio')}
-    default={{ x: 96, y: 120, width: 400, height: 560 }}
-    minWidth={320}
-    minHeight={300}
-    bounds="parent"
-    dragHandleClassName="canvas-inspector-header"
-    enableResizing={{ bottom: true, bottomRight: true, right: true, bottomLeft: false, topLeft: false, topRight: false, left: false, top: false }}
-  >
-    <header className="canvas-inspector-header">
-      <AudioLines size={13} />
-      <strong>Music 3 — complete song</strong>
-      <button type="button" aria-label="Close audio dock" data-canvas-audio-close onClick={() => setAudioDock(null)}><X size={13} /></button>
-    </header>
+  return <StudioDock {...shell}>
     <div className="canvas-inspector-body">
       <section className="canvas-properties-section">
         <label>Caption sections</label>
@@ -170,5 +142,5 @@ export function AudioDock() {
         <Play size={12} /> generate song
       </button>
     </footer>
-  </Rnd>
+  </StudioDock>
 }
