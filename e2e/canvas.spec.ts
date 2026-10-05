@@ -5400,6 +5400,13 @@ test('a draft whose save is still in flight survives the surface switch (F02)', 
   await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
   await page.locator(`[data-canvas-tile="${chainId}"]`).click()
   await expect(page.locator('[data-canvas-properties] [data-canvas-section="prompt"] textarea').first()).toHaveValue('IN-FLIGHT NAVIGATION SENTINEL', { timeout: 10_000 })
+  // (task 24, k2q0n9s — the CI-leg flake fixed) On a slow runner the held
+  // first update's route callback can still be mid-sleep when the test body
+  // completes; the teardown-time rejection then FAILS an otherwise-green
+  // test ("page.waitForTimeout: Test ended." — the error's own suggested
+  // remedy, applied here). Locally the sleep always lands inside the body,
+  // which is why three local full fleets never saw it.
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
