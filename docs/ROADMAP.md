@@ -1,17 +1,33 @@
 # Roadmap — state of play
 
 > **Derived from Flux (project `r2lnrfw`); refreshed 2026-09-20, then 2026-09-28
-> at the maintainer's PERFECT-state directive (the frontier sections below; the
+> at the maintainer's PERFECT-state directive, then 2026-10-05 (the
+> program-completion refresh; the frontier sections below; the
 > historical sections keep their original wording).** Flux is the source of truth;
 > this file is the human-readable state of play — if it disagrees with the board,
 > the board wins. Task ids are Flux ids.
 
-## THE ACTIVE FRAME — the foundation remediation program (epic 4lphxv8)
+## THE FOUNDATION REMEDIATION PROGRAM (epic 4lphxv8) — COMPLETE, merged at d773fa9 (2026-10-03)
 
 **The maintainer's verdict (2026-09-20)**: the foundation wasn't solid — a full day
 of small-friction fixes never got them past "enter a prompt, pick video, execute,
 fail." The response is a full audit + remediation program, with the maintainer's
 stated stakes: remediate, or the project gets scrapped and restarted fresh.
+
+> **FRONTIER UPDATE (2026-10-05) — the program is merged; the state since.** The
+> remediation program's four waves, the follow-on sweeps (truth surfaces,
+> centralization, perfect-state), and the CI fixes all landed and **merged to main
+> at d773fa9 (2026-10-03)** — the post-remediation merge the
+> `component-vocabulary` branch pins to. State since the merge: the **shared
+> component vocabulary round** (k2q0n9s, branch `component-vocabulary`) is
+> internally complete — 24/24 tasks blind-reviewed, the near-term A/B/C items,
+> both Codex audit fix rounds re-reviewed APPROVED — awaiting Codex's third pass
+> or the maintainer's direct merge; and the **GPU experiment sprint** (ourbqum)
+> ran sets A/B/C/D/E/J/P/P2 to maintainer-closed verdicts (PDMD-4 takes the
+> fast-lane default; the ledger's THE SPRINT CLOSES section carries the
+> consolidated verdict), with sets F/G/H/I designed-not-run. The epic's open
+> tasks are post-program follow-ons (the design round, the assessment workspace,
+> the GPU-gated experiment backlog), not live remediation.
 
 > **FRONTIER UPDATE (2026-09-28) — the PERFECT-state pass.** The maintainer's
 > 2026-09-27 directive — *"Mainline — let's get what we have currently working in
@@ -193,7 +209,8 @@ realtime core, landing machinery) with the debt concentrated at the seams.*
 
 ## Queued (frontier order)
 
-- **The perfect-state sweep** (6rmxbzf, in flight): the 31 findings zeroed in
+- **The perfect-state sweep** (6rmxbzf, landed 2026-09-28 and merged with the
+  program): the 31 findings zeroed in
   the walk's six-wave order (truth surfaces → dialogs → workbench coherence →
   CSS floors → standing tail → gate tooling).
 - **Workbench v2 Phase A** — the blessed creation-surface build-out (the

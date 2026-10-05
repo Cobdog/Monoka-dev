@@ -252,14 +252,16 @@ Both engine addresses, every model directory, and the ComfyUI output directory c
 
 ## Workflow compatibility
 
-> **REMEDIATION IN PROGRESS (2026-09-20, epic 4lphxv8):** the foundation is under a
-> full audit-and-remediation program — see [docs/audit/remediation-plan.md](docs/audit/remediation-plan.md).
+> **REMEDIATION COMPLETE (2026-09-20 → merged 2026-10-03 at d773fa9, epic 4lphxv8):**
+> the foundation went through the full audit-and-remediation program — see
+> [docs/audit/remediation-plan.md](docs/audit/remediation-plan.md).
 > **Phase 0 removals have LANDED** (PR #33, 2026-09-20): LTX and Z-Image are fully
 > removed, along with the five asset studios, the `?mobile=1` companion, and the manual
 > model-path surface — see [docs/audit/removals-phase0.md](docs/audit/removals-phase0.md)
 > for what died and the restore paths. Any capability text in this README that still
-> names those surfaces (above and below this note) is pre-removal historical pending
-> the remediation doc refresh. The settled architecture: models and nodes are
+> names those surfaces (above and below this note) is pre-removal historical — the
+> README refresh never ran under the program, so verify named surfaces against the
+> current app. The settled architecture: models and nodes are
 > discovered exclusively through the connected ComfyUI instance's registry
 > (instance-invisible = nonexistent); the destination is a workshop of three surfaces —
 > wiring (canvas), control (control center, post-foundation), creation (workbench,
