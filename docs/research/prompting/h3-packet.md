@@ -246,6 +246,15 @@ READMEs, via [h3-image-workbench.md](../h3-image-workbench.md) §2.1].
 - **Durations**: 17k+5 frames at 24 fps (5/22/39/56…124…); `length` snaps
   down to the grid; ~15 s single-pass ceiling; 39 frames is the only
   phase-exact audio handoff length [DOC code + COMM — transitions doc §2].
+  **The REQUEST range is 4–15 s (the base guide's own floor — §3.2's
+  duration line): grid values below ~96f (4 s) are below the model's
+  documented comfort floor.** They run (the transitions lane uses 39f),
+  but sub-floor outputs are off the trained distribution — motion onset
+  may be length-pressure, not model character. Screens wanting audio
+  phase-exactness at ≥floor length must take the tradeoff explicitly
+  (39f exact vs 107f+ standard derivation) [CORRECTED 2026-10-05 — the
+  maintainer's catch; the batch's B/E/P cells ran at 39f — ledger
+  Amendment 8b].
 - **Sigmas**: shift maps σ′ = sσ/(1+(s−1)σ); the 12/3 pair is strongly
   high-noise-weighted (structure first, one long terminal texture hop);
   audio derives from the video schedule (audio_scale 4.0). Changing shift
