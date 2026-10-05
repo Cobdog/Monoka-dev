@@ -1988,6 +1988,37 @@ test('the §3.1 leftovers join the layer registry: op editor, camera path editor
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// (task 24, k2q0n9s — the §10 kbd row, dropped by the round's decomposition
+// and closed by the sweep) The kbd recipe is ON the chip system: tone
+// (border/background/font-family) lives centrally in styles.css, per-surface
+// rules keep only geometry — and previously-BARE kbds (the BottomBar hint's
+// "/", the bar's shortcut letters) pick the recipe up (the spec's "absorbs
+// the unstyled BottomBar kbd included").
+test('the kbd recipe reaches every kbd — the bare BottomBar keys included (§10 fold, k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  // The previously-unstyled consumer: the bar hint's "/" key now paints the
+  // recipe (border + background, computed).
+  const bare = page.locator('[data-canvas-bar-hint] kbd')
+  await expect(bare).toBeVisible()
+  const bareStyle = await bare.evaluate((element) => {
+    const cs = getComputedStyle(element)
+    return { borderWidth: cs.borderTopWidth, background: cs.backgroundColor }
+  })
+  expect(Number.parseFloat(bareStyle.borderWidth)).toBeGreaterThanOrEqual(1)
+  expect(bareStyle.background).not.toBe('rgba(0, 0, 0, 0)')
+  // The styled per-surface consumer keeps its geometry (the index button's
+  // key at its own font-size tier) while its tone rides the recipe.
+  await page.keyboard.press('ControlOrMeta+k')
+  const indexKey = page.locator('.canvas-index-button kbd')
+  await expect(indexKey).toBeVisible()
+  await expect(indexKey).toHaveCSS('font-size', await indexKey.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--text-2xs').trim() + 'px'))
+  await page.keyboard.press('Escape')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 test('the consent tier sits above the modal band (the fetch consent, §0.1)', async ({ page }) => {
   const problems = await trackErrors(page)
   await resetSession(page)
