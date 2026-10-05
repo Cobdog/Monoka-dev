@@ -143,7 +143,11 @@ const TEXT_SCALE = { '--text-2xs': 7, '--text-xs': 8, '--text-sm': 9, '--text-ba
 const SPACING_PROPS = /^(margin|padding|gap|row-gap|column-gap|margin-(top|right|bottom|left|block|inline|block-start|block-end|inline-start|inline-end)|padding-(top|right|bottom|left|block|inline|block-start|block-end|inline-start|inline-end))$/
 const SPACE_STEPS = { 4: '--space-1', 8: '--space-2', 12: '--space-3', 16: '--space-4', 20: '--space-5', 24: '--space-6', 28: '--space-7', 32: '--space-8', 36: '--space-9', 40: '--space-10' }
 
-const Z_LADDER = { 10: '--z-sticky', 40: '--z-dropdown', 50: '--z-modal', 60: '--z-modal-raised', 70: '--z-overlay', 75: '--z-toast', 80: '--z-overlay-raised', 90: '--z-dialog-top', 100: '--z-max' }
+// The z fold map (historical literal → token). The two dead slots
+// (--z-modal-raised, --z-dialog-top) were deleted from :root in the
+// whole-branch cleanup (finding 5, 2026-10-05) and must never be re-emitted
+// by a codemod run; 60 is the dock-band floor (--z-dock-base) now.
+const Z_LADDER = { 10: '--z-sticky', 40: '--z-dropdown', 50: '--z-modal', 60: '--z-dock-base', 70: '--z-overlay', 75: '--z-toast', 80: '--z-overlay-raised', 100: '--z-max' }
 
 // ---------------------------------------------------------------------------
 
