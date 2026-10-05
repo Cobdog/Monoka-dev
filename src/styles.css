@@ -82,18 +82,37 @@
    * the exact bug the fetch-consent's old --z-dialog-top workaround papered
    * over.
    *
-   * The unused reserved slots (--z-modal-raised, --z-overlay,
-   * --z-overlay-raised, --z-dialog-top, --z-max) keep their historical
-   * values, but they now TIE active tiers numerically: --z-modal-raised:60
-   * equals the dock-band floor and --z-overlay:70 equals --z-modal — a NAME
-   * is not an order (--z-modal-raised sits BELOW --z-modal despite reading
-   * above it), so REVALUE any reserved slot before its first real consumer
-   * instead of adopting the tied value. --z-dialog-top:90 is consumerless
-   * since the consent tier was renamed to --z-consent (task 11) and ties it
-   * numerically. One more tie to know: --z-modal:70 equals the canvas bench
-   * panel's z-70 (.canvas-bench-panel) — the modal wins that tie only by
-   * portal order (dialogs portal to body, after the canvas tree), a
-   * coincidence worth remembering if the bench ever re-stacks.
+   * The reserved slots after the cleanup (whole-branch finding 5,
+   * 2026-10-05): --z-overlay-raised:80 is the one that GREW a consumer —
+   * V01's menu-over-modal fix points .canvas-menu-backdrop--over-modal
+   * (canvas.css) at it, so it is live contract, not reserve. DELETED then:
+   * --z-modal-raised (60) — consumerless and LYING (its name read above
+   * modal while its value sat at the dock-band floor; the raised-over-modal
+   * niche belongs to --z-overlay-raised now, and a future second
+   * raised-modal tier re-introduces its own slot honestly — above modal —
+   * at first consumer) and --z-dialog-top (90) — consumerless since the
+   * consent tier was renamed to --z-consent (task 11). The remaining
+   * reserved slots (--z-overlay:70, --z-max:100) keep their historical
+   * values; --z-overlay TIES --z-modal numerically — a NAME is not an
+   * order, so REVALUE a reserved slot before its first real consumer
+   * instead of adopting the tied value. One more tie to know: --z-modal:70
+   * equals the canvas bench panel's z-70 (.canvas-bench-panel) — the modal
+   * wins that tie only by portal order (dialogs portal to body, after the
+   * canvas tree), a coincidence worth remembering if the bench ever
+   * re-stacks.
+   *
+   * (V01, 2026-10-05) The raised tier's two standing rulings, recorded
+   * where the next stacker will read them: (1) toasts (--z-toast:75) paint
+   * UNDER the raised menu backdrop (80) — ACCEPTED, not a bug: during a
+   * menu-over-modal the menu is the active gesture, a toast is ambient and
+   * transient, and dimming under the backdrop is correct layering; revalue
+   * --z-toast above the raised tier only if a toast must be READ
+   * mid-menu. (2) A LATENT inversion: the registry's KEYBOARD order and
+   * this paint ladder can disagree — a modal layer registering ABOVE an
+   * open raised menu owns the keyboard (§0.2 routes to topmost) while
+   * painting UNDER the 80 backdrop. No production consumer stacks that way
+   * today; the first one that needs to must either take a paint tier above
+   * 80 as well, or close the menu first — never ship the disagreement.
    *
    * (task 24, z-band alignment) The canvas ⌘K command overlays
    * (.canvas-index-overlay — index, library, timeline) ride var(--z-modal)
@@ -107,12 +126,10 @@
   --z-dropdown: 40;
   --z-dock-base: 60;
   --z-modal: 70;
-  --z-modal-raised: 60;
   --z-overlay: 70;
   --z-toast: 75;
   --z-overlay-raised: 80;
   --z-consent: 90;
-  --z-dialog-top: 90;
   --z-max: 100;
   /* Focus ring — the keyboard-first affordance, composed from the accent. */
   --focus-ring-width: 2px;

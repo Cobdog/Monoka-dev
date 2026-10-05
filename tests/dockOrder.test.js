@@ -187,6 +187,19 @@ test('(g) dockZCss composes the token formula; the band ceiling stays under moda
   ok(token('z-modal') > token('z-dock-base') + 8, `modal (${token('z-modal')}) sits above the ENTIRE dock band (${token('z-dock-base')}..${token('z-dock-base') + 7}, the 8-Rnd census + headroom)`)
   ok(token('z-consent') > token('z-modal'), `consent (${token('z-consent')}) sits above modal (${token('z-modal')})`)
   ok(token('z-toast') > token('z-modal'), `toasts (${token('z-toast')}) stay above the modal band (the pre-contract order, kept)`)
+  // (whole-branch finding 5, 2026-10-05) The retired reserved slots stay
+  // dead and the one that grew a consumer (V01) is live contract: the
+  // consumerless --z-dialog-top died with the --z-consent rename's cleanup,
+  // --z-modal-raised died because its name lied (read above modal, sat at
+  // the dock-band floor) — the raised-over-modal niche is --z-overlay-raised
+  // now, which must paint above modal and carry the over-modal menu
+  // backdrop (canvas.css), with toasts ACCEPTED underneath it (the canon
+  // comment's ruling).
+  ok(!/--z-dialog-top\s*:/.test(sheet), '--z-dialog-top stays retired (consumerless since the consent rename)')
+  ok(!/--z-modal-raised\s*:/.test(sheet), '--z-modal-raised stays retired (its name lied; the raised niche is --z-overlay-raised)')
+  ok(token('z-overlay-raised') > token('z-modal'), `the raised menu tier (${token('z-overlay-raised')}) paints above modal (${token('z-modal')})`)
+  ok(token('z-overlay-raised') > token('z-toast'), `toasts (${token('z-toast')}) sit under the raised tier (${token('z-overlay-raised')}) — the accepted V01 ruling, pinned`)
+  ok(/\.canvas-menu-backdrop--over-modal\s*\{[^}]*z-index:\s*var\(--z-overlay-raised\)/.test(canvasSheet), '.canvas-menu-backdrop--over-modal rides var(--z-overlay-raised) (V01\'s consumer)')
   // The rules ride the tokens (lockstep both directions — grep the sheet,
   // the manifest's verification-column style).
   ok(/\.toast-host\s*\{[^}]*z-index:\s*var\(--z-toast\)/.test(sheet), '.toast-host rides var(--z-toast)')
