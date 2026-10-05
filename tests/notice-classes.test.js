@@ -73,6 +73,7 @@ const {
   toastClasses, toastItemClasses, toastAriaFor, noticeClasses, noticeAria, toastAdapterProps,
   TOAST_PLACEMENTS, NOTICE_TONES, NOTICE_ROLES,
 } = noticeModule
+const { parseRootCustomProperties, stripComments, collectRules } = require('./lib/styleSheet.cjs')
 
 const ok = (condition, label) => assert.ok(condition, label)
 
@@ -81,42 +82,16 @@ function eq(actual, expected, label) {
   console.log(`  ok - ${label}`)
 }
 
-// ---- the live sheet parse (the statusToken doctrine) -------------------------
+// ---- the live sheet parse (the statusToken doctrine — through the shared
+// sheet reader, tests/lib/styleSheet.cjs, the near-term-A consolidation of
+// the ten kit suites' private parser copies) --------------------------------
 
 const STYLES = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'styles.css'), 'utf8')
 const CANVAS_CSS = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'canvas', 'canvas.css'), 'utf8')
 const WORKBENCH_CSS = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'images', 'workbench.css'), 'utf8')
 const DATASETS_CSS = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'datasets', 'datasets.css'), 'utf8')
 
-function parseRootCustomProperties(css) {
-  const start = css.indexOf(':root')
-  if (start === -1) throw new Error('no :root block found in src/styles.css')
-  const open = css.indexOf('{', start)
-  let depth = 1
-  let end = open + 1
-  while (depth > 0 && end < css.length) {
-    if (css[end] === '{') depth += 1
-    if (css[end] === '}') depth -= 1
-    end += 1
-  }
-  const block = css.slice(open + 1, end - 1)
-  const names = new Set()
-  const declaration = /(--[\w-]+)\s*:/g
-  let match = declaration.exec(block)
-  while (match !== null) {
-    names.add(match[1])
-    match = declaration.exec(block)
-  }
-  if (names.size < 40) throw new Error(`:root parse looks wrong — only ${names.size} custom properties found`)
-  return names
-}
-
 const ROOT_VARS = parseRootCustomProperties(STYLES)
-
-/** Comments are PROSE, never rules — strip them before any rule-shape scan. */
-function stripComments(css) {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '')
-}
 
 /** Every top-level rule whose selector list mentions a `.family` class,
  *  mapped className → the union of its declarations across all such rules,
@@ -143,34 +118,19 @@ function collectFamilyRules(css, family) {
       }
     }
   }
-  let index = 0
-  while (index < css.length) {
-    const open = css.indexOf('{', index)
-    if (open === -1) break
-    let depth = 1
-    let end = open + 1
-    while (depth > 0 && end < css.length) {
-      if (css[end] === '{') depth += 1
-      if (css[end] === '}') depth -= 1
-      end += 1
-    }
-    const selectorText = css.slice(index, open)
-    const body = css.slice(open + 1, end - 1)
-    // Recipes live at top level only (the chip suite's rule — a recipe that
-    // moves inside a media query escapes the ORPHAN direction, never the
-    // emittable direction).
-    if (!selectorText.trimStart().startsWith('@')) {
-      bySelector.set(selectorText.trim(), body)
-      for (const selector of selectorText.split(',')) {
-        const classPattern = new RegExp(`\\.${family}(--[\\w-]+)?(?![\\w-])`, 'g')
-        let classMatch = classPattern.exec(selector)
-        while (classMatch !== null) {
-          note(classMatch[0].slice(1), body)
-          classMatch = classPattern.exec(selector)
-        }
+  // The shared walker: comments stripped, @media/@keyframes preludes skipped
+  // whole (recipes live at top level only — a recipe that moves inside a
+  // media query escapes the ORPHAN direction, never the emittable one).
+  for (const { selectorText, body } of collectRules(css)) {
+    bySelector.set(selectorText.trim(), body)
+    for (const selector of selectorText.split(',')) {
+      const classPattern = new RegExp(`\\.${family}(--[\\w-]+)?(?![\\w-])`, 'g')
+      let classMatch = classPattern.exec(selector)
+      while (classMatch !== null) {
+        note(classMatch[0].slice(1), body)
+        classMatch = classPattern.exec(selector)
       }
     }
-    index = end
   }
   rules.bySelector = bySelector
   return rules
@@ -414,27 +374,6 @@ function classTokensOf(expression) {
     match = pattern.exec(expression)
   }
   return tokens
-}
-
-function collectRules(css) {
-  const rules = []
-  let index = 0
-  const stripped = stripComments(css)
-  while (index < stripped.length) {
-    const open = stripped.indexOf('{', index)
-    if (open === -1) break
-    let depth = 1
-    let end = open + 1
-    while (depth > 0 && end < stripped.length) {
-      if (stripped[end] === '{') depth += 1
-      if (stripped[end] === '}') depth -= 1
-      end += 1
-    }
-    const selectorText = stripped.slice(index, open)
-    if (!selectorText.trimStart().startsWith('@')) rules.push({ selectorText, body: stripped.slice(open + 1, end - 1) })
-    index = end
-  }
-  return rules
 }
 
 test('(i) no NoticeBanner-composed surface class is styled by a border shorthand', () => {

@@ -35,7 +35,7 @@ const assert = require('node:assert/strict')
 
 const REPO = path.resolve(__dirname, '..')
 
-const { SUITES, RULES, ALL_SUITES, BOOTING, PORT_USERS, VM_SUITES, resolve, globToRegExp, suiteFromFile } = require(path.join(REPO, 'scripts', 'ci-map.cjs'))
+const { SUITES, RULES, ALL_SUITES, BOOTING, PORT_USERS, SHEET_USERS, VM_SUITES, resolve, globToRegExp, suiteFromFile } = require(path.join(REPO, 'scripts', 'ci-map.cjs'))
 
 const ok = (cond, label) => assert.ok(cond, label)
 const eq = (actual, expected, label) => assert.deepEqual(actual, expected, label)
@@ -132,8 +132,10 @@ test('(5d) the Windows leg intersects its OS-sensitive set', () => {
 
 test('(5e) shared test infra fans out honestly', () => {
   eq(resolve(['tests/lib/ports.cjs']).suites, PORT_USERS, 'the port allocator maps to every suite that draws ranges')
+  eq(resolve(['tests/lib/styleSheet.cjs']).suites, SHEET_USERS, 'the shared sheet reader maps to every kit suite that parses styles.css')
   eq(resolve(['scripts/lib/ts-vm.cjs']).suites, VM_SUITES, 'the VM harness maps to every client suite')
   ok(PORT_USERS.length === 13, 'the port-suite inventory is the declared thirteen (manager-install joined, 0pktw5h; resync joined, 68e9k17)')
+  ok(SHEET_USERS.length === 10, 'the sheet-reader inventory is the declared ten (statusToken + the nine *-classes kits, near-term A)')
 })
 
 test('(5f) infrastructure inputs force the full run + license audit', () => {

@@ -72,6 +72,7 @@ const {
   handoffRefreshText, handoffResultClasses, handoffRetryLabel, handoffStepAria, handoffStepClasses,
   handoffStepRetryable, handoffStepStale, handoffStepText, handoffWarnFor,
 } = handoffModule
+const { parseRootCustomProperties, collectRules } = require('./lib/styleSheet.cjs')
 
 const ok = (condition, label) => assert.ok(condition, label)
 
@@ -88,62 +89,15 @@ function throws(fn, label) {
 const step = (over) => ({ id: 'pin', label: 'Pin the frame to the canvas', write: 'done', refresh: 'fresh', ...over })
 
 // ---- the live sheet parse (the statusToken doctrine: read the sheet at
-// run time; membership proves definition) ---------------------------------
+// run time; membership proves definition — through the shared sheet reader,
+// tests/lib/styleSheet.cjs, the near-term-A consolidation of the ten kit
+// suites' private parser copies) ------------------------------------------
 
 const STYLES = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'styles.css'), 'utf8')
 const SHEETS = ['src/styles.css', 'src/canvas/canvas.css', 'src/datasets/datasets.css', 'src/images/workbench.css']
   .map((file) => fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8'))
 
-function parseRootCustomProperties(css) {
-  const start = css.indexOf(':root')
-  if (start === -1) throw new Error('no :root block found in src/styles.css')
-  const open = css.indexOf('{', start)
-  let depth = 1
-  let end = open + 1
-  while (depth > 0 && end < css.length) {
-    if (css[end] === '{') depth += 1
-    if (css[end] === '}') depth -= 1
-    end += 1
-  }
-  const block = css.slice(open + 1, end - 1)
-  const names = new Set()
-  const declaration = /(--[\w-]+)\s*:/g
-  let match = declaration.exec(block)
-  while (match !== null) {
-    names.add(match[1])
-    match = declaration.exec(block)
-  }
-  if (names.size < 40) throw new Error(`:root parse looks wrong — only ${names.size} custom properties found`)
-  return names
-}
-
 const ROOT_VARS = parseRootCustomProperties(STYLES)
-
-function stripComments(css) {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '')
-}
-
-/** Top-level rules as { selectorText, body } (the chip/notice walk shape). */
-function collectRules(css) {
-  const rules = []
-  let index = 0
-  const stripped = stripComments(css)
-  while (index < stripped.length) {
-    const open = stripped.indexOf('{', index)
-    if (open === -1) break
-    let depth = 1
-    let end = open + 1
-    while (depth > 0 && end < stripped.length) {
-      if (stripped[end] === '{') depth += 1
-      if (stripped[end] === '}') depth -= 1
-      end += 1
-    }
-    const selectorText = stripped.slice(index, open)
-    if (!selectorText.trimStart().startsWith('@')) rules.push({ selectorText, body: stripped.slice(open + 1, end - 1) })
-    index = end
-  }
-  return rules
-}
 
 const HANDOFF_RULES = collectRules(STYLES).filter((rule) =>
   rule.selectorText.split(',').some((selector) => selector.includes('.handoff-')),
