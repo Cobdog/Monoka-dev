@@ -1880,6 +1880,44 @@ test('the modal band sits above every dock after arbitrary raises (§0.1)', asyn
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// (task 24, k2q0n9s — the z-band alignment rider) The ⌘K overlays are
+// REGISTERED modal layers (task 14) but their paint still rode the literal
+// z-50 from before the z-band contract — UNDER the entire dock band
+// (--z-dock-base 60 + ranks), the exact misalignment --z-modal's 50 → 70
+// revaluation fixed for dialogs the day the contract landed. The overlays
+// ride var(--z-modal) now: registered modal AND painted modal, above every
+// however-raised dock.
+test('the command overlays paint the modal band — above the whole dock band (z alignment, k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('overlay z alignment — the literal 50 dies')
+  await page.locator('[data-canvas-submit]').click()
+  const inspector = page.locator('[data-canvas-inspector]')
+  await expect(inspector).toBeVisible({ timeout: 10_000 })
+  await page.locator('[data-canvas-settings-button]').click()
+  const settings = page.locator('[data-canvas-settings-dock]')
+  await expect(settings).toBeVisible()
+
+  // ⌘K over the raised docks: the index overlay is painted AT the modal
+  // token (computed, the ladder's own name) and clears every dock.
+  await page.keyboard.press('ControlOrMeta+k')
+  const index = page.locator('[data-canvas-index]')
+  await expect(index).toBeVisible()
+  const overlayZ = await index.evaluate((element) => Number(getComputedStyle(element).zIndex))
+  const modalBandZ = await zToken(page, '--z-modal')
+  expect(Number.isFinite(modalBandZ)).toBe(true)
+  expect(overlayZ).toBe(modalBandZ)
+  expect(overlayZ).toBeGreaterThan(await dockZ(inspector))
+  expect(overlayZ).toBeGreaterThan(await dockZ(settings))
+  expect(overlayZ).toBeGreaterThan((await zToken(page, '--z-dock-base')) + 7)
+  // One Escape closes only the overlay (the registry's topmost rule).
+  await page.keyboard.press('Escape')
+  await expect(index).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 test('the consent tier sits above the modal band (the fetch consent, §0.1)', async ({ page }) => {
   const problems = await trackErrors(page)
   await resetSession(page)
