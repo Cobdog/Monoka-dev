@@ -842,6 +842,11 @@ function WorkbenchSurface() {
             await runPinWrites(framePath, landed)
             run = { ...run, pinChainId: landed.chainId, pinOutputId: landed.outputId, pin: { ...run.pin, write: 'done' } }
             commitExitRun(run)
+            // Journey sweep #4b rides the EXIT pin too (the T22 review's
+            // I1): pinFrameToCanvas names the regeneration gate at pin
+            // time — this arm is a pin of exactly that kind.
+            const t1Detection = detectionOf(H3_ONE_FRAME_FAMILY)
+            useCanvasStore.getState().toast('success', pinRegenerationNotice(Boolean(t1Detection?.available), [...(t1Detection?.missingModels ?? []), ...(t1Detection?.missingNodes ?? [])]))
           } catch (error) {
             // Whatever landed is RETAINED in the run — the retry resumes
             // from exactly the failed mutation, never re-POSTing a success.
