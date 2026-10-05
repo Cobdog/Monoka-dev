@@ -15,11 +15,17 @@
  * funnels through one guarded close per dialog; declining while that
  * dialog's own protected action is in flight simply closes nothing (the
  * registry's documented contract — the save's outcome belongs on screen).
+ *
+ * Component vocabulary task 18 (k2q0n9s): both textareas are Field — the
+ * general form tier owning label association + the error > hint > silent
+ * description slot wired through aria-describedby (see the two Field sites
+ * below; the validation/announcement semantics ride the slots' content).
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { History, MessageSquareText, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { datasetsApi, type LibraryLayer, type TriggerVerdict } from './api'
 import { Button } from '../ui/Button'
+import { Field } from '../ui/Field'
 import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 
 type Props = {
@@ -159,20 +165,38 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
         </div>
       </header>
       {stale && <p className="ds-stale-note" data-ds-stale><ShieldAlert size={13} /> {layer.caption?.stale ? 'This caption is STALE — the layer\'s view changed after captioning. Recaption (or accept explicitly at export).' : ''}</p>}
-      <textarea
-        className="ds-caption-textarea"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        rows={6}
-        placeholder="One flowing paragraph, natural language only. Trigger token first, exactly once."
-        data-ds-caption-textarea
-      />
-      <div className="ds-caption-foot">
-        {validation && !validation.ok
+      {/* Task 18 (k2q0n9s): the trigger control is a Field — the textarea
+          was placeholder-as-label with a validation list nothing referenced.
+          The live verdict is now the field's ONE description slot: the
+          issues list through the error tone when the verdict fails, the OK
+          confirmation through the hint tone when it passes, NOTHING while a
+          verdict is pending (the honest-pending change: the old ternary
+          pre-announced "OK" before any verdict existed). The T13 hooks
+          (data-ds-validation/-ok) ride the content; the foot keeps the
+          SAVE outcome (operation status, not a field description). */}
+      <Field
+        label="Caption"
+        htmlFor="ds-caption-textarea"
+        error={validation && !validation.ok
           ? <ul className="ds-validation" data-ds-validation>
               {validation.issues.map((issue) => <li key={issue}>{issue}</li>)}
             </ul>
-          : <p className="ds-validation ok" data-ds-validation-ok>Trigger format OK — single rare token, exactly once, first.</p>}
+          : undefined}
+        hint={validation?.ok
+          ? <span data-ds-validation-ok>Trigger format OK — single rare token, exactly once, first.</span>
+          : undefined}
+      >
+        <textarea
+          id="ds-caption-textarea"
+          className="ds-caption-textarea"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          rows={6}
+          placeholder="One flowing paragraph, natural language only. Trigger token first, exactly once."
+          data-ds-caption-textarea
+        />
+      </Field>
+      <div className="ds-caption-foot">
         {error && <p className="ds-error">{error}</p>}
         {savedAt && !busy && !error && <p className="ds-status">Saved (hand-written; batch VLM will never silently overwrite it).</p>}
         <Button variant="primary" className="ds-btn" size={13} busy={busy} onClick={save} data-ds-save-caption>
@@ -204,8 +228,19 @@ export function CaptionPanel({ layer, onClose, onChanged }: Props) {
           <section>
             <h4>Caption / recaption (dense → condense, on the llama.cpp router)</h4>
             <p className="ds-hint">Pass 1 describes the frames densely; pass 2 condenses into the class template — both local.</p>
-            <textarea value={vlmInstruction} onChange={(event) => setVlmInstruction(event.target.value)} rows={3} placeholder="Optional instruction (e.g. 'mention the lighting and the camera push-in')" />
-            {vlmError && <p className="ds-error">{vlmError}</p>}
+            {/* The task-18 second in-file consumer: a STANDING hint (the
+                guidance, hoisted from the retired placeholder — visible
+                while typing now, not only when empty) with the run failure
+                as the live error. Both present → only the error describes
+                the control (Field's precedence, pinned in e2e). */}
+            <Field
+              label="Instruction"
+              htmlFor="ds-vlm-instruction"
+              hint="Optional instruction — e.g. 'mention the lighting and the camera push-in'"
+              error={vlmError ?? undefined}
+            >
+              <textarea id="ds-vlm-instruction" value={vlmInstruction} onChange={(event) => setVlmInstruction(event.target.value)} rows={3} />
+            </Field>
             <Button variant="primary" className="ds-btn" size={13} busy={vlmBusy} onClick={runVlm} data-ds-vlm-caption>
               Caption this clip
             </Button>

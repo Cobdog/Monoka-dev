@@ -1086,3 +1086,131 @@ test('prompt dialog: Enter submits the path, Escape cancels untouched, an empty 
   expect(refPosts.length).toBe(1)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
+
+// ---------------------------------------------------------------------------
+// Component vocabulary task 18 (Flux k2q0n9s): Field — the form-field
+// association tier, first consumer the datasets trigger control. The
+// caption textarea was placeholder-as-label with a validation list no
+// control referenced; Field gives it the real label (htmlFor/id, the
+// established convention) and the live trigger verdict becomes the field's
+// DESCRIPTION wired through aria-describedby: the ERROR slot when the
+// verdict fails, the HINT slot (the OK confirmation) when it passes,
+// NOTHING while a verdict is pending — precedence error > hint > silent,
+// observed as the association MOVING between real description elements
+// (and away entirely in the silent window).
+test('field: the caption trigger announces through aria-describedby — error > hint > silent (k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await seedLibrary(page.request)
+  await page.request.post('/api/lan/datasets/settings', { data: { triggerToken: 'ph0t0r34l', contentClass: 'style' } })
+  await page.goto('/?datasets=1')
+  const master = page.locator('[data-ds-master]', { hasText: 'e2e-clip' }).first()
+  await expect(master).toBeVisible({ timeout: 10_000 })
+  await master.getByRole('button', { name: /layer/ }).first().click()
+  await page.locator('[data-ds-save-layer]').click()
+  await master.locator('.ds-master-name').click()
+  await expect(page.locator('[data-ds-layer]').first()).toBeVisible({ timeout: 10_000 })
+  await page.locator('[data-ds-layer]').first().getByRole('button', { name: 'caption' }).click()
+  await expect(page.locator('[data-ds-caption]')).toBeVisible()
+
+  // THE LABEL ASSOCIATES (htmlFor/id — the retired surface had
+  // placeholder-as-label and no control id at all).
+  const textarea = page.locator('[data-ds-caption-textarea]')
+  await expect(textarea).toHaveId('ds-caption-textarea')
+  await expect(page.getByLabel('Caption', { exact: true })).toHaveId('ds-caption-textarea')
+
+  // SILENT: the panel opens with no verdict yet — nothing describes the
+  // control, and the attribute is ABSENT (never a dangling empty ref). The
+  // debounce's 300 ms window is the deterministic guard for this arm.
+  await expect(textarea).not.toHaveAttribute('aria-describedby')
+
+  // ERROR: a caption missing the trigger fails the live verdict — the
+  // control is described BY the issues list through Field's error slot
+  // (the id derived off the control's own id), in the error tone.
+  await textarea.fill('a colorful test pattern drifting slowly; no audible sound')
+  await expect(textarea).toHaveAttribute('aria-describedby', 'ds-caption-textarea-error', { timeout: 5_000 })
+  const errorDescription = page.locator('#ds-caption-textarea-error')
+  await expect(errorDescription).toBeVisible()
+  await expect(errorDescription.locator('[data-ds-validation]')).toBeVisible() // the T13 hook rides the content
+  await expect(errorDescription).toContainText(/trigger/i)
+  const errorTone = await errorDescription.evaluate((element) => getComputedStyle(element).color)
+  const expectedDanger = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.style.color = 'var(--danger)'
+    document.body.appendChild(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  })
+  expect(errorTone).toBe(expectedDanger)
+
+  // HINT: the verdict passes — the SAME control is now described by the OK
+  // confirmation through the hint slot; the error element is GONE (the
+  // association MOVED; one description at a time).
+  await textarea.fill('ph0t0r34l, a colorful test pattern drifting slowly; no audible sound')
+  await expect(textarea).toHaveAttribute('aria-describedby', 'ds-caption-textarea-hint', { timeout: 5_000 })
+  const hintDescription = page.locator('#ds-caption-textarea-hint')
+  await expect(hintDescription).toContainText('Trigger format OK')
+  await expect(hintDescription.locator('[data-ds-validation-ok]')).toBeVisible() // the T13 hook rides the content
+  await expect(page.locator('#ds-caption-textarea-error')).toHaveCount(0)
+
+  // SILENT again: a fresh open starts the verdict over — the description
+  // is REMOVED with it (close + reopen; the panel's state resets).
+  await page.locator('[data-ds-caption] .ds-btn.btn--ghost', { hasText: 'Close' }).click()
+  await expect(page.locator('[data-ds-caption]')).toHaveCount(0)
+  await page.locator('[data-ds-layer]').first().getByRole('button', { name: 'caption' }).click()
+  await expect(page.locator('[data-ds-caption]')).toBeVisible()
+  await expect(textarea).not.toHaveAttribute('aria-describedby')
+  await expect(page.locator('#ds-caption-textarea-hint')).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// The precedence arm at a consumer whose slots COEXIST: the VLM dialog's
+// instruction field carries a STANDING hint (the guidance, hoisted from
+// the retired placeholder) AND a live error (the caption run's failure) —
+// when both are present, ONLY the error describes the control; the hint
+// element is suppressed from the DOM, not appended after the error.
+test('field: error present + hint present → only the error described (the VLM instruction, k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await seedLibrary(page.request)
+  await page.goto('/?datasets=1')
+  const master = page.locator('[data-ds-master]', { hasText: 'e2e-clip' }).first()
+  await expect(master).toBeVisible({ timeout: 10_000 })
+  await master.getByRole('button', { name: /layer/ }).first().click()
+  await page.locator('[data-ds-save-layer]').click()
+  await master.locator('.ds-master-name').click()
+  await expect(page.locator('[data-ds-layer]').first()).toBeVisible({ timeout: 10_000 })
+  await page.locator('[data-ds-layer]').first().getByRole('button', { name: 'caption' }).click()
+  await expect(page.locator('[data-ds-caption]')).toBeVisible()
+  await page.locator('[data-ds-caption] .ds-btn.btn--ghost', { hasText: 'VLM' }).click()
+  await expect(page.locator('[data-ds-vlm]')).toBeVisible()
+
+  // The standing hint describes the instruction field (label associates;
+  // guidance that lived in the placeholder, invisible once typing began).
+  const instruction = page.locator('#ds-vlm-instruction')
+  await expect(page.getByLabel('Instruction', { exact: true })).toHaveId('ds-vlm-instruction')
+  await expect(instruction).toHaveAttribute('aria-describedby', 'ds-vlm-instruction-hint')
+  await expect(page.locator('#ds-vlm-instruction-hint')).toContainText(/optional/i)
+
+  // The run fails: the error takes the description slot WHILE the hint is
+  // still passed — the hint element leaves the DOM, the control's one
+  // description is the failure, and its tone is the danger token.
+  await page.route('**/api/lan/datasets/vlm/caption', async (route) => {
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 't18 field e2e: the router refused' }) })
+  })
+  await page.locator('[data-ds-vlm-caption]').click()
+  await expect(instruction).toHaveAttribute('aria-describedby', 'ds-vlm-instruction-error', { timeout: 5_000 })
+  const errorDescription = page.locator('#ds-vlm-instruction-error')
+  await expect(errorDescription).toContainText('t18 field e2e: the router refused')
+  await expect(page.locator('#ds-vlm-instruction-hint')).toHaveCount(0)
+  const errorTone = await errorDescription.evaluate((element) => getComputedStyle(element).color)
+  const expectedDanger = await page.evaluate(() => {
+    const probe = document.createElement('span')
+    probe.style.color = 'var(--danger)'
+    document.body.appendChild(probe)
+    const color = getComputedStyle(probe).color
+    probe.remove()
+    return color
+  })
+  expect(errorTone).toBe(expectedDanger)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
