@@ -202,6 +202,7 @@ function WorkbenchSurface() {
   const phase = useCanvasStore((state) => state.phase)
   const activeProjectId = useCanvasStore((state) => state.activeProjectId)
   const documents = useCanvasStore((state) => state.documents)
+  const projects = useCanvasStore((state) => state.projects)
   const sessionState = useSessionStore()
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -225,6 +226,15 @@ function WorkbenchSurface() {
   useEffect(() => useJobsStore.subscribe(() => useCanvasStore.getState().recompute()), [])
 
   const doc = activeProjectId ? documents[activeProjectId] ?? null : null
+  // (task 24, determinism — the T23 incident class) "No open canvas" is a
+  // LISTING fact, not a document-cache fact: the auto-create below fires
+  // only when the session names NOTHING resumable. The retired `!doc` gate
+  // fired on a FAILED document load too (a slow/lost fetch under load) and
+  // silently REPLACED the session with a fresh canvas — the exact write that
+  // overwrote seeded e2e sessions 1.4 s after boot, and for a real user the
+  // silent-loss class itself. A resumable-but-unopened project now renders
+  // the honest failure state below; reload retries it.
+  const resumableProject = activeProjectId !== null && projects.some((project) => project.id === activeProjectId)
   const sessionChain = useMemo(() => doc?.chains.find((chain) => isWorkbenchChain(chain)) ?? null, [doc])
 
   // Session bootstrap: the workbench session is a chain of kind 'h3img' in
@@ -256,8 +266,8 @@ function WorkbenchSurface() {
   // canvas (the seedChain precedent — a surface that needs a project makes
   // one rather than dead-ending on a spinner).
   useEffect(() => {
-    if (phase === 'ready' && !doc) void useCanvasStore.getState().createCanvas()
-  }, [phase, doc])
+    if (phase === 'ready' && !resumableProject) void useCanvasStore.getState().createCanvas()
+  }, [phase, resumableProject])
 
   const settings = useMemo(() => readSessionSettings(sessionChain?.settings), [sessionChain])
   // The session's T=1 machinery (the 1F full image stack): one source of
@@ -936,7 +946,12 @@ function WorkbenchSurface() {
 
   // Render ---------------------------------------------------------------------
   if (phase !== 'ready' || !doc) {
-    return <div className="iw-root iw-boot" data-iw-root><LoaderCircle className="spin" /><span>Opening the workbench…</span></div>
+    // (task 24) The honest failed-load arm: the session names a RESUMABLE
+    // project whose document never landed (the load failed — its reason is
+    // the toast beside this). Never a spinner that reads as progress, and
+    // never the retired silent replacement.
+    const loadFailed = phase === 'ready' && resumableProject
+    return <div className="iw-root iw-boot" data-iw-root data-iw-load-failed={loadFailed ? 'true' : undefined}><LoaderCircle className="spin" /><span>{loadFailed ? 'This canvas could not be opened — reload retries it; nothing was replaced.' : 'Opening the workbench…'}</span></div>
   }
   if (!sessionChain) {
     return <div className="iw-root iw-boot" data-iw-root><LoaderCircle className="spin" /><span>Creating the workbench session…</span></div>

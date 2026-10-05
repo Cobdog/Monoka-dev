@@ -131,6 +131,50 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
+// Shared-home isolation (task 24, the T23 incident class — the datasets
+// suite's beforeAll convention applied to the documents side): every images
+// test seeds its own 'IW e2e' project, and the home persists across runs, so
+// months of runs accumulated hundreds of projects — slow listings, wider
+// boot races. Tombstone this suite's OWN fixtures through the app's OWN API
+// (documents/projects/delete — the same tombstone the client's delete uses)
+// and reset the session so the suite's first boot starts from a clean slate.
+// Never a hand deletion; never another suite's projects.
+test.beforeAll(async ({ request }) => {
+  const listed = await (await request.get('/api/lan/documents/projects')).json() as { projects?: Array<{ id: string; name?: string }> }
+  for (const project of listed.projects ?? []) {
+    if (project.name === 'IW e2e') await request.post('/api/lan/documents/projects/delete', { data: { id: project.id } }).catch(() => undefined)
+  }
+  await request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } }).catch(() => undefined)
+})
+
+// (task 24, determinism — the T23 incident class) The workbench's auto-create
+// once fired whenever its document cache was empty at phase-ready — including
+// when the SESSION named a live project whose document load simply FAILED
+// (a slow/lost fetch under load). It then created a fresh Canvas and SAVED IT
+// over the shared session row 1.4 s after the seed — the race that flaked
+// the whole seeded-boot fleet. The gate is a LISTING fact now: auto-create
+// fires only with nothing resumable; a failed load renders the honest
+// failure state and the session row is untouched.
+test('a failed document load never replaces the session — auto-create fires only with nothing resumable (task 24 determinism)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const seeded = await seedSession(request)
+  const projectsBefore = ((await (await request.get('/api/lan/documents/projects')).json()) as { projects: Array<{ id: string; name?: string }> }).projects
+  // The document GET fails — the incident's shape, forced deterministically.
+  await page.route('**/api/lan/documents/project?*', (route) => route.abort())
+  await page.goto('/?images=1')
+  // The boot completes into the HONEST failure state (not a spinner that
+  // reads as progress, not a silently fresh canvas).
+  await expect(page.locator('[data-iw-root][data-iw-load-failed="true"]')).toBeVisible({ timeout: 15_000 })
+  // The session row still names the seeded project — the clobber is gone.
+  const sessionAfter = ((await (await request.get('/api/lan/documents/session')).json()) as { session: { activeProject: string | null } }).session
+  expect(sessionAfter.activeProject).toBe(seeded.projectId)
+  // And no replacement canvas was created (the listing is unchanged).
+  const projectsAfter = ((await (await request.get('/api/lan/documents/projects')).json()) as { projects: Array<{ id: string; name?: string }> }).projects
+  expect(projectsAfter.map((project) => project.id).sort()).toEqual(projectsBefore.map((project) => project.id).sort())
+  // The deliberate route abort is this test's own doing, not an app defect.
+  expect(problems.filter((entry) => !environmental(entry) && !/net::ERR_FAILED|Failed to load resource/.test(entry))).toEqual([])
+})
+
 test('the workbench boots at ?images=1 with the seeded packet take on the pick surface', async ({ page, request }) => {
   const problems = await trackErrors(page)
   await seedSession(request)
