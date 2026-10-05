@@ -1134,3 +1134,34 @@ All H3-family sets (B/E/P) ran at 39f = 1.625s @ 24fps — the only phase-exact 
 ## AMENDMENT 8b — below the documented floor (the maintainer's second catch, 2026-10-05)
 H3's request range is **4–15 s** (the base guide's duration line, carried in our own packet §3.2 — the batch's design read the grid, not the floor). The 39f (1.625 s) cells of Sets B/E/P sit BELOW that floor: mechanically valid grid values (whole latent steps; the transitions lane's phase-exact audio length), but off the trained distribution. **Every short-horizon verdict (Amendment 8) is now double-caveated: short-window AND below-floor.** The outputs were not degenerate (hundreds of pairs judged clean — the model produces sub-floor clips; the community ships 39f transitions), but motion-onset character at 1.6s may be length-pressure artifact rather than model character. P2 (10.1s) is unaffected and now the ONLY in-distribution video verdict of the sprint. Future screens: ≥107f (4.46s, the nearest ≥floor grid value) for any in-distribution cell; 39f reserved for phase-exact-audio purposes with the floor cost labeled. The packet's duration line carries the floor + warning [CORRECTED in-commit].
 Amendment 8b closing note (the maintainer's read, 2026-10-05): within-set H3 comparisons were length-CONTROLLED (both arms at 39f — the floor pressure is a shared constant; only an arm×length interaction could flip a verdict, a weak threat P2 covers), and the cross-engine replacement picture had slack in H3's FAVOR (maintainer's own experience: Wan prefers shorter and still lost to H3 at replacement — the win was understated, not inflated). "Okay spot" concurred: the screen verdicts stand directionally; P2 remains the in-distribution confirmation where a default change rides.
+
+## SET J EXECUTED (2026-10-05, executor addendum — verdicts PROPOSED, maintainer review pending)
+**52 gens / 115.6 GPU-min / single seed (Amendment 5) / SIX canaries bit-identical to Set B r9**
+(start · pause-resume · two shim-restarts · mid · end — the zero floor held across every
+environment boundary incl. the mid-set maintainer pause) / **instrument null gate PASSED**
+(p01 through `__setJnull`: 39 frames/side pixel-exact, 0 L/R differences) / teardown verified
+at close. Review surface: gpu-review/setJ/ (20 pairs, Amendment-7 metadata, escrowed key).
+Full tables: [gpu-batch-setJ-results.md](gpu-batch-setJ-results.md). Per-pilot (proposed):
+**J1 the adherence race stays UNBOUGHT** (no mechanism flips the 768p collapse — endpoint
+overshoot in every arm incl. the null; Fizgig's dial MEASURED to monotone audio suppression,
+T8's constant-max dose destabilizes ×6.3 alternation, SB inert at card α). **J2 INT8-at-24GB
+CONFIRMS** (the Meridian pair: 202 patches unmerged on the full int8 base, 143 s @3-NFE, no
+OOM) and **the MoGe non-LoRA fallback WORKS** (0.81 depth-corr camera compliance; the pair
+adds +0.03 — VGGT-conditioned rung re-opens on staging). **J3 the denoise-mask lane takes the
+preservation ceiling** (36.9 dB outside the removal region, invisible-class, via a 30-line
+first-party packed-latent encode shim — H3 exposes no video-encode node); instruction edit
+stays semantic-class (~18 dB); **the VOID arm is KILLED-execution** (near-black output —
+degenerate-at-config, blueprint-wiring follow-up recorded, no mid-set re-runs per the harm
+rule). **J4 the TeleStyle pattern HOLDS style** (2.5→8.3 RGB over 39f — the decay falsifier
+did not fire); Viggle repaint does NOT transfer style (identity-anchor by design). **J6 the
+true-CFG falsifier FAILED to falsify — uncond headroom MEASURED OPEN** (plan −18 % monotone
+at 1.5/3.0 with no P3 temporal blowup; doctrine CORRECTED to "guidance-1 default, headroom
+open"; PMC not triggered). **J7 CADS is a real identity-hold lever** on anchor cells
+(ArcFace +0.033, late drift −17 %) at a first-frame fidelity cost — ADJUST, not a default.
+**J8 HyperFlow-8 does not displace the incumbents** (P1 plan 3.72 vs base 1.32 and worse
+than turbo-8's 2.45; face-cell alternation 2.06×; 0.55× wall — the flow-map axis measured,
+not adopted). Engineering findings recorded in the results doc §6 (offline-inference
+VRAM leak, normalized MoGe intrinsics, the T8mars hyperflow-folder shadowing, the cfg-1
+zero-uncond idiom, the packed-latent encode shim, LoadVideo symlink rejection). Deferred:
+J5 (CivitAI), J2-VGGT + J8-UniLumos (maintainer-staged gates). With J closed, the GPU
+sprint's sets are complete pending the maintainer's blind reviews.
