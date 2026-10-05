@@ -32,7 +32,8 @@
 .canvas-titlebar-spacer { flex: 1; }
 .canvas-index-button { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); font-size: var(--text-md); cursor: pointer; }
 .canvas-index-button:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); }
-.canvas-index-button kbd { padding: 1px 5px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface-2); color: var(--color-text-soft); font-family: ui-monospace, Consolas, monospace; font-size: var(--text-2xs); }
+/* (task 24 kbd fold) tone rides the global kbd recipe (styles.css); this surface keeps geometry only. */
+.canvas-index-button kbd { padding: 1px 5px; color: var(--color-text-soft); font-size: var(--text-2xs); }
 
 /* ---- substrate (§3) ------------------------------------------------------ */
 .canvas-main { position: relative; height: 100%; }
@@ -596,7 +597,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-op-brushrow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .canvas-op-brushrow label { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 140px; }
 .canvas-opmodal-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted-2); font-size: var(--text-2xs); }
-.canvas-opmodal-footer kbd { padding: 1px 5px; border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface-2); font-family: ui-monospace, Consolas, monospace; }
+.canvas-opmodal-footer kbd { padding: 1px 5px; }
 
 /* ---- Phase 3: the pose rig dock (§5.2) ------------------------------------------ */
 /* display needs !important — the react-rnd inline-display class of bug (6f656ca,

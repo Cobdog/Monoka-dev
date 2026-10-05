@@ -261,7 +261,15 @@ textarea::placeholder, input::placeholder { color: #58615c; }
 .smart-insert-menu > header input { min-width: 0; flex: 1; height: 32px; padding: 0 9px; border: 1px solid var(--line); border-radius: 7px; background:var(--color-surface-sunken); color: var(--text); font-size:var(--text-base); }
 .smart-insert-menu > header input:focus { border-color: #738f42; outline: none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent); }
 .smart-insert-menu > header > span { flex: 0 0 auto; color: var(--muted); font-size:var(--text-sm); white-space: nowrap; }
-.smart-insert-menu kbd { padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-2); font: inherit; }
+/* Component vocabulary task 24 (k2q0n9s) — the kbd recipe, on the chip
+   system (spec §1.4/manifest §10; the row the round's decomposition dropped,
+   closed by the acceptance sweep). TONE lives here centrally — border,
+   background, monospace family — and every <kbd> picks it up, INCLUDING the
+   previously-bare keys (BottomBar, Radar, OpEditor, SmartPromptEditor; the
+   spec's "absorbs the unstyled BottomBar kbd included"). Per-surface rules
+   keep GEOMETRY only (padding, font-size tiers). */
+kbd { border: 1px solid var(--line-strong); border-radius: 4px; background: var(--surface-2); font-family: ui-monospace, Consolas, monospace; }
+.smart-insert-menu kbd { padding: 2px 5px; border-color: var(--line); font: inherit; font-family: ui-monospace, Consolas, monospace; }
 .smart-insert-categories { display: flex; gap: 5px; min-width: 0; padding:var(--space-2) 9px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
 .smart-insert-categories button { display: inline-flex; align-items: center; gap: 5px; min-height: 27px; flex: 0 0 auto; padding:0 var(--space-2); border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size:var(--text-sm); cursor: pointer; }
 .smart-insert-categories button:hover, .smart-insert-categories button.active { border-color:color-mix(in srgb, var(--accent) 40%, transparent); background: var(--accent-soft); color: var(--accent); }
