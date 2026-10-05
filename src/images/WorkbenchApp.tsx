@@ -795,6 +795,12 @@ function WorkbenchSurface() {
   // refresh retries the reload alone).
   const [exitPlan, setExitPlan] = useState<'anchor' | 'anchor-plus-refs' | null>(null)
   const [exitRun, setExitRun] = useState<ExitRun | null>(null)
+  // (task 24, M3) The exit dialog's ONE close: the retired shape inlined the
+  // two-setter closure at every dismissal path (onClose, the ×, Cancel).
+  const closeExit = useCallback((): void => {
+    setExitOpen(false)
+    setExitPlan(null)
+  }, [])
   // The run's source of truth: retry entries read it through the ref, never
   // a render-scope snapshot (state set across awaits goes stale in
   // closures — the failedPatchesRef doctrine).
@@ -1511,16 +1517,13 @@ function WorkbenchSurface() {
         <StudioDialogLayered
           layerId="iw-exit"
           open
-          onClose={() => { setExitOpen(false); setExitPlan(null) }}
+          onClose={closeExit}
           backdropClassName="iw-dialog-backdrop"
           centerClassName="iw-dialog-center"
           popupClassName="iw-dialog"
           labelledBy="iw-exit-title"
         >
-          <div className="iw-dialog-head">
-            <h3 id="iw-exit-title">Start-frame exit</h3>
-            <Button variant="icon" className="iw-dialog-close" aria-label="Close the start-frame exit" onClick={() => { setExitOpen(false); setExitPlan(null) }}><X size={14} /></Button>
-          </div>
+          <IwDialogHead id="iw-exit-title" title="Start-frame exit" closeLabel="Close the start-frame exit" onClose={closeExit} />
           <p>Seed a video chain from the picked frame — <strong>created and selected, never submitted</strong>. The frame rides the FL2VA first-frame anchor (the measured strongest concrete anchor).</p>
           <div className="iw-exit-choices">
             <button type="button" data-iw-exit-choice="anchor" onClick={() => setExitPlan('anchor')} disabled={busy}>Anchor only (first frame)</button>
@@ -1544,7 +1547,7 @@ function WorkbenchSurface() {
             />
           )}
           <footer>
-            <button type="button" className="secondary" onClick={() => { setExitOpen(false); setExitPlan(null) }}>Cancel</button>
+            <button type="button" className="secondary" onClick={closeExit}>Cancel</button>
             <button type="button" className="primary" data-iw-exit-confirm disabled={!exitPlan || busy} onClick={() => void advanceExit('confirm')}><Send size={12} /> Seed the chain</button>
           </footer>
         </StudioDialogLayered>
@@ -1579,6 +1582,27 @@ async function addToneLockOp(chain: DocumentChain): Promise<void> {
   } catch (error) {
     useCanvasStore.getState().toast('error', `The tone-lock op could not be added: ${error instanceof Error ? error.message : String(error)}`)
   }
+}
+
+/** (task 24, M3 — the T12-ledgered DRY) The workbench dialogs' ONE head-row:
+ *  the three StudioDialogLayered surfaces (start-frame exit, canvas picker,
+ *  mask painter) had triplicated `<div className="iw-dialog-head">` closures
+ *  with identical shape. A LOCAL component (deliberately not a src/ui
+ *  wrapper — it composes the workbench's own geometry class and the shared
+ *  Button; the shared dialog semantics already live in StudioDialogLayered).
+ *  DOM-identical to what it replaces. */
+function IwDialogHead({ id, title, closeLabel, onClose }: {
+  id: string
+  title: string
+  closeLabel: string
+  onClose: () => void
+}) {
+  return (
+    <div className="iw-dialog-head">
+      <h3 id={id}>{title}</h3>
+      <Button variant="icon" className="iw-dialog-close" aria-label={closeLabel} onClick={onClose}><X size={14} /></Button>
+    </div>
+  )
 }
 
 /** The canvas → workbench picker (consent = the explicit pick). One picker,
@@ -1616,10 +1640,7 @@ function CanvasRefPicker({ doc, onClose, onPick, title, body }: {
       popupClassName="iw-dialog"
       labelledBy="iw-canvas-picker-title"
     >
-      <div className="iw-dialog-head">
-        <h3 id="iw-canvas-picker-title">{title}</h3>
-        <Button variant="icon" className="iw-dialog-close" aria-label="Close the canvas picker" onClick={onClose}><X size={14} /></Button>
-      </div>
+      <IwDialogHead id="iw-canvas-picker-title" title={title} closeLabel="Close the canvas picker" onClose={onClose} />
       <p>{body}</p>
       <div className="iw-canvas-refs">
         {entries.length === 0 && <span className="iw-takes-empty">No image takes on this canvas yet.</span>}
@@ -1809,10 +1830,7 @@ function MaskPainterDialog({ file, onCancel, onUse }: {
       popupClassName="iw-dialog iw-mask-dialog"
       labelledBy="iw-mask-painter-title"
     >
-      <div className="iw-dialog-head">
-        <h3 id="iw-mask-painter-title">Paint the region to regenerate</h3>
-        <Button variant="icon" className="iw-dialog-close" aria-label="Close the mask painter" onClick={onCancel}><X size={14} /></Button>
-      </div>
+      <IwDialogHead id="iw-mask-painter-title" title="Paint the region to regenerate" closeLabel="Close the mask painter" onClose={onCancel} />
       <p>Everything you paint regenerates from the instruction; the rest of the image is restored pixel-exactly after the render. Transparent pixels ARE the mask (the Mask-Editor convention).</p>
       <div className="iw-mask-stage">
         {file.preview ? <img ref={setImgNode} src={file.preview} alt="source" className="iw-mask-under" /> : <span className="iw-frame-evicted">no preview</span>}
