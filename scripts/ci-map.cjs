@@ -69,6 +69,7 @@ const SUITES = {
   enginewatch: { build: null, windows: false, python: false, ffmpeg: false },
   'field-classes': { build: null, windows: false, python: false, ffmpeg: false },
   fetcher: { build: 'full', windows: true, python: false, ffmpeg: false },
+  'gallery-matrices': { build: null, windows: false, python: false, ffmpeg: false },
   filmstrip: { build: 'full', windows: false, python: false, ffmpeg: true },
   h3img: { build: null, windows: false, python: false, ffmpeg: false },
   'handoff-classes': { build: null, windows: false, python: false, ffmpeg: false },
@@ -102,7 +103,7 @@ const BOOTING = ['datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'l
 const PORT_USERS = ['datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 
 /** The suites that load client TS through the VM harness (scripts/lib/ts-vm.cjs). */
-const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'h3img', 'handoff-classes', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'vdn', 'workflows']
+const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'vdn', 'workflows']
 
 /** Every vitest suite — the FULL fallback set. */
 const ALL_SUITES = Object.keys(SUITES).sort()
@@ -410,6 +411,12 @@ const RULES = [
     reason: 'the write ≠ refresh tier\'s pure step→class/aria/copy/warn math (component vocabulary task 22, spec §0.5/C2 the semantic five — write and refresh are INDEPENDENT per-step facts; a failed refresh after a successful write renders done-with-stale-marker, never failed; retry re-runs only the named step\'s failed fact): the handoff-classes suite loads handoffClasses.ts through the VM harness, walks the .handoff-* recipe block in src/styles.css (recipe lockstep both directions, tone/type/flow properties per P06 with the retry button\'s inheritance resets — the save-status-retry precedent, the danger-tone-belongs-to-the-failed-WRITE pin and the warning-tone marker pin, :root-defined tokens, no new keyframes), and pins the migration (the retired A05 step notice at the workbench exit, the retained-identifier write core, the store\'s boolean reloadActiveDocument seam). HONEST LIMIT: the rendered rows, the live-region announcements, the request-counted retry (the pin endpoint hit exactly once), and the done+stale render only execute in a browser, so these diffs force the e2e leg (e2e/images.spec.ts owns both manifest §11 pins at the real workbench-exit caller).',
   },
   {
+    match: ['src/gallery/matrices.ts'],
+    suites: ['gallery-matrices'],
+    forceE2e: true,
+    reason: 'the gallery\'s state-matrix DATA (component vocabulary task 23, Flux k2q0n9s): the kit\'s matrices as data with the JUSTIFIED N/A cells as first-class entries — the gallery-matrices suite loads matrices.ts through the VM harness and proves the cross-product completeness (no silently skipped cell), the non-empty N/A reasons, the closed-matrix lockstep against the kit\'s own class modules (buttonClasses/chipClasses/progressClasses/noticeClasses/saveStatusClasses/handoffClasses), the named component inventory, the T15 initial + T22 consumer-note homes, and the source pins (renderer arms, the registry append, the vision-scenario registration). HONEST LIMIT: the rendered cells, the real hover()/focus drivers, and the interactive demos only execute in a browser, so these diffs force the e2e leg (e2e/gallery.spec.ts owns the per-cell computed-style + DOM pins at ?gallery=1).',
+  },
+  {
     match: [
       'src/lib/imageCrop.ts', 'src/lib/promptPresets.ts', 'src/lib/modelOverrides.ts',
       'src/lib/manifest.ts', 'src/lib/music3Workflow.ts',
@@ -441,7 +448,7 @@ const RULES = [
 
   // ---------- UI surface (deliberately no unit coverage) ----------------
   {
-    match: ['src/canvas/**', 'src/components/**', 'src/hooks/**', 'src/images/**', 'src/media/**', 'src/prototypes/**', 'src/state/**', 'src/surfaces/**', 'src/ui/**', 'src/views/**', 'src/datasets/**', 'src/*.tsx', 'src/*.ts', 'src/*.css', 'src/**/*.css', 'index.html', 'public/**'],
+    match: ['src/canvas/**', 'src/components/**', 'src/gallery/**', 'src/hooks/**', 'src/images/**', 'src/media/**', 'src/prototypes/**', 'src/state/**', 'src/surfaces/**', 'src/ui/**', 'src/views/**', 'src/datasets/**', 'src/*.tsx', 'src/*.ts', 'src/*.css', 'src/**/*.css', 'index.html', 'public/**'],
     suites: [],
     reason: 'UI surface — no unit suite executes components/views/state (deliberate: typecheck + scoped lint on PRs, e2e + vision on the main gate, local depth via pnpm gate).',
   },

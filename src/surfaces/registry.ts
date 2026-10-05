@@ -21,7 +21,7 @@
  */
 import { lazy } from 'react'
 import type { ComponentType, LazyExoticComponent } from 'react'
-import { Database, Frame, ImagePlus } from 'lucide-react'
+import { Database, Frame, ImagePlus, LayoutGrid } from 'lucide-react'
 
 export type Surface = {
   /** Stable id (also the switcher's data-surface value). */
@@ -55,12 +55,19 @@ const WorkbenchApp = lazy(() => import('../images/WorkbenchApp').then((m) => ({ 
 // ?canvas=1 stays a harmless alias (matches() never requires it).
 const CanvasApp = lazy(() => import('../canvas/CanvasApp').then((m) => ({ default: m.CanvasApp })))
 
+// The component gallery (k2q0n9s, task 23): the kit's STATE MATRICES as
+// data at ?gallery=1 — the exhibit surface that proves the component
+// vocabulary end to end (justified N/A cells, real drivers, the T15/T22
+// designed homes). Composes the kit only: no store, no engine, no fetches.
+const GalleryApp = lazy(() => import('../gallery/GalleryApp').then((m) => ({ default: m.GalleryApp })))
+
 /** Registered surfaces, switcher order. The default surface sits LAST so
  * explicit matches win; the switcher renders them in array order regardless. */
 export const SURFACES: Surface[] = [
   { id: 'canvas', label: 'Canvas', short: 'canvas', href: '/', icon: Frame, default: true, matches: () => true, component: CanvasApp },
   { id: 'datasets', label: 'Dataset manager', short: 'datasets', href: '/?datasets=1', icon: Database, matches: (params) => params.get('datasets') === '1', component: DatasetsApp },
   { id: 'images', label: 'Image workbench', short: 'images', href: '/?images=1', icon: ImagePlus, matches: (params) => params.get('images') === '1', component: WorkbenchApp },
+  { id: 'gallery', label: 'Component gallery', short: 'gallery', href: '/?gallery=1', icon: LayoutGrid, matches: (params) => params.get('gallery') === '1', component: GalleryApp },
   // ← APPEND new surfaces above this line (see the header's append-point note).
 ]
 

@@ -89,7 +89,7 @@ export type VisionScenario = {
  *  the canvas-default-boot rubric). */
 const SHELL_CONTEXT = [
   'Context for every clause: a dark-theme desktop studio app at 1920x1080 whose ONLY surface is a video canvas — a slim top titlebar over a near-black dotted-grid infinite canvas. There is NO left sidebar and NO grouped navigation: the old shell was deleted (Phase 5); do not flag its absence.',
-  'Top titlebar (slim): FIRST a compact surface-switcher pill group — small linked pills reading "canvas" and "datasets" with the active surface highlighted inside a thin rounded border (QOL wave 2026-09-18) — then canvas tabs (a named tab like "Canvas <date>" with an × affordance), a pill-shaped radar button reading a queue/attention count when work exists (Amended 2026-09-28, W17: the radar HIDES at rest — its absence with no work running is CORRECT, not a defect), a muted "engine offline" chip — the engine being offline in tests is CORRECT, not a defect — then small "timeline V", "library V", "diagnostics", "settings", "index ⌘K" buttons at the right.',
+  'Top titlebar (slim): FIRST a compact surface-switcher pill group — small linked pills for every registered surface ("canvas", "datasets", "images", and "gallery" — the component gallery, component-vocabulary task 23) with the active surface highlighted inside a thin rounded border (QOL wave 2026-09-18; the gallery pill joined 2026-10-04) — then canvas tabs (a named tab like "Canvas <date>" with an × affordance), a pill-shaped radar button reading a queue/attention count when work exists (Amended 2026-09-28, W17: the radar HIDES at rest — its absence with no work running is CORRECT, not a defect), a muted "engine offline" chip — the engine being offline in tests is CORRECT, not a defect — then small "timeline V", "library V", "diagnostics", "settings", "index ⌘K" buttons at the right.',
   'A slim contextual bottom bar spans the canvas foot; a small object counter may sit bottom-right.',
   'Dimmed/disabled controls and small muted sub-labels are the app\'s intentional dense design language, NOT contrast defects — only flag text that is genuinely unreadable against its immediate background.',
 ].join(' ')
@@ -131,8 +131,9 @@ export const SCENARIOS: VisionScenario[] = [
       await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
       const switcher = page.locator('[data-surface-switcher]')
       await expect(switcher).toBeVisible()
-      // k9vu6t0: the images workbench appended its registry entry — three now.
-      await expect(switcher.locator('[data-surface]')).toHaveCount(3)
+      // k9vu6t0 appended the images entry; k2q0n9s task 23 appended the
+      // gallery — four registered surfaces now.
+      await expect(switcher.locator('[data-surface]')).toHaveCount(4)
       await expect(switcher.locator('[data-surface="canvas"]')).toHaveAttribute('aria-current', 'page')
       await page.waitForTimeout(400)
     },
@@ -142,7 +143,7 @@ export const SCENARIOS: VisionScenario[] = [
         label: 'Canvas titlebar — the surface switcher leads (canvas active)',
         rubric: [
           SHELL_CONTEXT,
-          'The titlebar\'s LEFT EDGE carries the surface switcher: a compact rounded-border pill group with three linked pills — "canvas" (with a small frame icon, highlighted as the active surface: brighter text on a raised background with a thin inner outline), "datasets" (with a small database icon, muted), and "images" (with a small image icon, muted — the H3 Image Workbench entry, k9vu6t0). It sits BEFORE the canvas tabs and must not overlap them.',
+          'The titlebar\'s LEFT EDGE carries the surface switcher: a compact rounded-border pill group with four linked pills — "canvas" (with a small frame icon, highlighted as the active surface: brighter text on a raised background with a thin inner outline), "datasets" (with a small database icon, muted), "images" (with a small image icon, muted — the H3 Image Workbench entry, k9vu6t0), and "gallery" (with a small grid icon, muted — the component gallery, component-vocabulary task 23). It sits BEFORE the canvas tabs and must not overlap them.',
           'The switcher reads as one coherent control: same pill height, consistent 12px-scale labels, hover affordance is fine. Muted-but-readable labels are the app\'s dense design language — not a contrast defect.',
           'Defects to flag: pills of visibly different heights or misaligned baselines, the group overlapping the canvas tabs or radar, a pill clipped by the viewport edge, an ACTIVE state that is indistinguishable from the inactive one at a glance.',
         ].join(' '),
@@ -159,7 +160,7 @@ export const SCENARIOS: VisionScenario[] = [
         label: 'Datasets titlebar — the same switcher, datasets active (no one-way back link)',
         rubric: [
           'Context: a dark-theme desktop studio app at 1920x1080 on the datasets surface — a full-screen workbench, NOT the canvas: no dotted-grid infinite canvas, no canvas tabs.',
-          'The titlebar leads with "Dataset manager" brand text (database icon), immediately followed by the SAME surface-switcher pill group seen on the canvas titlebar — here "datasets" is the highlighted/active pill; "canvas" and "images" are the muted links ("images" opens the H3 Image Workbench, k9vu6t0). There is NO "← canvas" text link anymore (replaced by the switcher — its absence is the design, not a regression).',
+          'The titlebar leads with "Dataset manager" brand text (database icon), immediately followed by the SAME surface-switcher pill group seen on the canvas titlebar — here "datasets" is the highlighted/active pill; "canvas", "images", and "gallery" are the muted links ("images" opens the H3 Image Workbench, k9vu6t0; "gallery" the component gallery, task 23). There is NO "← canvas" text link anymore (replaced by the switcher — its absence is the design, not a regression).',
           'Tab pills (library active, dashboard, export, trash) sit to the right of the switcher without overlap.',
           'Defects to flag: the switcher missing from this titlebar, both pills looking active or both muted, overlap between the switcher and the brand text or tab pills.',
         ].join(' '),
@@ -179,7 +180,7 @@ export const SCENARIOS: VisionScenario[] = [
         label: 'Workbench titlebar — the same switcher, images active (no one-way back link)',
         rubric: [
           'Context: a dark-theme desktop studio app at 1920x1080 on the H3 Image Workbench surface — a full-screen generation workbench, NOT the canvas: no dotted-grid infinite canvas, no canvas tabs.',
-          'The titlebar leads with the SAME surface-switcher pill group seen on the canvas and datasets titlebars — here "images" is the highlighted/active pill; "canvas" and "datasets" are the muted links. To its right sit the "H3 Image Workbench" title text, an engine chip, and the current mode note. There is NO "← canvas" text link anymore (replaced by the switcher — its absence is the design, not a regression).',
+          'The titlebar leads with the SAME surface-switcher pill group seen on the canvas and datasets titlebars — here "images" is the highlighted/active pill; "canvas", "datasets", and "gallery" are the muted links ("gallery" opens the component gallery, task 23). To its right sit the "H3 Image Workbench" title text, an engine chip, and the current mode note. There is NO "← canvas" text link anymore (replaced by the switcher — its absence is the design, not a regression).',
           'Below the titlebar: the mode rail (Generate/Compose/Edit/Refine/Burst/Exit) on the left edge, the preview canvas in the middle, the controls column on the right, the take strip along the bottom.',
           'Defects to flag: the switcher missing from this titlebar, more than one pill looking active, overlap between the switcher and the title text or engine chip, a pill clipped by the viewport edge.',
         ].join(' '),
@@ -1431,7 +1432,7 @@ export const SCENARIOS: VisionScenario[] = [
         label: 'Dataset manager — gallery: master card with layer children, toolbar, titlebar',
         drive: async () => undefined,
         rubric: [
-          'Context: a dark-theme desktop studio app at 1920x1080 on the ?datasets=1 route — a DIFFERENT surface from the canvas: a full-screen workbench with its own slim TITLEBAR reading "Dataset manager" followed by the shared surface-switcher pill group ("canvas" and "datasets", datasets highlighted — the QOL-wave 2026-09-18 replacement for the old one-way "← canvas" link), tab pills (library active, dashboard, export, trash), a small trigger-token readout ("trigger: ph0t0r34l"), and a small interpolator chip reading "minterpolate" (rife-ncnn-vulkan absent in tests — intended, not a defect).',
+          'Context: a dark-theme desktop studio app at 1920x1080 on the ?datasets=1 route — a DIFFERENT surface from the canvas: a full-screen workbench with its own slim TITLEBAR reading "Dataset manager" followed by the shared surface-switcher pill group ("canvas", "images", "gallery" muted with datasets highlighted — the QOL-wave 2026-09-18 replacement for the old one-way "← canvas" link; the gallery pill joined 2026-10-04, task 23), tab pills (library active, dashboard, export, trash), a small trigger-token readout ("trigger: ph0t0r34l"), and a small interpolator chip reading "minterpolate" (rife-ncnn-vulkan absent in tests — intended, not a defect).',
           'LEFT TOOLBAR (~240px): an "IMPORT" block with buttons "Upload from LAN", "Reference a file", "From canvas take"; a "SEARCH & FILTER" block with a search input and small filter chips (all / video / image, any caption / missing / stale); a "CURATION" block with "Dedup pass", "Batch VLM (skip hand)", "Batch draft → review queue" buttons; a "SELECTION" block with a count and a green-accented "Export…" button.',
           'RIGHT GALLERY: at least one MASTER CARD with a colorful test-pattern video poster (multi-color moving bars/squares — a real <video> poster frame, not gray), a small "video" kind badge, the file name "vision-clip.mp4", facts like "480×832 · 72f · 24.000fps", and action buttons "layer", "split scenes", "slow-mo audit".',
           'The master is EXPANDED showing its LAYER CHILD row(s): a small checkbox, layer name, a bucket badge like "480×832·72f", an "uncaptioned" italic caption line, and "crop/trim" + "caption" action buttons plus a small pin icon — the master/child model visible.',
@@ -1897,6 +1898,67 @@ export const SCENARIOS: VisionScenario[] = [
           'The poster is upscaled ~4x from a 512px source: the checker field and ring grating WILL look soft/painterly — explicitly BLESSED (source resolution is the limit; the trade is documented in docs/research/canvas-highzoom-fidelity.md). Media softness is never a defect here.',
           'Blessings: the dot grid at 4x renders as large crisp dots; the zoom controls cluster and readout (bottom-right) stay screen-space crisp.',
           'Defects to flag: blurry, hazy, doubled, or smeared TEXT anywhere on the tile; a fuzzy/thickened border that is not a clean hairline; readout not reading 400%.',
+        ].join(' '),
+      },
+    ],
+  },
+
+  {
+    // The component gallery (component vocabulary task 23, Flux k2q0n9s): the
+    // kit's STATE MATRICES as data at ?gallery=1 — the exhibit surface that
+    // proves the whole component vocabulary. Engine- and document-independent
+    // (the gallery composes the kit with local state only), so the driver is
+    // navigation + DOM truth: the declared matrix totals asserted BEFORE the
+    // captures fire (the pin doctrine — a failed capture beats a judge
+    // misread). Two checkpoints: the top of the matrix page (titlebar through
+    // the chip/progress sections) and the lower band (save-status, refusal,
+    // handoff — where the justified N/A cells and the T22 consumer notes
+    // live).
+    id: 'component-gallery',
+    label: 'Component gallery — the kit\'s state matrices with justified N/A cells at 1080p',
+    run: async (page) => {
+      await page.goto('/?gallery=1')
+      await expect(page.locator('[data-gallery-root]')).toBeVisible()
+      // DOM truth at capture: the matrix the node suite walks is the matrix
+      // on the page — 16 sections, 138 cells, 19 justified N/A.
+      const header = page.locator('[data-gallery-counts]')
+      await expect(header).toHaveAttribute('data-sections', '16')
+      await expect(header).toHaveAttribute('data-cells', '138')
+      await expect(header).toHaveAttribute('data-na', '19')
+      await expect(page.locator('[data-gallery-section]')).toHaveCount(16)
+      await expect(page.locator('[data-gallery-cell]')).toHaveCount(138)
+      await expect(page.locator('[data-gallery-na]')).toHaveCount(19)
+      await page.waitForTimeout(400)
+    },
+    checkpoints: [
+      {
+        id: 'component-gallery-top-1080p',
+        label: 'Component gallery — titlebar + the first matrices (Button, Chip, ProgressBar)',
+        rubric: [
+          'Context: a dark-theme desktop studio app at 1920x1080 on the ?gallery=1 route — the COMPONENT GALLERY surface: a full-screen scrolled exhibit page (NOT the canvas — no dotted-grid infinite canvas), a slim titlebar reading "Component gallery" (small grid icon) followed by the shared surface-switcher pill group ("gallery" highlighted as the active pill; canvas, datasets, images muted) and a small muted counter like "16 components · 119 cells · 19 justified N/A".',
+          'Below the titlebar, SECTIONS stack vertically, each with a component name heading (e.g. "Button"), a one-to-three-line muted description, a muted axis line (e.g. "variant: primary · secondary · ghost · danger · icon × state: rest · hover · focus · busy · disabled"), and a GRID of small bordered exhibit CARDS. Each card carries a tiny muted label of its axis combination (e.g. "secondary · busy") and the exhibited component. The page scrolls internally; this capture shows the TOP — later sections continue below the fold (intended scrolling, not clipping; judge only what is in frame).',
+          'The Button grid: five columns of small bordered buttons in the studio\'s button tones — an accent-tinted "Run primary", a neutral filled "Run secondary", borderless muted "Run ghost", a red-toned "Run danger", plus a small square icon button; rows show the states — one row with a small spinner icon replacing the text icon and a "Checking…" label (the busy state), one row dimmed/grayed (disabled). Busy buttons look disabled-with-spinner: intended.',
+          'The Chip grid(s): small pill chips in five tones (a muted outline, an accent-filled one, a red-toned danger one, an amber warning one, a surface-filled muted one), some highlighted as selected; then a "Chip (ChipGroup)" section with a small row of three linked pills reading "video" (accent, one row marked selected via aria) / "image" / "audio", and a standalone toggle pill reading "no dialogue · off".',
+          'The ProgressBar section: thin 3-4px horizontal bars in a grid — some partially filled with an accent green fill (~35% or full), some empty tracks, some with a soft accent-blue tinted fill (the local tone), one row of visibly thinner compact bars.',
+          'Blessings: dense small muted labels and 9-11px text are the app\'s design language, not contrast defects; dashed-border CARDS with italic "N/A — …" prose are the gallery\'s intended not-renderable exhibit (they are DATA, never missing content); buttons that look disabled are exhibiting the disabled state; the spinner rows are the busy state.',
+          'Defects to flag: a card with NO content at all where its siblings show a component (except a single card in the SaveStatus section labeled "idle · absent" whose emptiness is the exhibit), overlapping controls inside a card, text clipped mid-glyph by a card edge, a section with no grid of cards.',
+        ].join(' '),
+      },
+      {
+        id: 'component-gallery-lower-1080p',
+        label: 'Component gallery — scrolled to the state-machine band: SaveStatus, Refusal, HandoffResult (the N/A cells)',
+        drive: async (page) => {
+          await page.locator('[data-gallery-section="save-status"]').scrollIntoViewIfNeeded()
+          await expect(page.locator('[data-gallery-section="handoff"]')).toBeAttached()
+          await page.waitForTimeout(300)
+        },
+        rubric: [
+          'Context: the same ?gallery=1 exhibit page, scrolled DOWN so the "SaveStatus" section sits at the top of the visible area; the sections above (Button/Chip/ProgressBar/Toast/Notice) are above the fold — their absence here is NOT a defect. In frame from the top: SaveStatus, then Refusal, then HandoffResult (the write ≠ refresh matrix), with EffectiveSettingRow/Field/StudioSelect and the interactive sections (menus, docks, dialogs, layer stacking) continuing below the fold.',
+          'The SaveStatus grid: most cards show a single small muted status line — "Saving draft…" with a tiny spinner, "Draft saved.", and a red-toned "Draft not saved — 422 Unprocessable Entity — resolution not in the family set" with an underlined "retry" link; THREE cards are DASHED-border and italic reading "N/A — the retry affordance renders only on the failed state…" (the justified non-renderable cells — DATA, intended); one card ("idle · absent") is an EMPTY stage: its emptiness IS the exhibit (SILENT by contract) — never a defect.',
+          'The Refusal section: two cards, each an amber/warning-toned block with a bold title "Generate (T=1 Fast) is not available", a reason line, and in ONE of them an underlined satisfy link "Open settings — engine connection" (the other stands on its reason alone — intended, not a missing button).',
+          'The HandoffResult section: a grid of small rows reading "Seed the video chain" plus state text — a spinner-only row (pending), quiet "landed" rows, a "landed" row with an amber "view stale — …" marker, a row with an amber "not refreshed — …" marker plus an underlined "refresh" link, and a RED-toned "failed — 500 Internal Server Error — …" row with an underlined "retry" link. SIX dashed italic N/A cards sit among them ("the refresh is the write\'s companion fact…") — the impossible half of the 3×4 matrix, exhibited as data.',
+          'Blessings: the red "failed" row is the ONLY red text in these sections (a failed refresh renders amber markers, never red — that is the write ≠ refresh contract); italic dashed cards are intended exhibits; underlined retry/refresh/satisfy links are real affordances; dense 11px prose is the design language.',
+          'Defects to flag: a dashed N/A card with NO reason text, the failed row reading amber instead of red, two announcer-looking blocks stacked in one card, overlapping rows, text clipped mid-glyph by a card edge.',
         ].join(' '),
       },
     ],
