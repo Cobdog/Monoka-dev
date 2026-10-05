@@ -951,6 +951,20 @@ function WorkbenchSurface() {
   // engine answers.
   const gateDetection = detectionOf(settings.family)
   const gateMissing = gateDetection ? [...gateDetection.missingModels, ...gateDetection.missingNodes] : []
+  // (task 24, k2q0n9s — the T21 sweep rider) The refine taps' own gate: the
+  // retired ad-hoc shape rode the DISABLED taps' title attributes plus a
+  // one-line em aside — invisible to keyboard and touch, announced by
+  // nothing (the exact class the image-lane gate retired at task 21). The
+  // shared Refusal tier states it AT the affordance: one block for the pair
+  // (a refusal per engine would double-announce the same offline
+  // condition), each unavailable engine's missing pieces named verbatim,
+  // the Library hatch when pieces ARE named, and the plain not-connected
+  // reason with no satisfy when no detection exists to name anything.
+  const refineDown = [
+    { label: 'klein', detection: kleinDetection },
+    { label: 'Krea 2', detection: krea2Detection },
+  ].filter((engine) => !engine.detection?.available)
+  const refineDownMissing = refineDown.flatMap((engine) => engine.detection ? [...engine.detection.missingModels, ...engine.detection.missingNodes] : [])
 
   return (
     <div className="iw-root" data-iw-root data-iw-family={settings.family}>
@@ -1043,14 +1057,29 @@ function WorkbenchSurface() {
                     />
                   </label>
                   <div className="iw-refine-engines">
-                    <button type="button" className="iw-refine-tap" data-iw-refine-tap="klein" disabled={busy || !kleinDetection?.available} title={kleinDetection?.available ? 'klein — the fast tier (4-step distilled, ~seconds at 1MP)' : (kleinDetection?.missingModels.join('; ') || 'unavailable')} onClick={() => void refine('klein')}>
+                    {/* (task 24) The taps keep their honest disabled gates; the
+                        refusal arms of their retired titles died into the
+                        Refusal block below (the available-arm descriptions
+                        stay — a tooltip SUPPLEMENTING a visible state is fine;
+                        the retired shape was the tooltip AS the only channel). */}
+                    <button type="button" className="iw-refine-tap" data-iw-refine-tap="klein" disabled={busy || !kleinDetection?.available} title={kleinDetection?.available ? 'klein — the fast tier (4-step distilled, ~seconds at 1MP)' : undefined} onClick={() => void refine('klein')}>
                       <Sparkles size={12} /> Refine — klein (fast){suggestedEngine === 'klein' ? ' · suggested' : ''}
                     </button>
-                    <button type="button" className="iw-refine-tap quality" data-iw-refine-tap="krea2" disabled={busy || !krea2Detection?.available} title={krea2Detection?.available ? 'Krea 2 Identity Edit — the quality engine (measured 6× preservation)' : (krea2Detection?.missingModels.join('; ') || 'unavailable')} onClick={() => void refine('krea2')}>
+                    <button type="button" className="iw-refine-tap quality" data-iw-refine-tap="krea2" disabled={busy || !krea2Detection?.available} title={krea2Detection?.available ? 'Krea 2 Identity Edit — the quality engine (measured 6× preservation)' : undefined} onClick={() => void refine('krea2')}>
                       <Sparkles size={12} /> Refine — Krea 2 (quality)
                     </button>
                     {t1Take && <em className="iw-t1-note" data-iw-t1-note>T=1 output — structurally soft by profile; refining is your call.</em>}
-                    {(!kleinDetection?.available || !krea2Detection?.available) && <em className="iw-engine-note">{!kleinDetection?.available && 'klein unavailable. '}{!krea2Detection?.available && 'Krea 2 unavailable.'} The affordance says so — never a silent skip.</em>}
+                    {refineDown.length > 0 && (
+                      <Refusal
+                        title={`Refine is not available — ${refineDown.map((engine) => engine.label).join(' and ')}`}
+                        reason={refineDown.some((engine) => engine.detection)
+                          ? refineDown.map((engine) => `${engine.label}: ${engine.detection ? [...engine.detection.missingModels, ...engine.detection.missingNodes].join('; ') || 'no missing pieces named' : 'the engine has not answered'}`).join(' · ')
+                          : 'the engine is not connected, so the refine engines\' requirements cannot be checked yet'}
+                        satisfy={refineDownMissing.length
+                          ? { label: 'Get the missing pieces…', action: () => useCanvasStore.getState().setLibraryDock(true) }
+                          : undefined}
+                      />
+                    )}
                   </div>
                 </div>
                 <div className="iw-burst-row" data-iw-burst>

@@ -168,9 +168,9 @@ test('decision-bearing helper text meets the 11px legibility floor (A10)', async
   await page.goto('/?images=1')
   await expect(page.locator('[data-iw-root]')).toBeVisible()
   // Engine offline in this leg → the packet family is unavailable, so the
-  // unavailable note and the engine note render alongside the always-on
+  // unavailable note and the refine refusal render alongside the always-on
   // staging note.
-  for (const selector of ['[data-iw-staging]', '[data-iw-unavailable]', '.iw-engine-note']) {
+  for (const selector of ['[data-iw-staging]', '[data-iw-unavailable]', '[data-iw-refine] [data-refusal]']) {
     const note = page.locator(selector).first()
     await expect(note).toBeVisible()
     const size = await note.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
@@ -226,24 +226,38 @@ test('the refine affordance is opt-in with engine-pairing honesty; the burst lan
   // a silent skip.
   await expect(page.locator('[data-iw-refine-tap="klein"]')).toBeDisabled()
   await expect(page.locator('[data-iw-refine-tap="krea2"]')).toBeDisabled()
-  await expect(page.locator('.iw-engine-note')).toContainText(/unavailable/i)
+  // (task 24, k2q0n9s — the T21 sweep rider) The refine affordance's own
+  // refusal is the shared Refusal tier now, not the retired `.iw-engine-note`
+  // aside + a tooltip: the taps keep their disabled gates, the refusal is
+  // VISIBLE and announced at the affordance (the alert pair), names the
+  // offline condition plainly, and carries no satisfy (nothing is named to
+  // fetch until an engine answers) — the gate's own shape, one scroll up.
+  const refineRefusal = page.locator('[data-iw-refine]').locator('[data-refusal]')
+  await expect(refineRefusal).toBeVisible()
+  await expect(refineRefusal).toHaveAttribute('role', 'alert')
+  await expect(refineRefusal.locator('[data-refusal-title]')).toContainText('Refine is not available')
+  await expect(refineRefusal.locator('[data-refusal-reason]')).toContainText('not connected')
+  await expect(refineRefusal.locator('[data-refusal-satisfy]')).toHaveCount(0)
+  await expect(page.locator('[data-iw-refine-tap="klein"]')).not.toHaveAttribute('title', /unavailable/i)
+  await expect(page.locator('[data-iw-refine-tap="krea2"]')).not.toHaveAttribute('title', /unavailable/i)
   // The primary Generate CTA states its reason at the gate (task 21,
   // k2q0n9s — the retired title-carried refusal became the shared Refusal
   // tier: VISIBLE and announced, not a hover tooltip on a disabled button
   // that keyboard and touch users can never see). Engine offline + an empty
   // model scan → no detection → the honest not-connected reason and NO
   // satisfy affordance (nothing is named to fetch; the Library cannot help
-  // until an engine answers).
+  // until an engine answers). Scoped to the CONTROLS aside — the refine
+  // affordance carries its own Refusal since task 24.
   const generate = page.locator('[data-iw-generate]')
   await expect(generate).toBeDisabled()
   await expect(generate).not.toHaveAttribute('title', /unavailable/i)
-  const refusal = page.locator('[data-iw-root]').locator('[data-refusal]')
+  const refusal = page.locator('aside.iw-controls').locator('[data-refusal]')
   await expect(refusal).toBeVisible()
   await expect(refusal).toHaveAttribute('role', 'alert')
   await expect(refusal).toHaveAttribute('aria-live', 'assertive')
   await expect(refusal.locator('[data-refusal-title]')).toContainText('is not available')
   await expect(refusal.locator('[data-refusal-reason]')).toContainText('not connected')
-  await expect(page.locator('[data-refusal-satisfy]')).toHaveCount(0)
+  await expect(refusal.locator('[data-refusal-satisfy]')).toHaveCount(0)
   // The tone is the WARNING tier, never danger — a refusal is a state, not
   // a failure (computed values as the final authority, --warning vs
   // --danger from the sheet).
