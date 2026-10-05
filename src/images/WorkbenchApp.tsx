@@ -921,7 +921,7 @@ function WorkbenchSurface() {
       exitBusyRef.current = false
       setBusy(false)
     }
-  }, [doc, exitPlan, frames, effectivePick, runPinWrites, sessionState.settings, contract, settings.refs, commitExitRun])
+  }, [doc, exitPlan, frames, effectivePick, runPinWrites, detectionOf, sessionState.settings, contract, settings.refs, commitExitRun])
 
   const hybridAvailable = detectionOf('h3img.exit.anchor')?.hybrid ?? false
   // The image tiers' machinery key (the decode-leg-aware optimal markers):
