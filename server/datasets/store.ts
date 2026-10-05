@@ -770,6 +770,10 @@ export function createDatasetStore(db: Database.Database, options: DatasetStoreO
       // (now the consent-gated default) actually persists embeds on every
       // box, and empty-trash 500'd on the first embed-carrying trash.
       db.prepare('DELETE FROM dataset_embeds WHERE layer_id IN (SELECT id FROM dataset_layers WHERE source_id = ?)').run(source.id)
+      // Bake jobs reference layers (FK ON) the same way embeds do — the
+      // embeds fix stopped one table short and a bake-carrying trash 500'd
+      // on the same constraint (found by the task-23 gallery run).
+      db.prepare('DELETE FROM dataset_bake_jobs WHERE layer_id IN (SELECT id FROM dataset_layers WHERE source_id = ?)').run(source.id)
       db.prepare('DELETE FROM dataset_layers WHERE source_id = ?').run(source.id)
       db.prepare('DELETE FROM dataset_scene_cuts WHERE source_id = ?').run(source.id)
       db.prepare('DELETE FROM dataset_sources WHERE id = ?').run(source.id)

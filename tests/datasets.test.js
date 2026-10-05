@@ -659,7 +659,20 @@ test('(10) trash semantics: referenced vs uploaded; empty = one delete; trashed-
   const reuploadTrashed = await api.post('/api/lan/datasets/ingest/upload', { name: 'loud-again.mp4', data: fs.readFileSync(clips.loud).toString('base64') })
   check(reuploadTrashed.status === 400 && /in the dataset trash/.test(reuploadTrashed.body.error ?? ''), 'NOTES: re-uploading trashed content is refused with the restore instruction (never an invisible dedupe)')
   check(fs.readdirSync(serverMediaRoot).length === mediaFilesBeforeReupload, 'NOTES: the refused re-upload leaves no orphaned bytes in the media store')
+  // The bake-jobs FK regression (T23's find): a layer with a bake-job row
+  // used to 500 the empty on SQLITE_CONSTRAINT_FOREIGNKEY — the embeds fix
+  // stopped one table short. Seed a job on the trashed upload's layer and
+  // prove the empty carries it.
+  const bakeDb = new Database(path.join(home, 'studio.db'))
+  const trashedLayer = bakeDb.prepare('SELECT id FROM dataset_layers WHERE source_id = ?').get(uploaded.body.source.id)
+  check(Boolean(trashedLayer), 'the trashed upload still has its layer row (pre-empty)')
+  if (trashedLayer) {
+    bakeDb.prepare(`INSERT INTO dataset_bake_jobs (id, layer_id, state, target_frames, grid_target, created_at)
+      VALUES ('regress-bake-fk', ?, 'done', 10, 10, ?)`).run(trashedLayer.id, Date.now())
+  }
+  bakeDb.close()
   const emptied = await api.post('/api/lan/datasets/trash/empty', {})
+  check(emptied.status === 200, `empty-trash survives a bake-carrying layer (status ${emptied.status} — the FK regression)`)
   check(emptied.body.dropped >= 1 && emptied.body.bytesDeleted >= 0, `empty-trash drops entries (app-owned bytes only: ${(emptied.body.bytesDeleted / 1e6).toFixed(1)} MB)`)
   check(sha256File(clips.still) === stillBytesBefore, 'empty-trash never touches referenced originals')
 })
