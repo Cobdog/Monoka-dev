@@ -783,6 +783,81 @@ test('first-run guidance (R-16): the wizard owns the journey; the notice is the 
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// The setState-in-render race pin (dispatch B, k2q0n9s). The mechanism this
+// test drives to ground: FirstRunWizard's patch()/reopen() put writeWizard()
+// — a SYNCHRONOUS window.dispatchEvent — inside setState updater bodies,
+// and the FirstRunNotice listens to that event with its own setState.
+// React invokes updaters either eagerly at dispatch (harmless) or DURING
+// THE OWNER'S RENDER PASS (whenever the fiber has pending lanes — e.g. a
+// store-driven scanning/status flip landing near the click, which is why
+// the flake was load-shaped), so the notice's state update could execute
+// while the WIZARD was rendering: React's "Cannot update a component while
+// rendering a different component". The production bundle strips that
+// warning (the flake only surfaced when a dev-mode dist was transiently
+// served to the suite), so this pin boots the DEV build deliberately: it
+// spawns `vite` with its /api proxy aimed at this suite's own server (the
+// journey mirror's child-process pattern) and drives the same wizard
+// journey. Dev React + StrictMode run updater bodies during render on
+// every step — pre-fix the guard trips on the first Next click; post-fix
+// the render phase is side-effect-free and the journey is silent.
+test('the wizard journey never setStates another component during render (dev-build StrictMode pin)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  const http = await import('node:http')
+  await resetSession(page)
+  // Reserve an ephemeral port (nothing assumes 4199/5173 are ours), then
+  // boot the dev server with its /api proxy pointing at THIS suite's
+  // webServer — the app on the dev origin talks to the same home/settings
+  // the assertions above reset.
+  const apiPort = process.env.MINIMAX_E2E_PORT ?? '4199'
+  const holder = http.createServer(() => undefined)
+  const devPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as { port: number }).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const vite = spawn('node', [path.join(process.cwd(), 'node_modules/vite/bin/vite.js'), '--port', String(devPort), '--strictPort', '--host', '127.0.0.1'], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, MINIMAX_LAN_PORT: apiPort },
+  })
+  let viteLog = ''
+  vite.stdout?.on('data', (chunk: Buffer) => { viteLog += chunk.toString() })
+  vite.stderr?.on('data', (chunk: Buffer) => { viteLog += chunk.toString() })
+  try {
+    await expect.poll(async () => {
+      try { return (await fetch(`http://127.0.0.1:${devPort}/`)).status } catch { return 0 }
+    }, { timeout: 30_000 }).toBe(200)
+    // First navigation against a cold dev server pays the on-demand
+    // transform of the whole graph — bounded, not slept.
+    await page.goto(`http://127.0.0.1:${devPort}/`, { timeout: 60_000 })
+    const wizard = page.locator('[data-canvas-wizard]')
+    await expect(wizard).toBeVisible({ timeout: 30_000 })
+    await expect(wizard).toHaveAttribute('data-wizard-step', '0')
+    // The journey that exercises every patch() path: step, back, skip, and
+    // the notice's Resume reopen (the WIZARD_REOPEN_EVENT listener).
+    await wizard.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '1')
+    await wizard.locator('[data-wizard-back]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '0')
+    await page.locator('[data-wizard-skip]').click()
+    await expect(page.locator('[data-canvas-wizard]')).toHaveCount(0)
+    const notice = page.locator('[data-canvas-first-run]')
+    await expect(notice).toBeVisible({ timeout: 10_000 })
+    await notice.getByRole('button', { name: 'Resume setup' }).click()
+    await expect(page.locator('[data-canvas-wizard]')).toBeVisible()
+    await expect(page.locator('[data-canvas-wizard]')).toHaveAttribute('data-wizard-step', '0')
+    // THE PIN: the dev console must carry no render-phase cross-component
+    // update from the journey. Pre-fix, every step click logged it.
+    const renderPhase = problems.filter((entry) => entry.includes('Cannot update a component'))
+    expect(renderPhase, `setState-in-render leaked through the journey:\n${renderPhase.join('\n')}`).toEqual([])
+    expect(problems.filter((entry) => !environmental(entry) && !entry.includes('Cannot update a component'))).toEqual([])
+  } finally {
+    vite.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { vite.kill('SIGKILL'); resolve() }, 5_000)
+      vite.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(vite.exitCode !== null || vite.signalCode !== null).toBe(true)
+  expect(viteLog).not.toContain('EADDRINUSE')
+})
+
 // External-instance integration (task 9om4bi9): with the engine pointed at a
 // fake EXTERNAL instance (serving a crafted object_info + /models listing),
 // the Settings surface must show the merged inventory — instance-tagged model

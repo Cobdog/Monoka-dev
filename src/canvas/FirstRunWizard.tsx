@@ -90,22 +90,30 @@ export function FirstRunWizard() {
     return () => { cancelled = true }
   }, [state.step])
 
+  // (dispatch B, k2q0n9s — the setState-in-render race, fixed) writeWizard
+  // dispatches a SYNCHRONOUS window event the FirstRunNotice answers with
+  // its own setState, so it must never run inside a setState updater body:
+  // React invokes updaters during the OWNER'S render pass whenever the
+  // fiber has pending lanes (a store-driven scanning/status flip landing
+  // near the click — the load-shaped flake), which updated the notice
+  // mid-wizard-render. Both writers below run in event context only — the
+  // updaters are gone entirely; patch reads the render-scope state its own
+  // click closures captured (fresh by construction: any state change
+  // re-renders and re-creates them), and reopen overwrites every field.
   const patch = (part: Partial<WizardState>) => {
-    setState((current) => {
-      const next = { ...current, ...part }
-      writeWizard(next)
-      return next
-    })
+    const next: WizardState = { ...state, ...part }
+    writeWizard(next)
+    setState(next)
   }
 
   // The notice's "Resume setup" CTA (the fallback surface reopening the
   // journey): reset skipped/done and present from the engine step.
   useEffect(() => {
-    const reopen = () => setState((current) => {
-      const next = { ...current, step: 0, done: false, skipped: false }
+    const reopen = () => {
+      const next: WizardState = { step: 0, done: false, skipped: false }
       writeWizard(next)
-      return next
-    })
+      setState(next)
+    }
     window.addEventListener(WIZARD_REOPEN_EVENT, reopen)
     return () => window.removeEventListener(WIZARD_REOPEN_EVENT, reopen)
   }, [])
