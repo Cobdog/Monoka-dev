@@ -1,0 +1,506 @@
+{
+ "config": {
+  "set": "P \u2014 the PDMD 4-NFE turbo-king bake-off",
+  "board": {
+   "prompts": {
+    "B1_low": "Locked-off tripod shot of a plain light-grey wooden table against a soft neutral studio background, even diffuse daylight, no shadows. A single matte red ball rests on the table at the left quarter of the frame. The ball rolls slowly to the right, a short distance, and comes to rest near the left third of the table early in the shot, then stays completely still. No camera movement. Audio: quiet room tone, one soft wooden rolling sound, then silence.",
+    "B2_med": "A pale woman in her early thirties with a short black bob haircut, thin silver hoop earrings, faint freckles, wearing an oversized rust-orange wool coat over a charcoal turtleneck. She stands at a weathered wooden counter in a small sunlit kitchen, slowly stirring a copper pot of soup with a wooden spoon. Late-afternoon light falls through a window to her left, dust motes in the beam. The camera pushes in slowly from a medium shot to a medium close-up; she tastes the soup and smiles slightly. Natural handheld micro-motion throughout. Audio: gentle simmering, the wooden spoon tapping the copper pot, a quiet kitchen fan hum, soft piano notes from a radio in the next room.",
+    "B3_high": "Locked-off tripod shot of a plain light-grey wooden table against a soft neutral studio background, even diffuse daylight, no shadows. A single matte red ball rests on the table at the left quarter of the frame. The ball rolls briskly from left to right across the whole table, crossing the full width of the frame, and comes to rest at the right quarter of the table just before the shot ends. No camera movement. Audio: quiet room tone, a sustained wooden rolling sound that travels from left to right and settles as the ball stops.",
+    "B4_naive_low": "A static camera shot of a matte red ball rolling slowly from the left side of a plain grey table, stopping near the left third, then staying still.",
+    "B5_naive_med": "A woman in an orange wool coat stirs a pot of soup at a kitchen counter in warm afternoon light while the camera slowly pushes in.",
+    "B6_naive_high": "A static camera shot of a matte red ball rolling briskly across the whole width of a plain grey table from left to right, stopping at the right quarter."
+   },
+   "plans": {
+    "B1_low": {
+     "anchors": [
+      [
+       0,
+       25.0
+      ],
+      [
+       17,
+       29.0
+      ],
+      [
+       34,
+       33.0
+      ]
+     ],
+     "success_band_end": [
+      28.0,
+      38.0
+     ]
+    },
+    "B3_high": {
+     "anchors": [
+      [
+       0,
+       25.0
+      ],
+      [
+       17,
+       50.0
+      ],
+      [
+       34,
+       75.0
+      ]
+     ],
+     "success_band_end": [
+      70.0,
+      80.0
+     ]
+    },
+    "B4_naive_low": {
+     "anchors": [
+      [
+       0,
+       25.0
+      ],
+      [
+       17,
+       29.0
+      ],
+      [
+       34,
+       33.0
+      ]
+     ],
+     "success_band_end": [
+      28.0,
+      38.0
+     ]
+    },
+    "B6_naive_high": {
+     "anchors": [
+      [
+       0,
+       25.0
+      ],
+      [
+       17,
+       50.0
+      ],
+      [
+       34,
+       75.0
+      ]
+     ],
+     "success_band_end": [
+      70.0,
+      80.0
+     ]
+    }
+   },
+   "seed": 421337,
+   "frames": 39,
+   "audio_rows": 65,
+   "canvas": [
+    960,
+    544
+   ],
+   "board_resolution": "B1/B2/B3 = Set C board verbatim; B4/B5/B6 = D3/X5 NAIVE arms verbatim \u2014 the X-family corpus's six established texts"
+  },
+  "grids": {
+   "simple8_at_12": [
+    1.0,
+    0.988235,
+    0.972973,
+    0.952381,
+    0.923077,
+    0.878049,
+    0.8,
+    0.631579,
+    0.0
+   ],
+   "simple4_at_12": [
+    1.0,
+    0.972973,
+    0.923077,
+    0.8,
+    0.0
+   ],
+   "assertions": [
+    "simple/8@12 == A1 X6-manifest (X6 pinned recipe)",
+    "simple/4@12 == LightX2V card 4-step grid (q=[1,.75,.5,.25]@12)"
+   ]
+  },
+  "models": {
+   "unet_arm": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+   "unet_canary": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+   "text_encoder": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+   "vae_video": "minimax_h3_video_vae_fp16.safetensors == __setPalias == __setPnull (sha 7c1f131492e7\u2026)",
+   "vae_audio": "minimax_h3_audio_vae_fp32.safetensors"
+  },
+  "loras": {
+   "arm1_turbo8": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "arm2_turbo4": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+   "arm3_pdmd": "minimax_h3_pdmd_4nfe_comfyui_v6.safetensors",
+   "attach": "stock LoraLoaderModelOnly @ strength_model 1.0 (weight-function path; the conversion card's prescribed node; MiniMaxH3TurboLoRA cannot parse diffusion_model.-prefixed keys \u2014 double-prefix no-op, verified in source)",
+   "key_match": "208/208 modules present in the ref2va int8 base for all three files (asserted from checkpoint headers in the p0 notes)"
+  },
+  "pdmd_prefix": {
+   "text": "pdmd, ",
+   "disclosure": "prefix not found in ANY upstream artifact (Iwannapose README, pdmd2026 card, ZeamoxWang/pdmd code+job JSON, project-page data.js, arXiv HTML) \u2014 executed as registered, disclosed"
+  },
+  "sampler": "MiniMaxH3TurboSampler (Euler on native ModelSamplingAV; X6's pinned recipe)",
+  "attach": "stock LoraLoaderModelOnly @ 1.0 (weight-function path; card-prescribed node)",
+  "kernel": "stock attention routing; SageAttention off",
+  "audio_shift": "3 throughout (video 12 / audio 3 pinned via MiniMaxH3SigmaShift)",
+  "nfe_declared": "arm1 8; arm2 4; arm3 4; canary 20 (Set B r9 config)",
+  "frame_contract": "39 = 17*2+5; audio rows 65 = round(39*5/3)",
+  "comfyui_version": "0.37.4",
+  "free_state": "executor-owned /free between phases; final teardown at set end",
+  "canary_protocol": "c1/c2 = Set B r9 config, fresh (__setPalias x control) signatures; framemd5+audio-md5 vs setB r9 after each; ANY diff stops the set (Amendment 5)",
+  "null_protocol": "N1 = PDMD-4 B2 duplicate through __setPnull alias; expected bit-identical to A3_pdmd4_B2_med (zero floor); gates the review surface",
+  "client_id": "021ae194-4026-401c-acc4-839fcdedfb3b"
+ },
+ "runs": [
+  {
+   "run_id": "c1_canary_start",
+   "arm": "canary(fl2va base-20 simple/20) = Set B r9 config",
+   "board_id": "B2_med",
+   "nfe": 20,
+   "lora": null,
+   "tags": [
+    "canary"
+   ],
+   "wall_s": 78.75,
+   "sampling_s": 61.75,
+   "vram_peak_mib": 24069,
+   "knots_source": "A1 X1-a (frozen; Set B r9 config)",
+   "canary_check_vs_setB_r9": {
+    "frames_identical": true,
+    "audio_identical": true,
+    "n_frames": 39
+   },
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A1_turbo8_B1_low",
+   "arm": "turbo-8 v1.0 (LightX2V ref2v 8-step, bypass-class runtime attach)",
+   "board_id": "B1_low",
+   "nfe": 8,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "arm1-turbo8"
+   ],
+   "wall_s": 46.02,
+   "sampling_s": 40.02,
+   "vram_peak_mib": 24149,
+   "knots_source": "A1 X6-manifest simple/8@12 (X6's pinned recipe)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A1_turbo8_B2_med",
+   "arm": "turbo-8 v1.0 (LightX2V ref2v 8-step, bypass-class runtime attach)",
+   "board_id": "B2_med",
+   "nfe": 8,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "arm1-turbo8"
+   ],
+   "wall_s": 33.74,
+   "sampling_s": 28.74,
+   "vram_peak_mib": 24153,
+   "knots_source": "A1 X6-manifest simple/8@12 (X6's pinned recipe)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A1_turbo8_B3_high",
+   "arm": "turbo-8 v1.0 (LightX2V ref2v 8-step, bypass-class runtime attach)",
+   "board_id": "B3_high",
+   "nfe": 8,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "arm1-turbo8"
+   ],
+   "wall_s": 33.7,
+   "sampling_s": 28.7,
+   "vram_peak_mib": 24153,
+   "knots_source": "A1 X6-manifest simple/8@12 (X6's pinned recipe)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A1_turbo8_B4_naive_low",
+   "arm": "turbo-8 v1.0 (LightX2V ref2v 8-step, bypass-class runtime attach)",
+   "board_id": "B4_naive_low",
+   "nfe": 8,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "arm1-turbo8"
+   ],
+   "wall_s": 33.72,
+   "sampling_s": 27.72,
+   "vram_peak_mib": 23929,
+   "knots_source": "A1 X6-manifest simple/8@12 (X6's pinned recipe)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A1_turbo8_B5_naive_med",
+   "arm": "turbo-8 v1.0 (LightX2V ref2v 8-step, bypass-class runtime attach)",
+   "board_id": "B5_naive_med",
+   "nfe": 8,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "arm1-turbo8"
+   ],
+   "wall_s": 33.74,
+   "sampling_s": 27.74,
+   "vram_peak_mib": 24121,
+   "knots_source": "A1 X6-manifest simple/8@12 (X6's pinned recipe)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A1_turbo8_B6_naive_high",
+   "arm": "turbo-8 v1.0 (LightX2V ref2v 8-step, bypass-class runtime attach)",
+   "board_id": "B6_naive_high",
+   "nfe": 8,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "arm1-turbo8"
+   ],
+   "wall_s": 33.74,
+   "sampling_s": 28.74,
+   "vram_peak_mib": 24089,
+   "knots_source": "A1 X6-manifest simple/8@12 (X6's pinned recipe)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A2_turbo4_B1_low",
+   "arm": "turbo-4 v0.1 (LightX2V ref2v 4-step, matched-NFE control)",
+   "board_id": "B1_low",
+   "nfe": 4,
+   "lora": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+   "tags": [
+    "arm2-turbo4"
+   ],
+   "wall_s": 46.03,
+   "sampling_s": 29.03,
+   "vram_peak_mib": 23903,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A2_turbo4_B2_med",
+   "arm": "turbo-4 v0.1 (LightX2V ref2v 4-step, matched-NFE control)",
+   "board_id": "B2_med",
+   "nfe": 4,
+   "lora": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+   "tags": [
+    "arm2-turbo4"
+   ],
+   "wall_s": 24.53,
+   "sampling_s": 18.53,
+   "vram_peak_mib": 24149,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A2_turbo4_B3_high",
+   "arm": "turbo-4 v0.1 (LightX2V ref2v 4-step, matched-NFE control)",
+   "board_id": "B3_high",
+   "nfe": 4,
+   "lora": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+   "tags": [
+    "arm2-turbo4"
+   ],
+   "wall_s": 24.53,
+   "sampling_s": 18.53,
+   "vram_peak_mib": 23913,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A2_turbo4_B4_naive_low",
+   "arm": "turbo-4 v0.1 (LightX2V ref2v 4-step, matched-NFE control)",
+   "board_id": "B4_naive_low",
+   "nfe": 4,
+   "lora": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+   "tags": [
+    "arm2-turbo4"
+   ],
+   "wall_s": 24.53,
+   "sampling_s": 18.53,
+   "vram_peak_mib": 23929,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A2_turbo4_B5_naive_med",
+   "arm": "turbo-4 v0.1 (LightX2V ref2v 4-step, matched-NFE control)",
+   "board_id": "B5_naive_med",
+   "nfe": 4,
+   "lora": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+   "tags": [
+    "arm2-turbo4"
+   ],
+   "wall_s": 24.53,
+   "sampling_s": 19.53,
+   "vram_peak_mib": 23993,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A2_turbo4_B6_naive_high",
+   "arm": "turbo-4 v0.1 (LightX2V ref2v 4-step, matched-NFE control)",
+   "board_id": "B6_naive_high",
+   "nfe": 4,
+   "lora": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+   "tags": [
+    "arm2-turbo4"
+   ],
+   "wall_s": 24.53,
+   "sampling_s": 19.53,
+   "vram_peak_mib": 23897,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "c2_canary_mid",
+   "arm": "canary(fl2va base-20 simple/20) [sentinel]",
+   "board_id": "B2_med",
+   "nfe": 20,
+   "lora": null,
+   "tags": [
+    "canary"
+   ],
+   "wall_s": 78.7,
+   "sampling_s": 64.7,
+   "vram_peak_mib": 24069,
+   "knots_source": "A1 X1-a (frozen; Set B r9 config)",
+   "canary_check_vs_setB_r9": {
+    "frames_identical": true,
+    "audio_identical": true,
+    "n_frames": 39
+   },
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A3_pdmd4_B1_low",
+   "arm": "PDMD-4 (v6 @ 1.0, pdmd trigger prefix \u2014 registered operating point)",
+   "board_id": "B1_low",
+   "nfe": 4,
+   "lora": "minimax_h3_pdmd_4nfe_comfyui_v6.safetensors",
+   "tags": [
+    "arm3-pdmd4"
+   ],
+   "wall_s": 42.95,
+   "sampling_s": 25.95,
+   "vram_peak_mib": 23895,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A3_pdmd4_B2_med",
+   "arm": "PDMD-4 (v6 @ 1.0, pdmd trigger prefix \u2014 registered operating point)",
+   "board_id": "B2_med",
+   "nfe": 4,
+   "lora": "minimax_h3_pdmd_4nfe_comfyui_v6.safetensors",
+   "tags": [
+    "arm3-pdmd4"
+   ],
+   "wall_s": 24.52,
+   "sampling_s": 19.52,
+   "vram_peak_mib": 24149,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A3_pdmd4_B3_high",
+   "arm": "PDMD-4 (v6 @ 1.0, pdmd trigger prefix \u2014 registered operating point)",
+   "board_id": "B3_high",
+   "nfe": 4,
+   "lora": "minimax_h3_pdmd_4nfe_comfyui_v6.safetensors",
+   "tags": [
+    "arm3-pdmd4"
+   ],
+   "wall_s": 24.52,
+   "sampling_s": 18.52,
+   "vram_peak_mib": 24089,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A3_pdmd4_B4_naive_low",
+   "arm": "PDMD-4 (v6 @ 1.0, pdmd trigger prefix \u2014 registered operating point)",
+   "board_id": "B4_naive_low",
+   "nfe": 4,
+   "lora": "minimax_h3_pdmd_4nfe_comfyui_v6.safetensors",
+   "tags": [
+    "arm3-pdmd4"
+   ],
+   "wall_s": 21.45,
+   "sampling_s": 16.45,
+   "vram_peak_mib": 24089,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A3_pdmd4_B5_naive_med",
+   "arm": "PDMD-4 (v6 @ 1.0, pdmd trigger prefix \u2014 registered operating point)",
+   "board_id": "B5_naive_med",
+   "nfe": 4,
+   "lora": "minimax_h3_pdmd_4nfe_comfyui_v6.safetensors",
+   "tags": [
+    "arm3-pdmd4"
+   ],
+   "wall_s": 24.53,
+   "sampling_s": 18.53,
+   "vram_peak_mib": 24153,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "A3_pdmd4_B6_naive_high",
+   "arm": "PDMD-4 (v6 @ 1.0, pdmd trigger prefix \u2014 registered operating point)",
+   "board_id": "B6_naive_high",
+   "nfe": 4,
+   "lora": "minimax_h3_pdmd_4nfe_comfyui_v6.safetensors",
+   "tags": [
+    "arm3-pdmd4"
+   ],
+   "wall_s": 24.52,
+   "sampling_s": 19.52,
+   "vram_peak_mib": 23881,
+   "knots_source": "simple/4@12 == LightX2V card grid (asserted)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": null
+  },
+  {
+   "run_id": "N1_pdmd4_null_B2",
+   "arm": "null: PDMD-4 duplicate via __setPnull alias (expected bit-identical to A3_pdmd4_B2_med)",
+   "board_id": "B2_med",
+   "nfe": 4,
+   "lora": "minimax_h3_pdmd_4nfe_comfyui_v6.safetensors",
+   "tags": [
+    "null"
+   ],
+   "wall_s": 24.53,
+   "sampling_s": 18.53,
+   "vram_peak_mib": 24153,
+   "knots_source": "simple/4@12 (identical config through alias)",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_A3_pdmd4_B2": {
+    "bit_identical": true
+   }
+  }
+ ]
+}
