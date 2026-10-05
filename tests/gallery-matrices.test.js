@@ -117,8 +117,16 @@ test('(b) the N/A-bearing matrices carry their impossible cells with reasons', (
   }
 
   const popover = sectionById('popover')
-  eq(cellsOfKind(popover, 'na').length, 1, 'PopoverMenu: the latent no-backdrop path is N/A, not demoed broken')
-  ok(cellsOfKind(popover, 'na')[0].reason.includes('LATENT'), 'the no-backdrop N/A names the latent path')
+  // (C02/C03, Codex code audit 2026-10-05 fix round) the popover section
+  // gained the row-count axis (the 0/1-tabbable containment edges) and the
+  // chip-group section the disabled-member exhibit — the pins moved with
+  // the data.
+  eq(cellsOfKind(popover, 'na').length, 3, 'PopoverMenu: the latent no-backdrop path is N/A at every row count, not demoed broken')
+  for (const cell of cellsOfKind(popover, 'na')) ok(cell.reason.includes('LATENT'), `the no-backdrop N/A "${cell.id}" names the latent path`)
+  const popoverRows = axisValues(popover, 'rows') ?? []
+  ok(popoverRows.indexOf('one') !== -1 && popoverRows.indexOf('none') !== -1, 'popover exhibits the 0/1-tabbable containment edges (C02)')
+  const chipGroup = sectionById('chip-group')
+  ok((axisValues(chipGroup, 'shape') ?? []).indexOf('radiogroup-disabled') !== -1, 'chip-group exhibits the disabled-member traversal case (C03)')
 })
 
 test('(c) closed-matrix lockstep — the gallery exhibits the kit\'s closed sets exactly', () => {

@@ -256,12 +256,13 @@ export const GALLERY_SECTIONS: GallerySection[] = [
   {
     id: 'chip-group',
     component: 'Chip (ChipGroup)',
-    blurb: 'The selection semantics — exclusive groups carry the radiogroup contract (controlled value, roving tabindex: the selected chip — or the first — is the group\'s single tab stop; arrows move selection AND focus, wrapping), independent toggles are PRESSED BUTTONS (aria-pressed, never aria-checked). Drive these with clicks and arrow keys.',
-    axes: [{ name: 'shape', values: ['radiogroup-none', 'radiogroup-selected', 'toggle-unpressed', 'toggle-pressed'] }],
+    blurb: 'The selection semantics — exclusive groups carry the radiogroup contract (controlled value, roving tabindex: the selected chip — or the first AVAILABLE one — is the group\'s single tab stop; arrows move selection AND focus, wrapping over the available members only), independent toggles are PRESSED BUTTONS (aria-pressed, never aria-checked). Drive these with clicks and arrow keys.',
+    axes: [{ name: 'shape', values: ['radiogroup-none', 'radiogroup-selected', 'radiogroup-disabled', 'toggle-unpressed', 'toggle-pressed'] }],
     cells: matrixCells({
-      axes: [{ name: 'shape', values: ['radiogroup-none', 'radiogroup-selected', 'toggle-unpressed', 'toggle-pressed'] }],
+      axes: [{ name: 'shape', values: ['radiogroup-none', 'radiogroup-selected', 'radiogroup-disabled', 'toggle-unpressed', 'toggle-pressed'] }],
       notes: {
         'radiogroup-none': 'nothing selected — the FIRST chip is still the group\'s tab stop (roving tabindex).',
+        'radiogroup-disabled': 'the first member is unavailable: traversal AND the initial tab stop exclude it — arrows can never select a disabled chip (C03, Codex code audit 2026-10-05).',
         'toggle-pressed': 'aria-pressed, flipped by the button\'s own Space/Enter activation — never aria-checked (the r3 correction).',
       },
     }),
@@ -460,15 +461,25 @@ export const GALLERY_SECTIONS: GallerySection[] = [
   {
     id: 'popover',
     component: 'PopoverMenu',
-    blurb: 'The ONE dismissal idiom for anchored menus — a routed Escape closes exactly the TOPMOST registered layer (Base UI\'s own document-level Escape never sees the routed keystroke), outside-press lands in the same onClose, and the local arrows walk the enabled rows (disabled rows cannot hold focus). The F8 clamp keeps the whole menu inside the viewport.',
-    axes: [{ name: 'backdrop', values: ['absent', 'present'] }],
+    blurb: 'The ONE dismissal idiom for anchored menus — a routed Escape closes exactly the TOPMOST registered layer (Base UI\'s own document-level Escape never sees the routed keystroke), outside-press lands in the same onClose, and the local arrows walk the enabled rows (disabled rows cannot hold focus). The F8 clamp keeps the whole menu inside the viewport. The row-count axis exhibits the Tab-cycle containment at its cardinality edges (C02, Codex code audit 2026-10-05): one tabbable cycles back to itself, zero keep focus on the panel.',
+    axes: [
+      { name: 'backdrop', values: ['absent', 'present'] },
+      { name: 'rows', values: ['four', 'one', 'none'] },
+    ],
     cells: matrixCells({
-      axes: [{ name: 'backdrop', values: ['absent', 'present'] }],
+      axes: [
+        { name: 'backdrop', values: ['absent', 'present'] },
+        { name: 'rows', values: ['four', 'one', 'none'] },
+      ],
       na: {
-        'absent': 'the no-backdrop path is LATENT (no consumer): the popup portals with neither the fixed anchor wrapper nor stacking — an in-panel consumer needs the portal-container extension first. There is no honest demo of it yet.',
+        'absent · four': 'the no-backdrop path is LATENT (no consumer): the popup portals with neither the fixed anchor wrapper nor stacking — an in-panel consumer needs the portal-container extension first. There is no honest demo of it yet.',
+        'absent · one': 'the no-backdrop path is LATENT (no consumer): the popup portals with neither the fixed anchor wrapper nor stacking — an in-panel consumer needs the portal-container extension first. There is no honest demo of it yet.',
+        'absent · none': 'the no-backdrop path is LATENT (no consumer): the popup portals with neither the fixed anchor wrapper nor stacking — an in-panel consumer needs the portal-container extension first. There is no honest demo of it yet.',
       },
       notes: {
-        'present': 'the canvas idiom: the dimmed backdrop (Base UI owns the click-close) + the fixed anchor wrapper the component clamps.',
+        'present · four': 'the canvas idiom: the dimmed backdrop (Base UI owns the click-close) + the fixed anchor wrapper the component clamps.',
+        'present · one': 'containment at the edge: exactly ONE enabled row — Tab cycles back to it, never escaping to the background (C02).',
+        'present · none': 'containment at the edge: ZERO enabled rows — focus stays on the panel itself through Tab and Shift+Tab (C02).',
       },
     }),
   },

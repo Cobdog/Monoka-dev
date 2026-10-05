@@ -470,7 +470,7 @@ test('studio select: native semantics, chevron, overflow, visible focus', async 
 test('popover menu: registry Escape, outside-press, the arrow walk, disabled rows', async ({ page }) => {
   const problems = await trackErrors(page)
   await bootGallery(page, '&probe=layers')
-  const open = cell(page, 'popover.present').locator('[data-gallery-open-menu]')
+  const open = cell(page, 'popover.present-four').locator('[data-gallery-open-menu]')
   await open.click()
   const menu = page.locator('[data-gallery-menu]')
   await expect(menu).toBeVisible()
@@ -646,5 +646,187 @@ test('layer stacking: one routed Escape unwinds exactly the topmost layer', asyn
   await expect(lowerAsk).toBeVisible() // the dialog survived the press
   await page.keyboard.press('Escape')
   await expect(lowerAsk).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (C02, Codex code audit 2026-10-05) Focus containment at the cardinality
+// edges, driven for real on the gallery's row-count exhibits: a hook-owned
+// overlay with ONE enabled control used to hand Tab to the browser (focus
+// escaped to the background), and an EMPTY one did the same. Now Tab from
+// the single control cycles back to it, and with zero tabbables focus
+// stays on the panel — through Shift+Tab too.
+test('popover containment at the edges: one tabbable cycles to itself, zero keep the panel (C02)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await bootGallery(page)
+
+  // ONE enabled row (the two disabled rows prove the tabbable count is real).
+  const one = cell(page, 'popover.present-one')
+  await one.locator('[data-gallery-open-menu]').click()
+  const menuOne = page.locator('[data-gallery-menu][data-gallery-menu-rows="one"]')
+  await expect(menuOne).toBeVisible()
+  const enabledRow = menuOne.locator('.gallery-menu-row:not([disabled])')
+  await expect(enabledRow).toHaveCount(1)
+  // Tab enters the single control from the panel…
+  await page.keyboard.press('Tab')
+  await expect(enabledRow).toBeFocused()
+  // …every further Tab cycles back to it — focus NEVER escapes the surface…
+  for (let index = 0; index < 3; index += 1) await page.keyboard.press('Tab')
+  await expect(enabledRow).toBeFocused()
+  // …and Shift+Tab wraps onto the same control from the other direction.
+  await page.keyboard.press('Shift+Tab')
+  await expect(enabledRow).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(menuOne).toHaveCount(0)
+
+  // ZERO enabled rows: the panel itself holds focus through both directions.
+  const none = cell(page, 'popover.present-none')
+  await none.locator('[data-gallery-open-menu]').click()
+  const menuNone = page.locator('[data-gallery-menu][data-gallery-menu-rows="none"]')
+  await expect(menuNone).toBeVisible()
+  await expect(menuNone.locator('.gallery-menu-row:not([disabled])')).toHaveCount(0)
+  await expect(menuNone).toBeFocused() // focus entered the panel on open
+  for (const key of ['Tab', 'Shift+Tab']) {
+    await page.keyboard.press(key)
+    await expect(menuNone).toBeFocused() // containment: never leaves the panel
+  }
+  await page.keyboard.press('Escape')
+  await expect(menuNone).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (C03, Codex code audit 2026-10-05) ChipGroup's arrow traversal included
+// disabled chips and called onChange before focus, so an arrow toward a
+// disabled neighbor SELECTED it while focus could not move onto it. The
+// disabled member is excluded from traversal AND from the initial tab-stop
+// selection; selection and focus are asserted TOGETHER.
+test('chip group: a disabled member is excluded from traversal and the initial tab stop (C03)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await bootGallery(page)
+  const group = cell(page, 'chip-group.radiogroup-disabled')
+  const radios = group.locator('[data-chip-value]')
+  await expect(radios).toHaveCount(3)
+  // The FIRST member is disabled: the roving tab stop is the first AVAILABLE
+  // chip, never the disabled one.
+  await expect(radios.nth(0)).toBeDisabled()
+  expect(await radios.nth(0).evaluate((element) => element.tabIndex)).toBe(-1)
+  expect(await radios.nth(1).evaluate((element) => element.tabIndex)).toBe(0)
+  expect(await radios.nth(2).evaluate((element) => element.tabIndex)).toBe(-1)
+  // ArrowLeft from a SELECTED enabled radio toward the disabled neighbor:
+  // the walk SKIPS it — selection AND focus land on audio together, and the
+  // disabled chip is left with neither. (Selecting image first: with
+  // nothing selected the arrows ENTER at the first available member — the
+  // native radiogroup idiom — which is not the traversal under test.)
+  await radios.nth(1).click()
+  await expect(group.locator('[data-gallery-chip-value]')).toHaveAttribute('data-gallery-chip-value', 'image')
+  await group.locator('[role="radiogroup"]').press('ArrowLeft')
+  await expect(group.locator('[data-gallery-chip-value]')).toHaveAttribute('data-gallery-chip-value', 'audio')
+  await expect(radios.nth(2)).toBeFocused()
+  await expect(radios.nth(0)).not.toBeFocused()
+  // ArrowRight from audio wraps to image — video is never selected.
+  await group.locator('[role="radiogroup"]').press('ArrowRight')
+  await expect(group.locator('[data-gallery-chip-value]')).toHaveAttribute('data-gallery-chip-value', 'image')
+  await expect(radios.nth(1)).toBeFocused()
+  // A traversal pass never leaves the disabled member checked.
+  await group.locator('[role="radiogroup"]').press('ArrowLeft')
+  await expect(radios.nth(0)).toHaveAttribute('aria-checked', 'false')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (V01, Codex visual audit 2026-10-05) Paint order must agree with
+// registered ownership: a menu mounted INSIDE a modal dialog registered
+// topmost but painted UNDER the parent (.canvas-menu-backdrop z-60 <
+// --z-modal 70) — the parent's confirm-dialog swallowed the menu's hit
+// area. toBeVisible() does NOT prove unobscured: the assertion is REAL hit
+// testing (elementFromPoint at the row's center) plus a real coordinate
+// click landing in the menu's own handler, and the paint tiers compared.
+test('layers: a menu over a modal dialog paints above it — hit testing reaches the menu rows (V01)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await bootGallery(page, '&probe=layers')
+  const probe = () => page.evaluate(() => (window as unknown as { __studioLayerProbe?: { layerIds(): string[] } }).__studioLayerProbe?.layerIds() ?? [])
+  const menuStack = cell(page, 'layers.popover-over-dialog')
+  await menuStack.locator('[data-gallery-open-stack]').click()
+  const lowerAsk = page.locator('.confirm-dialog').filter({ hasText: 'Merge the reference lanes?' })
+  await expect(lowerAsk).toBeVisible()
+  await page.locator('[data-gallery-open-upper]').click()
+  const menu = page.locator('[data-gallery-stack-menu]')
+  await expect(menu).toBeVisible()
+  expect(await probe()).toEqual(expect.arrayContaining(['gallery-layers-lower', 'gallery-layers-menu']))
+  // REAL hit testing at the row's center: the topmost element there must be
+  // the menu's own row (Codex's proof shape — the parent's confirm-dialog
+  // used to take the hit).
+  const row = menu.locator('.gallery-menu-row').first()
+  const hit = await row.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    const target = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    if (target === element || (target instanceof Node && element.contains(target))) return 'menu'
+    return target ? `${target.tagName}.${String(target.className).slice(0, 40)}` : 'nothing'
+  })
+  expect(hit, 'elementFromPoint at the row center resolves INTO the menu, not the parent dialog').toBe('menu')
+  // The paint tiers: the menu's backdrop sits above the dialog's --z-modal
+  // band (while consent stays the contract's topmost tier).
+  const tiers = await page.evaluate(() => {
+    const backdrop = document.querySelector('.canvas-menu-backdrop')
+    const dialog = document.querySelector('.modal-backdrop')
+    if (!(backdrop instanceof HTMLElement) || !(dialog instanceof HTMLElement)) return null
+    return { menu: getComputedStyle(backdrop).zIndex, dialog: getComputedStyle(dialog).zIndex, consent: getComputedStyle(document.documentElement).getPropertyValue('--z-consent').trim() }
+  })
+  expect(tiers, 'both paint surfaces exist').not.toBeNull()
+  expect(Number(tiers!.menu), `the menu backdrop (${tiers!.menu}) paints above the dialog (${tiers!.dialog})`).toBeGreaterThan(Number(tiers!.dialog))
+  expect(Number(tiers!.menu), `the menu backdrop (${tiers!.menu}) stays under the consent tier (${tiers!.consent})`).toBeLessThan(Number(tiers!.consent))
+  // CLICKABILITY: a real coordinate click on the row lands in the MENU's own
+  // handler — the menu closes through its onClose while the dialog survives.
+  const rowBox = await row.boundingBox()
+  expect(rowBox).not.toBeNull()
+  await page.mouse.click(rowBox!.x + rowBox!.width / 2, rowBox!.y + rowBox!.height / 2)
+  await expect(menu).toHaveCount(0)
+  await expect(lowerAsk).toBeVisible()
+  // The visual evidence of the open state (the fix round's re-capture).
+  await page.locator('[data-gallery-open-upper]').click()
+  await expect(page.locator('[data-gallery-stack-menu]')).toBeVisible()
+  await page.screenshot({ path: 'test-results/codex-fix-round-2026-10-05/v01-menu-over-dialog.png' })
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Escape')
+  await expect(lowerAsk).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (V02, Codex visual audit 2026-10-05) The radio exhibit omitted its surface
+// geometry (browser-default rectangles) and the video chip was permanently
+// accent-toned — two choices looked highlighted. The geometry class rides
+// every radio, peers share ONE rest tone, and selection reads against it;
+// two different selections are captured.
+test('radio chips carry the gallery geometry and a consistent rest tone — selection reads (V02)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await bootGallery(page)
+  const group = cell(page, 'chip-group.radiogroup-none')
+  const radios = group.locator('[data-chip-value]')
+  await expect(radios).toHaveCount(3)
+  // The displayed SHAPE: the gallery-chip pill geometry on every radio (the
+  // browser-default rectangle is the defect).
+  for (let index = 0; index < 3; index += 1) {
+    const shape = await radios.nth(index).evaluate((element) => ({ radius: getComputedStyle(element).borderRadius, padding: getComputedStyle(element).paddingTop }))
+    expect(shape.radius, `radio ${index} renders the gallery-chip pill radius`).toBe('999px')
+    expect(shape.padding, `radio ${index} renders the gallery-chip vertical padding`).toBe('5px')
+  }
+  // ONE consistent rest tone: no peer is pre-highlighted with nothing chosen.
+  const restBorders: string[] = []
+  for (let index = 0; index < 3; index += 1) restBorders.push(await radios.nth(index).evaluate((element) => getComputedStyle(element).borderTopColor))
+  expect(new Set(restBorders).size, 'all three peers paint the same resting border').toBe(1)
+  // Selection reads: the chosen chip's paint leaves that rest tone…
+  await radios.nth(1).click() // image
+  await expect(radios.nth(1)).toHaveAttribute('aria-checked', 'true')
+  expect(await radios.nth(1).evaluate((element) => getComputedStyle(element).borderTopColor)).not.toBe(restBorders[0])
+  expect(await radios.nth(0).evaluate((element) => getComputedStyle(element).borderTopColor), 'the unselected peers keep the rest tone').toBe(restBorders[0])
+  await page.screenshot({ path: 'test-results/codex-fix-round-2026-10-05/v02-chip-group-image-selected.png' })
+  // …and a DIFFERENT selection reads the same way (exclusivity, visual).
+  await radios.nth(2).click() // audio
+  await expect(radios.nth(2)).toHaveAttribute('aria-checked', 'true')
+  await expect(radios.nth(1)).toHaveAttribute('aria-checked', 'false')
+  expect(await radios.nth(2).evaluate((element) => getComputedStyle(element).borderTopColor)).not.toBe(restBorders[0])
+  await page.screenshot({ path: 'test-results/codex-fix-round-2026-10-05/v02-chip-group-audio-selected.png' })
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })

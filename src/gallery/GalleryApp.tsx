@@ -77,13 +77,13 @@ function ChipCell({ cell }: { cell: GalleryRenderCell }) {
   )
 }
 
-function ChipGroupRadios({ initial }: { initial: string | null }) {
+function ChipGroupRadios({ initial, disabledFirst = false }: { initial: string | null; disabledFirst?: boolean }) {
   const [value, setValue] = useState<string | null>(initial)
   return (
     <ChipGroup exclusive value={value} onChange={(next) => setValue(String(next))} aria-label="Media type" className="gallery-chip-row" data-gallery-chip-value={value ?? 'none'}>
-      <Chip id="video" variant="radio" tone="accent">video</Chip>
-      <Chip id="image" variant="radio">image</Chip>
-      <Chip id="audio" variant="radio">audio</Chip>
+      <Chip id="video" variant="radio" className="gallery-chip" disabled={disabledFirst}>video</Chip>
+      <Chip id="image" variant="radio" className="gallery-chip">image</Chip>
+      <Chip id="audio" variant="radio" className="gallery-chip">audio</Chip>
     </ChipGroup>
   )
 }
@@ -101,6 +101,7 @@ function ChipGroupCell({ cell }: { cell: GalleryRenderCell }) {
   const shape = cell.axes.shape
   if (shape === 'radiogroup-none') return <ChipGroupRadios initial={null} />
   if (shape === 'radiogroup-selected') return <ChipGroupRadios initial="image" />
+  if (shape === 'radiogroup-disabled') return <ChipGroupRadios initial={null} disabledFirst />
   return <ChipToggleCell pressed={shape === 'toggle-pressed'} />
 }
 
@@ -276,9 +277,14 @@ function SelectCell({ cell }: { cell: GalleryRenderCell }) {
   )
 }
 
-function PopoverCell() {
+function PopoverCell({ rows }: { rows: string }) {
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState<{ left: number; top: number }>({ left: 120, top: 120 })
+  // The row-count axis (C02): 'four' is the canvas shape (3 enabled + the
+  // paused lane); 'one'/'none' are the Tab-cycle containment edges — exactly
+  // one enabled row, and none at all.
+  const enabled = rows === 'one' ? [true, false, false] : rows === 'none' ? [false, false, false] : [true, true, false, true]
+  const labels = ['video · extend the chain', 'image · last frame', 'audio · lane paused', 'fork the substrate']
   return (
     <div className="gallery-stack">
       <Button
@@ -303,12 +309,20 @@ function PopoverCell() {
         role="menu"
         aria-label="Gallery demo menu"
         data-gallery-menu
+        data-gallery-menu-rows={rows}
       >
         <header><strong>Produce into — extensions</strong></header>
-        <button type="button" className="gallery-menu-row" onClick={() => setOpen(false)}>video · extend the chain</button>
-        <button type="button" className="gallery-menu-row" onClick={() => setOpen(false)}>image · last frame</button>
-        <button type="button" className="gallery-menu-row" disabled>audio · lane paused</button>
-        <button type="button" className="gallery-menu-row" onClick={() => setOpen(false)}>fork the substrate</button>
+        {enabled.map((rowEnabled, index) => (
+          <button
+            key={labels[index]}
+            type="button"
+            className="gallery-menu-row"
+            disabled={!rowEnabled}
+            onClick={() => { if (rowEnabled) setOpen(false) }}
+          >
+            {labels[index]}
+          </button>
+        ))}
       </PopoverMenu>
     </div>
   )
@@ -483,7 +497,7 @@ const SECTION_RENDERERS: Record<string, (cell: GalleryRenderCell) => ReactNode> 
   'effective-row': (cell) => <EffectiveRowCell cell={cell} />,
   'field': (cell) => <FieldCell cell={cell} />,
   'select': (cell) => <SelectCell cell={cell} />,
-  'popover': () => <PopoverCell />,
+  'popover': (cell) => <PopoverCell rows={cell.axes.rows} />,
   'dock': (cell) => <DockArenaCell band={cell.axes.band as 'solo' | 'stacked-pair'} />,
   'dialogs': (cell) => <DialogCell cell={cell} />,
   'layers': (cell) => <LayerStackCell cell={cell} />,
