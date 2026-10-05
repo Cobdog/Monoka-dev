@@ -355,3 +355,6 @@ Every §0-pattern grep, executed and recorded. **Retired → ZERO:** §1 confirm
 ---
 
 *Re-run contract (task 24): execute every §0-pattern grep at the round's head — retired → ZERO, retained → PRESENT, tests → green; then `grep -rn "window.confirm\|window.prompt" src/` → zero; then `pnpm gate` and the judged visual pass per plan task 24. **Executed 2026-10-05 — see §15.***
+
+## §16 — whole-branch review residuals (2026-10-05, the round's closing pass)
+The §0.3 selection contract is delivered as mechanism + the five enumerated sites; the INTERACTIVE CHIP LONG TAIL (~10 functionally-exclusive/toggle groups outside the §5 census's class-row scope) still renders visual-only chip--selected with no aria state: DatasetsApp's kind/caption/shape/trainer filters, CropEditor's aspect picker, OpEditor's brush paint/erase spans, Launcher's video/image pair, TimelineOverlay's gap options + plan char/location toggles. R2-04 governance kept them out of the round; this annotation makes the tail VISIBLE (the T18/T20/T21 residual precedent). Migrate to Chip/ChipGroup or aria-pressed at next touch; until then no regression (pre-existing silence).
