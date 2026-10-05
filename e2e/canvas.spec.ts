@@ -2009,12 +2009,15 @@ test('the kbd recipe reaches every kbd — the bare BottomBar keys included (§1
   })
   expect(Number.parseFloat(bareStyle.borderWidth)).toBeGreaterThanOrEqual(1)
   expect(bareStyle.background).not.toBe('rgba(0, 0, 0, 0)')
-  // The styled per-surface consumer keeps its geometry (the index button's
-  // key at its own font-size tier) while its tone rides the recipe.
+  // The styled per-surface consumer keeps its geometry (the titlebar's ⌘K
+  // key at its own font-size tier) while its tone rides the recipe. Scoped
+  // by the button's own hook — the `.canvas-index-button` CLASS is shared
+  // by all five titlebar buttons (three carry kbd children).
   await page.keyboard.press('ControlOrMeta+k')
-  const indexKey = page.locator('.canvas-index-button kbd')
+  const indexKey = page.locator('[data-canvas-index-button] kbd')
   await expect(indexKey).toBeVisible()
-  await expect(indexKey).toHaveCSS('font-size', await indexKey.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--text-2xs').trim() + 'px'))
+  const text2xs = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--text-2xs').trim())
+  await expect(indexKey).toHaveCSS('font-size', text2xs)
   await page.keyboard.press('Escape')
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })

@@ -938,7 +938,9 @@ test('refusal: reason + satisfaction path at the image-lane gate (task 21)', asy
     // Switch to the T=1 lane through the app's own sub-rail (the packet
     // family IS available under this engine — the refusal is lane-scoped).
     await page.locator('[data-iw-family-button="h3img.generate.t1"]').click()
-    const refusal = page.locator('[data-iw-root]').locator('[data-refusal]')
+    // Scoped to the CONTROLS aside: the refine affordance carries its own
+    // Refusal since task 24 (two live on the surface in this state).
+    const refusal = page.locator('aside.iw-controls').locator('[data-refusal]')
     await expect(refusal).toBeVisible({ timeout: 15_000 })
     // WHY, plainly: the family names itself, the reason names the missing
     // pieces verbatim (the detection's own strings — models AND nodes).
@@ -956,7 +958,7 @@ test('refusal: reason + satisfaction path at the image-lane gate (task 21)', asy
 
     // The escape hatch: a REAL button whose action opens the Library (the
     // R-19 remedy — the missing weights and packs are fetchable there).
-    const satisfy = page.locator('[data-refusal-satisfy]')
+    const satisfy = refusal.locator('[data-refusal-satisfy]')
     await expect(satisfy).toBeVisible()
     await expect(satisfy).toContainText('Get the missing pieces')
     await satisfy.click()
@@ -966,9 +968,12 @@ test('refusal: reason + satisfaction path at the image-lane gate (task 21)', asy
 
     // Satisfaction RESOLVES the gate: the lane's own machinery select swaps
     // to Fizgig (served by this engine), the detection recomputes, the
-    // refusal unmounts, and Generate enables — the no-dead-end contract.
+    // GATE's refusal unmounts, and Generate enables — the no-dead-end
+    // contract. (The refine affordance's own Refusal stays — its engines
+    // remain unserved by this fake listing; each refusal states its own
+    // gate.)
     await page.locator('[data-iw-machinery-value]').selectOption('fizgig')
-    await expect(page.locator('[data-refusal]')).toHaveCount(0, { timeout: 15_000 })
+    await expect(page.locator('aside.iw-controls').locator('[data-refusal]')).toHaveCount(0, { timeout: 15_000 })
     await expect(page.locator('[data-iw-generate]')).toBeEnabled()
 
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
