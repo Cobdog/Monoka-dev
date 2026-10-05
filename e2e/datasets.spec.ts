@@ -333,15 +333,20 @@ test('the crop editor scroll-resize never strands below the grid floor (the 256�
     await stage.hover()
     await page.mouse.wheel(0, 200)
   }
+  // (dispatch B, k2q0n9s — settle-or-poll) The crop resize rides React
+  // state (setDraft in CropEditor), so the readout re-renders asynchronously
+  // after the last wheel — the retired instant snapshot could read the
+  // pre-tick height under load. The polls admit only that re-render window;
+  // a deadlock (the 256 fixed point this test kills) still fails on the
+  // timeout. Same comparisons, bounded.
+  await expect.poll(readoutHeight, { timeout: 3_000 }).toBeLessThan(plateau)
   const shrunkFurther = await readoutHeight()
-  expect(shrunkFurther).toBeLessThan(plateau)
   // Growth un-strands too: scrolling back up must grow it again.
   for (let index = 0; index < 3; index += 1) {
     await stage.hover()
     await page.mouse.wheel(0, -200)
   }
-  const grown = await readoutHeight()
-  expect(grown).toBeGreaterThan(shrunkFurther)
+  await expect.poll(readoutHeight, { timeout: 3_000 }).toBeGreaterThan(shrunkFurther)
 })
 
 // (A09, Codex audit 2026-10-02 — standing C2/C10) The crop editor was a

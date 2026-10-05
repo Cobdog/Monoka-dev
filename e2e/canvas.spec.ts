@@ -351,7 +351,18 @@ test('the properties panel edits per-chain settings and the identity payload', a
     setter.call(element, '0.7')
     element.dispatchEvent(new Event('input', { bubbles: true }))
   })
-  await page.waitForTimeout(1_000) // debounced commits land
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition is the
+  // debounced settings commit persisting the edits; the poll replaces the
+  // fixed 1 s sleep (the load-shaped flake class — a slow commit outran
+  // it). The SUBJECT TEXT is the marker — the identity payload's strength
+  // default can pre-match the dial, so only the typed text is distinct
+  // before/after; every assertion below then reads the settled document,
+  // verbatim.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    const chain = document.chains.find((entry) => entry.kind === 'generation')
+    return chain?.identity?.subjectText ?? null
+  }, { timeout: 5_000 }).toBe('the drummer, black coat, case in left hand')
 
   const document = await activeDocument(page)
   const chain = document.chains.find((entry) => entry.kind === 'generation')!
@@ -438,7 +449,13 @@ test('the structured/freeform toggle round-trips without losing text; box edits 
   await expect(editor.locator('[data-structured-flow-warning]').filter({ hasText: `outside the ${jobDuration}s clip` })).toBeVisible()
   await expect(editor.locator('[data-structured-flow-warning]').filter({ hasText: 'strictly increase' })).toBeVisible()
 
-  await page.waitForTimeout(1_100) // the debounced settings commit lands
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the debounced
+  // settings commit lands (promptMode persists); the poll replaces the fixed
+  // 1.1 s sleep. The full read below then samples the settled document.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.kind === 'generation')?.settings.promptMode ?? null
+  }, { timeout: 5_000 }).toBe('structured')
   const document = await activeDocument(page)
   const chain = document.chains.find((entry) => entry.kind === 'generation')!
   expect(chain.settings.promptMode).toBe('structured')
@@ -484,7 +501,12 @@ test('the structured/freeform toggle round-trips without losing text; box edits 
     await expect(panel.locator('[data-canvas-section="identity"]')).toBeVisible({ timeout: 10_000 })
   }
   await panel.locator('[data-canvas-identity-subject]').fill('the drummer, black coat, case in left hand')
-  await page.waitForTimeout(1_200) // the identity commit + document reload land
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the identity
+  // commit + document reload landed client-side — observable exactly as the
+  // pin select offering the identity option (StructuredPromptEditor renders
+  // it only for a non-empty pinned identity). The poll replaces the fixed
+  // 1.2 s sleep; a commit that never lands fails on the timeout.
+  await expect(editor.locator('[data-structured-subject-pin] option[value="identity"]')).toBeAttached({ timeout: 5_000 })
   await editor.locator('[data-structured-subject-pin]').selectOption('identity')
   await expect(editor.locator('[data-structured-subject]').first()).toBeVisible()
   await expect(editor.locator('[data-structured-subject-appearance]').first()).toHaveValue('the drummer, black coat, case in left hand')
@@ -525,7 +547,14 @@ test('the prompt library inserts a technique as a box-set in structured mode', a
   // lands as a flow beat; the existing concept stays (append, never replace).
   await expect(editor.locator('[data-structured-input="concept"]')).toHaveValue('library box-set probe')
   await expect(editor.locator('[data-structured-flow-text]').first()).toHaveValue(/style and opening composition/)
-  await page.waitForTimeout(1_100)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the box-set
+  // debounce persisted the parsed draft (the flow beat is its marker); the
+  // poll replaces the fixed 1.1 s sleep, then the full read samples the
+  // settled document.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.kind === 'generation')?.settings.prompt ?? ''
+  }, { timeout: 5_000 }).toContain('action beat')
   const document = await activeDocument(page)
   const chain = document.chains.find((entry) => entry.kind === 'generation')!
   expect(chain.settings.promptMode).toBe('structured')
@@ -579,7 +608,12 @@ test('typed-hole menus open at the endpoints and fork creates chain + edge', asy
   // With a source SELECTED, the consume menu offers the input roles: set the
   // media object as the fork chain's first frame (L4 wiring).
   await page.locator('[data-canvas-tile]').first().click()
-  await page.waitForTimeout(300)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the media
+  // selection registered — the bar's own context flips to 'media' (BottomBar
+  // derives it from the selection). The auto-retry replaces the fixed
+  // 300 ms sleep; clicking the endpoint before selection opens the wrong
+  // menu (the "pick a source" arm above).
+  await expect(page.locator('[data-canvas-bottombar]')).toHaveAttribute('data-canvas-bar-context', 'media')
   await page.locator('[data-canvas-tile]').nth(1).locator('[data-canvas-endpoint="head"]').click()
   await expect(page.locator('[data-canvas-endpoint-menu="consume"] [data-canvas-menu-row="consume:first-frame"]')).toBeVisible()
   await page.locator('[data-canvas-endpoint-menu="consume"] [data-canvas-menu-row="consume:first-frame"]').click()
@@ -1116,7 +1150,13 @@ test('AR-first resolution picking: ratio drives the list, optimal marked, free s
   await freeWidth.fill('1000')
   await freeHeight.click() // blur commits the snap
   await expect(freeWidth).toHaveValue('992')
-  await page.waitForTimeout(1_000) // the debounced commit lands
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the debounced
+  // commit persisted the snapped resolution; the poll replaces the fixed
+  // 1 s sleep, then the verbatim read samples the settled document.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.kind === 'generation')?.settings.resolution ?? null
+  }, { timeout: 5_000 }).toBe('992x768')
 
   const document = await activeDocument(page)
   const chain = document.chains.find((entry) => entry.kind === 'generation')!
@@ -1141,7 +1181,23 @@ test('session + camera autosave restore through the documents API', async ({ pag
   await page.mouse.down()
   await page.mouse.move(box!.x + 500, box!.y + 350, { steps: 18 })
   await page.mouse.up()
-  await page.waitForTimeout(1_100) // persist debounce is 600 ms
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the 600 ms
+  // camera-persist debounce wrote the project blob (a camera with a scale
+  // above 0 appears). The poll replaces the fixed 1.1 s sleep; the verbatim
+  // reads below sample the settled blob.
+  const savedCamera = async () => {
+    const session = await page.evaluate(async () => {
+      const response = await fetch('/api/lan/documents/session')
+      return (await response.json()).session as { activeProject: string | null; openProjects: string[] }
+    })
+    if (!session.activeProject) return null
+    const project = await page.evaluate(async (id) => {
+      const response = await fetch(`/api/lan/documents/project?id=${encodeURIComponent(id)}`)
+      return (await response.json()).project as { camera: { camera?: { x: number; y: number; k: number } } }
+    }, session.activeProject)
+    return project.camera.camera ?? null
+  }
+  await expect.poll(savedCamera, { timeout: 5_000 }).toBeTruthy()
 
   // The persisted blob carries the camera (the documents API is the store).
   const session = await page.evaluate(async () => {
@@ -1162,7 +1218,20 @@ test('session + camera autosave restore through the documents API', async ({ pag
   await page.reload()
   await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
   await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 10_000 })
-  await page.waitForTimeout(400)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the restored
+  // camera APPLIED to the world transform — phase=ready and the tile being
+  // visible do NOT settle it (the camera applies after the document load).
+  // The poll replaces the fixed 400 ms sleep; the verbatim match assertions
+  // below still pin the exact restored values.
+  const restoredTransform = async () => {
+    const restored = await currentTransform(page)
+    const match = /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(restored)
+    return match ? { x: Number(match[1]), y: Number(match[2]), k: Number(match[3]) } : null
+  }
+  await expect.poll(async () => {
+    const applied = await restoredTransform()
+    return applied !== null && Math.abs(applied.k - saved!.k) < 0.02
+  }, { timeout: 5_000 }).toBe(true)
   const restored = await currentTransform(page)
   const match = /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(restored)
   expect(match).not.toBeNull()
@@ -1190,7 +1259,13 @@ test('op modal: add/edit/reorder/undo/bake with a LIVE tile preview (§5.1, L3+L
   await dropPng(page, 'op-stack-plate.png')
   const tile = page.locator('[data-canvas-tile]').first()
   await expect(tile).toBeVisible({ timeout: 10_000 })
-  await page.waitForTimeout(600)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the drop's
+  // decode produced the media chain's output take — what the gestures below
+  // consume. The poll replaces the fixed 600 ms sleep.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((chain) => chain.kind === 'media')?.outputs[0]?.takes.length ?? 0
+  }, { timeout: 10_000 }).toBeGreaterThan(0)
 
   // §7: Enter on a media selection opens the op modal (the ONLY editor — L8).
   await tile.click()
@@ -1218,8 +1293,13 @@ test('op modal: add/edit/reorder/undo/bake with a LIVE tile preview (§5.1, L3+L
     setter.call(element, '0.6') // the offset slider: 0 = neutral, +0.6 → brightness 1.6
     element.dispatchEvent(new Event('input', { bubbles: true }))
   })
-  await page.waitForTimeout(1_100) // edit debounce + document reload
-  document = await activeDocument(page)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the op-edit
+  // debounce persisted the brightness change; the poll replaces the fixed
+  // 1.1 s sleep. The DOM filter read below rides the same client reload.
+  await expect.poll(async () => {
+    document = await activeDocument(page)
+    return document.chains[0]!.ops.find((op) => op.kind === 'adjust')?.settings.brightness ?? null
+  }, { timeout: 5_000 }).toBeGreaterThan(1.4)
   const adjust = document.chains[0]!.ops.find((op) => op.kind === 'adjust')!
   expect(adjust.settings.brightness).toBeGreaterThan(1.4)
   const tileFilter = await tile.locator('img.canvas-tile-poster').first().evaluate((element) => element.style.filter)
@@ -1231,7 +1311,13 @@ test('op modal: add/edit/reorder/undo/bake with a LIVE tile preview (§5.1, L3+L
   await modal.locator('[data-canvas-op-add="rotate"]').click()
   await expect(modal.locator('[data-canvas-op-stack] .canvas-op-row')).toHaveCount(3, { timeout: 10_000 })
   await modal.locator('.canvas-op-row[data-op-kind="rotate"] [data-canvas-op-up]').click()
-  await page.waitForTimeout(600)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the reorder
+  // persisted (rotate above adjust); the poll replaces the fixed 600 ms
+  // sleep, then the verbatim order assertion reads the settled document.
+  await expect.poll(async () => {
+    document = await activeDocument(page)
+    return document.chains[0]!.ops.map((op) => op.kind).join('|')
+  }, { timeout: 5_000 }).toBe('crop|rotate|adjust')
   document = await activeDocument(page)
   expect(document.chains[0]!.ops.map((op) => op.kind)).toEqual(['crop', 'rotate', 'adjust'])
 
@@ -1265,7 +1351,14 @@ test('fork semantics complete: early take → canonical switch → stale propaga
   await dropPng(page, 'fork-semantics.png')
   const source = page.locator('[data-canvas-tile]').first()
   await expect(source).toBeVisible({ timeout: 10_000 })
-  await page.waitForTimeout(600)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the drop's
+  // decode produced the media chain's output take — exactly what the fork
+  // gesture's own guard consumes (ForkMenu no-ops without chainOutputId).
+  // The poll replaces the fixed 600 ms sleep.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((chain) => chain.kind === 'media')?.outputs[0]?.takes.length ?? 0
+  }, { timeout: 10_000 }).toBeGreaterThan(0)
 
   // Fork decoded (B gesture) — the fork chain consumes the source output.
   await source.click()
@@ -1300,11 +1393,20 @@ test('fork semantics complete: early take → canonical switch → stale propaga
   const box = await viewport.boundingBox()
   await page.mouse.move(box!.x + 700, box!.y + 400)
   for (let index = 0; index < 4; index += 1) await page.mouse.wheel(0, -140)
-  await page.waitForTimeout(400)
+  // (dispatch B, k2q0n9s) The retired 400 ms sleep was subsumed by the
+  // auto-retry: the strip's visibility IS the zoom-band condition.
   const prior = page.locator('[data-canvas-take-switch]').first()
   await expect(prior).toBeVisible({ timeout: 10_000 })
   await prior.click()
-  await page.waitForTimeout(800)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the canonical
+  // pointer switched to the original take (distinct before/after); the stale
+  // marking rides the same document write. The poll replaces the fixed
+  // 800 ms sleep; a switch that never lands fails on the timeout.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    const media = document.chains.find((chain) => chain.kind === 'media')!
+    return media.outputs[0]!.takes.find((take) => take.supersededBy === null)?.id ?? null
+  }, { timeout: 5_000 }).toBe(firstTakeId)
 
   // The pointer switched to the ORIGINAL take (F5/takes: nothing deleted) AND
   // the fork chain went stale — an upstream change marks downstream
@@ -1337,11 +1439,25 @@ test('fork semantics complete: early take → canonical switch → stale propaga
   // again — the locked chain stays PRISTINE.
   await page.request.post('/api/lan/documents/chains/update', { data: { id: forkChain.id, stale: false } })
   await page.locator('[data-canvas-bar-lock]').click()
-  await page.waitForTimeout(700)
+  // (dispatch B, k2q0n9s — settle-or-poll) Three named conditions replace
+  // three sleeps: the lock's debounced commit (lockState flips to locked),
+  // the source selection registering (the bar context), and the canonical
+  // pointer switching back off the original take (distinct before/after) —
+  // the write the locked-stays-pristine assertions below read.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((chain) => chain.id === forkChain.id)?.lockState ?? null
+  }, { timeout: 5_000 }).toBe('locked')
   await source.click()
-  await page.waitForTimeout(300)
+  // The take strip only renders on the SELECTED media tile — its visibility
+  // IS the selection-registered condition (auto-retried).
+  await expect(page.locator('[data-canvas-take-switch]').first()).toBeVisible({ timeout: 5_000 })
   await page.locator('[data-canvas-take-switch]').first().click()
-  await page.waitForTimeout(800)
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    const media = document.chains.find((chain) => chain.kind === 'media')!
+    return media.outputs[0]!.takes.find((take) => take.supersededBy === null)?.id ?? null
+  }, { timeout: 5_000 }).not.toBe(firstTakeId)
   const afterLock = await activeDocument(page)
   expect(afterLock.chains.find((chain) => chain.id === forkChain.id)!.stale).toBe(false)
   expect(afterLock.chains.find((chain) => chain.id === forkChain.id)!.lockState).toBe('locked')
@@ -1590,7 +1706,13 @@ test('the pose rig docks as a canvas panel and exports a control track (§5.2)',
   await dropPng(page, 'pose-target.png')
   const tile = page.locator('[data-canvas-tile]').first()
   await expect(tile).toBeVisible({ timeout: 10_000 })
-  await page.waitForTimeout(600)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the drop's
+  // decode produced the media chain's output take — what the gestures below
+  // consume. The poll replaces the fixed 600 ms sleep.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((chain) => chain.kind === 'media')?.outputs[0]?.takes.length ?? 0
+  }, { timeout: 10_000 }).toBeGreaterThan(0)
 
   // The typed-hole consume menu carries the control-inputs group.
   await tile.locator('[data-canvas-endpoint="head"]').click()
@@ -1708,7 +1830,8 @@ test('dock stacking: the pose rig dock raises on open and on grab — newest gra
   await expect(tile).toBeVisible({ timeout: 10_000 })
   const inspector = page.locator('[data-canvas-inspector]')
   await expect(inspector).toBeVisible()
-  await page.waitForTimeout(600)
+  // (dispatch B, k2q0n9s) The retired 600 ms sleep was subsumed by the
+  // auto-retries below — the menu and its rows settle on their own bound.
 
   // Open through the real entry point: the typed-hole consume menu.
   await tile.locator('[data-canvas-endpoint="head"]').click()
@@ -2191,7 +2314,13 @@ test('studio dock shell: resize per policy — the common gate refuses left; the
   await dropPng(page, 'pose-shell-resize-target.png')
   const tile = page.locator('[data-canvas-tile]').first()
   await expect(tile).toBeVisible({ timeout: 10_000 })
-  await page.waitForTimeout(600)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the drop's
+  // decode produced the media chain's output take — what the gestures below
+  // consume. The poll replaces the fixed 600 ms sleep.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((chain) => chain.kind === 'media')?.outputs[0]?.takes.length ?? 0
+  }, { timeout: 10_000 }).toBeGreaterThan(0)
   await tile.locator('[data-canvas-endpoint="head"]').click()
   const menu = page.locator('[data-canvas-endpoint-menu="consume"]')
   await expect(menu).toBeVisible()
@@ -2351,7 +2480,13 @@ test('latent-fork rendering: the Motion-Context graph pins the source clip (prob
   fs.writeFileSync(latentFile, `e2e-latent-substrate-${seeded.chainId}`)
   const landed = await page.evaluate(() => (window as unknown as { __canvasScenario(name: string): { ok: boolean; chainId?: string } }).__canvasScenario('complete-mock-latent'))
   expect(landed.ok).toBe(true)
-  await page.waitForTimeout(600)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the mock
+  // completion's take carries the registered latent path; the poll replaces
+  // the fixed 600 ms sleep, then the verbatim reads sample the settled doc.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((chain) => chain.id === landed.chainId)?.outputs[0]?.takes[0]?.latentPath ?? null
+  }, { timeout: 5_000 }).toMatch(/^canvas-blobs\//)
   let document = await activeDocument(page)
   const seedChain = document.chains.find((chain) => chain.id === landed.chainId)!
   const landedTake = seedChain.outputs[0]!.takes[0]!
@@ -2418,7 +2553,13 @@ test('audio jobs relink after a mid-render reload through the canvas manifest (M
   expect(seeded.ok).toBe(true)
   // Persist the queued mock job before the reload (the debounced flush rides
   // pagehide, but pin it deterministically for the test).
-  await page.waitForTimeout(1_400)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the seeded
+  // job is server-visible (the jobs API lists it) — the poll replaces the
+  // fixed 1.4 s sleep; a flush that never lands fails on the timeout.
+  await expect.poll(async () => {
+    const persisted = (await (await page.request.get('/api/lan/jobs')).json()) as { jobs?: Array<{ id: string }> }
+    return (persisted.jobs ?? []).some((job) => job.id === seeded.jobId)
+  }, { timeout: 5_000 }).toBe(true)
   // RELOAD mid-render: the audio job is queued. The relink after reload
   // reads manifest.canvas.chainId — which the fixed audio submit cores
   // attach from job creation. Pre-fix there was no manifest at all.
@@ -2429,7 +2570,15 @@ test('audio jobs relink after a mid-render reload through the canvas manifest (M
   // Complete it (local media source) — the take lands on the AUDIO chain.
   const completed = await page.evaluate(() => (window as unknown as { __canvasScenario(name: string): { ok: boolean; reason?: string; jobId?: string; source?: string } }).__canvasScenario('complete-mock'))
   expect(completed.ok).toBe(true)
-  await page.waitForTimeout(700)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the mock
+  // completion's take landed on the audio chain (a canonical take exists);
+  // the poll replaces the fixed 700 ms sleep, then the verbatim reads
+  // sample the settled document.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    const audioChain = document.chains.find((chain) => chain.id === seeded.chainId)
+    return audioChain?.outputs[0]?.takes.some((take) => take.supersededBy === null) ?? false
+  }, { timeout: 5_000 }).toBe(true)
   const document = await activeDocument(page)
   const audioChain = document.chains.find((chain) => chain.id === seeded.chainId)
   expect(audioChain).toBeTruthy()
@@ -2470,10 +2619,16 @@ test('a job seeded onto a >100-job home persists across the reload — the windo
     expect(seeded.ok).toBe(true)
     // Pin the persistence itself, not just its downstream symptom: the debounced
     // flush (1 s trailing) must have landed the seeded job server-side.
-    await page.waitForTimeout(1_400)
-    const persisted = (await (await page.request.get('/api/lan/jobs')).json()) as { jobs?: Array<{ id: string }> }
-    const persistedIds = new Set((persisted.jobs ?? []).map((job) => job.id))
-    expect(persistedIds.has(seeded.jobId!), 'the NEWEST job must sit inside the persisted 100-job window').toBe(true)
+    // (dispatch B, k2q0n9s — settle-or-poll) The named condition is the
+    // comment's own claim — the seeded job is server-visible; the poll
+    // replaces the fixed 1.4 s sleep and the instant re-read.
+    const jobPersisted = async () => {
+      const persisted = (await (await page.request.get('/api/lan/jobs')).json()) as { jobs?: Array<{ id: string }> }
+      const persistedIds = new Set((persisted.jobs ?? []).map((job) => job.id))
+      return persistedIds.has(seeded.jobId!)
+    }
+    await expect.poll(jobPersisted, { timeout: 5_000 }).toBe(true)
+    expect(await jobPersisted(), 'the NEWEST job must sit inside the persisted 100-job window').toBe(true)
     // And the recovery read: after the reload the relink finds it (queued-gpu).
     await page.reload()
     await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
@@ -2491,6 +2646,11 @@ test('a job seeded onto a >100-job home persists across the reload — the windo
     // non-terminal through the same storage API the queue writes through.
     if (seeded?.jobId) {
       await page.evaluate(() => (window as unknown as { __canvasScenario(name: string): unknown }).__canvasScenario('complete-mock')).catch(() => undefined)
+      // (dispatch B, k2q0n9s) This one stays a bounded sleep, deliberately:
+      // it is TEARDOWN SEQUENCING inside finally, not an assertion — a poll
+      // that could throw here would mask the test's own failure. The
+      // API-side cancel below is the actual guarantee; the sleep only gives
+      // the page's own terminal flush a chance to win, per the comment above.
       await page.waitForTimeout(1_400)
       await page.close()
       const listed = await page.request.get('/api/lan/jobs')
@@ -2721,7 +2881,13 @@ test('engines-as-ops complete: the audio docks (probe seams + honest gating)', a
   await dropPng(page, 'engine-source.png')
   const tile = page.locator('[data-canvas-tile]').first()
   await expect(tile).toBeVisible({ timeout: 10_000 })
-  await page.waitForTimeout(600)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the drop's
+  // decode produced the media chain's output take — what the gestures below
+  // consume. The poll replaces the fixed 600 ms sleep.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((chain) => chain.kind === 'media')?.outputs[0]?.takes.length ?? 0
+  }, { timeout: 10_000 }).toBeGreaterThan(0)
 
   // (The LTX-2.5 typed-hole row + plan seam were removed with LTX — Phase
   // 0, 2026-09-20; the ACE-Step plan arm went with its engine — 2026-09-21.
@@ -2886,7 +3052,12 @@ test('context menus clamp inside the viewport when opened near the bottom (F8)',
     await page.waitForTimeout(700) // spawn + fly settle
   }
   await page.keyboard.press('Escape')
-  await page.waitForTimeout(400)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the spawned
+  // seed rendered at row-3 depth (world y past the fold) — the spawn is
+  // async, so the retired instant read could miss the newest tile. The poll
+  // replaces the fixed 400 ms sleep; a spawn that never lands fails on the
+  // timeout.
+  await expect.poll(async () => (await deepestTile())?.top ?? 0, { timeout: 5_000 }).toBeGreaterThan(1000)
   const lowestId = await deepestTile()
   expect(lowestId?.id, 'a deep grid tile must exist').toBeTruthy()
   // Row-3 depth: the menu's natural top (world y + 24) is past the 1080 fold
@@ -2944,14 +3115,23 @@ test('the global asset store binds through the properties panel (consent-gated)'
   await page.locator('[data-canvas-prompt]').fill('a chain to bind the asset on')
   await page.locator('[data-canvas-submit]').click()
   await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 10_000 })
-  await page.waitForTimeout(800)
+  // (dispatch B, k2q0n9s) The retired 800 ms spawn settle was subsumed by
+  // the auto-retries below (the select and its options settle on their own
+  // bound).
 
   // The panel's global-assets select lists it; binding forks into the
   // project (consent) and adds the reference binding.
   await expect(page.locator('[data-canvas-ref-asset]')).toBeVisible({ timeout: 10_000 })
   await page.locator('[data-canvas-ref-asset]').selectOption('e2e:asset:location')
   await expect(page.locator('[data-canvas-toast]').last()).toContainText(/forked into this project/i, { timeout: 10_000 })
-  await page.waitForTimeout(900)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the fork's
+  // document write landed (the asset id bound on the chain — distinct
+  // before/after); the poll replaces the fixed 900 ms sleep, then the
+  // verbatim read samples the settled document.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return ((document.chains[0]!.settings.referenceAssetIds as string[]) ?? []).join('|')
+  }, { timeout: 5_000 }).toContain('e2e:asset:location')
   const document = await activeDocument(page)
   const chain = document.chains[0]!
   expect((chain.settings.referenceAssetIds as string[]) ?? []).toContain('e2e:asset:location')
@@ -3050,7 +3230,11 @@ test('the timeline projection (V): chain outputs chronologically + adopt-chronol
   // chain_ref (the API read is the durable truth).
   await overlay.locator('[data-canvas-timeline-adopt]').click()
   await expect(overlay.locator('[data-canvas-plan-editor]')).toBeVisible({ timeout: 10_000 })
-  await page.waitForTimeout(400)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: adoption
+  // persisted the canvas_plan (the first plan row appears — none existed
+  // before); the poll replaces the fixed 400 ms sleep, then the verbatim
+  // reads sample the settled document.
+  await expect.poll(async () => (await rawDocument(page)).plans.length, { timeout: 5_000 }).toBe(1)
   const document = await rawDocument(page)
   expect(document.plans.length).toBe(1)
   expect(document.plans[0]!.document.segments.length).toBe(1)
@@ -3084,7 +3268,14 @@ test('plan documents: brief + segments + reference handoffs, consent-gated seedi
   await overlay.locator('[data-canvas-segment-prompt]').nth(0).blur()
   await overlay.locator('[data-canvas-segment-prompt]').nth(1).fill('the corridor lights stutter as she passes')
   await overlay.locator('[data-canvas-segment-prompt]').nth(1).blur()
-  await page.waitForTimeout(500)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the
+  // segment-prompt debounce persisted both prompts (distinct before/after);
+  // the poll replaces the fixed 500 ms sleep, then the verbatim reads
+  // sample the settled document.
+  await expect.poll(async () => {
+    const document = await rawDocument(page)
+    return document.plans[0]?.document.segments.map((segment) => segment.prompt).join('||') ?? ''
+  }, { timeout: 5_000 }).toBe('the drummer steps off the night train into the rain||the corridor lights stutter as she passes')
   let document = await rawDocument(page)
   expect(document.plans[0]!.document.brief).toContain('night train heist')
   expect(document.plans[0]!.document.segments.map((segment) => segment.prompt)).toEqual(['the drummer steps off the night train into the rain', 'the corridor lights stutter as she passes'])
@@ -3138,7 +3329,8 @@ test('the measured gap menu: five entries with honest verdicts; the FLF splice w
   await expect(overlay.locator('[data-canvas-segment-seed]').first()).toBeEnabled({ timeout: 10_000 })
   await overlay.locator('[data-canvas-segment-seed]').first().click()
   await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 10_000 })
-  await page.waitForTimeout(400)
+  // (dispatch B, k2q0n9s) The retired 400 ms sleep was subsumed by the
+  // auto-retries below — the gap menu settles on its own bound.
 
   // The gap between the two segments opens the MEASURED menu: five entries,
   // honest mechanism labels, engine-dependent renders disabled by design.
@@ -3180,7 +3372,15 @@ test('the measured gap menu: five entries with honest verdicts; the FLF splice w
   // segment's first frame — real document state, not a toast.
   await menu.locator('[data-canvas-gap-option="flf"]').click()
   await expect(page.locator('[data-canvas-toast="success"]').last()).toContainText(/splice wired/i, { timeout: 20_000 })
-  await page.waitForTimeout(600)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the splice's
+  // document write landed (the next segment's firstFrameOutputId is bound —
+  // distinct before/after). The poll replaces the fixed 600 ms sleep; the
+  // verbatim assertions below read the settled document.
+  await expect.poll(async () => {
+    const document = await rawDocument(page)
+    const plan = document.plans[0]!.document
+    return document.chains.find((chain) => chain.id === plan.segments[1]!.chainId)?.settings.firstFrameOutputId ?? null
+  }, { timeout: 5_000 }).toBeTruthy()
   const document = await rawDocument(page)
   const plan = document.plans[0]!.document
   const rightChain = document.chains.find((chain) => chain.id === plan.segments[1]!.chainId)!
@@ -3483,7 +3683,16 @@ test('the retired timeline tool fills the Flow box (LLM stubbed, provider route)
   await expect(editor.locator('[data-structured-flow-from]').nth(1)).toHaveValue('3')
   await expect(editor.locator('[data-structured-flow-from]').nth(2)).toHaveValue('5')
   await expect(editor.locator('[data-structured-flow-text]').first()).toHaveValue(/A baker opens her street bakery/)
-  await page.waitForTimeout(1_100)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the
+  // structured-draft debounce persisted the parsed flow (the 3/5-second
+  // beats are its marker); the poll replaces the fixed 1.1 s sleep, then the
+  // verbatim reads sample the settled document.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    const chain = document.chains.find((entry) => entry.kind === 'generation')
+    const persisted = chain?.settings.structured as { flow?: Array<{ from: number }> } | undefined
+    return persisted?.flow !== undefined && persisted.flow.length === 3 && persisted.flow[1]!.from === 3
+  }, { timeout: 5_000 }).toBe(true)
   const document = await activeDocument(page)
   const chain = document.chains.find((entry) => entry.kind === 'generation')!
   expect(chain.settings.promptMode).toBe('structured')
@@ -3593,7 +3802,16 @@ test('a structured submit lands a real job whose engine prompt is the composed b
     await editor.locator('[data-structured-flow-from]').last().fill('3.5')
     await editor.locator('[data-structured-flow-text]').last().fill('he pauses at the rail as the clouds break')
     await editor.locator('[data-structured-input="audio-soundscape"]').fill('Wind drops to a low moan; keys jingle once.')
-    await page.waitForTimeout(1_100) // the settings commit lands before submit reads it
+    // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the
+    // structured-draft debounce COMMITTED — the submit below must read the
+    // persisted settings, not the in-flight draft. The poll replaces the
+    // fixed 1.1 s sleep; a draft that never commits fails on the timeout
+    // (and the engine-bound graph assertions below would catch it anyway).
+    await expect.poll(async () => {
+      const document = await activeDocument(page)
+      const chain = document.chains.find((entry) => entry.kind === 'generation')
+      return chain?.settings.promptMode === 'structured' && ((chain.settings.structured as { concept?: string } | undefined)?.concept ?? '').includes('observatory')
+    }, { timeout: 5_000 }).toBe(true)
 
     await panel.locator('[data-canvas-generate]').click()
     // The real ladder passes: the submission lands a running job on the chain.
@@ -4425,7 +4643,16 @@ test('the camera path editor compiles a path into the Camera box; the composed b
     await panel.locator('[data-structured-preview] summary').click()
     await expect(panel.locator('[data-structured-preview] pre')).toContainText('physically move the CAMERA 50.000 degrees')
 
-    await page.waitForTimeout(1_100) // the debounced settings commit lands
+    // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the
+    // camera-path debounce persisted the applied path (4 keyframes — the
+    // default doc carries 3, distinct before/after); the poll replaces the
+    // fixed 1.1 s sleep, then the verbatim reads sample the settled doc.
+    await expect.poll(async () => {
+      const document = await activeDocument(page)
+      const chain = document.chains.find((entry) => entry.kind === 'generation')
+      const persistedPath = (chain?.settings.structured as { cameraPath?: { keyframes: Array<{ azimuth: number }> } } | undefined)?.cameraPath
+      return persistedPath?.keyframes.length ?? 0
+    }, { timeout: 5_000 }).toBe(4)
     let document = await activeDocument(page)
     let chain = document.chains.find((entry) => entry.kind === 'generation')!
     const persistedPath = (chain.settings.structured as { cameraPath: { keyframes: Array<{ azimuth: number }>; orbitDirection: string } }).cameraPath
@@ -4453,7 +4680,13 @@ test('the camera path editor compiles a path into the Camera box; the composed b
     await expect(cameraBox).toHaveValue(/Compiled camera path — 124 frames/) // the block re-lands
 
     // ---- the submit: the composed bytes (block included) reach the engine ----
-    await page.waitForTimeout(1_100) // the commit lands before submit reads it
+    // (dispatch B, k2q0n9s — settle-or-poll) Same named condition as above:
+    // the chip + re-apply committed before the submit reads it.
+    await expect.poll(async () => {
+      const document = await activeDocument(page)
+      const chain = document.chains.find((entry) => entry.kind === 'generation')
+      return ((chain?.settings.structured as { camera?: string } | undefined)?.camera ?? '').includes('the camera pushes in')
+    }, { timeout: 5_000 }).toBe(true)
     await panel.locator('[data-canvas-generate]').click()
     await expect(tile).toHaveAttribute('data-tile-status', 'running', { timeout: 20_000 })
     document = await activeDocument(page)
@@ -4536,11 +4769,18 @@ test('the camera path editor authors keyframes by keyboard and carries an access
     const input = element as HTMLInputElement
     return { min: Number(input.min), max: Number(input.max) }
   })
-  const before = Number(/—\s*([\d.]+)s/.exec(await label.innerText())?.[1] ?? '0')
+  const labelSeconds = async () => Number(/—\s*([\d.]+)s/.exec(await label.innerText())?.[1] ?? '0')
+  const before = await labelSeconds()
   const target = bounds.min + (bounds.max - bounds.min) / 4
   await timeField.fill(target.toFixed(3))
   await timeField.press('Enter') // the crop-field contract: the commit lands on Enter/blur, never mid-keystroke
-  const after = Number(/—\s*([\d.]+)s/.exec(await label.innerText())?.[1] ?? '0')
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition is the label
+  // reflecting the ENTERED retime; the commit re-renders the label
+  // asynchronously, so the retired instant snapshot could read the pre-commit
+  // text under load. The poll admits only the re-render window — a retime
+  // that never lands still fails on the timeout.
+  await expect.poll(labelSeconds, { timeout: 3_000 }).toBeCloseTo(target, 1)
+  const after = await labelSeconds()
   expect(Math.abs(after - target)).toBeLessThan(0.01) // the retime took, unclamped
   expect(Math.abs(after - before)).toBeGreaterThan(0.01) // and it actually moved
 
@@ -4995,7 +5235,11 @@ test('an image-intent chain with a reference binding refuses honestly — never 
 
     // The consume menu on the image chain never offers the video-only roles.
     await page.locator(`[data-canvas-tile="${mediaChain.id}"]`).click()
-    await page.waitForTimeout(300)
+    // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the media
+    // selection registered (the bar's context flips to 'media') — the
+    // auto-retry replaces the fixed 300 ms sleep and prevents clicking the
+    // endpoint into the source-less menu arm.
+    await expect(page.locator('[data-canvas-bottombar]')).toHaveAttribute('data-canvas-bar-context', 'media')
     await page.locator(`[data-canvas-tile="${imageChain.id}"]`).locator('[data-canvas-endpoint="head"]').click()
     const consume = page.locator('[data-canvas-endpoint-menu="consume"]')
     await expect(consume).toBeVisible()
@@ -5354,11 +5598,23 @@ test('inspector saves serialize per chain — the newer prompt survives a revers
   await prompt.fill('older draft in the race')
   await firstStarted // the older save is demonstrably mid-request
   await prompt.fill('newer draft in the race')
-  await page.waitForTimeout(1_200) // the newer debounced save fires — and (unfixed) completes first
+  // (dispatch B, k2q0n9s) This pre-release wait stays a SLEEP, deliberately:
+  // the inspector's saves SERIALIZE per chain, so while the older write is
+  // held mid-request the newer autosave is QUEUED, not fired — no route
+  // counter can advance before releaseFirst. The sleep only lets the newer
+  // draft register client-side; the assertion-bearing settle is the poll
+  // after the release.
+  await page.waitForTimeout(1_200)
   releaseFirst!()
-  await page.waitForTimeout(1_500) // the held write lands and the reload settles
+  // The held write lands and the reload settles — named condition: the
+  // persisted prompt IS the newer draft (distinct before release). The poll
+  // replaces the fixed 1.5 s sleep; the verbatim expect below re-reads.
 
   // Newest survives — persisted …
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.settings.prompt
+  }, { timeout: 5_000 }).toBe('newer draft in the race')
   const document = await activeDocument(page)
   expect(document.chains.find((entry) => entry.id === chainId)!.settings.prompt).toBe('newer draft in the race')
   // … and visible in the panel that supposedly saved it.
@@ -5617,11 +5873,17 @@ test('identity saves serialize per chain — the newer subject survives a revers
   await subject.fill('older identity in the race')
   await firstStarted // the older identity save is demonstrably mid-request
   await subject.fill('newer identity in the race')
-  await page.waitForTimeout(1_400) // the newer debounced save (700 ms) fires — and (unfixed) completes first
+  // (dispatch B, k2q0n9s) Pre-release sleep stays, same as F01: saves
+  // serialize per chain, so the newer write is QUEUED behind the held one
+  // and no counter can advance before the release.
+  await page.waitForTimeout(1_400)
   releaseFirst!()
-  await page.waitForTimeout(1_500) // the held write lands and the reload settles
 
   // Newest survives — persisted …
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText ?? null
+  }, { timeout: 5_000 }).toBe('newer identity in the race')
   const document = await activeDocument(page)
   expect(document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText).toBe('newer identity in the race')
   // … and visible in the panel.
@@ -5672,9 +5934,15 @@ test('a held older write cannot clobber the keepalive\'s newer draft — arrival
   await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
   // The keepalive lands; THEN the held OLDER write is released — it arrives
   // last. Unfixed, it overwrites the newer persisted draft.
-  await page.waitForTimeout(1_000)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named conditions: the
+  // keepalive flushed (the second route hit — a counter, not a clock), and
+  // after the release the persisted prompt IS draft two (distinct before).
+  await expect.poll(() => updates, { timeout: 5_000 }).toBeGreaterThanOrEqual(2)
   releaseFirst!()
-  await page.waitForTimeout(1_500)
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.settings.prompt
+  }, { timeout: 5_000 }).toBe('arrival draft two')
   const document = await activeDocument(page)
   expect(document.chains.find((entry) => entry.id === chainId)!.settings.prompt).toBe('arrival draft two')
   // Reopen: the panel adopts the newest, not the write that arrived last.
@@ -5794,9 +6062,17 @@ test('a held older identity write cannot clobber the keepalive\'s newer subject 
   // the newer subject.
   await page.locator('[data-surface-switcher] [data-surface="images"]').click()
   await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
-  await page.waitForTimeout(1_000) // the keepalive lands
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the
+  // keepalive flushed (the second route hit — a counter, not a clock); the
+  // poll replaces the fixed 1 s sleep.
+  await expect.poll(() => updates, { timeout: 5_000 }).toBeGreaterThanOrEqual(2)
   releaseFirst!() // the held OLDER write arrives last
-  await page.waitForTimeout(1_500)
+  // The held write lands: named condition — the persisted subject IS the
+  // newer arrival line (distinct before release). Replaces the 1.5 s sleep.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText ?? null
+  }, { timeout: 5_000 }).toBe('newer identity arrival line')
   const document = await activeDocument(page)
   expect(document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText).toBe('newer identity arrival line')
   await page.locator('[data-surface-switcher] [data-surface="canvas"]').click()
@@ -6401,7 +6677,10 @@ test('popover menu: one Escape closes topmost only; outside-press via Base UI', 
   // The fork menu (B) — the menu that had NO Escape of its own before the
   // unification — is the same idiom: registered, one Escape closes it alone.
   await mediaTile.click()
-  await page.waitForTimeout(300)
+  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the media
+  // selection registered (bar context 'media') before the B gesture keys
+  // off it; the auto-retry replaces the fixed 300 ms sleep.
+  await expect(page.locator('[data-canvas-bottombar]')).toHaveAttribute('data-canvas-bar-context', 'media')
   await page.keyboard.press('b')
   const forkMenu = page.locator('[data-canvas-fork-menu]')
   await expect(forkMenu).toBeVisible()
