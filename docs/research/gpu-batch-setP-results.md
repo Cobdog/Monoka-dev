@@ -278,3 +278,125 @@ between the eye and the automated reads escalates as a protocol event — the
 pre-registered tension to watch is p04 (metrics: cleaner-but-more-divergent
 face) and the HF axis overall (is PDMD's 2× high-frequency energy sharpness
 or fry?).
+
+## ADDENDUM — the maintainer's blind review, reconciled (2026-10-05)
+
+19/19 called: 9 left · 8 right · 2 tie (no cannot-assess — every pair judgeable; 14 notes). Responses verbatim below.
+
+### The null gate, by eye
+**p01 (the PDMD duplicate through the alias) = TIE.** Held.
+
+### THE HEADLINE — PDMD-4 takes the primary SIX–ZERO
+Every PRIMARY pair (PDMD-4 vs the turbo-8 king) went to PDMD, rich-prompt and bare-prompt alike:
+- Rich prompts (p02-p04): "quality is not bad on either, left feels better" / "left is slightly better… both are fine" — wins, but narrow.
+- Bare prompts (p05-p07): DECISIVE, and the notes say why — *"Right had a more creative background, a reflective countertop, bokeh… lighting and reflections are very accurate. Right a decisive winner"* (p05); *"the soup actually MOVES with the spoon"* where the incumbent's spoon doesn't interact (p06); *"more creative, a camera pivot to track the ball… an office with workers"* (p07).
+**The metric's open question — sharpness or fry — is answered BY THE EYE: sharpness.** The 1.9-2.7× HF energy is detail the eye rewards (reflections, bokeh, physical interaction), not damage.
+
+### The attribution holds (4-1-1) and the incumbent line holds (4-2)
+- SECONDARY (PDMD-4 vs turbo-4, matched NFE): PDMD 4, turbo-4 1 (p09's soup cell — the eye's one face-cell dissent from the metric's 4/4), tie 1. **The gains are the method, eye-confirmed.**
+- CONTEXT (turbo-4 vs turbo-8, the incumbent family): turbo-8 wins 4-2 — the king holds over its own sibling (the metric's "thin edge" read as modest-but-real), with p19's note the sharpest: the turbo-8 ball's edge-bounce *"looks unnatural"* while turbo-4 *"followed the prompt better"* — the same edge-bounce behavior the setD p20 eye-call flagged on the compiled arm.
+
+### The verdict, and the two gates before adoption
+**PDMD-4 DEPOSES THE TURBO KING at half the NFE** — 6-0 primary, 4-1-1 attribution, 0.65× wall — running OFF-LABEL on our int8 ref2va base. Two gates before any default changes, both recorded in the registration:
+1. **The `pdmd,` trigger-prefix confound** (the controller's registration error — no upstream artifact carries it): the confirmation re-run strips it FIRST.
+2. **The recipe-fairness window**: turbo-8 ran at the board standard (544p/shift-12), not its native 768p/shift-6 card recipe. A native-recipe rematch (and PDMD at 768p) belongs in the confirmation window before the crown moves.
+
+### Verbatim responses
+```
+{
+  "exported": "2026-10-05T06:53:25.232Z",
+  "responses": {
+    "p01": {
+      "call": "tie",
+      "ts": "2026-10-05T06:38:09.636Z"
+    },
+    "p02": {
+      "call": "left",
+      "ts": "2026-10-05T06:38:59.572Z"
+    },
+    "p03": {
+      "call": "left",
+      "note": "Quality is not bad on either, left feels better than the right, both options are valid.",
+      "ts": "2026-10-05T06:39:40.331Z"
+    },
+    "p04": {
+      "call": "left",
+      "note": "Same as P03, different interpretations of the same concept, left is slightly better than the right. Both are fine.",
+      "ts": "2026-10-05T06:40:29.334Z"
+    },
+    "p05": {
+      "call": "right",
+      "note": "Right had a more creative background, a reflective countertop, bokeh background with some shelves. The lighting and reflections are very accurate. Right a decisive winner here. Left is not bad, but more boring.",
+      "ts": "2026-10-05T06:41:02.198Z"
+    },
+    "p06": {
+      "call": "right",
+      "note": "Same as P05. Here the oman stirring the soup, the soup actually moves with the spoon, the one on the left she is making the same motion but the spoon does not look like it is actually in the soup and it does not move accordingly.",
+      "ts": "2026-10-05T06:42:20.730Z"
+    },
+    "p07": {
+      "call": "left",
+      "note": "Left again is more creative, a camera pivot to track the ball across the surface. The background appears to be in an office with workers in the background.  Left wins on creativity. Right follows the prompt but is more boring and didn't decide to get creative or flashy.",
+      "ts": "2026-10-05T06:43:41.314Z"
+    },
+    "p08": {
+      "call": "right",
+      "ts": "2026-10-05T06:44:58.453Z"
+    },
+    "p09": {
+      "call": "left",
+      "ts": "2026-10-05T06:45:19.093Z"
+    },
+    "p10": {
+      "call": "right",
+      "ts": "2026-10-05T06:45:32.950Z"
+    },
+    "p11": {
+      "call": "tie",
+      "note": "Both are very good here, prompt followed, lighting accurate, motion clean.",
+      "ts": "2026-10-05T06:45:57.187Z"
+    },
+    "p12": {
+      "call": "right",
+      "note": "Left does not follow the prompt as well, colors are muted and there is an extra pot of soup for some reason.",
+      "ts": "2026-10-05T06:46:36.661Z"
+    },
+    "p13": {
+      "call": "left",
+      "note": "Both are fine here, left was the more creative one again.",
+      "ts": "2026-10-05T06:47:33.443Z"
+    },
+    "p14": {
+      "call": "right",
+      "note": "Different framing, both are fine, right wins by being more visually interesting.",
+      "ts": "2026-10-05T06:48:22.747Z"
+    },
+    "p15": {
+      "call": "right",
+      "note": "Right wins here as the left one has a hint of artifacting, extra objects that do not make sense, the motion is slightly improved on the right, the color is slightly improved on the right.",
+      "ts": "2026-10-05T06:48:56.492Z"
+    },
+    "p16": {
+      "call": "right",
+      "note": "Right once again looks more visually interesting, both would pass for quality.",
+      "ts": "2026-10-05T06:50:46.465Z"
+    },
+    "p17": {
+      "call": "left",
+      "note": "Same as P16. Both have pretty decent visual quality, left wins as the cast shadows are slightly more accurate. No banding in the background.",
+      "ts": "2026-10-05T06:51:28.073Z"
+    },
+    "p18": {
+      "call": "left",
+      "note": "Left follows the prompt better. Quality is similar.",
+      "ts": "2026-10-05T06:52:21.799Z"
+    },
+    "p19": {
+      "call": "left",
+      "note": "Ball hits the edge of the frame and bounces off on the right, but it looks unnatural. Left followed the prompt better.",
+      "ts": "2026-10-05T06:52:56.511Z"
+    }
+  },
+  "set": "P"
+}
+```
