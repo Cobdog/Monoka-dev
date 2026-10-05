@@ -367,3 +367,4 @@ documentation. The WEIGHTS stay the separate OpenVDN fetch rows
 never redistributed; the separately-installed `-24GB` variant on the shared
 install is environment, not product (it registers `*_24GB`-suffixed classes;
 detection and emission are by OUR pinned pack).
+| `h3-keyframe-animation` (alvdansen; hero/tween/sequence adapters, 3×1.88 GB, converted for fused-qkv; the *Animating on Twos* paper's artifacts) | **H3 Keyframe Animation Adapter License 1.0.0** — a PolyForm-Small-Business derivative: free/unlimited for individuals, researchers, nonprofits, orgs <$2M revenue+capital (90-day grace); paid above; no competing product; notices ride. Plus NON-WAIVABLE MiniMax H3 base terms (§5a) `[LICENSE-read 2026-10-05 — gated repo accessed on the maintainer's auth at their direction]` | fetch-consent, **FLAGGED** (eligibility class — surface at consent; the maintainer is eligible) |
