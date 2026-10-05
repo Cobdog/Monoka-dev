@@ -1,0 +1,73 @@
+/* The component gallery surface (task 23, k2q0n9s) — GEOMETRY ONLY, the
+   P06 doctrine every kit component carries: this sheet owns the gallery's
+   own layout and its exhibit furniture (cells, arenas, frames); the
+   exhibited components render through their REAL recipes (src/styles.css
+   tone blocks + canvas.css's retained geometry, imported by GalleryApp).
+   No new colors, fonts, or shared recipes — tokens throughout. */
+
+.gallery-root { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--color-surface-deep); color: var(--text); z-index: 40; }
+.gallery-titlebar { display: flex; align-items: center; gap: 16px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+.gallery-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.gallery-titlebar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.gallery-counter { font-size: var(--text-sm); color: var(--muted); }
+
+.gallery-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px 96px; display: grid; gap: 30px; align-content: start; }
+.gallery-section { display: grid; gap: 10px; min-width: 0; }
+.gallery-section-header { display: grid; gap: 4px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.gallery-section-header h2 { margin: 0; font-size: var(--text-xl); }
+.gallery-section-header p { margin: 0; max-width: 110ch; color: var(--muted); font-size: var(--text-md); line-height: 1.55; }
+.gallery-section-axes { color: var(--muted-2); font-size: var(--text-sm); letter-spacing: .04em; }
+
+.gallery-cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.gallery-cell { display: grid; gap: 7px; align-content: start; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.gallery-cell--na { border-style: dashed; background: transparent; }
+.gallery-cell-label { color: var(--muted-2); font-size: var(--text-sm); letter-spacing: .04em; }
+.gallery-cell-stage { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.gallery-note { margin: 0; color: var(--muted); font-size: var(--text-md); line-height: 1.5; }
+.gallery-na { margin: 0; color: var(--muted); font-size: var(--text-md); line-height: 1.5; font-style: italic; }
+
+/* The exhibited geometry dialects (the surfaces' half of P06). */
+.gallery-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 5px 12px; border-width: 1px; border-style: solid; border-radius: 8px; cursor: pointer; font-size: var(--text-sm); }
+.gallery-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-sm); cursor: pointer; }
+.gallery-chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.gallery-input { width: 100%; padding: 6px 9px; border-width: 1px; border-style: solid; border-color: var(--line-strong); border-radius: 7px; background: var(--surface-2); color: var(--text); font: inherit; font-size: var(--text-md); }
+.gallery-select { min-width: 0; max-width: 100%; padding: 5px 26px 5px 8px; border-width: 1px; border-style: solid; border-color: var(--line-strong); border-radius: 7px; background: var(--surface-2); color: var(--text); font-size: var(--text-md); }
+
+/* The progress exhibit's track geometry (the recipe owns height/paint). */
+.gallery-progress { width: 220px; max-width: 100%; }
+.gallery-progress .progressbar { border-radius: 999px; }
+
+/* The toast frames: bounded boxes so BOTH placements demo in place — the
+   fixed (bottom-right) host is contained by the frame's transform (a
+   transformed ancestor is the fixed-position containing block). */
+.gallery-toast-frame { position: relative; height: 104px; border: 1px dashed var(--line); border-radius: 8px; overflow: hidden; }
+.gallery-toast-frame--fixed { transform: translate(0, 0); }
+
+/* The banner exhibit's card edge (the recipes own tone/type). */
+.gallery-notice { border-width: 1px; border-style: solid; border-radius: 8px; }
+
+/* Readouts under the interactive demos. */
+.gallery-stack { display: grid; gap: 7px; align-content: start; }
+.gallery-count { color: var(--accent); font-size: var(--text-sm); }
+.gallery-readout { color: var(--muted); font-size: var(--text-sm); }
+
+/* The anchored-menu exhibit (the consumer half of the PopoverMenu contract:
+   the popup's own geometry — the canvas menus' shape, tokens only). */
+.gallery-menu { position: absolute; display: grid; gap: 2px; width: 250px; padding: 8px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.gallery-menu header { display: flex; flex-direction: column; gap: 1px; padding: 7px 9px; margin: -8px -8px 6px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+.gallery-menu header strong { font-size: var(--text-md); }
+.gallery-menu-row { display: block; padding: 6px 9px; border: 0; border-radius: 7px; background: none; color: var(--text); font-size: var(--text-md); text-align: left; cursor: pointer; }
+.gallery-menu-row:hover:not(:disabled) { background: var(--surface-3); }
+.gallery-menu-row:disabled { color: var(--muted-2); cursor: default; }
+
+/* The dock exhibit's arena + chrome (the shell owns behavior; this is the
+   surface's own box — display grid like the canvas inspectors because Rnd
+   writes an inline display that must be overridden). The dock section's
+   cells span the full row: the COMMON resize policy's minimum box is
+   420×280, so the arena must be wider than a matrix card for the demo to
+   exhibit the policy honestly (a dock clamped into a card-width arena
+   would hide it). */
+.gallery-section[data-gallery-section="dock"] .gallery-cells { grid-template-columns: 1fr; }
+.gallery-dock-arena { position: relative; height: 500px; border: 1px dashed var(--line); border-radius: 10px; overflow: hidden; }
+.gallery-dock { display: grid !important; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.gallery-dock-body { padding: 10px 11px; color: var(--muted); font-size: var(--text-md); line-height: 1.5; }
