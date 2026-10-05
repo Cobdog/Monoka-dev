@@ -167,6 +167,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 
 .field-group { display: grid; gap: 7px; min-width: 0; }
 .field-group label { color:var(--color-text-soft); font-size:var(--text-md); font-weight: 600; }
+/* Component vocabulary task 18 (k2q0n9s) — Field's description recipe: the
+   ONE slot under the control (error > hint > silent). Tone/type only
+   (P06): the muted hint base, the danger error modifier, pre-wrap so
+   multi-line server failures keep their shape; list indent and every other
+   geometry stay in the consuming surface's own class. */
+.field-description { color: var(--muted); font-size: var(--text-md); margin: 0; min-width: 0; }
+.field-description--error { color: var(--danger); white-space: pre-wrap; }
 textarea, .field-group input, .field-group select { width: 100%; border: 1px solid var(--line); border-radius: 8px; background:var(--color-surface-sunken); color: var(--text); transition: border-color .15s ease; }
 textarea:hover, .field-group input:hover, .field-group select:hover { border-color: var(--line-strong); }
 textarea:focus, .field-group input:focus, .field-group select:focus { border-color: #738f42; outline: none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent); }

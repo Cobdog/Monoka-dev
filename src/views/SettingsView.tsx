@@ -7,6 +7,7 @@ import { GitBranch, Wand2 } from 'lucide-react'
 import { Activity, AlertCircle, Check, ChevronDown, Cpu, Eye, Folder, FolderOpen, Gauge, HardDrive, Info, Layers, Power, RefreshCw, Scale, ServerCog, SlidersHorizontal, Sparkles, Stethoscope, Unplug } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { StudioSelect } from '../ui/StudioSelect'
+import { Field } from '../ui/Field'
 import type { AppSettings, ComfyStatus, LlmModelsResult, ManagerAvailability, ModelFile, ModelKind, NodePackActionResult, NodePackStatus, OllamaModel, UpscaleMode } from '../types'
 import { choices, type ObjectInfo } from '../lib/comfyInfo'
 import { subscribe } from '../lib/useRealtime'
@@ -555,13 +556,18 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
         <label className="settings-check"><input type="checkbox" checked={settings.unloadLlmOnGenerate} onChange={(event) => setSettings({ ...settings, unloadLlmOnGenerate: event.target.checked })} /><span><strong><Unplug size={14} /> Unload models before generating</strong><small>Frees VRAM by unloading non-sticky router models when a render submits (≈2 s budget, never blocks the queue).</small></span></label>
         <label className="settings-check"><input type="checkbox" checked={settings.llmThinkingDefault === 'on'} onChange={(event) => setSettings({ ...settings, llmThinkingDefault: event.target.checked ? 'on' : 'off' })} /><span><strong>Thinking by default (freeform)</strong><small>Structured/JSON requests always run thinking-off for speed; this sets the default for freeform enhancement.</small></span></label>
         <SelectField label="Prompt writing style" value={settings.promptContentLevel} onChange={(promptContentLevel) => setSettings({ ...settings, promptContentLevel: promptContentLevel as AppSettings['promptContentLevel'] })} options={[['sfw', 'SFW · concrete visual'], ['suggestive', 'Suggestive · sensual mood'], ['nsfw', 'NSFW · explicit and precise']]} />
-        <div className="field-group"><label htmlFor="llm-sticky-models">Sticky models (never unload)</label><input id="llm-sticky-models" value={settings.llamaStickyModels} placeholder="comma-separated ids or substrings" onChange={(event) => setSettings({ ...settings, llamaStickyModels: event.target.value })} /></div>
+        {/* Task 18 (k2q0n9s): these form rows are Field — the association
+            tier owns the label/htmlFor/id pairing (these rows keep their
+            consumer ids; the datalist associates via list= wherever it
+            lives, so it sits outside the Field). */}
+        <Field label="Sticky models (never unload)" htmlFor="llm-sticky-models"><input id="llm-sticky-models" value={settings.llamaStickyModels} placeholder="comma-separated ids or substrings" onChange={(event) => setSettings({ ...settings, llamaStickyModels: event.target.value })} /></Field>
         {/* M8 (review 2026-09-19): llamaVisionModel was wired server-side
             (datasets captioning + vision scenarios) with no UI anywhere —
             settable only by hand-editing settings.json. The row names the
             resolution order honestly; the datalist offers the router's
             vision-capable models when it is reachable. */}
-        <div className="field-group"><label htmlFor="llm-vision-model">Vision model (router)</label><input id="llm-vision-model" data-llm-vision-model value={settings.llamaVisionModel} placeholder="empty = first vision-capable router model" list="llm-vision-model-options" onChange={(event) => setSettings({ ...settings, llamaVisionModel: event.target.value })} /><datalist id="llm-vision-model-options">{(llmList?.models ?? []).filter((model) => model.vision).map((model) => <option key={model.id} value={model.id} />)}</datalist></div>
+        <Field label="Vision model (router)" htmlFor="llm-vision-model"><input id="llm-vision-model" data-llm-vision-model value={settings.llamaVisionModel} placeholder="empty = first vision-capable router model" list="llm-vision-model-options" onChange={(event) => setSettings({ ...settings, llamaVisionModel: event.target.value })} /></Field>
+        <datalist id="llm-vision-model-options">{(llmList?.models ?? []).filter((model) => model.vision).map((model) => <option key={model.id} value={model.id} />)}</datalist>
       </div>
       <p className="settings-note">Router mode auto-loads the requested model per call and {settings.unloadLlmOnGenerate ? 'unloads non-sticky models before each render' : 'keeps models resident between calls'}. Gemma needs the server started with --jinja. The vision model serves image and video captioning (the dataset manager) and vision scenarios — empty picks the first vision-capable router model. Nothing leaves this workstation.</p>
     </section>
@@ -571,8 +577,8 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
         <span className="health-pill" data-connection={ollamaModels.length > 0 && !settings.llamaCppUrl.trim() ? 'online' : 'offline'} style={healthPillVars(ollamaModels.length > 0 && !settings.llamaCppUrl.trim() ? 'online' : 'offline')}>{settings.llamaCppUrl.trim() ? 'Fallback (router active)' : ollamaModels.length > 0 ? `${ollamaModels.length} local` : 'Offline'}</span>
       </div>
       <div className="ollama-grid">
-        <div className="field-group"><label htmlFor="ollama-url">Ollama URL</label><input id="ollama-url" value={settings.ollamaUrl} onChange={(event) => setSettings({ ...settings, ollamaUrl: event.target.value })} /></div>
-        <div className="field-group"><label htmlFor="ollama-model">Local model</label><StudioSelect wrapClassName="select-wrap" chevronSize={15} id="ollama-model" value={settings.ollamaModel} onChange={(event) => setSettings({ ...settings, ollamaModel: event.target.value })} disabled={ollamaModels.length === 0}>{ollamaModels.length === 0 ? <option value="">No local text models detected</option> : ollamaModels.map((model) => <option value={model.name} key={model.name}>{model.name}{model.parameterSize ? ` · ${model.parameterSize}` : ''}</option>)}</StudioSelect></div>
+        <Field label="Ollama URL" htmlFor="ollama-url"><input id="ollama-url" value={settings.ollamaUrl} onChange={(event) => setSettings({ ...settings, ollamaUrl: event.target.value })} /></Field>
+        <Field label="Local model" htmlFor="ollama-model"><StudioSelect wrapClassName="select-wrap" chevronSize={15} id="ollama-model" value={settings.ollamaModel} onChange={(event) => setSettings({ ...settings, ollamaModel: event.target.value })} disabled={ollamaModels.length === 0}>{ollamaModels.length === 0 ? <option value="">No local text models detected</option> : ollamaModels.map((model) => <option value={model.name} key={model.name}>{model.name}{model.parameterSize ? ` · ${model.parameterSize}` : ''}</option>)}</StudioSelect></Field>
         <button className="secondary-button test-button" onClick={onRefreshOllama}><RefreshCw size={16} />Refresh models</button>
       </div>
       <p className="settings-note">Prompts go directly to the local Ollama server. Embedding and cloud-backed models are excluded.</p>
