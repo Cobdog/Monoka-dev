@@ -52,6 +52,62 @@ applies to ANY e2e test that matches `.first()` over accumulating state:
 suspect the shared home before the diff, and give the spec its own API-clean
 `beforeAll` the same way.
 
+## Settle-or-poll — the e2e determinism convention (dispatch B, 2026-10-05)
+
+The fleet's load-shaped flake family (A09 `c3b9b8e`, F02 `7cbd10b`, M13
+`d5b9489`, the wizard/notice setState-in-render race `edd1c86` — all fixed
+individually before the pattern landed) shares one shape: an assertion that
+samples INSTANTANEOUSLY where the app's readiness is asynchronous (phases,
+engine polls, debounced commits, document loads, the shared home's
+accumulation). Under CI-runner load the async side loses the race and a
+green-locally test reds. The fleet-wide rule:
+
+**Every wait is a bounded wait for a NAMED condition — never sleep-for-safety.**
+
+1. **Auto-retry is the floor.** `expect(locator).toBeVisible/toHaveCount/
+   toHaveAttribute/toContainText` already poll; an instant read placed after
+   them is settled only if the precondition IMPLIES the sampled state (the
+   same render, the same commit). Check the implication, not just the await.
+2. **Instant reads of async state convert to `expect.poll(fn, { timeout })`**
+   with the condition named in a comment and a timeout that means it: ~3 s
+   for a local re-render, ~5 s for a debounced commit + document write, 10 s+
+   for engine/scan surfaces. The poll must be DISTINCT before/after (polling
+   a value that already equals the target passes vacuously — that is a
+   weakened assertion, the one thing this convention forbids).
+3. **Misfire-prone preconditions convert to the app's own state marker** —
+   e.g. the bar's `data-canvas-bar-context` flips when a selection registers
+   (`BottomBar.tsx` derives it from the selection), so auto-retrying that
+   attribute replaces a sleep before an endpoint/gesture click.
+4. **Keep the assertion body verbatim.** The poll carries the settle; the
+   original expects then read the now-settled state unchanged. A conversion
+   that makes a test able to pass on behavior it previously would have
+   caught is a defect, not a fix.
+5. **Legitimate sleeps remain** — know them apart from flake-class ones:
+   - **Negative observation windows** (an ABSENCE asserted over time: "no
+     empty-jobs POST on boot", "no further library fetches for 2 poll
+     cycles", "the banner survives two poll cycles"). The window IS the
+     assertion; a poll would pass vacuously.
+   - **Race-test instruments** (a `waitForTimeout` INSIDE a `page.route`
+     handler holds a write mid-flight; "still inside the write's RTT" sleeps
+     act inside the window deliberately).
+   - **Teardown sequencing in `finally`** (giving a dying page's flush a
+     chance before an API-side cleanup) — a throwing poll there would MASK
+     the test's own failure; the API cleanup is the guarantee.
+   - **Animation/motion settles** (fly-to d3 transitions, rAF appliers)
+     ahead of interactions — a named-condition pass (e.g. transform-target
+     predicates) is future work, tracked as follow-up.
+6. **Shared-home accumulation** (cross-session state) prefers deterministic
+   isolation over tolerant polling: the datasets suite's file-level
+   `beforeAll` API-clean (`datasets.spec.ts`) is the pattern; suspect the
+   shared home before the diff when a `.first()` over accumulating state
+   flakes.
+
+When converting, cite the named condition and the mechanism in the comment
+(the A09 precedent: the poll's comment names what settles and why a genuine
+failure still trips the timeout). If you cannot name the condition, you do
+not yet understand the wait — investigate before writing either a sleep or
+a poll.
+
 ## Scratch homes tear down (Wave 4, n3s86li — the 1,201-home leak)
 
 Per-run scratch dirs (`tests/lib/scratch.cjs` ledger + each suite's
