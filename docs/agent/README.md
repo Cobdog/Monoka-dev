@@ -29,7 +29,7 @@ poserig/ the IK rig) · `tests/` the vitest unit suites (the port allocator
 lives in `tests/lib/`) · `scripts/` the gate runner, vision harness, and
 fixtures · `docs/` everything documented (see README's Documentation table;
 [../ROADMAP.md](../ROADMAP.md) for state of play — the remediation program
-is the active frame; [../LEARNINGS.md](../LEARNINGS.md) for operational
+completed 2026-10-03 (merged at d773fa9); [../LEARNINGS.md](../LEARNINGS.md) for operational
 lessons; [../audit/](../audit/) the audits + remediation plan;
 [../library/](../library/README.md) the external-source research library) ·
 `benchmarks/` the benchmark harness · `vendor/nodes/`
