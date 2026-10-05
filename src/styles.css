@@ -93,7 +93,16 @@
    * numerically. One more tie to know: --z-modal:70 equals the canvas bench
    * panel's z-70 (.canvas-bench-panel) — the modal wins that tie only by
    * portal order (dialogs portal to body, after the canvas tree), a
-   * coincidence worth remembering if the bench ever re-stacks. */
+   * coincidence worth remembering if the bench ever re-stacks.
+   *
+   * (task 24, z-band alignment) The canvas ⌘K command overlays
+   * (.canvas-index-overlay — index, library, timeline) ride var(--z-modal)
+   * too: registered modal (task 14) and painted modal (the retired literal
+   * 50 predated the contract and sat under the dock band). They are
+   * CANVAS-TREE children, not portals — against the bench panel's z-70 the
+   * tie resolves by DOM order (the overlays render after the docks, inside
+   * the engine host; the bench only exists in bench mode, where no overlay
+   * renders, so the tie is presently unreachable). */
   --z-sticky: 10;
   --z-dropdown: 40;
   --z-dock-base: 60;
