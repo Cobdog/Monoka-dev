@@ -1077,3 +1077,28 @@ either way).
 
 ## SET J PAUSED AT THE J1/J2 BOUNDARY (maintainer GPU request honored, 2026-10-04 late)
 Clean handover: testbed down (/free → SIGINT → exit → zero orphans; the executor's restarted PID 110533, not the dispatch's 91750), the maintainer's own instance up on the GPU. **J1 COMPLETE** (17/17 cells: nulls ×3, Semantic Bridge ×4, Fizgig ×5, T8 shift-aware ×5; canary start bit-identical to B r9 with ALL FIVE new packs installed — zero floor held; ~35 GPU-min). Setup verified: 16/16 staged files loadable; MoGe warp conditioning built (identity 0% holes). Pack licenses: Fizgig MIT, T8mars GPL-flagged (fetch-consent), Semantic Bridge code-unlicensed FLAGGED, HyperFlow Apache. **REMAINING ≈31 cells ≈60-75 GPU-min**: J2 MoGe-partial (3), J3 VOID (5+masks), J4 style-propagate (4), J6 true-CFG (6), J7 CADS (4), J8 HyperFlow rung (6), canaries c2/c3 + instrument null N1. Resume protocol: relaunch per runbook → FRESH CANARY FIRST (environment change; 1.2.4) → driver resumes after J1T8_P2_med_r768_loosen (runs.json durable). J1 metrics/pairs + Fizgig code-read proceeding CPU-side while paused.
+
+## SET J IN PROGRESS — PAUSED AT THE J1/J2 BOUNDARY (executor addendum, 2026-10-05)
+**Maintainer GPU directive honored mid-set:** J1 (all 17 cells) + the opening canary
+completed; the driver was stopped cleanly at the pilot boundary, `/free` + SIGINT +
+verified teardown executed, and the GPU handed to the maintainer's own instance. **On
+resume (controller ruling adopted): a FRESH CANARY runs first** (the relaunch is an
+environment change; §1.2.4), then J2 in ledger order — roster/driver resume-safe.
+**Canary start PASSED** (bit-identical to Set B r9 with all five Set J packs installed).
+**J1 executed** (18 gens ≈ 36.9 GPU-min; engagement evidence per mechanism recorded —
+SB adapter-verified in-engine, T8 gain traced through the engine's cfg-1 zero-uncond
+slot, Fizgig code-read with a report=True diagnostic queued for the resume window):
+**the primary reads NONE of the three mechanisms rescues the 768p adherence collapse**
+(every arm incl. the null overshoots the plan's endpoint band at 81–86 % width; deltas
+≤7 % RMSE, no success flip, 576p sanity flat) → **J1 PROPOSES: the adherence race stays
+unbought** (the ledger's own kill rule). Mechanism costs measured: Fizgig prompt-strength
+MONOTONELY suppresses audio (−30.8→−47.1 dBFS across 0.5/1.0 — text-V scaling reaches
+the audio tokens, the assessment's prediction now MEASURED); T8's constant-max dose
+destabilizes (alternation ×6.3, +11 dB hot) while its ramped form is clean-but-flat;
+SB inert at α=0.10 with a −14 % RMSE hint at α=0.25 (exploratory only). Full tables:
+[gpu-batch-setJ-results.md](gpu-batch-setJ-results.md). Setup record: 16/16 staged files
+loadability-verified pre-gen (Set D's lesson), the J1 packs installed at pins with
+registry rows in lockstep, the MoGe-warp J2 conditioning built offline (identity 0 %
+holes / slide 9–10 % disocclusion — the VGGT substitution disclosed per-cell).
+**Deferred:** J5 (CivitAI-gated), J2's VGGT-conditioned rung + J8's UniLumos arm
+(maintainer-staged gates — surfaced, never routed around).
