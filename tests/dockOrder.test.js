@@ -253,7 +253,7 @@ test('(h) the dock shell owns the resize wiring: zero surface literals, one Rnd,
   ok(/data-studio-dock/.test(shell), 'the shell stamps its census marker (data-studio-dock) — the e2e family pin')
   // The vestigial resize-handle class retired with the wiring: no rule in
   // any sheet ever styled it, so no surface passes it anymore.
-  const cssSheets = ['src/styles.css', 'src/canvas/canvas.css']
+  const cssSheets = ['src/styles.css', 'src/canvas/canvas.css', 'src/images/workbench.css', 'src/datasets/datasets.css']
   for (const file of [...surfaceFiles, ...cssSheets]) {
     eq(read(file).includes('settings-resize-handle-br'), false, `${file} no longer carries the vestigial settings-resize-handle-br wiring`)
   }
