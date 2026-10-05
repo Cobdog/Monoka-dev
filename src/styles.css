@@ -215,6 +215,24 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .refusal-title { margin: 0; font-weight: 600; }
 .refusal-reason { margin: 0; }
 .refusal-satisfy { background: none; border: none; padding: 0; color: inherit; font-size: inherit; line-height: inherit; text-decoration: underline; cursor: pointer; }
+/* Component vocabulary task 22 (k2q0n9s) — HandoffResult, the write ≠
+   refresh tier (spec §0.5/C2: the two are INDEPENDENT per-step facts). P06:
+   the recipe owns the rows' tone/type/flow; the consuming surface's class
+   (className) carries placement geometry. done/pending rows are the muted
+   decision-prose base (--text-md, the A02/A10 >=11px class — these rows
+   carry retry decisions); a FAILED WRITE is the only thing that escalates
+   to the danger tone; a landed write whose refresh did not land paints the
+   WARNING marker instead — the done-with-stale state, never a failure tone
+   (the refusal ruling: a state, not a failure). The retry/refresh
+   affordance is an inheritance-reset text button (the save-status-retry /
+   notice-banner × precedent: resets and cursor, never box geometry). The
+   class/aria/copy/warn math lives in src/ui/handoffClasses.ts
+   (node-tested against THIS block). */
+.handoff-result { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.handoff-step { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; color: var(--muted); font-size: var(--text-md); line-height: 1.4; min-width: 0; }
+.handoff-step--failed { color: var(--danger); }
+.handoff-step-marker { color: var(--warning); }
+.handoff-step-retry { background: none; border: none; padding: 0; color: inherit; font-size: inherit; line-height: inherit; text-decoration: underline; cursor: pointer; }
 textarea, .field-group input, .field-group select { width: 100%; border: 1px solid var(--line); border-radius: 8px; background:var(--color-surface-sunken); color: var(--text); transition: border-color .15s ease; }
 textarea:hover, .field-group input:hover, .field-group select:hover { border-color: var(--line-strong); }
 textarea:focus, .field-group input:focus, .field-group select:focus { border-color: #738f42; outline: none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent); }

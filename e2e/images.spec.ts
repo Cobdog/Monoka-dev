@@ -1185,21 +1185,126 @@ test('the poserig handoff lands as a pose reference from a cold navigation (A11)
 })
 
 // ---------------------------------------------------------------------------
-// (Audit A05, task 3tu6ei6) runExit had finally but no catch: an injected
-// failure creating the continuation chain escaped as an unhandled rejection
-// with the dialog frozen and no user-visible report. The frame pin (step 1)
-// completing must still be reported against the failed chain creation
-// (step 2) — a step-level notice, no unhandled rejection, busy cleared.
-test('the start-frame exit reports a failed chain creation (A05): step notice, no unhandled rejection, busy cleared', async ({ page, request }) => {
+// (Audit A05, task 3tu6ei6; component vocabulary task 22, Flux k2q0n9s) The
+// exit's per-step fate is the HandoffResult tier — write ≠ refresh, two
+// INDEPENDENT facts per step (spec §0.5/C2). The A05 shape survives the
+// migration structurally: an injected failure creating the continuation
+// chain reports BOTH steps (the pin landed, the chain write failed — the
+// retired NoticeBanner line that carried this is gone, one announcer now),
+// no unhandled rejection, busy cleared. Review Focus #4's request-counted
+// pin: the retry re-runs ONLY the failed chain write — the pin endpoint is
+// hit EXACTLY once (the retained-identifier doctrine) — and the API is the
+// truth: exactly one media chain, exactly one generate chain.
+test('the start-frame exit reports a failed chain step; retry re-runs only it — the pin endpoint hit exactly once (A05 → task 22)', async ({ page, request }) => {
   const problems = await trackErrors(page)
   const seeded = await seedSession(request)
   await page.goto('/?images=1')
   await expect(page.locator(`[data-iw-take="${seeded.takeId}"]`)).toBeVisible({ timeout: 15_000 })
-  // Fail ONLY the continuation chain (kind 'generate') — the frame pin's
-  // media chain succeeds, so step 1 completes and step 2 is what failed.
+  // Fail ONLY the continuation chain (kind 'generate') until the retry —
+  // the frame pin's media chain (the PIN ENDPOINT) always succeeds.
+  let failGenerate = true
+  let pinPosts = 0
+  let generatePosts = 0
   await page.route('**/api/lan/documents/chains', async (route) => {
-    if (route.request().method() === 'POST' && (route.request().postData() ?? '').includes('"kind":"generate"')) {
-      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'AUDIT chain creation unavailable' }) })
+    const body = route.request().postData() ?? ''
+    if (route.request().method() === 'POST' && body.includes('"kind":"media"')) {
+      pinPosts += 1
+      await route.continue()
+      return
+    }
+    if (route.request().method() === 'POST' && body.includes('"kind":"generate"')) {
+      generatePosts += 1
+      if (failGenerate) {
+        await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'T22 chain creation unavailable' }) })
+        return
+      }
+    }
+    await route.continue()
+  })
+  await page.locator('[data-iw-exit]').click()
+  const dialog = page.getByRole('dialog', { name: 'Start-frame exit' })
+  await expect(dialog).toBeVisible()
+  await page.locator('[data-iw-exit-choice="anchor"]').click()
+  await page.locator('[data-iw-exit-confirm]').click()
+  // The tier names BOTH steps: the pin landed (done + fresh), the chain
+  // write failed with the SERVER REASON verbatim, announced as an alert in
+  // the danger tone — while the retired notice does NOT also fire.
+  const result = dialog.locator('[data-handoff-result]')
+  await expect(result).toBeVisible({ timeout: 15_000 })
+  const pinRow = result.locator('[data-handoff-step="pin"]')
+  const chainRow = result.locator('[data-handoff-step="chain"]')
+  await expect(pinRow).toHaveAttribute('data-handoff-write', 'done')
+  await expect(pinRow).toHaveAttribute('data-handoff-refresh', 'fresh')
+  await expect(pinRow).toContainText('landed')
+  await expect(chainRow).toHaveAttribute('data-handoff-write', 'failed')
+  await expect(chainRow).toHaveAttribute('data-handoff-refresh', 'pending')
+  await expect(chainRow).toHaveAttribute('role', 'alert')
+  await expect(chainRow).toHaveAttribute('aria-live', 'assertive')
+  await expect(chainRow).toContainText('T22 chain creation unavailable')
+  const chainColor = await chainRow.evaluate((element) => getComputedStyle(element).color)
+  expect(chainColor, 'a failed WRITE paints the danger tone').toBe('rgb(255, 127, 127)')
+  // (A02/A10) The failed step's prose sits at the >=11px decision floor.
+  const failedSize = await chainRow.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
+  expect(failedSize, 'the failed step row renders at the >=11px floor').toBeGreaterThanOrEqual(11)
+  await expect(page.locator('[data-iw-note]')).toHaveCount(0) // one announcer — the retired A05 notice stays retired
+  // Busy cleared: the confirm control is live again (no frozen dialog), and
+  // the dialog STAYS open — the tier is the report.
+  await expect(page.locator('[data-iw-exit-confirm]')).toBeEnabled()
+  await expect(dialog).toBeVisible()
+  // RETRY: only the failed chain write re-runs. The route heals first so
+  // the retry can land; the pin endpoint must STILL be at exactly one hit.
+  failGenerate = false
+  await chainRow.locator('[data-handoff-retry]').click()
+  await expect(dialog).toHaveCount(0, { timeout: 15_000 }) // completion closes the exit
+  const toast = page.locator('.toast-host [data-canvas-toast="success"]').first()
+  await expect(toast).toContainText('seeded', { timeout: 15_000 })
+  expect(pinPosts, 'Review Focus #4: the pin endpoint is hit EXACTLY once — the retry never re-POSTs the succeeded pin').toBe(1)
+  expect(generatePosts, 'the retry re-POSTs exactly the failed chain write').toBe(2)
+  // The API is the truth: one media chain (no duplicate pin), one seeded
+  // video chain (the retry landed).
+  await expect.poll(async () => {
+    const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+    return {
+      media: doc.chains.filter((entry: { kind: string }) => entry.kind === 'media').length,
+      generate: doc.chains.filter((entry: { kind: string }) => entry.kind === 'generate').length,
+    }
+  }, { timeout: 15_000 }).toEqual({ media: 1, generate: 1 })
+  // No unhandled rejection reached the page.
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (Component vocabulary task 22, Flux k2q0n9s — spec §0.5/C2's second arm)
+// A FAILED REFRESH after a SUCCESSFUL WRITE renders done-with-stale-marker,
+// never failed: inject a write-success + reload-failure at the pin step and
+// the pin row keeps its landed write (a polite status, the warning-tone
+// marker, NOT an alert, NOT danger) — while the chain step STILL seeds (a
+// failed refresh never blocks the next write; the pin's output id landed).
+// The refresh retry re-runs the reload ONLY: the pin endpoint stays at one
+// hit, and completion (all writes landed + all views fresh) closes the exit.
+test('handoff: a failed refresh after a successful write renders done+stale, never failed — the chain still seeds (task 22)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const seeded = await seedSession(request)
+  await page.goto('/?images=1')
+  await expect(page.locator(`[data-iw-take="${seeded.takeId}"]`)).toBeVisible({ timeout: 15_000 })
+  // Fail exactly ONE document reload (the pin step's refresh): the failure
+  // arms only after the pin's writes have been seen on the wire, so the
+  // workbench's own boot reads pass clean; every later GET (the chain
+  // step's refresh, the refresh retry) heals.
+  let pinWritesSeen = false
+  let reloadFailureConsumed = false
+  let pinPosts = 0
+  await page.route('**/api/lan/documents/chains', async (route) => {
+    if (route.request().method() === 'POST' && (route.request().postData() ?? '').includes('"kind":"media"')) {
+      pinPosts += 1
+      pinWritesSeen = true
+    }
+    await route.continue()
+  })
+  await page.route('**/api/lan/documents/project?*', async (route) => {
+    if (pinWritesSeen && !reloadFailureConsumed) {
+      reloadFailureConsumed = true
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'T22 reload down' }) })
       return
     }
     await route.continue()
@@ -1209,35 +1314,48 @@ test('the start-frame exit reports a failed chain creation (A05): step notice, n
   await expect(dialog).toBeVisible()
   await page.locator('[data-iw-exit-choice="anchor"]').click()
   await page.locator('[data-iw-exit-confirm]').click()
-  // The step-level notice names BOTH steps: the pin completed, the chain
-  // creation failed. (Task 9, k2q0n9s: the banner is NoticeBanner — the
-  // data attribute renamed with the vocabulary; the roles ride the
-  // component.)
-  const note = page.locator('[data-iw-note]')
-  await expect(note).toContainText('pinned', { timeout: 15_000 })
-  await expect(note).toContainText('could not be created')
-  await expect(note).toContainText('AUDIT chain creation unavailable')
-  await expect(note).toHaveAttribute('role', 'status')
-  await expect(note).toHaveAttribute('aria-live', 'polite')
-  await expect(note).toHaveClass(/notice-banner notice-banner--accent iw-note/)
-  // (Final review I1) The notice is the render channel for this branch's
-  // decision prose (step/save failures, decline guidance) — the same >=11px
-  // computed floor as the other A10 pins, not the dead --text-2xs fallback.
-  const noticeSize = await note.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))
-  expect(noticeSize, '[data-iw-note] renders at the >=11px floor').toBeGreaterThanOrEqual(11)
-  // Busy cleared: the confirm control is live again (no frozen dialog).
-  await expect(page.locator('[data-iw-exit-confirm]')).toBeEnabled()
-  // Close the exit dialog so the banner beneath is reachable by pointer.
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('dialog', { name: 'Start-frame exit' })).toHaveCount(0)
-  // Task 9 (k2q0n9s): ONE dismiss contract — the × owns its handler. The
-  // banner body never dismisses (the retired hand-rolled banner's
-  // banner-click dismissal died with it); the button alone clears it.
-  await note.click()
-  await expect(note, 'clicking the banner body does not dismiss — the × is the only path').toBeVisible()
-  await note.locator('button[aria-label="Dismiss"]').click()
-  await expect(note).toHaveCount(0)
-  // No unhandled rejection reached the page.
+  // The pin row: the write LANDED, the refresh FAILED — done + the stale
+  // marker (a polite status carrying a warning-tone marker), never an
+  // alert, never the danger tone.
+  const result = dialog.locator('[data-handoff-result]')
+  await expect(result).toBeVisible({ timeout: 15_000 })
+  const pinRow = result.locator('[data-handoff-step="pin"]')
+  const chainRow = result.locator('[data-handoff-step="chain"]')
+  await expect(pinRow).toHaveAttribute('data-handoff-write', 'done')
+  await expect(pinRow).toHaveAttribute('data-handoff-refresh', 'failed')
+  await expect(pinRow).toHaveAttribute('role', 'status')
+  await expect(pinRow).toHaveAttribute('aria-live', 'polite')
+  await expect(pinRow).toContainText('landed')
+  const marker = pinRow.locator('[data-handoff-stale]')
+  await expect(marker).toBeVisible()
+  await expect(marker).toContainText('not refreshed')
+  const markerColor = await marker.evaluate((element) => getComputedStyle(element).color)
+  expect(markerColor, 'the stale marker paints the warning tone — a state, not a failure').toBe('rgb(240, 188, 102)')
+  const pinColor = await pinRow.evaluate((element) => getComputedStyle(element).color)
+  expect(pinColor, 'C2: a failed refresh NEVER demotes the row to the danger tone').not.toBe('rgb(255, 127, 127)')
+  // C2's other half: the failed refresh did NOT block the chain step — the
+  // video chain seeded off the LANDED pin output, and its own refresh (the
+  // healed route) went fresh.
+  await expect(chainRow).toHaveAttribute('data-handoff-write', 'done')
+  await expect(chainRow).toHaveAttribute('data-handoff-refresh', 'fresh')
+  // The dialog stays open: not every view is fresh, so the tier is the
+  // report — with a refresh (not retry) affordance on the pin row.
+  await expect(dialog).toBeVisible()
+  await expect(pinRow.locator('[data-handoff-retry]')).toHaveText('refresh')
+  // The refresh retry re-runs the RELOAD ONLY — the pin endpoint stays at
+  // exactly one hit — and completion (all fresh now) closes the exit.
+  await pinRow.locator('[data-handoff-retry]').click()
+  await expect(dialog).toHaveCount(0, { timeout: 15_000 })
+  const toast = page.locator('.toast-host [data-canvas-toast="success"]').first()
+  await expect(toast).toContainText('seeded', { timeout: 15_000 })
+  expect(pinPosts, 'the refresh retry re-runs the reload, never the landed writes').toBe(1)
+  // The API is the truth: the chain seeded exactly once despite the failed
+  // pin refresh, and no duplicate pin landed.
+  const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+  expect(doc.chains.filter((entry: { kind: string }) => entry.kind === 'media').length).toBe(1)
+  expect(doc.chains.filter((entry: { kind: string }) => entry.kind === 'generate').length).toBe(1)
+  // No unhandled rejection reached the page (the failed reload is handled
+  // state, not an escape).
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
