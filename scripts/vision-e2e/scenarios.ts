@@ -1010,6 +1010,16 @@ export const SCENARIOS: VisionScenario[] = [
         document.querySelector('[data-canvas-root]')!.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }))
       })
       const visionSourceTile = page.locator('[data-canvas-tile]').first()
+      // (task 24, k2q0n9s — the capture ordering fixed) The retired order
+      // opened the produce menu FIRST and then clicked the tile for the
+      // properties panel — and the tile click's outside-press dismissed the
+      // menu before the screenshot (both judged passes read "menu missing
+      // entirely"; the menu WAS open at its own assert). Panel first, menu
+      // second: the menu opens over the composed surface and both survive
+      // to the shot.
+      await page.evaluate(() => (document.querySelector('[data-canvas-tile]') as HTMLElement | null)?.click())
+      await expect(page.locator('[data-canvas-properties]')).toBeVisible()
+      await page.waitForTimeout(500)
       // (2026-09-28 audio-lane pause) The Music 3 dock has no UI entry while
       // the lane is paused — the capture shows the typed-hole produce MENU
       // with the disabled Music 3 row carrying the pause reason, beside the
@@ -1019,12 +1029,6 @@ export const SCENARIOS: VisionScenario[] = [
       const pausedRow = page.locator('[data-canvas-menu-row="produce:music3"]')
       await expect(pausedRow).toBeVisible()
       await expect(pausedRow).toBeDisabled()
-      await page.waitForTimeout(500)
-      // …and selecting it (a direct dispatch — the tile may sit under the
-      // floating dock) opens the properties panel with the absorbed prompt
-      // surfaces. Both compose: dock left, panel right.
-      await page.evaluate(() => (document.querySelector('[data-canvas-tile]') as HTMLElement | null)?.click())
-      await expect(page.locator('[data-canvas-properties]')).toBeVisible()
       await page.waitForTimeout(700)
     },
     after: async (page) => {
@@ -1946,19 +1950,42 @@ export const SCENARIOS: VisionScenario[] = [
       },
       {
         id: 'component-gallery-lower-1080p',
-        label: 'Component gallery — scrolled to the state-machine band: SaveStatus, Refusal, HandoffResult (the N/A cells)',
+        label: 'Component gallery — scrolled to the state-machine band: SaveStatus, Refusal (the N/A cells)',
         drive: async (page) => {
-          await page.locator('[data-gallery-section="save-status"]').scrollIntoViewIfNeeded()
-          await expect(page.locator('[data-gallery-section="handoff"]')).toBeAttached()
+          // (task 24, k2q0n9s — the framing fixed) scrollIntoViewIfNeeded
+          // scrolled the MINIMUM, landing save-status at the viewport's
+          // BOTTOM edge with everything else below the fold. block:'start'
+          // pins it under the titlebar. The three-section band is 1077px
+          // against 1039px of usable frame — it cannot co-fit, so the
+          // HandoffResult matrix (the band's second row of cells, incl. the
+          // red failed exhibit) gets its OWN checkpoint below rather than a
+          // watered-down rubric.
+          await page.locator('[data-gallery-section="save-status"]').evaluate((element) => element.scrollIntoView({ block: 'start' }))
+          await expect(page.locator('[data-gallery-section="refusal"] [data-gallery-cell]').first()).toBeVisible()
           await page.waitForTimeout(300)
         },
         rubric: [
-          'Context: the same ?gallery=1 exhibit page, scrolled DOWN so the "SaveStatus" section sits at the top of the visible area; the sections above (Button/Chip/ProgressBar/Toast/Notice) are above the fold — their absence here is NOT a defect. In frame from the top: SaveStatus, then Refusal, then HandoffResult (the write ≠ refresh matrix), with EffectiveSettingRow/Field/StudioSelect and the interactive sections (menus, docks, dialogs, layer stacking) continuing below the fold.',
+          'Context: the same ?gallery=1 exhibit page, scrolled DOWN so the "SaveStatus" section sits pinned at the top of the visible area under the slim titlebar; the sections above (Button/Chip/ProgressBar/Toast/Notice) are above the fold — their absence here is NOT a defect. In frame from the top: SaveStatus FULLY, then Refusal FULLY, then the HandoffResult section\'s HEADING and its FIRST row of cells (the rest of that grid continues below the fold — intended scrolling, not clipping; its own checkpoint exhibits it whole), with EffectiveSettingRow/Field/StudioSelect and the interactive sections continuing further below.',
           'The SaveStatus grid: most cards show a single small muted status line — "Saving draft…" with a tiny spinner, "Draft saved.", and a red-toned "Draft not saved — 422 Unprocessable Entity — resolution not in the family set" with an underlined "retry" link; THREE cards are DASHED-border and italic reading "N/A — the retry affordance renders only on the failed state…" (the justified non-renderable cells — DATA, intended); one card ("idle · absent") is an EMPTY stage: its emptiness IS the exhibit (SILENT by contract) — never a defect.',
           'The Refusal section: two cards, each an amber/warning-toned block with a bold title "Generate (T=1 Fast) is not available", a reason line, and in ONE of them an underlined satisfy link "Open settings — engine connection" (the other stands on its reason alone — intended, not a missing button).',
-          'The HandoffResult section: a grid of small rows reading "Seed the video chain" plus state text — a spinner-only row (pending), quiet "landed" rows, a "landed" row with an amber "view stale — …" marker, a row with an amber "not refreshed — …" marker plus an underlined "refresh" link, and a RED-toned "failed — 500 Internal Server Error — …" row with an underlined "retry" link. SIX dashed italic N/A cards sit among them ("the refresh is the write\'s companion fact…") — the impossible half of the 3×4 matrix, exhibited as data.',
-          'Blessings: the red "failed" row is the ONLY red text in these sections (a failed refresh renders amber markers, never red — that is the write ≠ refresh contract); italic dashed cards are intended exhibits; underlined retry/refresh/satisfy links are real affordances; dense 11px prose is the design language.',
-          'Defects to flag: a dashed N/A card with NO reason text, the failed row reading amber instead of red, two announcer-looking blocks stacked in one card, overlapping rows, text clipped mid-glyph by a card edge.',
+          'The HandoffResult section\'s heading and first cell row are visible at the frame\'s foot (spinner-only pending row, quiet landed rows, dashed N/A cards among them) — the heading\'s presence is the composition clause here; its full matrix is judged in the next checkpoint.',
+          'Blessings: the red "failed" line in SaveStatus is the only red in frame (a failed refresh renders amber markers, never red — that is the write ≠ refresh contract); italic dashed cards are intended exhibits; underlined retry/refresh/satisfy links are real affordances; dense 11px prose is the design language.',
+          'Defects to flag: a dashed N/A card with NO reason text, two announcer-looking blocks stacked in one card, overlapping rows, text clipped mid-glyph by a card edge.',
+        ].join(' '),
+      },
+      {
+        id: 'component-gallery-handoff-1080p',
+        label: 'Component gallery — the HandoffResult matrix alone: the write ≠ refresh 3×4 grid with its six N/A cells',
+        drive: async (page) => {
+          await page.locator('[data-gallery-section="handoff"]').evaluate((element) => element.scrollIntoView({ block: 'start' }))
+          await expect(page.locator('[data-gallery-section="handoff"] [data-gallery-cell]')).toHaveCount(12)
+          await page.waitForTimeout(300)
+        },
+        rubric: [
+          'Context: the same ?gallery=1 exhibit page, scrolled so the "HandoffResult" section sits pinned at the top of the visible area under the slim titlebar; everything above (the whole gallery) is above the fold — absence is NOT a defect. In frame from the top: the HandoffResult section heading, its one-to-three-line muted description, and the FULL 3×4 grid of cells; the sections after it (EffectiveSettingRow/Field/StudioSelect, the interactive sections) continue below the fold.',
+          'The HandoffResult grid: small rows reading "Seed the video chain" plus state text — a spinner-only row (pending), quiet "landed" rows, a "landed" row with an amber "view stale — …" marker, a row with an amber "not refreshed — …" marker plus an underlined "refresh" link, and a RED-toned "failed — 500 Internal Server Error — …" row with an underlined "retry" link. SIX dashed italic N/A cards sit among them ("the refresh is the write\'s companion fact…") — the impossible half of the 3×4 matrix, exhibited as data.',
+          'Blessings: the red "failed" row is the ONLY red text in frame (a failed refresh renders amber markers, never red — that is the write ≠ refresh contract); italic dashed cards are intended exhibits; the underlined retry/refresh links are real affordances; dense 11px prose is the design language.',
+          'Defects to flag: a dashed N/A card with NO reason text, the failed row reading amber instead of red, two announcer-looking blocks stacked in one card, overlapping rows, text clipped mid-glyph by a card edge, fewer than twelve cells in frame.',
         ].join(' '),
       },
     ],
