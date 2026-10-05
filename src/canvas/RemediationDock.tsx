@@ -10,17 +10,19 @@
  * Mounted wherever renders submit (canvas + workbench — the surfaces that
  * also mount Settings/Library). Listens for PREFLIGHT_REFUSAL_EVENT (the
  * pure submit cores fire it; they never touch a store by design).
+ *
+ * Task 17: the chrome is the StudioDock shell's. The dock's open lifetime
+ * is still the rows' presence — the shell mounts exactly while rows exist,
+ * so raise-on-open/unregister-on-close ride its mount (task 11's shape).
  */
 import { useEffect, useState } from 'react'
-import { Rnd } from 'react-rnd'
-import { Check, Download, PackageOpen, RefreshCw, Wrench, X } from 'lucide-react'
+import { Check, Download, PackageOpen, RefreshCw, Wrench } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { StudioDock } from '../ui/StudioDock'
 import { PREFLIGHT_REFUSAL_EVENT, type MissingNodeClass } from '../lib/preflight'
 import { remediationRows, type RemediationRow } from '../lib/preflightRemediation'
 import { dockDefaultGeometry } from './dockGeometry'
 import { useCanvasStore } from './store'
-import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
-import { useDockRank } from '../ui/useDockRank'
 
 export function RemediationDock() {
   const setLibraryDock = useCanvasStore((state) => state.setLibraryDock)
@@ -29,15 +31,6 @@ export function RemediationDock() {
   const [rows, setRows] = useState<RemediationRow[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [installed, setInstalled] = useState<Set<string>>(new Set())
-  // Dock stacking (task 11, spec §0.1): the reactive rank — no local z. The
-  // dock's open lifetime is the rows' presence (the refusal event fills
-  // them; close/unmount empties them), so registration rides exactly that.
-  const open = rows !== null && rows.length > 0
-  const dockRank = useDockRank('remediation')
-  useEffect(() => {
-    if (open) raiseDock('remediation')
-    return () => unregisterDock('remediation')
-  }, [open])
 
   useEffect(() => {
     const onRefusal = (event: Event) => {
@@ -68,24 +61,17 @@ export function RemediationDock() {
     }
   }
 
-  return <Rnd
-    className="canvas-settings-dock canvas-remediation-dock"
+  return <StudioDock
+    id="remediation"
+    dockClassName="canvas-settings-dock canvas-remediation-dock"
     data-canvas-remediation-dock
-    style={{ zIndex: dockZCss(dockRank) }}
-    onPointerDownCapture={() => raiseDock('remediation')}
-    default={dockDefaultGeometry({ x: 240, y: 150, width: 560, height: Math.min(560, window.innerHeight - 260) })}
-    minWidth={420}
-    minHeight={240}
-    bounds="parent"
-    dragHandleClassName="canvas-inspector-header"
-    resizeHandleClasses={{ bottomRight: 'settings-resize-handle-br' }}
-    enableResizing={{ bottom: true, bottomRight: true, right: true, bottomLeft: false, topLeft: false, topRight: false, left: false, top: false }}
+    title={<><Wrench size={13} /> <strong>This render needs</strong></>}
+    closeLabel="Close remediation"
+    closeDataAttr="data-remediation-close"
+    onClose={close}
+    geometry={dockDefaultGeometry({ x: 240, y: 150, width: 560, height: Math.min(560, window.innerHeight - 260) })}
+    resizePolicy={{ minWidth: 420, minHeight: 240 }}
   >
-    <header className="canvas-inspector-header">
-      <Wrench size={13} />
-      <strong>This render needs</strong>
-      <button type="button" aria-label="Close remediation" data-remediation-close onClick={close}><X size={13} /></button>
-    </header>
     <div className="canvas-settings-body" data-remediation-body>
       <p className="canvas-remediation-lede" data-remediation-lede>
         The engine is missing {rows.length === 1 ? 'one node class' : `${rows.length} node classes`} this render needs — nothing was submitted. One action per row; then generate again (the check re-runs on every attempt).
@@ -130,5 +116,5 @@ export function RemediationDock() {
       </ul>
       <p className="canvas-remediation-note">The full pack board (audit + override) lives in Settings → Setup → Node packs.</p>
     </div>
-  </Rnd>
+  </StudioDock>
 }

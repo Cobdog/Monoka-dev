@@ -13,17 +13,18 @@
  * window event the Settings pack board listens for (the R-10 discipline:
  * fetched packs auto-install, so the pack chips re-resolve without a manual
  * Refresh — wherever the board is mounted).
+ *
+ * Task 17: the chrome is the StudioDock shell's; the consent the
+ * FetchBrowser inside fires rides --z-consent above the rank band.
  */
 import { useContext, useEffect, useState } from 'react'
-import { Rnd } from 'react-rnd'
-import { Library, X } from 'lucide-react'
+import { Library } from 'lucide-react'
 import { FetchBrowser } from './FetchBrowser'
 import { useSessionStore } from '../state/sessionStore'
 import { CanvasSessionContext } from '../canvas/sessionContext'
 import { dockDefaultGeometry } from '../canvas/dockGeometry'
+import { StudioDock } from '../ui/StudioDock'
 import { useCanvasStore } from '../canvas/store'
-import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
-import { useDockRank } from '../ui/useDockRank'
 
 /** The pack-board refresh event (the CHARACTER_LIBRARY_EVENT precedent —
  *  cross-component refresh without store churn): fired after any fetch
@@ -38,13 +39,6 @@ export function LibraryDock() {
   const context = useContext(CanvasSessionContext)
   const settings = useSessionStore((state) => state.settings)
   const setSettings = useSessionStore((state) => state.setSettings)
-  // Dock stacking (task 11, spec §0.1): the reactive rank — no local z; the
-  // consent the FetchBrowser inside fires rides --z-consent above the band.
-  const dockRank = useDockRank('library')
-  useEffect(() => {
-    if (open) raiseDock('library')
-    return () => unregisterDock('library')
-  }, [open])
   // Consume the focus ids once the browser has acted on them.
   const [heldFocus, setHeldFocus] = useState<string[] | null>(null)
   useEffect(() => {
@@ -57,24 +51,17 @@ export function LibraryDock() {
   if (!open || !settings || !context) return null
   const { session } = context
 
-  return <Rnd
-    className="canvas-settings-dock canvas-library-dock"
+  return <StudioDock
+    id="library"
+    dockClassName="canvas-settings-dock canvas-library-dock"
     data-canvas-library-dock
-    style={{ zIndex: dockZCss(dockRank) }}
-    onPointerDownCapture={() => raiseDock('library')}
-    default={dockDefaultGeometry({ x: 200, y: 120, width: 760, height: Math.min(780, window.innerHeight - 180) })}
-    minWidth={460}
-    minHeight={300}
-    bounds="parent"
-    dragHandleClassName="canvas-inspector-header"
-    resizeHandleClasses={{ bottomRight: 'settings-resize-handle-br' }}
-    enableResizing={{ bottom: true, bottomRight: true, right: true, bottomLeft: false, topLeft: false, topRight: false, left: false, top: false }}
+    title={<><Library size={13} /> <strong>Library — get models</strong></>}
+    closeLabel="Close library"
+    closeDataAttr="data-canvas-library-close"
+    onClose={() => setLibraryDock(false)}
+    geometry={dockDefaultGeometry({ x: 200, y: 120, width: 760, height: Math.min(780, window.innerHeight - 180) })}
+    resizePolicy={{ minWidth: 460, minHeight: 300 }}
   >
-    <header className="canvas-inspector-header">
-      <Library size={13} />
-      <strong>Library — get models</strong>
-      <button type="button" aria-label="Close library" data-canvas-library-close onClick={() => setLibraryDock(false)}><X size={13} /></button>
-    </header>
     <div className="canvas-settings-body" data-canvas-library-body>
       <FetchBrowser
         settings={settings}
@@ -94,5 +81,5 @@ export function LibraryDock() {
         onFocusConsumed={() => setHeldFocus(null)}
       />
     </div>
-  </Rnd>
+  </StudioDock>
 }

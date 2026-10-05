@@ -9,14 +9,18 @@
  * rendered frames land as a content-addressed blob + a canvas_control_track
  * row on the target chain (kind pose, source poserig) — the §2.1 control
  * track, one per shot.
+ *
+ * Task 17: the chrome is the StudioDock shell's (its own header recipe and
+ * × glyph ride the shell's props); the DISTINCT resize policy — every edge,
+ * 720×420 — is the manifest's preserved exception to the common gate. Rank
+ * registration rides the shell's mount: the panel object's presence is the
+ * dock's open lifetime, so a reopen re-raises exactly as before.
  */
-import { lazy, Suspense, useEffect, useState } from 'react'
-import { Rnd } from 'react-rnd'
+import { lazy, Suspense, useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
+import { StudioDock } from '../ui/StudioDock'
 import { documentsApi } from './api'
 import { useCanvasStore } from './store'
-import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
-import { useDockRank } from '../ui/useDockRank'
 
 // The rig keeps its own lazy chunk (three.js + the pose modules) — the
 // canvas chunk never pays for it until the dock opens.
@@ -31,14 +35,6 @@ export function PoseRigDock() {
   const activeProjectId = useCanvasStore((state) => state.activeProjectId)
   const tiles = useCanvasStore((state) => state.tiles)
   const [exporting, setExporting] = useState(false)
-  // Dock stacking (task 11, spec §0.1): the reactive rank — no local z, no
-  // CSS pin; registration rides the dock's open lifetime (the panel object's
-  // identity, so a reopen re-raises exactly as before).
-  const dockRank = useDockRank('pose-rig')
-  useEffect(() => {
-    if (panel) raiseDock('pose-rig')
-    return () => unregisterDock('pose-rig')
-  }, [panel])
 
   if (!panel) return null
   const doc = activeProjectId ? documents[activeProjectId] : null
@@ -69,26 +65,29 @@ export function PoseRigDock() {
     }
   }
 
-  return <Rnd
-    className="canvas-poserig-dock"
+  return <StudioDock
+    id="pose-rig"
+    dockClassName="canvas-poserig-dock"
     data-canvas-poserig
-    style={{ zIndex: dockZCss(dockRank) }}
-    onPointerDownCapture={() => raiseDock('pose-rig')}
-    default={{ x: 96, y: 72, width: Math.min(1180, window.innerWidth - 120), height: Math.min(720, window.innerHeight - 160) }}
-    minWidth={720}
-    minHeight={420}
-    bounds="parent"
-    dragHandleClassName="canvas-poserig-header"
-  >
-    <header className="canvas-poserig-header">
+    headerClassName="canvas-poserig-header"
+    title={<>
       <strong>Pose rig — control track for “{tile.title}”</strong>
       <span>{exporting ? 'exporting…' : 'palette-exact DWPose · export lands as this chain’s control track'}</span>
-      <button type="button" aria-label="Close the pose rig" data-canvas-poserig-close onClick={() => setPoseRig(null)}>×</button>
-    </header>
+    </>}
+    closeLabel="Close the pose rig"
+    closeDataAttr="data-canvas-poserig-close"
+    closeGlyph="×"
+    onClose={() => setPoseRig(null)}
+    geometry={{ x: 96, y: 72, width: Math.min(1180, window.innerWidth - 120), height: Math.min(720, window.innerHeight - 160) }}
+    /* The DISTINCT policy (manifest §4): every edge resizes — the full-edge
+       default this dock always had — at the rig's own 720×420 floor, never
+       the common down/right gate. */
+    resizePolicy={{ minWidth: 720, minHeight: 420, edges: true }}
+  >
     <div className="canvas-poserig-body">
       <Suspense fallback={fallback}>
         <PoseRigApp dock={{ onExportTrack: (payload) => void exportToTrack(payload) }} />
       </Suspense>
     </div>
-  </Rnd>
+  </StudioDock>
 }

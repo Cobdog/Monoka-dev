@@ -20,10 +20,10 @@
  * the engine readouts for the audio engine-ops (§5.4).
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Rnd } from 'react-rnd'
 import { Captions, Clock3, Dices, Play, Sparkles, Square, Star, Volume2, WandSparkles, X } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { StudioSelect } from '../ui/StudioSelect'
+import { StudioDock } from '../ui/StudioDock'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { SmartPromptEditor, type SmartPromptEditorHandle } from '../components/SmartPromptEditor'
 import { StructuredPromptEditor } from '../components/StructuredPromptEditor'
@@ -55,8 +55,6 @@ import {
 import { GAP_KINDS, GAP_LABEL, type PlanGapKind } from './plan'
 import { useCanvasStore } from './store'
 import { documentsApi } from './api'
-import { dockZCss, raiseDock, unregisterDock } from '../ui/dockOrder'
-import { useDockRank } from '../ui/useDockRank'
 import type { DocumentChain } from './derive'
 
 /** AR-first resolution picking (ruling 2026-09-26): the ratio drives the
@@ -428,13 +426,6 @@ export function PropertiesPanel() {
   const submitChain = useCanvasStore((state) => state.submitChain)
   const validateChain = useCanvasStore((state) => state.validateChain)
   const cancelChainJob = useCanvasStore((state) => state.cancelChainJob)
-  // Dock stacking (task 11, spec §0.1): the reactive rank — no local z, no
-  // CSS pin; registration rides the inspector's open lifetime.
-  const dockRank = useDockRank('inspector')
-  useEffect(() => {
-    if (open) raiseDock('inspector')
-    return () => unregisterDock('inspector')
-  }, [open])
 
   const models = useSessionStore((state) => state.models)
   const info = useSessionStore((state) => state.info)
@@ -990,24 +981,20 @@ export function PropertiesPanel() {
     }
   }
 
-  return <Rnd
-    className="canvas-inspector canvas-properties"
+  return <StudioDock
+    id="inspector"
+    dockClassName="canvas-inspector canvas-properties"
     data-canvas-inspector
     data-canvas-properties
-    style={{ zIndex: dockZCss(dockRank) }}
-    onPointerDownCapture={() => raiseDock('inspector')}
-    default={{ x: window.innerWidth - 396, y: 64, width: 356, height: Math.min(760, window.innerHeight - 140) }}
-    minWidth={300}
-    minHeight={240}
-    bounds="parent"
-    dragHandleClassName="canvas-inspector-header"
-    enableResizing={{ bottom: true, bottomRight: true, right: true, bottomLeft: false, topLeft: false, topRight: false, left: false, top: false }}
-  >
-    <header className="canvas-inspector-header">
+    title={<>
       <strong>{tile.title}</strong>
       <span className="canvas-properties-mode" data-canvas-mode={mode}>{modeLabelFor(draft)}</span>
-      <button type="button" aria-label="Close properties" onClick={() => setInspectorOpen(false)}><X size={13} /></button>
-    </header>
+    </>}
+    closeLabel="Close properties"
+    onClose={() => setInspectorOpen(false)}
+    geometry={{ x: window.innerWidth - 396, y: 64, width: 356, height: Math.min(760, window.innerHeight - 140) }}
+    resizePolicy={{ minWidth: 300, minHeight: 240 }}
+  >
     {/* (R-23) The mode RULE at choice time — the mode is derived from what
         the chain binds; the audit's finding was that the rule was stated
         nowhere. One line, mode-specific. */}
@@ -1595,5 +1582,5 @@ export function PropertiesPanel() {
           if (ok) void deleteControlTrack(ask)
         }}
       />}
-  </Rnd>
+  </StudioDock>
 }

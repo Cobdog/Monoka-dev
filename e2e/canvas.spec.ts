@@ -101,6 +101,22 @@ async function grabHeader(page: Page, header: Locator) {
   await page.mouse.up()
 }
 
+/** A completed resize leaves the dock's own subtree owning the hit point at
+ *  its center again (re-resizable's resize overlay is gone once the resize
+ *  ends). The library's failure shape: a mouseup that lands outside that
+ *  overlay — e.g. a bounds-clamped drag whose pointer ends off the dock —
+ *  never ends the resize, and the overlay then blocks every later pointer
+ *  event on the surface; pinned here so a hung resize fails loudly at its
+ *  own step instead of as an unrelated click timeout. */
+async function expectResizeSettled(dock: Locator) {
+  const box = await dock.boundingBox()
+  expect(box).toBeTruthy()
+  await expect.poll(() => dock.evaluate((element, point) => {
+    const hit = document.elementFromPoint(point.x, point.y)
+    return hit !== null && element.contains(hit)
+  }, { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 })).toBe(true)
+}
+
 /** The active project's document, straight from the documents API. */
 async function activeDocument(page: Page) {
   const session = await page.evaluate(async () => {
@@ -1904,6 +1920,203 @@ test('the consent tier sits above the modal band (the fetch consent, §0.1)', as
   // Decline: the consent's Cancel owns dismissal — nothing was fetched.
   await consent.getByRole('button', { name: 'Cancel' }).click()
   await expect(consent).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// Component vocabulary task 17 — the StudioDock thin shell (spec §2.1): the
+// eight Rnd sites' chrome — the title bar, the raise interaction, the close
+// affordance, the resize wiring — collapses into ONE shared shell over task
+// 11's reactive rank band, with the content per-surface. The census marker
+// (data-studio-dock) is how a dock proves it renders through the shell; the
+// three tests pin the shell's contract at the real surfaces:
+//   - raise via the shell: a header grab tops the dock with RENORMALIZED
+//     ranks (task 11's closing-move invariant — the former top's z comes
+//     back DOWN — must hold through the shell's grab);
+//   - resize per POLICY: the common gate grows down/right only (three
+//     handles, minWidth clamp, the left edge refuses) while the pose rig's
+//     distinct policy grows from every edge (eight handles, the left edge
+//     moves x AND widens);
+//   - close via the shell: the affordance unregisters the dock — the
+//     survivors' band compresses, observable as the remaining dock's z
+//     stepping DOWN to the floor.
+test('studio dock shell: raise via the shell — renormalized ranks, the closing move', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('studio dock shell: raise via the shell')
+  await page.locator('[data-canvas-submit]').click()
+  const inspector = page.locator('[data-canvas-inspector]')
+  await expect(inspector).toBeVisible({ timeout: 10_000 })
+  await page.locator('[data-canvas-settings-button]').click()
+  const settings = page.locator('[data-canvas-settings-dock]')
+  await expect(settings).toBeVisible()
+  await page.locator('[data-canvas-diagnostics-button]').click()
+  const diagnostics = page.locator('[data-canvas-diagnostics-dock]')
+  await expect(diagnostics).toBeVisible()
+
+  // THE SHELL CENSUS: every open dock renders through the shell — its root
+  // carries the marker with the dock's rank id. (This is the red the test
+  // was born on: pre-migration no dock carried it.)
+  await expect(inspector).toHaveAttribute('data-studio-dock', 'inspector')
+  await expect(settings).toHaveAttribute('data-studio-dock', 'settings')
+  await expect(diagnostics).toHaveAttribute('data-studio-dock', 'diagnostics')
+
+  // Natural open order bottom→top: inspector, settings, diagnostics.
+  await expect.poll(async () => (await dockZ(diagnostics)) - (await dockZ(inspector))).toBeGreaterThan(0)
+
+  // Raise the BOTTOM dock (the inspector) through the shell's header grab:
+  // it tops both siblings — newest interacted wins.
+  await grabHeader(page, inspector.locator('.canvas-inspector-header'))
+  await expect.poll(async () => (await dockZ(inspector)) - (await dockZ(diagnostics))).toBeGreaterThan(0)
+  const inspectorTopZ = await dockZ(inspector)
+
+  // THE CLOSING MOVE (task 11's invariant, through the shell's grab): the
+  // now-bottom settings is grabbed and the former top's z must come back
+  // DOWN — renormalization publishes, a counter only ever grows.
+  await grabHeader(page, settings.locator('.canvas-inspector-header'))
+  await expect.poll(() => dockZ(inspector)).toBeLessThan(inspectorTopZ)
+  await expect.poll(async () => (await dockZ(settings)) - (await dockZ(inspector))).toBeGreaterThan(0)
+
+  // And the third dock takes the top the same way — every participant rides
+  // the same shell wiring. The grab lands on the EXPOSED right end of the
+  // diagnostics header: the raised settings dock (the cascade, dockGeometry)
+  // covers its left portion, and grabbing any exposed part is the contract.
+  const diagnosticsHeader = diagnostics.locator('.canvas-inspector-header')
+  const exposed = (await diagnosticsHeader.boundingBox())!
+  await page.mouse.move(exposed.x + exposed.width * 0.85, exposed.y + exposed.height / 2)
+  await page.mouse.down()
+  await page.mouse.up()
+  await expect.poll(async () => (await dockZ(diagnostics)) - (await dockZ(settings))).toBeGreaterThan(0)
+
+  await settings.locator('[data-canvas-settings-close]').click()
+  await diagnostics.locator('[data-canvas-diagnostics-close]').click()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('studio dock shell: resize per policy — the common gate refuses left; the pose rig grows from every edge', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+
+  // ---- the COMMON policy arm: the settings dock (resizePolicy 420×280) ----
+  await page.locator('[data-canvas-settings-button]').click()
+  const settings = page.locator('[data-canvas-settings-dock]')
+  await expect(settings).toBeVisible()
+  await expect(settings).toHaveAttribute('data-studio-dock', 'settings')
+
+  // The rendered handle set IS the policy: bottom + right + bottomRight only
+  // (re-resizable renders a cursor-styled handle div per ENABLED direction —
+  // the refused edges are absent from the DOM entirely).
+  const handleCount = (dock: Locator) => dock.evaluate((element) =>
+    element.querySelectorAll('div[style*="resize"]').length)
+  await expect.poll(() => handleCount(settings)).toBe(3)
+
+  // minWidth is the policy's floor: a 400px leftward drag from the right
+  // edge clamps at 420, never crosses it.
+  let box = (await settings.boundingBox())!
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height * 0.5)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width - 402, box.y + box.height * 0.5, { steps: 6 })
+  await page.mouse.up()
+  await expectResizeSettled(settings)
+  box = (await settings.boundingBox())!
+  expect(Math.round(box.width), 'the common policy clamps at its minWidth').toBe(420)
+
+  // Growth works down/right: +160 from the right edge lands on 580.
+  await page.mouse.move(box.x + box.width - 2, box.y + box.height * 0.5)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width - 2 + 160, box.y + box.height * 0.5, { steps: 6 })
+  await page.mouse.up()
+  await expectResizeSettled(settings)
+  box = (await settings.boundingBox())!
+  expect(Math.round(box.width), 'the right edge grows the dock').toBe(580)
+
+  // The LEFT edge refuses: with no left handle the pointer falls through to
+  // the body, and the shell's drag contract (header only) keeps the dock put
+  // — x and width both unchanged after a real leftward drag attempt.
+  const before = (await settings.boundingBox())!
+  await page.mouse.move(before.x + 3, before.y + before.height * 0.5)
+  await page.mouse.down()
+  await page.mouse.move(before.x - 80, before.y + before.height * 0.5, { steps: 6 })
+  await page.mouse.up()
+  const after = (await settings.boundingBox())!
+  expect(Math.round(after.x), 'the common policy never moves the left edge (x fixed)').toBe(Math.round(before.x))
+  expect(Math.round(after.width), 'the common policy never grows from the left edge').toBe(Math.round(before.width))
+
+  // ---- the DISTINCT policy arm: the pose rig (720×420, every edge) --------
+  await dropPng(page, 'pose-shell-resize-target.png')
+  const tile = page.locator('[data-canvas-tile]').first()
+  await expect(tile).toBeVisible({ timeout: 10_000 })
+  await page.waitForTimeout(600)
+  await tile.locator('[data-canvas-endpoint="head"]').click()
+  const menu = page.locator('[data-canvas-endpoint-menu="consume"]')
+  await expect(menu).toBeVisible()
+  await menu.locator('[data-canvas-menu-row="consume:pose-rig"]').click()
+  const pose = page.locator('[data-canvas-poserig]')
+  await expect(pose).toBeVisible({ timeout: 15_000 })
+  await expect(pose).toHaveAttribute('data-studio-dock', 'pose-rig')
+
+  // Eight handles — every edge and corner, the manifest's distinct policy.
+  await expect.poll(() => handleCount(pose)).toBe(8)
+
+  // The LEFT edge is LIVE: dragging it right moves x AND narrows the dock —
+  // impossible under the common gate (the arm above proves x is fixed
+  // there). The drag stays INSIDE the parent bounds: a clamped leftward
+  // drag strands the pointer off the dock over the rig's canvas, where the
+  // mouseup never lands on the resize overlay and the resize hangs (a
+  // pre-existing library/surface interaction this family's first left-edge
+  // test ran into — the settled guard below pins it ended).
+  const poseBefore = (await pose.boundingBox())!
+  await page.mouse.move(poseBefore.x + 3, poseBefore.y + poseBefore.height * 0.5)
+  await page.mouse.down()
+  await page.mouse.move(poseBefore.x + 3 + 40, poseBefore.y + poseBefore.height * 0.5, { steps: 6 })
+  await page.mouse.up()
+  await expectResizeSettled(pose)
+  const poseAfter = (await pose.boundingBox())!
+  expect(poseAfter.x, 'the pose rig policy moves the left edge (x travels)').toBeGreaterThan(poseBefore.x)
+  expect(poseAfter.width, 'the pose rig policy resizes from the left edge').toBeLessThan(poseBefore.width)
+
+  await pose.locator('[data-canvas-poserig-close]').click()
+  await expect(pose).toHaveCount(0)
+  await settings.locator('[data-canvas-settings-close]').click()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('studio dock shell: close via the shell unregisters the dock (the band compresses)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('studio dock shell: close via the shell')
+  await page.locator('[data-canvas-submit]').click()
+  const inspector = page.locator('[data-canvas-inspector]')
+  await expect(inspector).toBeVisible({ timeout: 10_000 })
+  await page.locator('[data-canvas-settings-button]').click()
+  const settings = page.locator('[data-canvas-settings-dock]')
+  await expect(settings).toBeVisible()
+
+  // Both docks render through the shell; the open order puts the inspector
+  // at the floor (rank 0) and settings one slot up (rank 1).
+  await expect(inspector).toHaveAttribute('data-studio-dock', 'inspector')
+  await expect(settings).toHaveAttribute('data-studio-dock', 'settings')
+  const base = await zToken(page, '--z-dock-base')
+  expect(Number.isFinite(base)).toBe(true)
+  await expect.poll(async () => (await dockZ(inspector)) - base).toBe(0)
+  await expect.poll(async () => (await dockZ(settings)) - base).toBe(1)
+
+  // CLOSE THE BOTTOM DOCK through the shell's affordance: the inspector
+  // leaves the band and the survivor COMPRESSES down to the floor — settings
+  // steps from base+1 to base+0. A closed dock that stayed registered would
+  // hold rank 1 hostage with an invisible sibling below it.
+  await page.locator('[data-canvas-properties] button[aria-label="Close properties"]').click()
+  await expect(inspector).toHaveCount(0)
+  await expect.poll(async () => (await dockZ(settings)) - base).toBe(0)
+
+  // The last dock out unregisters too — the band empties behind the shell.
+  await settings.locator('[data-canvas-settings-close]').click()
+  await expect(settings).toHaveCount(0)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
