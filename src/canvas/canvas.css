@@ -302,6 +302,15 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 
 /* ---- Phase 2: typed-hole menus (§3) + fork (§2) -------------------------- */
 .canvas-menu-backdrop { position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, var(--color-surface-abyss) 55%, transparent); }
+/* (V01, Codex visual audit 2026-10-05) Paint order agrees with registered
+   ownership: a menu opened ABOVE a registered modal layer (a dialog, a
+   command overlay) paints above it too — the parent dialog's --z-modal
+   backdrop otherwise swallows the menu's hit area while the registry hands
+   the menu the keyboard. --z-overlay-raised (80) sits above --z-modal (70)
+   and below --z-consent (90): the consent tier stays the contract's
+   topmost. Tile-anchored menus (no modal layer beneath) keep the dock-band
+   floor z — menus at tiles, under docks, the retained look. */
+.canvas-menu-backdrop--over-modal { z-index: var(--z-overlay-raised); }
 .canvas-endpoint-menu { position: absolute; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: 284px; max-height: min(480px, 70vh); border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); box-shadow: 0 18px 48px rgba(0,0,0,.5); overflow: hidden; }
 .canvas-endpoint-menu header { display: flex; flex-direction: column; gap: 1px; padding: 9px 11px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
 .canvas-endpoint-menu header strong { overflow: hidden; font-size: var(--text-md); text-overflow: ellipsis; white-space: nowrap; }
