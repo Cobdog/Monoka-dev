@@ -7,11 +7,12 @@ import { GitBranch, Wand2 } from 'lucide-react'
 import { Activity, AlertCircle, Check, ChevronDown, Cpu, Eye, Folder, FolderOpen, Gauge, HardDrive, Info, Layers, Power, RefreshCw, Scale, ServerCog, SlidersHorizontal, Sparkles, Stethoscope, Unplug } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { StudioSelect } from '../ui/StudioSelect'
+import { EffectiveSettingRow } from '../ui/EffectiveSettingRow'
 import { Field } from '../ui/Field'
 import type { AppSettings, ComfyStatus, LlmModelsResult, ManagerAvailability, ModelFile, ModelKind, NodePackActionResult, NodePackStatus, OllamaModel, UpscaleMode } from '../types'
 import { choices, type ObjectInfo } from '../lib/comfyInfo'
 import { subscribe } from '../lib/useRealtime'
-import { inferredOverrideSlotFile, modelClassHint, MODEL_FAMILIES, overridePickOutcome, SLOT_LABELS, type ModelOverrideSlotName } from '../lib/modelOverrides'
+import { effectiveSlotSetting, inferredOverrideSlotFile, modelClassHint, MODEL_FAMILIES, SLOT_LABELS, type ModelOverrideSlotName } from '../lib/modelOverrides'
 import { detectKrea2EditFamilies, detectOptimizations, KREA2_RECIPE_PINS } from '../lib/graph'
 import type { h3StackReport } from '../lib/h3Stack'
 import { SelectField, NumberField } from '../components/form'
@@ -499,8 +500,14 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
               const kind = family.slotKinds[slot] ?? 'diffusion_models'
               const candidates = models.filter((model) => model.kind === kind)
               const autoFile = inferredOverrideSlotFile(family.id, slot, models)
-              const outcome = value ? overridePickOutcome(family.id, slot, value, models) : null
-              return <div className={`model-override-row${outcome?.state === 'refused' ? ' refused' : outcome?.state === 'degraded' ? ' degraded' : ''}`} key={slot} data-model-override-slot={slot}>
+              // (task 19/P08, k2q0n9s) The effective-setting row carries the
+              // provenance: effective value + origin + the refused/degraded
+              // ATTEMPT record, derived by modelOverrides' ONE seam — the row
+              // renders, never resolves. THIS surface owns the GLOBAL level:
+              // its reset clears the global pick (auto takes over), and a
+              // chain pick shadowing it is the chain panel's row to show.
+              const setting = effectiveSlotSetting(family.id, slot, models, { global: current })
+              return <div className={`model-override-row${setting.attempt ? ` ${setting.attempt.outcome}` : ''}`} key={slot} data-model-override-slot={slot}>
                 <div className="model-override-slot"><strong>{SLOT_LABELS[slot]}</strong><small>{candidates.length} {kind.replace(/_/g, ' ')} file{candidates.length === 1 ? '' : 's'} on the connected engine</small></div>
                 <StudioSelect wrapClassName="select-wrap" chevronSize={15} aria-label={`${family.label} — ${SLOT_LABELS[slot]}`} value={value} onChange={(event) => setModelOverride(family.id, slot, event.target.value)}>
                   <option value="">auto (inferred){autoFile ? ` — ${autoFile}` : ' — nothing detected'}</option>
@@ -512,10 +519,20 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
                     return <option key={model.name} value={model.name}>{hint ? `${model.name} · ${hint}` : model.name}</option>
                   })}
                 </StudioSelect>
+                <EffectiveSettingRow
+                  className="model-override-effective"
+                  label={SLOT_LABELS[slot]}
+                  value={setting.value}
+                  origin={setting.origin}
+                  attempt={setting.attempt}
+                  onReset={setting.origin.kind === 'override' && setting.origin.level === 'global' ? () => setModelOverride(family.id, slot, '') : undefined}
+                />
                 {!value && !autoFile && family.emptyAutoHint?.[slot] && <p className="model-override-problem" data-model-override-requirement={slot} role="status">{family.emptyAutoHint[slot]}</p>}
-                {outcome?.state === 'refused' && <p className="model-override-problem" data-model-override-problem role="alert">Refused — {outcome.reason} Clear the pick to render on auto.</p>}
-                {outcome?.state === 'degraded' && <p className="model-override-problem" data-model-override-problem role="status">{outcome.warning}</p>}
-                {outcome?.state === 'applied' && outcome.warning && <p className="model-override-problem" data-model-override-problem role="status">{outcome.warning}</p>}
+                {setting.attempt && (
+                  <p className="model-override-problem" data-model-override-problem role={setting.attempt.outcome === 'refused' ? 'alert' : 'status'}>
+                    {setting.attemptMessage}{setting.attempt.outcome === 'refused' ? ' Clear the pick to render on auto.' : ''}
+                  </p>
+                )}
               </div>
             })}
           </div>

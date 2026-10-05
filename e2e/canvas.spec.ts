@@ -3754,6 +3754,138 @@ test('model overrides surface in Settings and the chain properties panel (both s
   }
 })
 
+// (Component vocabulary task 19, P08 — origin ≠ outcome; Review Focus #3 at
+// the REAL consumer.) The effective-setting row shows WHAT is in force and
+// WHERE it came from, with the attempted pick carried separately from the
+// effective fallback. The reset contract is the focus: a chain row's reset
+// reveals the global pick standing in Settings WITHOUT deleting it — the
+// global SETTING itself is asserted unchanged through the settings API.
+// The failed-pick arms ride the same rows: a degraded global pick (file
+// vanished from the registry) and a refused global pick (the audio decoder
+// named into the video VAE slot, set through the app's own Settings UI so
+// the panel's reactive global layer re-renders) render their outcome chips
+// while the effective value honestly shows the auto fallback beneath.
+test('effective-setting row: chain reset reveals global without deleting it; refused/degraded attempts render their outcome chips (P08, k2q0n9s)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const http = await import('node:http')
+
+  const globalFl2va = 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors'
+  const chainFl2va = 'H3/ssd/minimax_h3_ref2va_pruned_int8_convrot.safetensors'
+  const engine = http.createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://engine.local')
+    if (url.pathname === '/system_stats') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ system: {}, devices: [] }))
+      return
+    }
+    if (serveObjectInfo(url, stockObjectInfo(), res)) return
+    if (serveModelRegistry(url, H3_REGISTRY_LISTINGS, res)) return
+    res.writeHead(404)
+    res.end()
+  })
+  const enginePort = await new Promise<number>((resolve) => engine.listen(0, '127.0.0.1', () => resolve((engine.address() as { port: number }).port)))
+
+  const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${enginePort}`,
+      modelOverrides: {
+        ...(originalSettings.modelOverrides as Record<string, Record<string, string>> ?? {}),
+        minimax: {
+          fl2va: globalFl2va,
+          // A pick the registry does not list: DEGRADED (drift, submissions
+          // proceed on auto) — live from boot, so the chain below can spawn.
+          audioVae: 'minimax_h3_audio_vae_VANISHED.safetensors',
+        },
+      },
+    } } })
+    await resetSession(page)
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+
+    // The chain whose properties rows carry the provenance display.
+    await page.locator('[data-canvas-prompt]').fill('effective row probe — the reset must touch nothing upstream')
+    await page.locator('[data-canvas-submit]').click()
+    const tile = page.locator('[data-canvas-tile]').first()
+    await expect(tile).toBeVisible({ timeout: 10_000 })
+    const panel = page.locator('[data-canvas-properties]')
+    await expect(panel).toBeVisible()
+    const modelsSection = panel.locator('details[data-canvas-section="models"]')
+    await modelsSection.locator('summary').click()
+    await expect(modelsSection).toHaveAttribute('open', '')
+
+    // ---- Arm 1: the reset reveals the global layer and deletes NOTHING ----
+    const fl2vaRow = modelsSection.locator('[data-canvas-model-override="fl2va"]')
+    // Inherited provenance is read-only: the global pick in force, no reset
+    // (this panel's rows own the CHAIN level only).
+    await expect(fl2vaRow.locator('[data-effective-origin]')).toHaveAttribute('data-effective-origin', 'global')
+    await expect(fl2vaRow.locator('[data-effective-value]')).toHaveText(globalFl2va)
+    await expect(fl2vaRow.locator('[data-effective-reset]')).toHaveCount(0)
+    // A chain pick goes OVER the global: the row names the layer in force.
+    const chainSelect = modelsSection.locator('[data-canvas-model-override-select="fl2va"]')
+    await chainSelect.selectOption(chainFl2va)
+    await expect(fl2vaRow.locator('[data-effective-origin]')).toHaveAttribute('data-effective-origin', 'chain')
+    await expect(fl2vaRow.locator('[data-effective-value]')).toHaveText(chainFl2va)
+    // THE FOCUS: resetting the chain row reveals the global value+origin…
+    await fl2vaRow.locator('[data-effective-reset]').click()
+    await expect(fl2vaRow.locator('[data-effective-origin]')).toHaveAttribute('data-effective-origin', 'global')
+    await expect(fl2vaRow.locator('[data-effective-value]')).toHaveText(globalFl2va)
+    await expect(fl2vaRow.locator('[data-effective-reset]')).toHaveCount(0)
+    await expect(chainSelect).toHaveValue('')
+    // …and the global SETTING is untouched (settings API is the truth), while
+    // the CHAIN layer's own pick cleared (the debounced commit lands it).
+    const settingsAfterReset = ((await (await request.get('/api/lan/settings')).json()) as { settings: { modelOverrides?: Record<string, Record<string, string>> } }).settings
+    expect(settingsAfterReset.modelOverrides?.minimax?.fl2va).toBe(globalFl2va)
+    expect(settingsAfterReset.modelOverrides?.minimax?.audioVae).toBe('minimax_h3_audio_vae_VANISHED.safetensors')
+    await expect.poll(async () => {
+      const document = await activeDocument(page)
+      const chain = document.chains.find((entry) => entry.kind === 'generation')
+      return ((chain?.settings as Record<string, unknown>)?.modelOverrides as Record<string, string> | undefined)?.fl2va ?? null
+    }, { timeout: 15_000 }).toBe(null)
+
+    // ---- Arm 2: a DEGRADED global pick renders its outcome chip over the
+    // honest auto fallback (never as the effective value) -------------------
+    const audioRow = modelsSection.locator('[data-canvas-model-override="audioVae"]')
+    await expect(audioRow.locator('[data-effective-origin]')).toHaveAttribute('data-effective-origin', 'auto')
+    await expect(audioRow.locator('[data-effective-attempt]')).toHaveAttribute('data-effective-attempt', 'global:degraded')
+    await expect(audioRow.locator('[data-effective-attempt-chip]')).toHaveText('global · degraded')
+    await expect(audioRow.locator('[data-effective-attempt-chip]')).toHaveCSS('color', 'rgb(240, 188, 102)')
+    await expect(audioRow.locator('[data-effective-value]')).toHaveText('minimax_h3_audio_vae_fp32.safetensors')
+
+    // ---- Arm 3: a REFUSED global pick — set through the app's own Settings
+    // UI (a direct POST bypasses the live session store; audit F5) — flips
+    // the row reactively, no remount ----------------------------------------
+    await page.locator('[data-canvas-settings-button]').click()
+    const dock = page.locator('[data-canvas-settings-dock]')
+    await expect(dock).toBeVisible()
+    // The Settings rows own the GLOBAL level: their reset clears the global
+    // pick (asserted on the applied fl2va row before the refusal arm runs).
+    const settingsFl2vaRow = dock.locator('[data-model-override-family="minimax"] [data-model-override-slot="fl2va"]')
+    await expect(settingsFl2vaRow.locator('[data-effective-origin]')).toHaveAttribute('data-effective-origin', 'global')
+    await expect(settingsFl2vaRow.locator('[data-effective-reset]')).toHaveCount(1)
+    await dock.locator('[data-model-override-family="minimax"] [data-model-override-slot="videoVae"] select').selectOption('minimax_h3_audio_vae_fp32.safetensors')
+    await dock.locator('button.primary-button', { hasText: 'Save settings' }).click()
+    await page.locator('[data-canvas-settings-close]').click()
+    const videoRow = modelsSection.locator('[data-canvas-model-override="videoVae"]')
+    await expect(videoRow.locator('[data-effective-origin]')).toHaveAttribute('data-effective-origin', 'auto')
+    await expect(videoRow.locator('[data-effective-attempt]')).toHaveAttribute('data-effective-attempt', 'global:refused')
+    await expect(videoRow.locator('[data-effective-attempt-chip]')).toHaveText('global · refused')
+    await expect(videoRow.locator('[data-effective-attempt-chip]')).toHaveCSS('color', 'rgb(255, 127, 127)')
+    // The refusal's reason stays an alert beside the row (the chip carries
+    // the class, the resolver message carries the why).
+    await expect(videoRow.locator('[data-canvas-model-override-problem]')).toHaveAttribute('role', 'alert')
+    await expect(videoRow.locator('[data-canvas-model-override-problem]')).toContainText('audio-class VAE')
+    // The refused pick never rewrote the effective value: the auto inference.
+    await expect(videoRow.locator('[data-effective-value]')).toHaveText('minimax_h3_video_vae_fp16.safetensors')
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    await resetSession(page).catch(() => undefined)
+    await new Promise<void>((resolve) => engine.close(() => resolve()))
+  }
+})
+
 // (rq0lsax → Wave 2 R-12) The maintainer's H3/ssd case as an e2e, now the
 // registry-only NORM: an engine-relative checkpoint name listed ONLY by the
 // connected instance applies as an override — no form vocabulary exists (the

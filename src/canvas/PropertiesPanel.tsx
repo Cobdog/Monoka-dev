@@ -25,6 +25,7 @@ import { Button } from '../ui/Button'
 import { StudioSelect } from '../ui/StudioSelect'
 import { StudioDock } from '../ui/StudioDock'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
+import { EffectiveSettingRow } from '../ui/EffectiveSettingRow'
 import { SmartPromptEditor, type SmartPromptEditorHandle } from '../components/SmartPromptEditor'
 import { StructuredPromptEditor } from '../components/StructuredPromptEditor'
 import { PromptLibraryBrowser } from '../components/PromptLibraryBrowser'
@@ -33,7 +34,7 @@ import { detectOptimizations, engineFamilyForChain, vdnAvailability } from '../l
 // graph/index.ts wedges index↔turbo into mutual chunk dependencies (the
 // Rollup circular-chunk warning's own suggested fix).
 import { turboFetchPlan } from '../lib/graph/turbo'
-import { inferredOverrideSlotFile, migrateLegacyModelOverrideSlots, modelClassHint, modelFamilyInfo, overrideLayerCounts, overrideLayerSummary, overridePickOutcome, SLOT_LABELS, type ModelFamilyId, type ModelOverrideSlotName } from '../lib/modelOverrides'
+import { effectiveSlotSetting, inferredOverrideSlotFile, migrateLegacyModelOverrideSlots, modelClassHint, modelFamilyInfo, overrideLayerCounts, overrideLayerSummary, SLOT_LABELS, type ModelFamilyId, type ModelOverrideSlotName } from '../lib/modelOverrides'
 import { guideFrameWarning } from '../lib/workflow'
 import { ASPECT_RATIOS, optimalResolutionFor, parseResolution, ratioKeyOf, resolutionsForRatio, snapResolutionDim, tieredResolutionGroups } from '../lib/aspectResolutions'
 import type { ImageMachinery } from '../lib/aspectResolutions'
@@ -1221,13 +1222,16 @@ export function PropertiesPanel() {
             const candidates = models.filter((model) => model.kind === kind)
             const globalPick = globalSlots?.[slot]
             const autoFile = inferredOverrideSlotFile(modelFamilyId, slot, models)
-            // (tmz8vh7): the verdict runs on the EFFECTIVE pick — the chain's
-            // own, else the global Settings one. Verdicting only the chain's
-            // pick rendered a refusing GLOBAL pick as an innocent "auto —
-            // global: X" label while every submit refused with no pointer to
-            // where the pick lives (audit P1-1's UX wedge).
-            const layer: 'chain' | 'global' | null = value ? 'chain' : globalPick ? 'global' : null
-            const outcome = (value || globalPick) ? overridePickOutcome(modelFamilyId, slot, value || globalPick || '', models) : null
+            // (tmz8vh7 + task 19/P08, k2q0n9s) The verdict runs on the
+            // EFFECTIVE pick — the chain's own, else the global Settings one
+            // (verdicting only the chain's pick rendered a refusing GLOBAL
+            // pick as an innocent "auto — global: X" label). The ROW carries
+            // the provenance now: effective value + origin + the refused /
+            // degraded ATTEMPT record, all derived by modelOverrides' ONE
+            // seam — the row renders, never resolves. Reset is scoped to
+            // THIS panel's owned level (chain): clearing a chain pick
+            // reveals the global pick standing in Settings — deletes nothing.
+            const setting = effectiveSlotSetting(modelFamilyId, slot, models, { chain: chainSlots, global: globalSlots })
             return <div className="canvas-properties-row" key={slot} data-canvas-model-override={slot}>
               <label htmlFor={`canvas-model-${slot}`}>{SLOT_LABELS[slot]}</label>
               <StudioSelect id={`canvas-model-${slot}`} data-canvas-model-override-select={slot} value={value} onChange={(event) => setChainModelOverride(slot, event.target.value)}>
@@ -1240,9 +1244,19 @@ export function PropertiesPanel() {
                   return <option key={model.name} value={model.name}>{hint ? `${model.name} · ${hint}` : model.name}</option>
                 })}
               </StudioSelect>
-              {outcome?.state === 'refused' && <p className="canvas-properties-warning" data-canvas-model-override-problem role="alert">Refused {layer === 'global' ? '(the global Settings pick — clear it in Settings → Model overrides)' : '(this chain\'s pick — clear it to render on auto)'} — {outcome.reason}</p>}
-              {outcome?.state === 'degraded' && <p className="canvas-properties-warning" data-canvas-model-override-problem role="status">{layer === 'global' ? 'The global Settings pick ' : 'This chain\'s pick '}{outcome.warning}</p>}
-              {outcome?.state === 'applied' && outcome.warning && <p className="canvas-properties-warning" data-canvas-model-override-problem role="status">{layer === 'global' ? 'The global Settings pick ' : 'This chain\'s pick '}{outcome.warning}</p>}
+              <EffectiveSettingRow
+                className="canvas-model-effective"
+                label={SLOT_LABELS[slot]}
+                value={setting.value}
+                origin={setting.origin}
+                attempt={setting.attempt}
+                onReset={setting.origin.kind === 'override' && setting.origin.level === 'chain' ? () => setChainModelOverride(slot, '') : undefined}
+              />
+              {setting.attempt && (
+                <p className="canvas-properties-warning" data-canvas-model-override-problem role={setting.attempt.outcome === 'refused' ? 'alert' : 'status'}>
+                  {setting.attemptMessage}{setting.attempt.level === 'global' ? ' Clear the global pick in Settings → Model overrides.' : setting.attempt.outcome === 'refused' ? ' Clear this chain\'s pick (auto) to render.' : ''}
+                </p>
+              )}
             </div>
           })}
           <p className="canvas-properties-note">A pick here beats the global Settings pick, which beats auto inference. Picks are exact scanned filenames; the resolved files ride the take's manifest. The H3 lanes pin FL2VA / Ref2VA separately; the merged pick is one pre-merged checkpoint for both and wins when set. The VAE picks are decoder-specific (video / audio) — the image decoder is workbench-only.</p>

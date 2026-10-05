@@ -560,6 +560,72 @@ export function overridePickOutcome(familyId: ModelFamilyId, slot: ModelOverride
   return resolveModelOverrides(familyId, files, { [slot]: name }).slots[slot]
 }
 
+/** (component vocabulary task 19, P08 — origin ≠ outcome) The
+ *  effective-setting row's resolver-side fields, derived per slot from the
+ *  RAW pre-merge layers (the panel passes its migrated chainSlots as the
+ *  chain layer, the Settings rows the stored global slots) — ONE derivation
+ *  shared by both surfaces; the row renders, never resolves:
+ *
+ *    origin  where the EFFECTIVE value comes from — the applied pick's
+ *            layer ({kind:'override', level}), or {kind:'auto'} when no
+ *            pick applies. The resolver's no-override state maps to auto
+ *            WITHOUT a level (a fabricated level would be a lie about
+ *            provenance).
+ *    value   the effective setting: the applied file; when the strongest
+ *            pick FAILED (refused/degraded), the setting the layer BENEATH
+ *            it puts in force — the surviving lower override, else the auto
+ *            inference. A failed pick never becomes the effective value.
+ *    attempt the tried-but-not-in-force pick, carried SEPARATELY from the
+ *            effective fallback: {level, 'refused'|'degraded'}. A migrated
+ *            legacy pick that auto-cleared ('cleared') has no conscious
+ *            layer to name — it maps to plain auto with NO attempt (the
+ *            migration warning rides resolution.warnings at submit).
+ *
+ *  Levels are resolver-honest: only 'chain' | 'global' exist on this seam
+ *  (no surface has node-level model dials; the row's type admits 'node'
+ *  for a future seam, this derivation never fabricates one). */
+export type EffectiveSettingOrigin =
+  | { kind: 'override'; level: 'chain' | 'global' }
+  | { kind: 'auto' }
+
+export type EffectiveSettingAttempt = { level: 'chain' | 'global'; outcome: 'refused' | 'degraded' }
+
+export function effectiveSlotSetting(
+  familyId: ModelFamilyId,
+  slot: ModelOverrideSlotName,
+  files: ModelFile[],
+  layers: { chain?: ModelOverrideSlots; global?: ModelOverrideSlots },
+): { value: string; origin: EffectiveSettingOrigin; attempt?: EffectiveSettingAttempt; attemptMessage?: string } {
+  const pickOf = (source?: ModelOverrideSlots): string => {
+    const raw = source?.[slot]
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : ''
+  }
+  const chainPick = pickOf(layers.chain)
+  const globalPick = pickOf(layers.global)
+  const autoValue = () => inferredOverrideSlotFile(familyId, slot, files)
+  const attempted = chainPick || globalPick
+  if (!attempted) return { value: autoValue(), origin: { kind: 'auto' } }
+  const attemptLevel: 'chain' | 'global' = chainPick ? 'chain' : 'global'
+  const outcome = overridePickOutcome(familyId, slot, attempted, files)
+  if (outcome.state === 'applied') {
+    return { value: outcome.file, origin: { kind: 'override', level: attemptLevel } }
+  }
+  if (outcome.state === 'refused' || outcome.state === 'degraded') {
+    // The failed pick is the ATTEMPT record, never the effective value.
+    // What sits beneath it: the lower layer's standing pick (a failed chain
+    // pick reveals the global pick — exactly what clearing the failed pick
+    // would put in force), else the auto inference.
+    const message = outcome.state === 'refused' ? outcome.reason : outcome.warning
+    if (attemptLevel === 'chain' && globalPick) {
+      return { value: globalPick, origin: { kind: 'override', level: 'global' }, attempt: { level: 'chain', outcome: outcome.state }, attemptMessage: message }
+    }
+    return { value: autoValue(), origin: { kind: 'auto' }, attempt: { level: attemptLevel, outcome: outcome.state }, attemptMessage: message }
+  }
+  // 'auto' cannot reach here (a pick exists); 'cleared' is the migrated
+  // legacy shape with no conscious layer — plain auto, no fabricated attempt.
+  return { value: autoValue(), origin: { kind: 'auto' } }
+}
+
 /** Applies a resolution's applied slots onto the family's concrete selection
  *  (generic: field names per SLOT_FIELDS). Degraded/refused slots stay on the
  *  inference result — refusals block the submission, degradations warn.
