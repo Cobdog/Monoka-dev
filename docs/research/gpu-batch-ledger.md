@@ -1177,3 +1177,16 @@ J closed clean: 52 gens, 115.6 GPU-min, all null gates passed (6 canaries bit-id
 4. **Economics at 10 s/HD (first measurements):** turbo-8-card 533.7 s warm wall / PDMD-4 295.3 s = **0.55× at half NFE**; VRAM flat ≈24.15 GiB both arms — the 243f sequence adds no peak over the 39f cells. A 10-second 0.66MP clip at 4 NFE ≈ 4.9 min on the 24GB stack.
 5. **Audio at 243f:** PDMD louder (+5.1 dBFS paired mean) but DARKER (−919 Hz centroid, −1652 Hz rolloff) — the sign flips vs Set P's 39f brighter read; no near-silence except turbo-8's prompt-faithful quiet-room cell (−48.3 dBFS). Ear owns it on the native mp4s.
 6. **PROPOSED verdict (the review decides):** if the eye still crowns PDMD on p02–p07, the displacement is confirmation-complete (prefix stripped, recipe-fair king, in-distribution length); if the card recipe takes cells back, the crown question reopens at the recipe level, not the NFE level. The stability axis is the eye's sharpest question this set.
+
+## THE SPRINT CLOSES (2026-10-05) — the consolidated verdict
+Every executed set is closed with the maintainer's eye-review reconciled. The batch's final lines:
+
+**ENGINES & RECIPES.** PDMD-4 is the new fast-lane king, confirmation-complete (6-0 twice — at 39f and at 243f recipe-fair and prefix-free — at 0.55× the king's wall; audio holds at 4 NFE; alternation real but below the deciding eye's JND → the metric's salience caveat recorded). Turbo-8: the former king, keeps the stability-sensitive lane and the R2V-family default pending PDMD's ref2va confirmation. S7 parked eye-confirmed (cut the schedule; hand off late; the m-scalar rule binds any chaining regardless). X2's cliff, X1/X3/X6 stand as screen-tier (Amendment 8b). SCAIL/Wan: long> bare; captions are a content lever. The Krea2T enhancer is a measured no-op on int8; keep-lists neutral on Krea 2.
+
+**PILOTS (Set J).** Adopt-track: TeleStyle style-propagate, MoGe camera-warp (over Meridian on modularity at parity), the J3 denoise-mask preservation machinery (with removal riding the instruction lane). Killed: VOID (execution), the J1 adherence race (unbought), HyperFlow (at this rung). Doctrine changes: true-CFG headroom OPEN (J6 — "guidance-1 default, headroom open"); Fizgig's dial is an audio lever (CORRECT); CADS parked far from default (the eye's frame-1 artifacts).
+
+**METHOD (the standing amendments).** 1: the eye is the decision layer. 4: the instrument contract (+null gates — held on every set). 5: single-seed + canaries (bit-identical across every restart boundary). 7: every pair states its question. 8/8b: the horizon + floor caveats (39f = short AND below the 4s request floor; internal comparisons were length-controlled, cross-engine had slack the right way; 243f is the in-distribution standard going forward).
+
+**THE CROSS-CUTTING FINDING.** Four independent same-seed-different-actions observations across four sets: prompt/schedule structure determines WHAT HAPPENS, not just how well. Structure is a content lever.
+
+**UNRUN:** Sets F/G/H/I stay designed-not-run (the ledger carries their specs); J5/J8's gated arms await the maintainer's staged files. **The GPU is the maintainer's. The testbed is down. The sprint is closed.**
