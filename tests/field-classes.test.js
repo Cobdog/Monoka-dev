@@ -49,6 +49,7 @@ const assert = require('node:assert/strict')
 const { loadTs } = require('../scripts/lib/ts-vm.cjs')
 const fieldClassesModule = loadTs('src/ui/fieldClasses.ts')
 const { fieldSlot, fieldDescriptionId, fieldDescribedBy, fieldClasses, fieldDescriptionClasses, fieldWarnFor } = fieldClassesModule
+const { parseRootCustomProperties, stripComments, collectRules } = require('./lib/styleSheet.cjs')
 
 const ok = (condition, label) => assert.ok(condition, label)
 
@@ -58,61 +59,16 @@ function eq(actual, expected, label) {
 }
 
 // ---- the live sheet parse (the statusToken doctrine: read the sheet at
-// run time; membership proves definition) ---------------------------------
+// run time; membership proves definition — through the shared sheet reader,
+// tests/lib/styleSheet.cjs, the near-term-A consolidation of the ten kit
+// suites' private parser copies) ------------------------------------------
 
 const STYLES = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'styles.css'), 'utf8')
 const DATASETS_CSS = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'datasets', 'datasets.css'), 'utf8')
 
-function parseRootCustomProperties(css) {
-  const start = css.indexOf(':root')
-  if (start === -1) throw new Error('no :root block found in src/styles.css')
-  const open = css.indexOf('{', start)
-  let depth = 1
-  let end = open + 1
-  while (depth > 0 && end < css.length) {
-    if (css[end] === '{') depth += 1
-    if (css[end] === '}') depth -= 1
-    end += 1
-  }
-  const block = css.slice(open + 1, end - 1)
-  const names = new Set()
-  const declaration = /(--[\w-]+)\s*:/g
-  let match = declaration.exec(block)
-  while (match !== null) {
-    names.add(match[1])
-    match = declaration.exec(block)
-  }
-  if (names.size < 40) throw new Error(`:root parse looks wrong — only ${names.size} custom properties found`)
-  return names
-}
-
 const ROOT_VARS = parseRootCustomProperties(STYLES)
 
-function stripComments(css) {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '')
-}
-
-/** Top-level rules as { selectorText, body } (the chip/notice walk shape). */
-function collectRules(css) {
-  const rules = []
-  let index = 0
-  while (index < css.length) {
-    const open = css.indexOf('{', index)
-    if (open === -1) break
-    let depth = 1
-    let end = open + 1
-    while (depth > 0 && end < css.length) {
-      if (css[end] === '{') depth += 1
-      if (css[end] === '}') depth -= 1
-      end += 1
-    }
-    rules.push({ selectorText: css.slice(index, open), body: css.slice(open + 1, end - 1) })
-    index = end
-  }
-  return rules
-}
-
-const DESCRIPTION_RULES = collectRules(stripComments(STYLES)).filter((rule) =>
+const DESCRIPTION_RULES = collectRules(STYLES).filter((rule) =>
   rule.selectorText.split(',').some((selector) => selector.includes('.field-description')),
 )
 
@@ -231,7 +187,7 @@ test('(f) the description recipe carries tone/type/flow only; every var() is :ro
 test('(g) the caption validation dialect: tone retired to the recipe, geometry retained', () => {
   const noComments = stripComments(DATASETS_CSS)
   ok(!/\.ds-validation\.ok/.test(noComments), 'the .ds-validation.ok rule is retired (the ok confirmation rides Field\'s hint slot now)')
-  const validationRule = collectRules(noComments).find((rule) => rule.selectorText.split(',').some((selector) => selector.trim() === '.ds-validation'))
+  const validationRule = collectRules(DATASETS_CSS).find((rule) => rule.selectorText.split(',').some((selector) => selector.trim() === '.ds-validation'))
   ok(validationRule, 'the .ds-validation rule itself is retained (the issues list\'s geometry)')
   ok(validationRule.body.includes('padding-left'), '.ds-validation keeps its list indent (retained geometry)')
   for (const declaration of validationRule.body.split(';')) {

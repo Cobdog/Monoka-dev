@@ -41,37 +41,16 @@ const assert = require('node:assert/strict')
 const { loadTs } = require('../scripts/lib/ts-vm.cjs')
 const statusTokenModule = loadTs('src/ui/statusToken.ts')
 const { statusToken, DIVERGENCES, TIMELINE_TONE, HEALTH_PILL_TONE, LIVE_READOUT_TONE } = statusTokenModule
+const { parseRootCustomProperties } = require('./lib/styleSheet.cjs')
 
 // ---- (a) the :root parse ------------------------------------------------
 //
-// Extract every custom property NAME defined in src/styles.css's FIRST
-// :root block (the token definitions). Aliased tokens (--color-status-ok:
+// Every custom property NAME defined in src/styles.css's FIRST :root block
+// (the token definitions), through the shared sheet reader
+// (tests/lib/styleSheet.cjs — the near-term-A consolidation of the ten kit
+// suites' private copies). Aliased tokens (--color-status-ok:
 // var(--accent)) count by NAME — that is what a consumer may reference.
-function parseRootCustomProperties(cssPath) {
-  const css = fs.readFileSync(cssPath, 'utf8')
-  const start = css.indexOf(':root')
-  if (start === -1) throw new Error('no :root block found in src/styles.css')
-  const open = css.indexOf('{', start)
-  let depth = 1
-  let end = open + 1
-  while (depth > 0 && end < css.length) {
-    if (css[end] === '{') depth += 1
-    if (css[end] === '}') depth -= 1
-    end += 1
-  }
-  const block = css.slice(open + 1, end - 1)
-  const names = new Set()
-  const declaration = /(--[\w-]+)\s*:/g
-  let match = declaration.exec(block)
-  while (match !== null) {
-    names.add(match[1])
-    match = declaration.exec(block)
-  }
-  if (names.size < 40) throw new Error(`:root parse looks wrong — only ${names.size} custom properties found`)
-  return names
-}
-
-const ROOT_VARS = parseRootCustomProperties(path.resolve(__dirname, '..', 'src', 'styles.css'))
+const ROOT_VARS = parseRootCustomProperties(fs.readFileSync(path.resolve(__dirname, '..', 'src', 'styles.css'), 'utf8'))
 
 const ok = (condition, label) => assert.ok(condition, label)
 

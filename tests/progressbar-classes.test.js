@@ -64,6 +64,7 @@ const assert = require('node:assert/strict')
 const { loadTs } = require('../scripts/lib/ts-vm.cjs')
 const progressModule = loadTs('src/ui/progressClasses.ts')
 const { progressClasses, progressWidth, progressAria, PROGRESS_TONES } = progressModule
+const { parseRootCustomProperties, stripComments, collectRules } = require('./lib/styleSheet.cjs')
 
 const ok = (condition, label) => assert.ok(condition, label)
 
@@ -72,42 +73,15 @@ function eq(actual, expected, label) {
   console.log(`  ok - ${label}`)
 }
 
-// ---- the live sheet parse (the chip/statusToken doctrine) -------------------
+// ---- the live sheet parse (the chip/statusToken doctrine — through the
+// shared sheet reader tests/lib/styleSheet.cjs, the near-term-A consolidation
+// of the ten kit suites' private parser copies; its header carries the
+// comments-are-prose rule verbatim) -----------------------------------------
 
 const STYLES = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'styles.css'), 'utf8')
 const CANVAS_CSS = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'canvas', 'canvas.css'), 'utf8')
 
-function parseRootCustomProperties(css) {
-  const start = css.indexOf(':root')
-  if (start === -1) throw new Error('no :root block found in src/styles.css')
-  const open = css.indexOf('{', start)
-  let depth = 1
-  let end = open + 1
-  while (depth > 0 && end < css.length) {
-    if (css[end] === '{') depth += 1
-    if (css[end] === '}') depth -= 1
-    end += 1
-  }
-  const block = css.slice(open + 1, end - 1)
-  const names = new Set()
-  const declaration = /(--[\w-]+)\s*:/g
-  let match = declaration.exec(block)
-  while (match !== null) {
-    names.add(match[1])
-    match = declaration.exec(block)
-  }
-  if (names.size < 40) throw new Error(`:root parse looks wrong — only ${names.size} custom properties found`)
-  return names
-}
-
 const ROOT_VARS = parseRootCustomProperties(STYLES)
-
-/** Comments are PROSE, never rules — strip them before any rule-shape scan
- *  (a comment saying "retired into the .progressbar recipes" is not a
- *  selector, and a comment mentioning a retired name is not a rule). */
-function stripComments(css) {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '')
-}
 
 const STYLES_NOCOMMENTS = stripComments(STYLES)
 const CANVAS_CSS_NOCOMMENTS = stripComments(CANVAS_CSS)
@@ -138,38 +112,23 @@ function collectProgressbarRules(css) {
       }
     }
   }
-  let index = 0
-  while (index < css.length) {
-    const open = css.indexOf('{', index)
-    if (open === -1) break
-    let depth = 1
-    let end = open + 1
-    while (depth > 0 && end < css.length) {
-      if (css[end] === '{') depth += 1
-      if (css[end] === '}') depth -= 1
-      end += 1
-    }
-    const selectorText = css.slice(index, open)
-    const body = css.slice(open + 1, end - 1)
-    // Recipes live at top level only: @media/@keyframes preludes are skipped
-    // whole (the chip collector's rule — a recipe that moves inside a media
-    // query escapes the ORPHAN direction, never the emittable direction).
-    if (!selectorText.trimStart().startsWith('@')) {
-      for (const selector of selectorText.split(',')) {
-        // The house kebab convention (stylelint's selector-class-pattern)
-        // has no BEM `__`: the fill is `.progressbar-fill`. The lookahead
-        // keeps the base pattern from swallowing kebab children — the fill
-        // gets its own explicit membership on the next line.
-        const classPattern = /\.progressbar(--[\w-]+)?(?![\w-])/g
-        let classMatch = classPattern.exec(selector)
-        while (classMatch !== null) {
-          note(classMatch[0].slice(1), body)
-          classMatch = classPattern.exec(selector)
-        }
-        if (/\.progressbar-fill(?![\w-])/.test(selector)) note('progressbar-fill', body)
+  // The shared walker: comments stripped, @media/@keyframes preludes skipped
+  // whole (the chip collector's rule — a recipe that moves inside a media
+  // query escapes the ORPHAN direction, never the emittable direction).
+  for (const { selectorText, body } of collectRules(css)) {
+    for (const selector of selectorText.split(',')) {
+      // The house kebab convention (stylelint's selector-class-pattern)
+      // has no BEM `__`: the fill is `.progressbar-fill`. The lookahead
+      // keeps the base pattern from swallowing kebab children — the fill
+      // gets its own explicit membership on the next line.
+      const classPattern = /\.progressbar(--[\w-]+)?(?![\w-])/g
+      let classMatch = classPattern.exec(selector)
+      while (classMatch !== null) {
+        note(classMatch[0].slice(1), body)
+        classMatch = classPattern.exec(selector)
       }
+      if (/\.progressbar-fill(?![\w-])/.test(selector)) note('progressbar-fill', body)
     }
-    index = end
   }
   return rules
 }

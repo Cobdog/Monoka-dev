@@ -54,6 +54,7 @@ const assert = require('node:assert/strict')
 const { loadTs } = require('../scripts/lib/ts-vm.cjs')
 const buttonClassesModule = loadTs('src/ui/buttonClasses.ts')
 const { buttonClasses, buttonState, buttonWarnFor, BUTTON_VARIANTS } = buttonClassesModule
+const { parseRootCustomProperties, collectRules } = require('./lib/styleSheet.cjs')
 
 const ok = (condition, label) => assert.ok(condition, label)
 
@@ -63,33 +64,11 @@ function eq(actual, expected, label) {
 }
 
 // ---- the live sheet parse (the statusToken doctrine: read src/styles.css
-// at run time; the chip suite's identical helpers are deliberately
-// duplicated — suites are self-contained) -----------------------------------
+// at run time; the shared sheet reader tests/lib/styleSheet.cjs owns the
+// mechanism — the near-term-A consolidation of the ten kit suites' private
+// parser copies) ---------------------------------------------------------------
 
 const STYLES = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'styles.css'), 'utf8')
-
-function parseRootCustomProperties(css) {
-  const start = css.indexOf(':root')
-  if (start === -1) throw new Error('no :root block found in src/styles.css')
-  const open = css.indexOf('{', start)
-  let depth = 1
-  let end = open + 1
-  while (depth > 0 && end < css.length) {
-    if (css[end] === '{') depth += 1
-    if (css[end] === '}') depth -= 1
-    end += 1
-  }
-  const block = css.slice(open + 1, end - 1)
-  const names = new Set()
-  const declaration = /(--[\w-]+)\s*:/g
-  let match = declaration.exec(block)
-  while (match !== null) {
-    names.add(match[1])
-    match = declaration.exec(block)
-  }
-  if (names.size < 40) throw new Error(`:root parse looks wrong — only ${names.size} custom properties found`)
-  return names
-}
 
 const ROOT_VARS = parseRootCustomProperties(STYLES)
 
@@ -116,33 +95,18 @@ function collectButtonRules(css) {
       }
     }
   }
-  let index = 0
-  while (index < css.length) {
-    const open = css.indexOf('{', index)
-    if (open === -1) break
-    let depth = 1
-    let end = open + 1
-    while (depth > 0 && end < css.length) {
-      if (css[end] === '{') depth += 1
-      if (css[end] === '}') depth -= 1
-      end += 1
-    }
-    const selectorText = css.slice(index, open)
-    const body = css.slice(open + 1, end - 1)
-    // Recipe rules live at top level only (same rationale as the chip suite:
-    // a recipe that moves inside a media query escapes the ORPHAN direction
-    // of (d), never the emittable direction; keep the recipes top-level).
-    if (!selectorText.trimStart().startsWith('@')) {
-      for (const selector of selectorText.split(',')) {
-        const classPattern = /\.btn\b(--[\w-]+)?/g
-        let classMatch = classPattern.exec(selector)
-        while (classMatch !== null) {
-          note(classMatch[0].slice(1), body)
-          classMatch = classPattern.exec(selector)
-        }
+  // The shared walker: comments stripped, @-preludes skipped whole (same
+  // rationale as before — a recipe that moves inside a media query escapes
+  // the ORPHAN direction of (d), never the emittable direction).
+  for (const { selectorText, body } of collectRules(css)) {
+    for (const selector of selectorText.split(',')) {
+      const classPattern = /\.btn\b(--[\w-]+)?/g
+      let classMatch = classPattern.exec(selector)
+      while (classMatch !== null) {
+        note(classMatch[0].slice(1), body)
+        classMatch = classPattern.exec(selector)
       }
     }
-    index = end
   }
   return rules
 }
@@ -268,27 +232,6 @@ test('(g) icon-only without aria-label warns; text anywhere in the tree satisfie
 // net must cover — the composition is invisible to the TSX className walk
 // (Button adds the recipes internally), which is why this leg scans
 // <Button opening tags specifically.
-
-function collectRules(css) {
-  const rules = []
-  let index = 0
-  while (index < css.length) {
-    const open = css.indexOf('{', index)
-    if (open === -1) break
-    let depth = 1
-    let end = open + 1
-    while (depth > 0 && end < css.length) {
-      if (css[end] === '{') depth += 1
-      if (css[end] === '}') depth -= 1
-      end += 1
-    }
-    const selectorText = css.slice(index, open)
-    const body = css.slice(open + 1, end - 1)
-    if (!selectorText.trimStart().startsWith('@')) rules.push({ selectorText, body })
-    index = end
-  }
-  return rules
-}
 
 /** The className attribute expression of one opening tag's source text. */
 function classNameExpressionIn(openingTag) {

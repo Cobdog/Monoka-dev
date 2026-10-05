@@ -43,6 +43,7 @@ const assert = require('node:assert/strict')
 const { loadTs } = require('../scripts/lib/ts-vm.cjs')
 const chipClassesModule = loadTs('src/ui/chipClasses.ts')
 const { chipClasses, chipAria, CHIP_TONES, CHIP_VARIANTS } = chipClassesModule
+const { parseRootCustomProperties, collectRules } = require('./lib/styleSheet.cjs')
 
 const ok = (condition, label) => assert.ok(condition, label)
 
@@ -53,34 +54,13 @@ function eq(actual, expected, label) {
 
 // ---- the live sheet parse ------------------------------------------------
 //
-// Reuse the statusToken doctrine: read src/styles.css at run time. The chip
+// Reuse the statusToken doctrine: read src/styles.css at run time, through
+// the shared sheet reader (tests/lib/styleSheet.cjs — the near-term-A
+// consolidation of the ten kit suites' private parser copies). The chip
 // recipe rules are extracted by scanning each top-level `{ ... }` block whose
 // selector list contains a `.chip`-family selector; declarations are split on
 // ';' with property names taken from the text before the first ':'.
 const STYLES = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'styles.css'), 'utf8')
-
-function parseRootCustomProperties(css) {
-  const start = css.indexOf(':root')
-  if (start === -1) throw new Error('no :root block found in src/styles.css')
-  const open = css.indexOf('{', start)
-  let depth = 1
-  let end = open + 1
-  while (depth > 0 && end < css.length) {
-    if (css[end] === '{') depth += 1
-    if (css[end] === '}') depth -= 1
-    end += 1
-  }
-  const block = css.slice(open + 1, end - 1)
-  const names = new Set()
-  const declaration = /(--[\w-]+)\s*:/g
-  let match = declaration.exec(block)
-  while (match !== null) {
-    names.add(match[1])
-    match = declaration.exec(block)
-  }
-  if (names.size < 40) throw new Error(`:root parse looks wrong — only ${names.size} custom properties found`)
-  return names
-}
 
 const ROOT_VARS = parseRootCustomProperties(STYLES)
 
@@ -105,34 +85,19 @@ function collectChipRules(css) {
       }
     }
   }
-  let index = 0
-  while (index < css.length) {
-    const open = css.indexOf('{', index)
-    if (open === -1) break
-    let depth = 1
-    let end = open + 1
-    while (depth > 0 && end < css.length) {
-      if (css[end] === '{') depth += 1
-      if (css[end] === '}') depth -= 1
-      end += 1
-    }
-    const selectorText = css.slice(index, open)
-    const body = css.slice(open + 1, end - 1)
-    // Chip rules live at top level only: @media/@keyframes preludes are
-    // skipped whole (their inner rules are never visited — a recipe that
-    // moves inside a media query escapes the ORPHAN direction of (d), never
-    // the emittable direction; keep the recipes top-level).
-    if (!selectorText.trimStart().startsWith('@')) {
-      for (const selector of selectorText.split(',')) {
-        const classPattern = /\.chip\b(--[\w-]+)?/g
-        let classMatch = classPattern.exec(selector)
-        while (classMatch !== null) {
-          note(classMatch[0].slice(1), body)
-          classMatch = classPattern.exec(selector)
-        }
+  // The shared walker: comments stripped, @media/@keyframes preludes skipped
+  // whole (a recipe that moves inside a media query escapes the ORPHAN
+  // direction of (d), never the emittable direction; keep the recipes
+  // top-level).
+  for (const { selectorText, body } of collectRules(css)) {
+    for (const selector of selectorText.split(',')) {
+      const classPattern = /\.chip\b(--[\w-]+)?/g
+      let classMatch = classPattern.exec(selector)
+      while (classMatch !== null) {
+        note(classMatch[0].slice(1), body)
+        classMatch = classPattern.exec(selector)
       }
     }
-    index = end
   }
   return rules
 }
@@ -259,28 +224,6 @@ test('(f) every var() the recipes reference is :root-defined', () => {
 // the src sheets that references such a token and declares a border
 // shorthand. Surface geometry rules must use the border-width/border-style
 // LONGHANDS (the migration discipline recorded in canvas.css).
-
-/** Every top-level rule (selector text + declarations) in a CSS sheet. */
-function collectRules(css) {
-  const rules = []
-  let index = 0
-  while (index < css.length) {
-    const open = css.indexOf('{', index)
-    if (open === -1) break
-    let depth = 1
-    let end = open + 1
-    while (depth > 0 && end < css.length) {
-      if (css[end] === '{') depth += 1
-      if (css[end] === '}') depth -= 1
-      end += 1
-    }
-    const selectorText = css.slice(index, open)
-    const body = css.slice(open + 1, end - 1)
-    if (!selectorText.trimStart().startsWith('@')) rules.push({ selectorText, body })
-    index = end
-  }
-  return rules
-}
 
 /** All className attribute values (static strings AND brace-matched template
  *  expressions, ternary branches included) in one TSX file's source. */

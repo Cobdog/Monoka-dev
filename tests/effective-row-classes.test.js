@@ -50,6 +50,7 @@ const rowModule = loadTs('src/ui/effectiveRowClasses.ts')
 const { EFFECTIVE_AUTO_TEXT, effectiveAttemptChip, effectiveChipClasses, effectiveOriginChip, effectiveOriginKey, effectiveResetLabel, effectiveRowClasses, effectiveRowWarnFor } = rowModule
 const overridesModule = loadTs('src/lib/modelOverrides.ts')
 const { effectiveSlotSetting } = overridesModule
+const { parseRootCustomProperties, stripComments, collectRules } = require('./lib/styleSheet.cjs')
 
 const ok = (condition, label) => assert.ok(condition, label)
 
@@ -59,62 +60,17 @@ function eq(actual, expected, label) {
 }
 
 // ---- the live sheet parse (the statusToken doctrine: read the sheet at
-// run time; membership proves definition) ---------------------------------
+// run time; membership proves definition — through the shared sheet reader,
+// tests/lib/styleSheet.cjs, the near-term-A consolidation of the ten kit
+// suites' private parser copies) ------------------------------------------
 
 const STYLES = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'styles.css'), 'utf8')
 const PANEL = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'canvas', 'PropertiesPanel.tsx'), 'utf8')
 const SETTINGS = fs.readFileSync(path.resolve(__dirname, '..', 'src', 'views', 'SettingsView.tsx'), 'utf8')
 
-function parseRootCustomProperties(css) {
-  const start = css.indexOf(':root')
-  if (start === -1) throw new Error('no :root block found in src/styles.css')
-  const open = css.indexOf('{', start)
-  let depth = 1
-  let end = open + 1
-  while (depth > 0 && end < css.length) {
-    if (css[end] === '{') depth += 1
-    if (css[end] === '}') depth -= 1
-    end += 1
-  }
-  const block = css.slice(open + 1, end - 1)
-  const names = new Set()
-  const declaration = /(--[\w-]+)\s*:/g
-  let match = declaration.exec(block)
-  while (match !== null) {
-    names.add(match[1])
-    match = declaration.exec(block)
-  }
-  if (names.size < 40) throw new Error(`:root parse looks wrong — only ${names.size} custom properties found`)
-  return names
-}
-
 const ROOT_VARS = parseRootCustomProperties(STYLES)
 
-function stripComments(css) {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '')
-}
-
-/** Top-level rules as { selectorText, body } (the chip/notice walk shape). */
-function collectRules(css) {
-  const rules = []
-  let index = 0
-  while (index < css.length) {
-    const open = css.indexOf('{', index)
-    if (open === -1) break
-    let depth = 1
-    let end = open + 1
-    while (depth > 0 && end < css.length) {
-      if (css[end] === '{') depth += 1
-      if (css[end] === '}') depth -= 1
-      end += 1
-    }
-    rules.push({ selectorText: css.slice(index, open), body: css.slice(open + 1, end - 1) })
-    index = end
-  }
-  return rules
-}
-
-const ROW_RULES = collectRules(stripComments(STYLES)).filter((rule) =>
+const ROW_RULES = collectRules(STYLES).filter((rule) =>
   rule.selectorText.split(',').some((selector) => selector.includes('.effective-setting')),
 )
 
@@ -226,7 +182,7 @@ test('(f) P06 — flow/tone/type + the row-scoped chip geometry only; every var(
   ok(seen.has('display') && seen.has('gap'), 'the recipe owns its internal flow')
   // The shared .chip class stays geometry-free: the compact pill shape is
   // SCOPED to the row (`.effective-setting-row .effective-setting-chip`), never global.
-  const sharedChip = collectRules(stripComments(STYLES)).find((rule) => rule.selectorText.trim() === '.chip')
+  const sharedChip = collectRules(STYLES).find((rule) => rule.selectorText.trim() === '.chip')
   ok(sharedChip, 'the shared .chip tone rule exists')
   ok(!/padding|border-radius|font-size/.test(sharedChip.body), 'the shared .chip rule carries no geometry (the row scopes its own)')
 })

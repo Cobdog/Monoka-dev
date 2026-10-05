@@ -101,6 +101,9 @@ const BOOTING = ['datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'l
 
 /** Every suite drawing scratch ports through tests/lib/ports.cjs. */
 const PORT_USERS = ['datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+/** Every kit suite reading src/styles.css through the shared sheet reader
+ *  (tests/lib/styleSheet.cjs — the near-term-A parser consolidation). */
+const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
 
 /** The suites that load client TS through the VM harness (scripts/lib/ts-vm.cjs). */
 const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'vdn', 'workflows']
@@ -207,6 +210,11 @@ const RULES = [
     reason: 'the port allocator draws ranges for every server-booting suite.',
   },
   {
+    match: ['tests/lib/styleSheet.cjs'],
+    suites: SHEET_USERS,
+    reason: 'the shared styles.css :root parser + recipe walker every kit suite reads the sheet through.',
+  },
+  {
     match: ['scripts/copy-llm-families.cjs'],
     suites: ['llm'],
     reason: 'copies the LLM family manifests the llm suite infers against (into dist-server).',
@@ -279,7 +287,7 @@ const RULES = [
   {
     match: ['tests/**'],
     suites: [],
-    reason: 'test helpers/fixtures — the load-bearing ones (ports.cjs, ci-map) have their own rules above.',
+    reason: 'test helpers/fixtures — the load-bearing ones (ports.cjs, styleSheet.cjs, ci-map) have their own rules above.',
   },
 
   // ---------- src client (VM-harness module map) ------------------------
@@ -674,4 +682,4 @@ function main() {
 
 if (require.main === module) main()
 
-module.exports = { SUITES, RULES, LICENSE_INPUTS, ALL_SUITES, BOOTING, PORT_USERS, VM_SUITES, resolve, globToRegExp, suiteFromFile }
+module.exports = { SUITES, RULES, LICENSE_INPUTS, ALL_SUITES, BOOTING, PORT_USERS, SHEET_USERS, VM_SUITES, resolve, globToRegExp, suiteFromFile }
