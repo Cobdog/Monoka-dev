@@ -24,6 +24,12 @@
  *     Base UI's own document-level Escape never sees a routed keystroke
  *     (the registry consumes it at window-capture) — one press, one
  *     dismissal.
+ *   - PAINT ORDER AGREES WITH OWNERSHIP (V01, the 2026-10-05 Codex audit):
+ *     a menu opened OVER a registered modal layer (a dialog beneath it in
+ *     the stack) composes the backdrop's over-modal modifier — it paints
+ *     above --z-modal instead of under it, while --z-consent stays the
+ *     contract's topmost tier. Tile-anchored menus (no modal beneath) keep
+ *     the dock-band floor — menus at tiles, under docks, the retained look.
  *   - OUTSIDE-PRESS — Base UI's dismiss (the codebase's established idiom,
  *     StudioDialog's outside press); every path lands in the ONE onClose.
  *   - FOCUS — the hook's discipline: focus enters the surface when the
@@ -83,7 +89,7 @@ const ROW_SELECTOR = 'button:not([disabled]), a[href]'
 
 export function PopoverMenu({ layerId, open, onClose, position, backdrop = false, onKeyDown, className, style, children, ...rest }: PopoverMenuProps) {
   const overlay = useOverlayBehavior({ id: layerId, onDismiss: onClose })
-  const { ref: attachOverlay, onKeyDown: overlayKeyDown, focusOnOpen } = overlay
+  const { ref: attachOverlay, onKeyDown: overlayKeyDown, focusOnOpen, overModal } = overlay
   const popupRef = useRef<HTMLDivElement | null>(null)
   const [popupNode, setPopupNode] = useState<HTMLDivElement | null>(null)
   const [clampedTop, setClampedTop] = useState<number | null>(null)
@@ -153,7 +159,7 @@ export function PopoverMenu({ layerId, open, onClose, position, backdrop = false
     <Dialog.Root open={open} modal={false} onOpenChange={(next) => { if (!next) onClose() }}>
       <Dialog.Portal>
         {backdrop
-          ? <Dialog.Backdrop className="canvas-menu-backdrop">
+          ? <Dialog.Backdrop className={`canvas-menu-backdrop${overModal ? ' canvas-menu-backdrop--over-modal' : ''}`}>
               <div className="popover-menu-anchor" style={{ position: 'fixed', left: position?.left, top: clampedTop ?? position?.top }}>{popup}</div>
             </Dialog.Backdrop>
           : popup}
