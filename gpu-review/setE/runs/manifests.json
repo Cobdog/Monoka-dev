@@ -1,0 +1,873 @@
+{
+ "config": {
+  "set": "E \u2014 X7, the staged base->turbo handoff",
+  "board": {
+   "prompts": {
+    "P1_low": "Locked-off tripod shot of a plain light-grey wooden table against a soft neutral studio background, even diffuse daylight, no shadows. A single matte red ball rests on the table at the left quarter of the frame. The ball rolls slowly to the right, a short distance, and comes to rest near the left third of the table early in the shot, then stays completely still. No camera movement. Audio: quiet room tone, one soft wooden rolling sound, then silence.",
+    "P2_med": "A pale woman in her early thirties with a short black bob haircut, thin silver hoop earrings, faint freckles, wearing an oversized rust-orange wool coat over a charcoal turtleneck. She stands at a weathered wooden counter in a small sunlit kitchen, slowly stirring a copper pot of soup with a wooden spoon. Late-afternoon light falls through a window to her left, dust motes in the beam. The camera pushes in slowly from a medium shot to a medium close-up; she tastes the soup and smiles slightly. Natural handheld micro-motion throughout. Audio: gentle simmering, the wooden spoon tapping the copper pot, a quiet kitchen fan hum, soft piano notes from a radio in the next room.",
+    "P3_high": "Locked-off tripod shot of a plain light-grey wooden table against a soft neutral studio background, even diffuse daylight, no shadows. A single matte red ball rests on the table at the left quarter of the frame. The ball rolls briskly from left to right across the whole table, crossing the full width of the frame, and comes to rest at the right quarter of the table just before the shot ends. No camera movement. Audio: quiet room tone, a sustained wooden rolling sound that travels from left to right and settles as the ball stops."
+   },
+   "plans": {
+    "P1_low": {
+     "anchors": [
+      [
+       0,
+       25.0
+      ],
+      [
+       17,
+       29.0
+      ],
+      [
+       34,
+       33.0
+      ]
+     ],
+     "success_band_end": [
+      28.0,
+      38.0
+     ]
+    },
+    "P3_high": {
+     "anchors": [
+      [
+       0,
+       25.0
+      ],
+      [
+       17,
+       50.0
+      ],
+      [
+       34,
+       75.0
+      ]
+     ],
+     "success_band_end": [
+      70.0,
+      80.0
+     ]
+    }
+   }
+  },
+  "grids": {
+   "X1A_base20_s12": [
+    1.0,
+    0.9956331849098206,
+    0.9908256530761719,
+    0.9855073094367981,
+    0.9795918464660645,
+    0.9729729890823364,
+    0.9655172228813171,
+    0.9570552110671997,
+    0.9473683834075928,
+    0.936170220375061,
+    0.9230769276618958,
+    0.9075629711151123,
+    0.8888888955116272,
+    0.8659793734550476,
+    0.8372092843055725,
+    0.800000011920929,
+    0.75,
+    0.6792452931404114,
+    0.5714285969734192,
+    0.3870967924594879,
+    0.0
+   ],
+   "EA_turbo8_s6": [
+    1.0,
+    0.9767441749572754,
+    0.9473684430122375,
+    0.9090909361839294,
+    0.8571428656578064,
+    0.782608687877655,
+    0.6666666865348816,
+    0.4615384638309479,
+    0.0
+   ],
+   "EAP_segcut11_s6": [
+    1.0,
+    0.994652404071721,
+    0.9890109840589307,
+    0.9830508396039461,
+    0.9767441749572755,
+    0.9473684430122375,
+    0.9090909361839294,
+    0.8571428656578064,
+    0.782608687877655,
+    0.6666666865348816,
+    0.4615384638309479,
+    0.0
+   ],
+   "legs": {
+    "Eb": [
+     [
+      1.0,
+      0.9956331849098206,
+      0.9908256530761719,
+      0.9855073094367981,
+      0.9795918464660645,
+      0.9729729890823364
+     ],
+     [
+      0.9473684430122375,
+      0.9090909361839294,
+      0.8571428656578064,
+      0.782608687877655,
+      0.6666666865348816,
+      0.4615384638309479,
+      0.0
+     ]
+    ],
+    "Ebp": [
+     [
+      1.0,
+      0.9956331849098206,
+      0.9908256530761719,
+      0.9855073094367981,
+      0.9795918464660645,
+      0.9729729890823364,
+      0.9655172228813171,
+      0.9570552110671997,
+      0.9473683834075928,
+      0.936170220375061,
+      0.9230769276618958
+     ],
+     [
+      0.8571428656578064,
+      0.782608687877655,
+      0.6666666865348816,
+      0.4615384638309479,
+      0.0
+     ]
+    ],
+    "Ed": [
+     [
+      1.0,
+      0.9956331849098206,
+      0.9908256530761719,
+      0.9855073094367981,
+      0.9795918464660645,
+      0.9729729890823364
+     ],
+     [
+      0.9729729890823364,
+      0.9655172228813171,
+      0.9570552110671997,
+      0.9473683834075928,
+      0.936170220375061,
+      0.9230769276618958,
+      0.9075629711151123,
+      0.8888888955116272,
+      0.8659793734550476,
+      0.8372092843055725,
+      0.800000011920929,
+      0.75,
+      0.6792452931404114,
+      0.5714285969734192,
+      0.3870967924594879,
+      0.0
+     ]
+    ],
+    "Ee": [
+     [
+      1.0,
+      0.994652404071721,
+      0.9890109840589307,
+      0.9830508396039461,
+      0.9767441749572755,
+      0.9473684430122375
+     ],
+     [
+      0.9473684430122375,
+      0.9090909361839294,
+      0.8571428656578064,
+      0.782608687877655,
+      0.6666666865348816,
+      0.4615384638309479,
+      0.0
+     ]
+    ]
+   },
+   "C1_mislabel_gaps": {
+    "t0.75": 0.0256,
+    "t0.5": 0.0659
+   }
+  },
+  "models": {
+   "base": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+   "base_sha_note": "minimax_h3_ref2va_pruned_int8_convrot (A3 attachment table)",
+   "canary_base": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+   "te": "qwen3vl_32b_minimax_h3_int8_convrot.safetensors",
+   "vae_v": "minimax_h3_video_vae_fp16.safetensors",
+   "vae_a": "minimax_h3_audio_vae_fp32.safetensors",
+   "frame_contract": "39 = 17*2+5; audio rows 65 = round(39*5/3)"
+  },
+  "loras": {
+   "turbo": {
+    "file": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "node": "LoraLoaderModelOnly (STOCK \u2014 conversion format; MiniMaxH3TurboLoRA silently no-ops this class)",
+    "strength": 1.0,
+    "attachment": "runtime/bypass (weight-function path)",
+    "expected_patches": 208
+   }
+  },
+  "nfe_declared": {
+   "Ec": 20,
+   "Ed": "5+15",
+   "Ea": 8,
+   "Eap": 11,
+   "Ee": "5+6",
+   "Eb": "5+6",
+   "Ebp": "10+4"
+  },
+  "handoff_machinery": {
+   "latent_link_convention": "sampler output latent = x_final/(1-sigma_terminal) (CONST.inverse_noise_scaling, model_sampling.py:99; audio /scale via process_latent_out)",
+   "initial_state_formula": "x = sigma*noise + (1-sigma)*latent_image (CONST.noise_scaling, samplers.py:993)",
+   "state_continuation": "m = (1-sigma1_last)/(1-sigma2_first) on the link (LatentMultiply, fp32-mirrored); m=1 for equal-sigma splits (E-d, E-e -> direct link, A3's wiring); E-b m=0.513509, E-b' m=0.538462 (the C1 mislabel's amplification undone)",
+   "v1_failure_record": "GATE A v1 (2026-10-05) failed grossly: the v1 wiring used m=1/(1-sigma2_first) (amplifying E-d/E-e x19-x37; PSNR 6-7 dB, HF 12-27x) \u2014 probe-proven against the engine's link convention; Ed cells + one Ee probe gen discarded, superseded by the ratio machinery",
+   "c2_native": "audio rebasing rides process_latent_out/in (net factor audio_scale2/audio_scale1; the (1-sigma) factors cancel); the E-b-vs-E-c audio sub-endpoint measures it",
+   "c5_declared": "solver-history reset at the split is BY DESIGN (declared cost; E-d measures it)"
+  },
+  "sampler": "base legs res_multistep; turbo legs MiniMaxH3TurboSampler (Euler, native ModelSamplingAV)",
+  "kernel": "stock attention routing; SageAttention off",
+  "frame_contract": "39 = 17*2+5; audio rows 65 = round(39*5/3)",
+  "comfyui_version": "0.37.4",
+  "testbed_pid_at_dispatch": 4086342,
+  "model_ruling": "REF2VA substitution per A3 gap G-E1 (disclosed; no fetch)",
+  "canary_protocol": "start + mid; Set B r9 bit-identity (framemd5 + audio md5); STOP on any diff (Amendment 5)",
+  "null_protocol": "N1 = Eb_P2 through __setEnull; bit-identity gates the review",
+  "gate_protocol": "GATE A (Ed vs Ec) after controls_base; GATE B (Ee vs Eap) after turbo_family; a separation beyond floors on either = STOP (machinery invalid), e1_gate.py",
+  "client_id": "a145c4ce-d880-4c10-ac77-9b06480bd061"
+ },
+ "runs": [
+  {
+   "run_id": "c1_canary_start",
+   "arm": "canary",
+   "board_id": "P2_med",
+   "nfe": 20,
+   "lora": null,
+   "tags": [
+    "canary"
+   ],
+   "wall_s": 78.68,
+   "sampling_s": 63.68,
+   "vram_peak_mib": 23897,
+   "multipliers": null,
+   "audio_scale": null,
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": null,
+   "canary_check_vs_setB_r9": {
+    "frames_identical": true,
+    "audio_identical": true,
+    "n_frames": 39
+   },
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ec_P1_low",
+   "arm": "Ec",
+   "board_id": "P1_low",
+   "nfe": 20,
+   "lora": null,
+   "tags": [],
+   "wall_s": 66.45,
+   "sampling_s": 60.45,
+   "vram_peak_mib": 24149,
+   "multipliers": null,
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": null
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ec_P2_med",
+   "arm": "Ec",
+   "board_id": "P2_med",
+   "nfe": 20,
+   "lora": null,
+   "tags": [],
+   "wall_s": 60.28,
+   "sampling_s": 54.28,
+   "vram_peak_mib": 24153,
+   "multipliers": null,
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": null
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ec_P3_high",
+   "arm": "Ec",
+   "board_id": "P3_high",
+   "nfe": 20,
+   "lora": null,
+   "tags": [],
+   "wall_s": 60.25,
+   "sampling_s": 55.25,
+   "vram_peak_mib": 23945,
+   "multipliers": null,
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": null
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ed_P1_low",
+   "arm": "Ed",
+   "board_id": "P1_low",
+   "nfe": 20,
+   "lora": null,
+   "tags": [],
+   "wall_s": 54.13,
+   "sampling_s": 53.13,
+   "vram_peak_mib": 24101,
+   "multipliers": {
+    "m": 1.0,
+    "err": 6.012169111254709e-08,
+    "one_minus_stage1_terminal": 0.027027010917663574,
+    "one_minus_stage2_leading": 0.027027010917663574
+   },
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": 4.0
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ed_P2_med",
+   "arm": "Ed",
+   "board_id": "P2_med",
+   "nfe": 20,
+   "lora": null,
+   "tags": [],
+   "wall_s": 60.25,
+   "sampling_s": 55.25,
+   "vram_peak_mib": 24165,
+   "multipliers": {
+    "m": 1.0,
+    "err": 6.012169111254709e-08,
+    "one_minus_stage1_terminal": 0.027027010917663574,
+    "one_minus_stage2_leading": 0.027027010917663574
+   },
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": 4.0
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ed_P3_high",
+   "arm": "Ed",
+   "board_id": "P3_high",
+   "nfe": 20,
+   "lora": null,
+   "tags": [],
+   "wall_s": 60.26,
+   "sampling_s": 54.25,
+   "vram_peak_mib": 24149,
+   "multipliers": {
+    "m": 1.0,
+    "err": 6.012169111254709e-08,
+    "one_minus_stage1_terminal": 0.027027010917663574,
+    "one_minus_stage2_leading": 0.027027010917663574
+   },
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": 4.0
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ea_P1_low",
+   "arm": "Ea",
+   "board_id": "P1_low",
+   "nfe": 8,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 49.06,
+   "sampling_s": 35.06,
+   "vram_peak_mib": 23895,
+   "multipliers": null,
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": null
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ea_P2_med",
+   "arm": "Ea",
+   "board_id": "P2_med",
+   "nfe": 8,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 33.71,
+   "sampling_s": 28.71,
+   "vram_peak_mib": 24149,
+   "multipliers": null,
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": null
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ea_P3_high",
+   "arm": "Ea",
+   "board_id": "P3_high",
+   "nfe": 8,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 33.71,
+   "sampling_s": 27.71,
+   "vram_peak_mib": 24153,
+   "multipliers": null,
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": null
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Eap_P1_low",
+   "arm": "Eap",
+   "board_id": "P1_low",
+   "nfe": 11,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 39.83,
+   "sampling_s": 33.83,
+   "vram_peak_mib": 24153,
+   "multipliers": null,
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": null
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Eap_P2_med",
+   "arm": "Eap",
+   "board_id": "P2_med",
+   "nfe": 11,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 39.83,
+   "sampling_s": 34.83,
+   "vram_peak_mib": 24153,
+   "multipliers": null,
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": null
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Eap_P3_high",
+   "arm": "Eap",
+   "board_id": "P3_high",
+   "nfe": 11,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 39.83,
+   "sampling_s": 33.83,
+   "vram_peak_mib": 24153,
+   "multipliers": null,
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": null
+   },
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ee_P1_low",
+   "arm": "Ee",
+   "board_id": "P1_low",
+   "nfe": 11,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 39.83,
+   "sampling_s": 33.83,
+   "vram_peak_mib": 24153,
+   "multipliers": {
+    "m": 1.0,
+    "err": 0.0,
+    "one_minus_stage1_terminal": 0.05263197422027588,
+    "one_minus_stage2_leading": 0.05263197422027588
+   },
+   "audio_scale": {
+    "stage1": 2.0,
+    "stage2": 2.0
+   },
+   "stage2_state_guard": {
+    "x_rms": 0.9186,
+    "pass": true
+   },
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ee_P2_med",
+   "arm": "Ee",
+   "board_id": "P2_med",
+   "nfe": 11,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 39.83,
+   "sampling_s": 34.83,
+   "vram_peak_mib": 24089,
+   "multipliers": {
+    "m": 1.0,
+    "err": 0.0,
+    "one_minus_stage1_terminal": 0.05263197422027588,
+    "one_minus_stage2_leading": 0.05263197422027588
+   },
+   "audio_scale": {
+    "stage1": 2.0,
+    "stage2": 2.0
+   },
+   "stage2_state_guard": {
+    "x_rms": 0.9175,
+    "pass": true
+   },
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ee_P3_high",
+   "arm": "Ee",
+   "board_id": "P3_high",
+   "nfe": 11,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 39.83,
+   "sampling_s": 34.83,
+   "vram_peak_mib": 24153,
+   "multipliers": {
+    "m": 1.0,
+    "err": 0.0,
+    "one_minus_stage1_terminal": 0.05263197422027588,
+    "one_minus_stage2_leading": 0.05263197422027588
+   },
+   "audio_scale": {
+    "stage1": 2.0,
+    "stage2": 2.0
+   },
+   "stage2_state_guard": {
+    "x_rms": 0.9187,
+    "pass": true
+   },
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Eb_P1_low",
+   "arm": "Eb",
+   "board_id": "P1_low",
+   "nfe": 11,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 55.19,
+   "sampling_s": 41.19,
+   "vram_peak_mib": 24069,
+   "multipliers": {
+    "m": 0.513509333,
+    "err": 0.0,
+    "one_minus_stage1_terminal": 0.027027010917663574,
+    "one_minus_stage2_leading": 0.05263197422027588
+   },
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": 2.0
+   },
+   "stage2_state_guard": {
+    "x_rms": 0.937,
+    "pass": true
+   },
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Eb_P2_med",
+   "arm": "Eb",
+   "board_id": "P2_med",
+   "nfe": 11,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 39.83,
+   "sampling_s": 34.83,
+   "vram_peak_mib": 24165,
+   "multipliers": {
+    "m": 0.513509333,
+    "err": 0.0,
+    "one_minus_stage1_terminal": 0.027027010917663574,
+    "one_minus_stage2_leading": 0.05263197422027588
+   },
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": 2.0
+   },
+   "stage2_state_guard": {
+    "x_rms": 0.9364,
+    "pass": true
+   },
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Eb_P3_high",
+   "arm": "Eb",
+   "board_id": "P3_high",
+   "nfe": 11,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 39.83,
+   "sampling_s": 34.83,
+   "vram_peak_mib": 24165,
+   "multipliers": {
+    "m": 0.513509333,
+    "err": 0.0,
+    "one_minus_stage1_terminal": 0.027027010917663574,
+    "one_minus_stage2_leading": 0.05263197422027588
+   },
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": 2.0
+   },
+   "stage2_state_guard": {
+    "x_rms": 0.9373,
+    "pass": true
+   },
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ebp_P1_low",
+   "arm": "Ebp",
+   "board_id": "P1_low",
+   "nfe": 14,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 49.03,
+   "sampling_s": 43.03,
+   "vram_peak_mib": 24165,
+   "multipliers": {
+    "m": 0.538461566,
+    "err": 6.012169111254709e-08,
+    "one_minus_stage1_terminal": 0.07692301273345947,
+    "one_minus_stage2_leading": 0.14285701513290405
+   },
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": 2.0
+   },
+   "stage2_state_guard": {
+    "x_rms": 0.8622,
+    "pass": true
+   },
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ebp_P2_med",
+   "arm": "Ebp",
+   "board_id": "P2_med",
+   "nfe": 14,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 45.96,
+   "sampling_s": 40.96,
+   "vram_peak_mib": 24165,
+   "multipliers": {
+    "m": 0.538461566,
+    "err": 6.012169111254709e-08,
+    "one_minus_stage1_terminal": 0.07692301273345947,
+    "one_minus_stage2_leading": 0.14285701513290405
+   },
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": 2.0
+   },
+   "stage2_state_guard": {
+    "x_rms": 0.8608,
+    "pass": true
+   },
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "Ebp_P3_high",
+   "arm": "Ebp",
+   "board_id": "P3_high",
+   "nfe": 14,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "lora_arm"
+   ],
+   "wall_s": 45.95,
+   "sampling_s": 40.95,
+   "vram_peak_mib": 24165,
+   "multipliers": {
+    "m": 0.538461566,
+    "err": 6.012169111254709e-08,
+    "one_minus_stage1_terminal": 0.07692301273345947,
+    "one_minus_stage2_leading": 0.14285701513290405
+   },
+   "audio_scale": {
+    "stage1": 4.0,
+    "stage2": 2.0
+   },
+   "stage2_state_guard": {
+    "x_rms": 0.8624,
+    "pass": true
+   },
+   "patches_attached_208": true,
+   "knots_source": "code-true re-derivation asserted vs A1 frozen table",
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "c2_canary_mid",
+   "arm": "canary",
+   "board_id": "P2_med",
+   "nfe": 20,
+   "lora": null,
+   "tags": [
+    "canary"
+   ],
+   "wall_s": 75.6,
+   "sampling_s": 61.6,
+   "vram_peak_mib": 23909,
+   "multipliers": null,
+   "audio_scale": null,
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": null,
+   "canary_check_vs_setB_r9": {
+    "frames_identical": true,
+    "audio_identical": true,
+    "n_frames": 39
+   },
+   "null_check_vs_Eb_P2": null
+  },
+  {
+   "run_id": "N1_eb_null_P2",
+   "arm": "Eb",
+   "board_id": "P2_med",
+   "nfe": 11,
+   "lora": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+   "tags": [
+    "null"
+   ],
+   "wall_s": 49.04,
+   "sampling_s": 43.04,
+   "vram_peak_mib": 24149,
+   "multipliers": null,
+   "audio_scale": null,
+   "stage2_state_guard": null,
+   "patches_attached_208": true,
+   "knots_source": null,
+   "canary_check_vs_setB_r9": null,
+   "null_check_vs_Eb_P2": {
+    "bit_identical": true
+   }
+  }
+ ]
+}
