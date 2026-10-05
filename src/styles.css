@@ -201,6 +201,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .save-status { display: inline-flex; align-items: center; gap: 6px; margin: 0; color: var(--muted-2); font-size: var(--text-2xs); line-height: 1.4; }
 .save-status--failed { color: var(--danger); font-size: var(--text-md); }
 .save-status-retry { background: none; border: none; padding: 0; color: inherit; font-size: inherit; line-height: inherit; text-decoration: underline; cursor: pointer; }
+/* Component vocabulary task 21 (k2q0n9s) — Refusal, the honest-no component
+   (the precondition gate: title + reason + the satisfy escape hatch). P06:
+   the recipe owns tone/type and the block's internal flow; the consuming
+   surface's class (className) carries placement geometry. The tone is the
+   WARNING token, never danger — a refusal is a state, not a failure (the
+   plan's ruling; danger belongs to SaveStatus's failed arm) — at the
+   decision-prose floor (--text-md, the A02/A10 >=11px class). The satisfy
+   is an inheritance-reset text button (the save-status-retry / notice-banner
+   × precedent: resets and cursor, never box geometry). The class/aria/warn
+   math lives in src/ui/refusalClasses.ts (node-tested against THIS block). */
+.refusal { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 0; color: var(--warning); font-size: var(--text-md); }
+.refusal-title { margin: 0; font-weight: 600; }
+.refusal-reason { margin: 0; }
+.refusal-satisfy { background: none; border: none; padding: 0; color: inherit; font-size: inherit; line-height: inherit; text-decoration: underline; cursor: pointer; }
 textarea, .field-group input, .field-group select { width: 100%; border: 1px solid var(--line); border-radius: 8px; background:var(--color-surface-sunken); color: var(--text); transition: border-color .15s ease; }
 textarea:hover, .field-group input:hover, .field-group select:hover { border-color: var(--line-strong); }
 textarea:focus, .field-group input:focus, .field-group select:focus { border-color: #738f42; outline: none; box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent); }

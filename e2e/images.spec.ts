@@ -227,11 +227,29 @@ test('the refine affordance is opt-in with engine-pairing honesty; the burst lan
   await expect(page.locator('[data-iw-refine-tap="klein"]')).toBeDisabled()
   await expect(page.locator('[data-iw-refine-tap="krea2"]')).toBeDisabled()
   await expect(page.locator('.iw-engine-note')).toContainText(/unavailable/i)
-  // The primary Generate CTA names its reason too (app-tour wave d6iy68r,
-  // review M7 — the refine-tap title pattern, never a silent dead button).
+  // The primary Generate CTA states its reason at the gate (task 21,
+  // k2q0n9s — the retired title-carried refusal became the shared Refusal
+  // tier: VISIBLE and announced, not a hover tooltip on a disabled button
+  // that keyboard and touch users can never see). Engine offline + an empty
+  // model scan → no detection → the honest not-connected reason and NO
+  // satisfy affordance (nothing is named to fetch; the Library cannot help
+  // until an engine answers).
   const generate = page.locator('[data-iw-generate]')
   await expect(generate).toBeDisabled()
-  await expect(generate).toHaveAttribute('title', /unavailable/i)
+  await expect(generate).not.toHaveAttribute('title', /unavailable/i)
+  const refusal = page.locator('[data-iw-root]').locator('[data-refusal]')
+  await expect(refusal).toBeVisible()
+  await expect(refusal).toHaveAttribute('role', 'alert')
+  await expect(refusal).toHaveAttribute('aria-live', 'assertive')
+  await expect(refusal.locator('[data-refusal-title]')).toContainText('is not available')
+  await expect(refusal.locator('[data-refusal-reason]')).toContainText('not connected')
+  await expect(page.locator('[data-refusal-satisfy]')).toHaveCount(0)
+  // The tone is the WARNING tier, never danger — a refusal is a state, not
+  // a failure (computed values as the final authority, --warning vs
+  // --danger from the sheet).
+  const refusalTone = await refusal.evaluate((element) => getComputedStyle(element).color)
+  expect(refusalTone).toBe('rgb(240, 188, 102)')
+  expect(refusalTone).not.toBe('rgb(255, 127, 127)')
   // The burst lane ships behind the E-IW2 gate + experiment flag.
   const burst = page.locator('[data-iw-burst-fuse]')
   await expect(burst).toBeDisabled()
@@ -804,6 +822,102 @@ test('T=1 lane: the badge names the ready machinery; single frames land with lan
     const listed = await (await request.get('/api/lan/jobs')).json().catch(() => ({ jobs: [] })) as { jobs?: Array<Record<string, unknown>> }
     const stale = (listed.jobs ?? []).filter((job) => job.status === 'queued' || job.status === 'running').map((job) => ({ ...job, status: 'cancelled' }))
     if (stale.length) await request.post('/api/lan/jobs', { data: { jobs: stale } }).catch(() => undefined)
+    await request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } }).catch(() => undefined)
+    await new Promise<void>((resolve) => engine.close(() => resolve()))
+  }
+})
+
+// ---------------------------------------------------------------------------
+// (Component vocabulary task 21, k2q0n9s — the manifest §11 named test)
+// Refusal, the honest-no component, at its first consumer: the image-lane
+// gate. The same engine asymmetry the T=1 badge test rides — the fake
+// engine serves the Fizgig still pack and the base stack but NOT the
+// Mamad8 T=1 VAE or the Image Studio pack classes — so the T=1 lane under
+// the default Image Studio machinery is the refused state with NAMED
+// missing pieces, and the lane's own machinery select is the satisfaction
+// path that resolves it. What is pinned: the refusal states title + reason
+// (the pieces named, facts plainly), the satisfy affordance fires its real
+// action (the Library opens — the R-19 remedy), and satisfying the
+// precondition actually RESOLVES the gate (the refusal unmounts, Generate
+// enables) — never a dead end, never dimming alone.
+test('refusal: reason + satisfaction path at the image-lane gate (task 21)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const http = await import('node:http')
+
+  const engine = http.createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://engine.local')
+    if (url.pathname === '/system_stats') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ system: {}, devices: [] }))
+      return
+    }
+    // The Fizgig still pack's two classes + the hybrid loader; NO Image
+    // Studio pack classes, and no Mamad8 file in the registry listing.
+    if (serveObjectInfo(url, stockObjectInfo({ FizgigH3StillLatent: {}, FizgigH3StillDecode: {}, MiniMaxH3HybridLoader: {} }), res)) return
+    if (serveModelRegistry(url, H3_REGISTRY_LISTINGS, res)) return
+    res.writeHead(404)
+    res.end()
+  })
+  const enginePort = await new Promise<number>((resolve) => engine.listen(0, '127.0.0.1', () => resolve((engine.address() as { port: number }).port)))
+
+  const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    const listed = await (await request.get('/api/lan/jobs')).json() as { jobs?: Array<Record<string, unknown>> }
+    const stale = (listed.jobs ?? []).filter((job) => job.status === 'queued' || job.status === 'running').map((job) => ({ ...job, status: 'cancelled' }))
+    if (stale.length) await request.post('/api/lan/jobs', { data: { jobs: stale } })
+    await seedSession(request)
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${enginePort}`,
+      // The DEFAULT machinery (Image Studio) must be selected — it is the
+      // refused arm; Fizgig is the satisfaction path.
+      experimentalT1Decode: 'image-studio',
+    } } })
+    await page.goto('/?images=1')
+    await expect(page.locator('[data-iw-root]')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('[data-iw-engine="on"]')).toBeVisible({ timeout: 15_000 })
+
+    // Switch to the T=1 lane through the app's own sub-rail (the packet
+    // family IS available under this engine — the refusal is lane-scoped).
+    await page.locator('[data-iw-family-button="h3img.generate.t1"]').click()
+    const refusal = page.locator('[data-iw-root]').locator('[data-refusal]')
+    await expect(refusal).toBeVisible({ timeout: 15_000 })
+    // WHY, plainly: the family names itself, the reason names the missing
+    // pieces verbatim (the detection's own strings — models AND nodes).
+    await expect(refusal.locator('[data-refusal-title]')).toContainText('Generate (T=1 Fast) is not available')
+    await expect(refusal.locator('[data-refusal-reason]')).toContainText('Mamad8')
+    await expect(refusal.locator('[data-refusal-reason]')).toContainText('Image Studio pack')
+    // The announcement: the alert pair (one live mechanism).
+    await expect(refusal).toHaveAttribute('role', 'alert')
+    await expect(refusal).toHaveAttribute('aria-live', 'assertive')
+    // The warning tone, not danger (computed, the final authority).
+    const tone = await refusal.evaluate((element) => getComputedStyle(element).color)
+    expect(tone).toBe('rgb(240, 188, 102)')
+    // The button stays honestly disabled — never dimming alone.
+    await expect(page.locator('[data-iw-generate]')).toBeDisabled()
+
+    // The escape hatch: a REAL button whose action opens the Library (the
+    // R-19 remedy — the missing weights and packs are fetchable there).
+    const satisfy = page.locator('[data-refusal-satisfy]')
+    await expect(satisfy).toBeVisible()
+    await expect(satisfy).toContainText('Get the missing pieces')
+    await satisfy.click()
+    await expect(page.locator('[data-canvas-library-dock]')).toBeVisible({ timeout: 15_000 })
+    await page.locator('[data-canvas-library-close]').click()
+    await expect(page.locator('[data-canvas-library-dock]')).toHaveCount(0)
+
+    // Satisfaction RESOLVES the gate: the lane's own machinery select swaps
+    // to Fizgig (served by this engine), the detection recomputes, the
+    // refusal unmounts, and Generate enables — the no-dead-end contract.
+    await page.locator('[data-iw-machinery-value]').selectOption('fizgig')
+    await expect(page.locator('[data-refusal]')).toHaveCount(0, { timeout: 15_000 })
+    await expect(page.locator('[data-iw-generate]')).toBeEnabled()
+
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    // (testing.md's shared-home discipline) restore the persisted settings
+    // (comfyUrl + the machinery flag the select saves) and the session.
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
     await request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } }).catch(() => undefined)
     await new Promise<void>((resolve) => engine.close(() => resolve()))
   }

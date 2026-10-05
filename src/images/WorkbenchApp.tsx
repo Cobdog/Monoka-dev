@@ -19,6 +19,7 @@ import { ImagePlus, Layers, LoaderCircle, Lock, Send, Settings, Sparkles, Wand2,
 import { Button } from '../ui/Button'
 import { StudioSelect } from '../ui/StudioSelect'
 import { NoticeBanner } from '../ui/NoticeBanner'
+import { Refusal } from '../ui/Refusal'
 import { SaveStatus, type SaveState } from '../ui/SaveStatus'
 import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 import { CanvasToastAdapter } from '../canvas/toastAdapter'
@@ -798,6 +799,15 @@ function WorkbenchSurface() {
   const krea2Detection = detectionOf('h3img.refine.krea2')
   const suggestedEngine: 'klein' | 'krea2' = kleinDetection?.available ? 'klein' : 'krea2'
   const combinedLoraStrength = settings.loras.reduce((acc, lora) => acc + lora.strength, 0)
+  // (Task 21, k2q0n9s) The image-lane gate's own detection read — the
+  // Refusal tier renders from this one place (the retired title-carried
+  // refusal's replacement): the named missing pieces are the reason, the
+  // Library is the escape hatch when pieces ARE named, and with no
+  // detection at all (no engine, no scan) the reason states that condition
+  // plainly and offers no affordance — the Library cannot help until an
+  // engine answers.
+  const gateDetection = detectionOf(settings.family)
+  const gateMissing = gateDetection ? [...gateDetection.missingModels, ...gateDetection.missingNodes] : []
 
   return (
     <div className="iw-root" data-iw-root data-iw-family={settings.family}>
@@ -1194,13 +1204,30 @@ function WorkbenchSurface() {
             className="iw-generate"
             data-iw-generate
             busy={busy}
-            disabled={!detectionOf(settings.family)?.available}
-            title={detectionOf(settings.family)?.available ? 'Generate' : (detectionOf(settings.family)?.missingModels.join('; ') || detectionOf(settings.family)?.missingNodes.join('; ') || 'unavailable')}
+            disabled={!gateDetection?.available}
             icon={<Sparkles size={13} />}
             onClick={() => void generate()}
           >
             Generate {family?.profile === 't1' ? '(T=1 fast — structurally soft)' : family?.profile === 'sharp' ? `(fast-sharp — ${settings.tier}-frame context, one slice)` : `(${family?.kind === 'generate-directed' ? '39-frame packet' : packetTierLabel(settings.tier, studioPackOnEngine)})`}
           </Button>
+          {/* (Task 21, k2q0n9s) The image-lane gate, the Refusal tier's
+              first consumer: the retired ad-hoc refusal rode the DISABLED
+              button's title attribute — invisible to keyboard and touch,
+              announced by nothing. The shared component states it at the
+              gate (title + the missing pieces as the reason, the alert
+              pair, the warning tone — a state, not a failure) and carries
+              the R-19 escape hatch when pieces are named. The button KEEPS
+              its disabled gate: the action truly cannot run — honest
+              refusal, never dimming alone. */}
+          {!gateDetection?.available && (
+            <Refusal
+              title={`${family?.label ?? 'This lane'} is not available`}
+              reason={gateMissing.join('; ') || 'the engine is not connected, so this lane\'s requirements cannot be checked yet'}
+              satisfy={gateMissing.length
+                ? { label: 'Get the missing pieces…', action: () => useCanvasStore.getState().setLibraryDock(true) }
+                : undefined}
+            />
+          )}
           {/* (Task 20, k2q0n9s) The session writes' save state beside the
               action — the shared SaveStatus tier: idle silent, the busy
               idiom while the serialized queue flushes, the muted
