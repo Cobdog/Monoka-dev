@@ -146,6 +146,12 @@
 .canvas-promptbar-submit { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; padding: 0 16px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 10px; background: var(--accent-soft); color: var(--accent); font-size: var(--text-sm); font-weight: 700; cursor: pointer; }
 .canvas-promptbar-submit:disabled { opacity: .45; cursor: default; }
 .canvas-launcher-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* (near-term C, k2q0n9s — §0.3 long-tail) The launcher's media-type
+ * radiogroup is a SEMANTIC wrapper inside the entry-chips row: display:
+ * contents keeps the row's flat flex placement pixel-identical while the
+ * group carries the radio contract (the chips stay the row's own flex
+ * items — the group contributes no box). */
+.canvas-launcher-lane { display: contents; }
 /* Chip geometry only (task 6, k2q0n9s): the tone/state recipes (base,
  * hover, selected/active, danger, primary→accent, disabled) moved to the
  * shared `.chip` block in src/styles.css; surfaces compose
@@ -605,6 +611,10 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-op-quick button:hover { color: var(--text); border-color: var(--line-strong); background: var(--surface-3); }
 .canvas-op-brushrow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .canvas-op-brushrow label { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 140px; }
+/* (near-term C, k2q0n9s — §0.3 long-tail) The brush-mode radiogroup rides
+ * display: contents — the pair stays inline with the size slider exactly as
+ * the retired spans sat (the group is semantics, not a box; P06). */
+.canvas-op-brushmode { display: contents; }
 .canvas-opmodal-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted-2); font-size: var(--text-2xs); }
 .canvas-opmodal-footer kbd { padding: 1px 5px; }
 

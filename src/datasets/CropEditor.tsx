@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlipHorizontal2, Grid2x2, Move, Scissors } from 'lucide-react'
 import { datasetsApi, mediaUrlFor, type AspectEntry, type CropRect, type LibraryLayer, type LibrarySource } from './api'
 import { Button } from '../ui/Button'
+import { Chip, ChipGroup } from '../ui/Chip'
 import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 
 const GRID = 32
@@ -327,19 +328,28 @@ export function CropEditor({ source, layer, aspects, onClose, onSaved }: Props) 
             <label>Layer name</label>
             <input value={name} onChange={(event) => setName(event.target.value)} placeholder="crop 480×832" maxLength={80} />
           </div>
-          <div className="ds-aspect-strip" data-ds-aspect-strip>
-            {enabled.map((entry, index) => (
-              <button
-                key={entry.id}
-                type="button"
-                className={`chip ${index === aspectIndex ? 'chip--selected' : ''} ds-aspect-chip ${!entry.official ? 'custom' : ''}`}
-                onClick={() => setAspectIndex(index)}
-                disabled={index === aspectIndex}
-              >
+          {/* (near-term C, k2q0n9s — §0.3 long-tail) The aspect strip is an
+              EXCLUSIVE chip group: radiogroup + aria-checked + roving
+              tabindex + arrows (the wheel scrub writes the same index —
+              hard-stop contract unchanged). The selected chip is NO LONGER
+              disabled: a radio's selected member IS the tab stop (a disabled
+              button cannot take focus, which would lock the keyboard out of
+              the whole group), and re-clicking it is a harmless no-op
+              reselect — the standard radio shape. */}
+          <ChipGroup
+            exclusive
+            className="ds-aspect-strip"
+            data-ds-aspect-strip
+            aria-label="Aspect ratio"
+            value={enabled[aspectIndex]?.id ?? null}
+            onChange={(next) => { const index = enabled.findIndex((entry) => entry.id === next); if (index >= 0) setAspectIndex(index) }}
+          >
+            {enabled.map((entry) => (
+              <Chip key={entry.id} id={entry.id} variant="radio" className={`ds-aspect-chip ${!entry.official ? 'custom' : ''}`}>
                 {entry.label}
-              </button>
+              </Chip>
             ))}
-          </div>
+          </ChipGroup>
           <p className="ds-hint"><Move size={12} /> drag places the stamp · <Grid2x2 size={12} /> scroll resizes · shift+scroll scrubs the spectrum (hard stops, never loops) · <FlipHorizontal2 size={12} /> middle-click mirrors · the fields below set the geometry exactly (32-grid)</p>
           {status && <p className="ds-status">{status}</p>}
           {mirrorHint && <p className="ds-status warn">{mirrorHint}</p>}

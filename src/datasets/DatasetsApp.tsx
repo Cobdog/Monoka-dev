@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Camera, Database, Download, FolderOpen, Layers, LoaderCircle, Pin, Plus, RefreshCw, Search, Settings, Sparkles, Trash2, Upload, Video } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { Chip, ChipGroup } from '../ui/Chip'
 import { StudioSelect } from '../ui/StudioSelect'
 import { datasetsApi, mediaUrlFor, type AspectEntry, type DashboardPayload, type DatasetSettings, type ExportResultPayload, type LibraryLayer, type LibrarySource } from './api'
 import { useStudioSession } from '../hooks/useStudioSession'
@@ -467,16 +468,23 @@ function DatasetsSurface() {
         <div className="ds-toolbar-block">
           <h4>Search &amp; filter</h4>
           <div className="ds-search"><Search size={13} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="FTS over captions + provenance" data-ds-search /></div>
-          <div className="ds-filter-row">
+          {/* (near-term C, k2q0n9s — §0.3 long-tail) Both filter rows are
+              EXCLUSIVE chip groups now: the complete radio contract
+              (radiogroup + aria-checked + roving tabindex + arrows), not the
+              visual-only chip--selected they rendered before. The chip ids
+              carry a group prefix — the DOM ids stay document-unique (the
+              kind/caption groups share the 'all' key; the export wizard's
+              shape/trainer share 'musubi'/'diffsynx'). */}
+          <ChipGroup exclusive className="ds-filter-row" data-ds-filter="kind" aria-label="Filter by media kind" value={`kind-${kindFilter}`} onChange={(next) => setKindFilter(next === 'kind-video' ? 'video' : next === 'kind-image' ? 'image' : 'all')}>
             {(['all', 'video', 'image'] as const).map((entry) => (
-              <button key={entry} type="button" className={`chip ${kindFilter === entry ? 'chip--selected' : ''} ds-chip`} onClick={() => setKindFilter(entry)}>{entry}</button>
+              <Chip key={entry} id={`kind-${entry}`} variant="radio" className="ds-chip">{entry}</Chip>
             ))}
-          </div>
-          <div className="ds-filter-row">
+          </ChipGroup>
+          <ChipGroup exclusive className="ds-filter-row" data-ds-filter="caption" aria-label="Filter by caption state" value={`caption-${captionFilter}`} onChange={(next) => setCaptionFilter(next === 'caption-missing' ? 'missing' : next === 'caption-stale' ? 'stale' : 'all')}>
             {(['all', 'missing', 'stale'] as const).map((entry) => (
-              <button key={entry} type="button" className={`chip ${captionFilter === entry ? 'chip--selected' : ''} ds-chip`} onClick={() => setCaptionFilter(entry)}>{entry === 'all' ? 'any caption' : entry}</button>
+              <Chip key={entry} id={`caption-${entry}`} variant="radio" className="ds-chip">{entry === 'all' ? 'any caption' : entry}</Chip>
             ))}
-          </div>
+          </ChipGroup>
         </div>
         <div className="ds-toolbar-block">
           <h4>Curation</h4>
@@ -885,20 +893,23 @@ function ExportWizard(props: {
       </div>
       <div className="ds-field">
         <label>Shape</label>
-        <div className="ds-filter-row">
+        {/* (near-term C, k2q0n9s — §0.3 long-tail) The shape/trainer rows
+            join the exclusive-chip-group contract; prefixed ids keep the
+            DOM ids unique against the toolbar filters and each other. */}
+        <ChipGroup exclusive className="ds-filter-row" data-ds-export-shape aria-label="Export shape" value={`shape-${shape}`} onChange={(next) => setShape(next === 'shape-diffsynx' ? 'diffsynx' : next === 'shape-external' ? 'external' : 'musubi')}>
           {(['musubi', 'diffsynx', 'external'] as const).map((entry) => (
-            <button key={entry} type="button" className={`chip ${shape === entry ? 'chip--selected' : ''} ds-chip`} onClick={() => setShape(entry)}>{entry}</button>
+            <Chip key={entry} id={`shape-${entry}`} variant="radio" className="ds-chip">{entry}</Chip>
           ))}
-        </div>
+        </ChipGroup>
         <p className="ds-hint">{shape === 'musubi' ? 'musubi TOML + caption sidecars + wav sidecars + one_frame stills' : shape === 'diffsynx' ? 'DiffSynX stage-1 manifest rows (video/prompt/input_audio/frame_rate)' : 'both shapes + README — standalone for any external trainer; in-app training stays availability-gated'}</p>
       </div>
       <div className="ds-field">
         <label>Recipe trainer (the card follows)</label>
-        <div className="ds-filter-row">
+        <ChipGroup exclusive className="ds-filter-row" data-ds-export-trainer aria-label="Recipe trainer" value={`trainer-${trainer}`} onChange={(next) => setTrainer(next === 'trainer-musubi' ? 'musubi' : 'diffsynx')}>
           {(['diffsynx', 'musubi'] as const).map((entry) => (
-            <button key={entry} type="button" className={`chip ${trainer === entry ? 'chip--selected' : ''} ds-chip`} onClick={() => setTrainer(entry)}>{entry}</button>
+            <Chip key={entry} id={`trainer-${entry}`} variant="radio" className="ds-chip">{entry}</Chip>
           ))}
-        </div>
+        </ChipGroup>
       </div>
       <div className="ds-field">
         <label>Destination folder</label>

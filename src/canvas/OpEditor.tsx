@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Brush, Eraser, Lock, Plus, Undo2 } from 'lucide-react'
 import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 import { StudioSelect } from '../ui/StudioSelect'
+import { Chip, ChipGroup } from '../ui/Chip'
 import { documentsApi } from './api'
 import { moveOpPermutation, opKindsFor, OP_META, opPreviewStyle, opSummary, readOpSettings, type MaskStroke } from './ops'
 import { useCanvasStore } from './store'
@@ -385,8 +386,17 @@ export function OpEditor() {
               const mask = readOpSettings('mask', selectedOp.settings) as { strokes: MaskStroke[] }
               return <>
                 <div className="canvas-op-brushrow">
-                  <span className={`chip canvas-chip ${!brush.erase ? 'chip--selected' : ''}`} data-canvas-op-brushmode="paint" onClick={() => setBrush({ ...brush, erase: false })}><Brush size={11} /> paint</span>
-                  <span className={`chip canvas-chip ${brush.erase ? 'chip--selected' : ''}`} data-canvas-op-brushmode="erase" onClick={() => setBrush({ ...brush, erase: true })}><Eraser size={11} /> erase</span>
+                  {/* (near-term C, k2q0n9s — §0.3 long-tail) The brush pair
+                      were clickable SPANS with visual-only chip--selected —
+                      not focusable, no state. They are real Chip buttons in
+                      an exclusive group now (radiogroup + aria-checked +
+                      roving tabindex + arrows); the group's geometry class
+                      is display: contents so the row's flex placement of the
+                      pair beside the size slider is pixel-identical (P06). */}
+                  <ChipGroup exclusive className="canvas-op-brushmode" data-canvas-op-brushmodes aria-label="Brush mode" value={brush.erase ? 'erase' : 'paint'} onChange={(next) => setBrush({ ...brush, erase: next === 'erase' })}>
+                    <Chip id="paint" variant="radio" className="canvas-chip" data-canvas-op-brushmode="paint"><Brush size={11} /> paint</Chip>
+                    <Chip id="erase" variant="radio" className="canvas-chip" data-canvas-op-brushmode="erase"><Eraser size={11} /> erase</Chip>
+                  </ChipGroup>
                   <label>size<input data-canvas-op-field="size" type="range" min={0.01} max={0.3} step={0.005} value={brush.size} onChange={(event) => setBrush({ ...brush, size: Number(event.target.value) })} /></label>
                 </div>
                 <p className="canvas-op-note">{mask.strokes.length} stroke{mask.strokes.length === 1 ? '' : 's'} — paint on the stage. Strokes store normalized, so reordering the stack replays them.</p>

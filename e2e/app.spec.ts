@@ -181,6 +181,35 @@ test('launcher keeps the prompt bar and chips visible at 1080p', async ({ page }
     await expect(page.locator(`[data-canvas-chip="${chip}"]`)).toBeVisible()
     expect(await inViewport(page.locator(`[data-canvas-chip="${chip}"]`))).toBe(true)
   }
+  // (near-term C, k2q0n9s — the §0.3 long-tail migration) The media-type
+  // pair is an EXCLUSIVE chip group nested in the entry-chips row: the
+  // complete radio contract — radiogroup role, aria-checked, roving
+  // tabindex, arrows moving selection AND focus (the submit button's label
+  // follows), wrap at the end, and Tab exiting the group as one unit (the
+  // next stop is the no-dialogue ACTION chip, never the sibling radio).
+  // Failing pre-migration: two plain buttons with visual-only
+  // chip--selected, both in the tab order, no aria state.
+  const lane = page.locator('[data-canvas-launcher-lane]')
+  await expect(lane).toHaveAttribute('role', 'radiogroup')
+  await expect(lane).toHaveAttribute('aria-label', 'Prompt media type')
+  const imageChip = lane.locator('[data-canvas-chip="image"]')
+  const videoChip = lane.locator('[data-canvas-chip="video"]')
+  await expect(videoChip).toHaveAttribute('role', 'radio')
+  await expect(videoChip).toHaveAttribute('aria-checked', 'true')
+  await expect(videoChip).toHaveAttribute('tabindex', '0')
+  await expect(imageChip).toHaveAttribute('aria-checked', 'false')
+  await expect(imageChip).toHaveAttribute('tabindex', '-1')
+  await videoChip.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(imageChip).toHaveAttribute('aria-checked', 'true')
+  await expect(videoChip).toHaveAttribute('aria-checked', 'false')
+  await expect(imageChip).toBeFocused()
+  await expect(page.locator('[data-canvas-submit]')).toContainText('Spawn image seed')
+  await page.keyboard.press('ArrowRight') // past the end → WRAPS to video
+  await expect(videoChip).toBeFocused()
+  await expect(page.locator('[data-canvas-submit]')).toContainText('Spawn video seed')
+  await page.keyboard.press('Tab')
+  await expect(page.locator('[data-canvas-chip="noDialogue"]')).toBeFocused()
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 

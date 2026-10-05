@@ -2860,6 +2860,53 @@ test('chip group: ArrowRight moves selection AND focus; Tab exits the group as o
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+// (near-term C, k2q0n9s — the §0.3 long-tail migration) The op editor's
+// brush paint/erase pair — the tail's SPANS-AS-CHIPS site — joins the
+// selection contract: real buttons in an exclusive ChipGroup (radiogroup,
+// aria-checked, roving tabindex, arrows moving selection AND focus, Tab
+// exiting the group as one unit). Failing pre-migration: the pair were
+// clickable SPANS with visual-only chip--selected — not focusable, no role,
+// no state, and keyboard users were locked out of erase mode entirely.
+test('the mask brush pair is an exclusive chip group — the spans became radio buttons (§0.3 long-tail, k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await dropPng(page, 'brush-pair-source.png')
+  const tile = page.locator('[data-canvas-tile]').first()
+  await expect(tile).toBeVisible({ timeout: 10_000 })
+  await tile.click()
+  await page.keyboard.press('Enter')
+  const opModal = page.locator('.canvas-opmodal')
+  await expect(opModal).toBeVisible()
+  // Add the brush-mask op — the brush row is the mask editor's controls.
+  await opModal.locator('[data-canvas-op-add]').first().click()
+  await opModal.locator('[data-canvas-op-add="mask"]').click()
+  const group = opModal.locator('[data-canvas-op-brushmodes]')
+  await expect(group).toBeVisible()
+  await expect(group).toHaveAttribute('role', 'radiogroup')
+  await expect(group).toHaveAttribute('aria-label', 'Brush mode')
+  const paint = group.locator('[data-canvas-op-brushmode="paint"]')
+  const erase = group.locator('[data-canvas-op-brushmode="erase"]')
+  await expect(paint).toHaveAttribute('role', 'radio')
+  await expect(paint).toHaveAttribute('aria-checked', 'true')
+  await expect(paint).toHaveAttribute('tabindex', '0')
+  await expect(erase).toHaveAttribute('aria-checked', 'false')
+  await expect(erase).toHaveAttribute('tabindex', '-1')
+  // Arrows move SELECTION AND FOCUS together — erase becomes the mode the
+  // stage's next stroke consumes, through the keyboard alone.
+  await paint.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(erase).toHaveAttribute('aria-checked', 'true')
+  await expect(paint).toHaveAttribute('aria-checked', 'false')
+  await expect(erase).toBeFocused()
+  // Tab exits the group as ONE unit: the next tab stop is the size slider
+  // (never the sibling radio, which sits at tabindex -1).
+  await page.keyboard.press('Tab')
+  await expect(opModal.locator('[data-canvas-op-field="size"]')).toBeFocused()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 test("the 'r' rerunStale gesture clears the stale flags it remediates (M2)", async ({ page }) => {
   const problems = await trackErrors(page)
   await resetSession(page)
@@ -3306,6 +3353,14 @@ test('plan documents: brief + segments + reference handoffs, consent-gated seedi
 test('the measured gap menu: five entries with honest verdicts; the FLF splice wires the REAL continuation frame', async ({ page }) => {
   const problems = await trackErrors(page)
   await resetSession(page)
+  // (near-term C, k2q0n9s — §0.3 long-tail) The plan editor's reference
+  // chips need library entries to render: seeded through the same
+  // localStorage keys the character/location studios persist through (each
+  // test gets a fresh context, so this is the only way they exist).
+  await page.addInitScript(() => {
+    localStorage.setItem('minimax.character-projects', JSON.stringify([{ id: 'e2e-char-vera', name: 'Vera' }]))
+    localStorage.setItem('minimax.location-projects', JSON.stringify([{ id: 'e2e-loc-depot', name: 'Depot' }]))
+  })
   await page.goto('/?canvas=1')
   await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
   // A REAL video object (the committed sample clip) — the splice extracts
@@ -3329,6 +3384,35 @@ test('the measured gap menu: five entries with honest verdicts; the FLF splice w
   await expect(overlay.locator('[data-canvas-segment-seed]').first()).toBeEnabled({ timeout: 10_000 })
   await overlay.locator('[data-canvas-segment-seed]').first().click()
   await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 10_000 })
+
+  // (near-term C, k2q0n9s — §0.3 long-tail) The segment reference chips
+  // are GENUINE multi-toggles: PRESSED BUTTONS (aria-pressed flipped by
+  // activation) in a labeled group — never aria-checked (the r3
+  // correction's toggle/radio split). The toggle writes the plan segment
+  // through the document store (poll: the write landing server-side).
+  const refs = overlay.locator('[data-canvas-plan-editor] [data-canvas-segment]').first().locator('.canvas-plan-segment-refs')
+  await expect(refs).toHaveAttribute('role', 'group')
+  await expect(refs).toHaveAttribute('aria-label', 'Reference handoffs')
+  const vera = refs.locator('[data-canvas-segment-ref-character="e2e-char-vera"]')
+  const depot = refs.locator('[data-canvas-segment-ref-location="e2e-loc-depot"]')
+  await expect(vera).toHaveAttribute('aria-pressed', 'false')
+  await expect(depot).toHaveAttribute('aria-pressed', 'false')
+  await expect(vera).not.toHaveAttribute('aria-checked')
+  await vera.click()
+  await expect(vera).toHaveAttribute('aria-pressed', 'true')
+  await expect(depot).toHaveAttribute('aria-pressed', 'false')
+  await expect.poll(async () => {
+    const document = await rawDocument(page)
+    return document.plans[0]!.document.segments[0]!.referenceCharacterIds?.includes('e2e-char-vera') ?? false
+  }, { timeout: 5_000 }).toBe(true)
+  await vera.click()
+  await expect(vera).toHaveAttribute('aria-pressed', 'false')
+  // The untoggle's document write settles BEFORE the gap-menu flow below —
+  // no in-flight plan save interleaves with the FLF splice's writes.
+  await expect.poll(async () => {
+    const document = await rawDocument(page)
+    return document.plans[0]!.document.segments[0]!.referenceCharacterIds?.includes('e2e-char-vera') ?? true
+  }, { timeout: 5_000 }).toBe(false)
   // (dispatch B, k2q0n9s) The retired 400 ms sleep was subsumed by the
   // auto-retries below — the gap menu settles on its own bound.
 
@@ -3347,13 +3431,26 @@ test('the measured gap menu: five entries with honest verdicts; the FLF splice w
   await expect(menu.locator('[data-canvas-gap-option="black"]')).toBeDisabled()
   await expect(menu.locator('[data-canvas-gap-option="bridge"]')).toContainText(/engine work/i)
 
+  // (near-term C, k2q0n9s — §0.3 long-tail) The gap options are the MENU's
+  // own selection shape: menuitemradio + aria-checked (a radiogroup cannot
+  // nest inside role=menu — ARIA's in-menu equivalent of the §0.3 contract;
+  // the class composition rides the kit's Chip). Exactly one option is
+  // checked; the disabled engine-work options carry the same shape.
+  const selectedOption = menu.locator('[data-canvas-gap-option].chip--selected')
+  await expect(selectedOption).toHaveCount(1)
+  await expect(selectedOption).toHaveAttribute('role', 'menuitemradio')
+  await expect(selectedOption).toHaveAttribute('aria-checked', 'true')
+  await expect(menu.locator('[data-canvas-gap-option][aria-checked="true"]')).toHaveCount(1)
+  await expect(menu.locator('[data-canvas-gap-option="flf"]')).toHaveAttribute('role', 'menuitemradio')
+  await expect(menu.locator('[data-canvas-gap-option="flf"]')).toHaveAttribute('aria-checked', 'false')
+  await expect(menu.locator('[data-canvas-gap-option="bridge"]')).toHaveAttribute('aria-checked', 'false')
+
   // Fix round 1 (C1): the CURRENTLY-SELECTED transition option must RENDER
   // the selected tone, not merely carry the class — the surface rule's
   // border shorthand + background/color sat at equal specificity in the
   // later-loading sheet and silently beat the recipe, so the selection was
-  // invisible. Computed style is the proof.
-  const selectedOption = menu.locator('[data-canvas-gap-option].chip--selected')
-  await expect(selectedOption).toHaveCount(1)
+  // invisible. Computed style is the proof. (selectedOption is bound in the
+  // menuitemradio block above.)
   const gapTone = await selectedOption.evaluate((element) => ({ border: getComputedStyle(element).borderTopColor, background: getComputedStyle(element).backgroundColor }))
   const expectedTone = await page.evaluate(() => {
     const probe = document.createElement('span')
@@ -3367,10 +3464,46 @@ test('the measured gap menu: five entries with honest verdicts; the FLF splice w
   expect(gapTone.border).toBe(expectedTone.border)
   expect(gapTone.background).toBe(expectedTone.background)
 
+  // (Codex S02, near-term C, k2q0n9s) The menu's KEYBOARD MODEL — the
+  // roles alone were never the contract: focus ENTRY on open lands on the
+  // current option, the arrows walk the ENABLED options with wrap (the
+  // engine-work rows are skipped), options are controlled tab stops
+  // (menu items live on arrows, not Tab), and keyboard activation
+  // preserves the exclusive checked state. Enabled order here: cut, nle,
+  // flf (bridge/black are engine work — disabled).
+  const hardCut = menu.locator('[data-canvas-gap-option="cut"]')
+  const nle = menu.locator('[data-canvas-gap-option="nle"]')
+  const flf = menu.locator('[data-canvas-gap-option="flf"]')
+  await expect(hardCut).toBeFocused() // entry on open = the CURRENT option
+  await expect(hardCut).toHaveAttribute('tabindex', '-1')
+  await expect(nle).toHaveAttribute('tabindex', '-1')
+  await expect(flf).toHaveAttribute('tabindex', '-1')
+  await page.keyboard.press('ArrowDown') // Hard cut → NLE (Codex's repro shape)
+  await expect(nle).toBeFocused()
+  await page.keyboard.press('ArrowDown') // → flf
+  await expect(flf).toBeFocused()
+  await page.keyboard.press('ArrowDown') // past the end → WRAPS to cut
+  await expect(hardCut).toBeFocused()
+  await page.keyboard.press('End') // Home/End reach the walk's ends
+  await expect(flf).toBeFocused()
+  await page.keyboard.press('Home')
+  await expect(hardCut).toBeFocused()
+  // Walk BACKWARD from the entry: cut ← nle, and Up at the start wraps to flf.
+  await page.keyboard.press('ArrowUp')
+  await expect(flf).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(hardCut).toBeFocused()
+
   // FLF EXECUTES (the Phase-5 toast-note handoff, now gap machinery): the
   // prior segment's FINAL frame is extracted and wired as the next
-  // segment's first frame — real document state, not a toast.
-  await menu.locator('[data-canvas-gap-option="flf"]').click()
+  // segment's first frame — real document state, not a toast. Activated
+  // THROUGH THE KEYBOARD (arrow-walk to flf, Enter) — the exclusive
+  // checked state follows the activation (the strip records flf below).
+  await page.keyboard.press('ArrowDown')
+  await expect(nle).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await expect(flf).toBeFocused()
+  await page.keyboard.press('Enter')
   await expect(page.locator('[data-canvas-toast="success"]').last()).toContainText(/splice wired/i, { timeout: 20_000 })
   // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the splice's
   // document write landed (the next segment's firstFrameOutputId is bound —
@@ -5906,6 +6039,12 @@ test('a held older write cannot clobber the keepalive\'s newer draft — arrival
   const { chainId, prompt } = await openInspectorAtSeed(page, 'arrival order seed prompt')
   let updates = 0
   let releaseFirst: (() => void) | null = null
+  // (Codex S01, k2q0n9s) The held write's upstream DELIVERY is a tracked,
+  // ASSERTED event — the old shape swallowed its failure (a context-teardown
+  // cancellation silently green-skipped the very arrival under test), and
+  // the durability reads could pass BEFORE the adversarial write landed.
+  let resolveDelivery: ((outcome: { ok: boolean; failure?: unknown }) => void) | null = null
+  const firstDelivery = new Promise<{ ok: boolean; failure?: unknown }>((resolve) => { resolveDelivery = resolve })
   const firstStarted = new Promise<void>((resolveStarted) => {
     void page.route('**/api/lan/documents/chains/update', async (route) => {
       updates += 1
@@ -5914,11 +6053,15 @@ test('a held older write cannot clobber the keepalive\'s newer draft — arrival
         await new Promise<void>((resolveHold) => { releaseFirst = resolveHold })
         // A real proxy DELIVERS the paused request whatever happened to the
         // page — route.fetch performs the write even after the page that
-        // issued it is gone (a plain continue dies with the page).
+        // issued it is gone (a plain continue dies with the page). The
+        // delivery's OUTCOME is recorded, never swallowed.
         try {
           const response = await route.fetch()
           await route.fulfill({ response })
-        } catch { /* the arrival never happens if even the context is gone */ }
+          resolveDelivery!({ ok: true })
+        } catch (failure) {
+          resolveDelivery!({ ok: false, failure })
+        }
         return
       }
       await route.continue()
@@ -5932,17 +6075,31 @@ test('a held older write cannot clobber the keepalive\'s newer draft — arrival
   await prompt.fill('arrival draft two')
   await page.locator('[data-surface-switcher] [data-surface="images"]').click()
   await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
-  // The keepalive lands; THEN the held OLDER write is released — it arrives
-  // last. Unfixed, it overwrites the newer persisted draft.
-  // (dispatch B, k2q0n9s — settle-or-poll) The named conditions: the
-  // keepalive flushed (the second route hit — a counter, not a clock), and
-  // after the release the persisted prompt IS draft two (distinct before).
+  // The keepalive lands first — and is proven DURABLE server-side BEFORE
+  // the adversarial release (its own round trip completed; the value is
+  // persisted, not merely intercepted on the wire). Distinct before the
+  // release, so the post-release read cannot pass vacuously.
   await expect.poll(() => updates, { timeout: 5_000 }).toBeGreaterThanOrEqual(2)
-  releaseFirst!()
   await expect.poll(async () => {
     const document = await activeDocument(page)
     return document.chains.find((entry) => entry.id === chainId)!.settings.prompt
   }, { timeout: 5_000 }).toBe('arrival draft two')
+  releaseFirst!()
+  // (Codex S01) The CAUSAL event, awaited with a bound: the held OLDER
+  // write's upstream delivery COMPLETES (route.fetch + fulfill answered —
+  // the server has processed the adversarial arrival). Only then do the
+  // durability reads mean anything: a poll started right after the release
+  // could observe the pre-arrival state and pass while the older write was
+  // still in flight.
+  const deliveryOutcome = await Promise.race([
+    firstDelivery,
+    new Promise<{ ok: boolean; failure: string }>((resolve) => {
+      setTimeout(() => resolve({ ok: false, failure: 'the held older write never completed its upstream delivery within 6 s' }), 6_000)
+    }),
+  ])
+  expect(deliveryOutcome.ok, `the held older write's delivery must complete — a cancelled arrival is a failed test, not a green one (${String((deliveryOutcome as { failure?: unknown }).failure ?? '')})`).toBe(true)
+  // Settled by the causal event (the server answered the adversarial write):
+  // the gate held — the persisted prompt is STILL draft two.
   const document = await activeDocument(page)
   expect(document.chains.find((entry) => entry.id === chainId)!.settings.prompt).toBe('arrival draft two')
   // Reopen: the panel adopts the newest, not the write that arrived last.
@@ -6038,6 +6195,11 @@ test('a held older identity write cannot clobber the keepalive\'s newer subject 
 
   let updates = 0
   let releaseFirst: (() => void) | null = null
+  // (Codex S01, k2q0n9s) Same delivery-barrier shape as the settings R1
+  // test above: the held write's upstream delivery is a tracked, ASSERTED
+  // event, and the newer keepalive is proven durable BEFORE the release.
+  let resolveDelivery: ((outcome: { ok: boolean; failure?: unknown }) => void) | null = null
+  const firstDelivery = new Promise<{ ok: boolean; failure?: unknown }>((resolve) => { resolveDelivery = resolve })
   const firstStarted = new Promise<void>((resolveStarted) => {
     void page.route('**/api/lan/documents/identity', async (route) => {
       updates += 1
@@ -6046,10 +6208,14 @@ test('a held older identity write cannot clobber the keepalive\'s newer subject 
         await new Promise<void>((resolveHold) => { releaseFirst = resolveHold })
         // A real proxy DELIVERS the paused request whatever happened to the
         // page — route.fetch performs the write even after the page is gone.
+        // The delivery's OUTCOME is recorded, never swallowed.
         try {
           const response = await route.fetch()
           await route.fulfill({ response })
-        } catch { /* the arrival never happens if even the context is gone */ }
+          resolveDelivery!({ ok: true })
+        } catch (failure) {
+          resolveDelivery!({ ok: false, failure })
+        }
         return
       }
       await route.continue()
@@ -6062,17 +6228,27 @@ test('a held older identity write cannot clobber the keepalive\'s newer subject 
   // the newer subject.
   await page.locator('[data-surface-switcher] [data-surface="images"]').click()
   await expect(page.locator('[data-surface-switcher] [data-surface="images"]')).toHaveAttribute('aria-current', 'page')
-  // (dispatch B, k2q0n9s — settle-or-poll) The named condition: the
-  // keepalive flushed (the second route hit — a counter, not a clock); the
-  // poll replaces the fixed 1 s sleep.
+  // The keepalive flushed AND its subject is durable server-side before the
+  // adversarial release (distinct before — the post-release read cannot
+  // pass vacuously).
   await expect.poll(() => updates, { timeout: 5_000 }).toBeGreaterThanOrEqual(2)
-  releaseFirst!() // the held OLDER write arrives last
-  // The held write lands: named condition — the persisted subject IS the
-  // newer arrival line (distinct before release). Replaces the 1.5 s sleep.
   await expect.poll(async () => {
     const document = await activeDocument(page)
     return document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText ?? null
   }, { timeout: 5_000 }).toBe('newer identity arrival line')
+  releaseFirst!() // the held OLDER write arrives last
+  // (Codex S01) The CAUSAL event, awaited with a bound: the held OLDER
+  // identity write's upstream delivery COMPLETES before the durability
+  // reads — the gate held means the persisted subject is STILL the newer
+  // line after the adversarial arrival has actually landed.
+  const deliveryOutcome = await Promise.race([
+    firstDelivery,
+    new Promise<{ ok: boolean; failure: string }>((resolve) => {
+      setTimeout(() => resolve({ ok: false, failure: 'the held older identity write never completed its upstream delivery within 6 s' }), 6_000)
+    }),
+  ])
+  expect(deliveryOutcome.ok, `the held older identity write's delivery must complete — a cancelled arrival is a failed test, not a green one (${String((deliveryOutcome as { failure?: unknown }).failure ?? '')})`).toBe(true)
+  // Settled by the causal event (the server answered the adversarial write).
   const document = await activeDocument(page)
   expect(document.chains.find((entry) => entry.id === chainId)!.identity?.subjectText).toBe('newer identity arrival line')
   await page.locator('[data-surface-switcher] [data-surface="canvas"]').click()

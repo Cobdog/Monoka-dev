@@ -70,10 +70,17 @@ test.beforeEach(async ({ page }) => {
 // API (trash the seeded sources, then empty the trash) — never by hand.
 test.beforeAll(async ({ request }) => {
   const library = await (await request.get('/api/lan/datasets/library')).json() as {
-    sources?: Array<{ id: string; absPath?: string }>
-    trashed?: { sources?: Array<{ id: string; absPath?: string }> }
+    sources?: Array<{ id: string; absPath?: string; name?: string }>
+    trashed?: { sources?: Array<{ id: string; absPath?: string; name?: string }> }
   }
-  const seeded = (row: { id: string; absPath?: string }) => /e2e-(clip|still)\.(mp4|png)/.test(row.absPath ?? '')
+  // (near-term C, k2q0n9s) The LIVE library listing carries no absPath (only
+  // the basename as `name` — the trashed listing has both), so the original
+  // absPath-only regex matched NOTHING live and the "clean slate" silently
+  // depended on the run starting un-accumulated; 50+ layers piled onto the
+  // deduped e2e-clip row until a `.first()` reopened an old already-4:3
+  // layer and the aspect edit no-oped (this spec's own documented
+  // accumulation class — testing.md). Match both keys.
+  const seeded = (row: { id: string; absPath?: string; name?: string }) => /e2e-(clip|still)\.(mp4|png)/.test(`${row.absPath ?? ''} ${row.name ?? ''}`)
   for (const row of [...(library.sources ?? []), ...(library.trashed?.sources ?? [])]) {
     if (seeded(row)) await request.post('/api/lan/datasets/sources/trash', { data: { sourceId: row.id } }).catch(() => undefined)
   }
@@ -124,7 +131,7 @@ test('the stamp-crop editor: aspect spectrum, hard-stop hint, 32-grid crop, save
   const strip = page.locator('[data-ds-aspect-strip]')
   await expect(strip).toBeVisible()
   for (const label of ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16']) {
-    await expect(strip.getByRole('button', { name: label, exact: true })).toBeVisible()
+    await expect(strip.getByRole('radio', { name: label, exact: true })).toBeVisible()
   }
   // Fix round 1 (I1): the selected aspect chip keeps its SURFACE bold —
   // font is P06 surface territory, so the state fold that deleted
@@ -143,12 +150,28 @@ test('the stamp-crop editor: aspect spectrum, hard-stop hint, 32-grid crop, save
   })
   expect(aspectRender.weight).toBe('700')
   expect(aspectRender.border).toBe(expectedAspectTone)
+  // (near-term C, k2q0n9s — §0.3 long-tail) The strip is an EXCLUSIVE chip
+  // group: radiogroup + radio + aria-checked + roving tabindex, arrows move
+  // selection AND focus. The wheel scrub below keeps its own hard-stop
+  // contract — the two input paths write the same aspect index.
+  await expect(strip).toHaveAttribute('role', 'radiogroup')
+  await expect(strip).toHaveAttribute('aria-label', 'Aspect ratio')
+  const aspect169 = strip.locator('[data-chip-value="16:9"]')
+  await expect(aspect169).toHaveAttribute('role', 'radio')
+  await expect(aspect169).toHaveAttribute('tabindex', '0')
+  await expect(strip.locator('[data-chip-value="21:9"]')).toHaveAttribute('tabindex', '-1')
+  await aspect169.focus()
+  await page.keyboard.press('ArrowRight')
+  const aspect43 = strip.locator('[data-chip-value="4:3"]')
+  await expect(aspect43).toHaveAttribute('aria-checked', 'true')
+  await expect(aspect169).toHaveAttribute('aria-checked', 'false')
+  await expect(aspect43).toBeFocused()
   // Default is 16:9-class; the crop readout shows 32-grid values.
   await expect(page.locator('.ds-crop-readout')).toContainText(/w \d+ · h \d+/)
   // shift+scroll at the BOTTOM edge: the hard-stop hint appears (the
   // spectrum never loops — spec §3).
   const stage = page.locator('[data-ds-stage]')
-  await strip.getByRole('button', { name: '9:16', exact: true }).click()
+  await strip.getByRole('radio', { name: '9:16', exact: true }).click()
   await stage.click({ position: { x: 200, y: 200 } })
   for (let index = 0; index < 3; index += 1) {
     await stage.hover()
@@ -164,6 +187,81 @@ test('the stamp-crop editor: aspect spectrum, hard-stop hint, 32-grid crop, save
   const layer = page.locator('[data-ds-layer]').first()
   await expect(layer).toBeVisible({ timeout: 10_000 })
   await expect(layer.locator('.ds-bucket-badge')).toBeVisible()
+})
+
+// (near-term C, k2q0n9s — the §0.3 long-tail migration) The toolbar filters
+// and the export wizard's shape/trainer rows are EXCLUSIVE chip groups: the
+// complete radio contract — radiogroup role, aria-checked, roving tabindex,
+// arrows moving selection AND focus. Failing pre-migration: every chip
+// rendered visual-only chip--selected with no aria state at all (manifest
+// §16's tail).
+test('the toolbar filters and export rows are exclusive chip groups — radiogroup, roving tabindex, arrows (§0.3 long-tail, k2q0n9s)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await seedLibrary(page.request)
+  await page.goto('/?datasets=1')
+  const master = page.locator('[data-ds-master]', { hasText: 'e2e-clip' }).first()
+  await expect(master).toBeVisible({ timeout: 10_000 })
+
+  // The KIND group: role + label + the checked/tab-stop state machine.
+  const kind = page.locator('[data-ds-filter="kind"]')
+  await expect(kind).toHaveAttribute('role', 'radiogroup')
+  await expect(kind).toHaveAttribute('aria-label', 'Filter by media kind')
+  const kindAll = kind.locator('[data-chip-value="kind-all"]')
+  const kindVideo = kind.locator('[data-chip-value="kind-video"]')
+  const kindImage = kind.locator('[data-chip-value="kind-image"]')
+  await expect(kindAll).toHaveAttribute('role', 'radio')
+  await expect(kindAll).toHaveAttribute('aria-checked', 'true')
+  await expect(kindAll).toHaveAttribute('tabindex', '0')
+  await expect(kindVideo).toHaveAttribute('aria-checked', 'false')
+  await expect(kindVideo).toHaveAttribute('tabindex', '-1')
+
+  // ArrowRight moves SELECTION AND FOCUS together (the C03 discipline), and
+  // the GALLERY follows — asserted on THIS test's own seeded master: the
+  // shared home carries other specs' fixtures (their names don't match the
+  // beforeAll's e2e-clip/e2e-still clean), so absolute master counts are
+  // accumulation-sensitive; the seeded VIDEO source's presence/absence under
+  // the two lanes is the filter's real effect.
+  await kindAll.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(kindVideo).toHaveAttribute('aria-checked', 'true')
+  await expect(kindAll).toHaveAttribute('aria-checked', 'false')
+  await expect(kindVideo).toBeFocused()
+  await expect(master).toBeVisible()
+  await page.keyboard.press('ArrowRight')
+  await expect(kindImage).toBeFocused()
+  await expect(master).toHaveCount(0)
+  await page.keyboard.press('ArrowLeft')
+  await expect(kindVideo).toBeFocused()
+  await expect(master).toBeVisible()
+
+  // The CAPTION group carries the same contract (aria machine pinned here;
+  // the kind group above owns the effect leg).
+  const caption = page.locator('[data-ds-filter="caption"]')
+  await expect(caption).toHaveAttribute('role', 'radiogroup')
+  await expect(caption).toHaveAttribute('aria-label', 'Filter by caption state')
+  await expect(caption.locator('[data-chip-value="caption-all"]')).toHaveAttribute('aria-checked', 'true')
+  await expect(caption.locator('[data-chip-value="caption-missing"]')).toHaveAttribute('aria-checked', 'false')
+
+  // The EXPORT wizard (reachable with nothing selected — the honest refusal
+  // surface of the test below): shape + trainer are exclusive groups too,
+  // and the shape pick drives the hint paragraph beneath it. exact: the
+  // library toolbar also carries an "Export…" primary beside the tab.
+  await page.getByRole('button', { name: 'export', exact: true }).click()
+  await expect(page.locator('[data-ds-export]')).toBeVisible()
+  const shape = page.locator('[data-ds-export-shape]')
+  await expect(shape).toHaveAttribute('role', 'radiogroup')
+  await expect(shape.locator('[data-chip-value="shape-musubi"]')).toHaveAttribute('aria-checked', 'true')
+  await shape.locator('[data-chip-value="shape-musubi"]').focus()
+  await page.keyboard.press('ArrowRight')
+  const shapeDiff = shape.locator('[data-chip-value="shape-diffsynx"]')
+  await expect(shapeDiff).toHaveAttribute('aria-checked', 'true')
+  await expect(shapeDiff).toBeFocused()
+  await expect(page.locator('[data-ds-export] .ds-hint', { hasText: /stage-1 manifest rows/ })).toBeVisible()
+  const trainer = page.locator('[data-ds-export-trainer]')
+  await expect(trainer).toHaveAttribute('role', 'radiogroup')
+  await expect(trainer.locator('[data-chip-value="trainer-diffsynx"]')).toHaveAttribute('aria-checked', 'true')
+
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
 test('the caption editor: live trigger validation and the stale badge flow', async ({ page }) => {
@@ -189,15 +287,17 @@ test('the caption editor: live trigger validation and the stale badge flow', asy
   // Editing the crop afterwards flags the caption stale (§4).
   await page.locator('[data-ds-caption] .ds-btn.btn--ghost', { hasText: 'Close' }).click()
   await page.locator('[data-ds-layer]').first().getByRole('button', { name: 'crop/trim' }).click()
-  // (2026-09-28) The aspect change must pick a chip that is NOT the layer's
-  // current aspect — an already-active chip renders disabled and the click
-  // hangs (the documented `.first()` fragility when a sibling layer from an
-  // earlier seed already carries that aspect). 16:9 is never the 9:16
-  // source's default nor the 4:3 flake case's active chip.
+  // (2026-09-28; updated near-term C, k2q0n9s) The aspect change must pick
+  // a chip that is NOT the layer's current aspect — a real edit is what
+  // flags the caption stale, and re-clicking the current ratio is a no-op
+  // reselect now that selected chips stay ENABLED (radio semantics: the
+  // selected member is the tab stop). The layer this test reopens carries
+  // the 16:9 default from its first save (the editor's initial spectrum
+  // pick), so the edit is 4:3 — deterministic in every arm of this flow
+  // (the retired fallback conditional resolved to the same chip; the
+  // 9:16 source's own ratio never survives the first default save).
   const aspectStrip = page.locator('[data-ds-aspect-strip]')
-  const preferred = aspectStrip.getByRole('button', { name: '16:9', exact: true })
-  if (await preferred.isEnabled()) await preferred.click()
-  else await aspectStrip.getByRole('button', { name: '4:3', exact: true }).click()
+  await aspectStrip.getByRole('radio', { name: '4:3', exact: true }).click()
   await page.locator('[data-ds-save-layer]').click()
   await expect(page.locator('[data-ds-layer] .ds-stale-badge').first()).toBeVisible({ timeout: 10_000 })
 })
