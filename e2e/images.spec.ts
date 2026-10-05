@@ -1254,9 +1254,13 @@ test('the start-frame exit reports a failed chain step; retry re-runs only it �
   // RETRY: only the failed chain write re-runs. The route heals first so
   // the retry can land; the pin endpoint must STILL be at exactly one hit.
   failGenerate = false
+  // The regeneration gate is named at PIN TIME on the EXIT path too (the
+  // review's I1 restore): the toast fired when the exit's pin first landed.
+  await expect(page.locator('[data-canvas-toast]').filter({ hasText: 'pinned on the canvas as a media object' })).toBeVisible({ timeout: 5_000 })
+
   await chainRow.locator('[data-handoff-retry]').click()
   await expect(dialog).toHaveCount(0, { timeout: 15_000 }) // completion closes the exit
-  const toast = page.locator('.toast-host [data-canvas-toast="success"]').first()
+  const toast = page.locator('.toast-host [data-canvas-toast="success"]').filter({ hasText: 'seeded' })
   await expect(toast).toContainText('seeded', { timeout: 15_000 })
   expect(pinPosts, 'Review Focus #4: the pin endpoint is hit EXACTLY once — the retry never re-POSTs the succeeded pin').toBe(1)
   expect(generatePosts, 'the retry re-POSTs exactly the failed chain write').toBe(2)
@@ -1346,7 +1350,7 @@ test('handoff: a failed refresh after a successful write renders done+stale, nev
   // exactly one hit — and completion (all fresh now) closes the exit.
   await pinRow.locator('[data-handoff-retry]').click()
   await expect(dialog).toHaveCount(0, { timeout: 15_000 })
-  const toast = page.locator('.toast-host [data-canvas-toast="success"]').first()
+  const toast = page.locator('.toast-host [data-canvas-toast="success"]').filter({ hasText: 'seeded' })
   await expect(toast).toContainText('seeded', { timeout: 15_000 })
   expect(pinPosts, 'the refresh retry re-runs the reload, never the landed writes').toBe(1)
   // The API is the truth: the chain seeded exactly once despite the failed
