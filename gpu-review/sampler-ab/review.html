@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Sampler-rule A/B — DMAD DMD re-noise vs Euler (P2_6 WET ROAD)</title>
+<style>
+ body{font-family:system-ui,sans-serif;max-width:1240px;margin:0 auto;padding:24px;background:#111;color:#ddd}
+ h1{font-size:22px} h2{font-size:18px;margin-bottom:2px}
+ .q{color:#9cc;font-size:14px;margin-top:2px}
+ .pair{border:1px solid #333;border-radius:10px;padding:16px;margin:22px 0;background:#181818}
+ .vids{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ figure{margin:0} video{width:100%;border-radius:6px;background:#000}
+ figcaption{font-size:14px;font-weight:600;padding:6px 2px}
+ figcaption span{display:block;font-weight:400;color:#888;font-size:12px}
+ .sync button{margin-right:8px;padding:6px 14px;border-radius:6px;border:1px solid #555;background:#222;color:#ddd;cursor:pointer}
+ table{border-collapse:collapse;margin-top:12px;font-size:13px;width:100%}
+ th,td{border:1px solid #333;padding:5px 9px;text-align:left}
+ th{color:#9cc}
+ .meta{font-size:13px;color:#aaa;white-space:pre-wrap;background:#181818;border:1px solid #333;border-radius:10px;padding:14px}
+ code{color:#8d8}
+</style></head><body>
+<h1>Sampler-rule A/B — DMAD&rsquo;s DMD re-noise rule vs our Euler solve</h1>
+<p class="q">One prompt (P2_6 WET ROAD), one seed (421337), 124f @ 1088&times;608, dense SDPA, ComfyUI 0.39.0.
+The Euler arms are the combined eval&rsquo;s existing renders (same engine version); the re-noise arms are this set.
+<b>The eye decides &mdash; unblinded by design (the maintainer&rsquo;s ask): the raw difference is the deliverable.</b></p>
+
+<section class="pair">
+  <h2>DMAD-full-critic (12/2, 4 NFE)</h2>
+  <p class="q">Does DMAD run cleaner under its OWN training rule — denoise to x0, then re-noise x0 with FRESH noise at the next sigma — than under our Euler solve? (the students were trained with the re-noise rule; the Euler renders showed motion artifacts)</p>
+  <div class="vids">
+    <figure><figcaption>Euler (combined-eval arm 4)<span>gpu-batch-combined Part 2, 2026-10-06, dense SDPA, launch p2</span></figcaption>
+      <video controls loop preload="metadata" src="videos/A4_dmadf_P2_6_00001_.mp4"></video></figure>
+    <figure><figcaption>DMD re-noise (THIS SET)<span>gpu-batch-samplerab, SABDMDReNoiseSampler</span></figcaption>
+      <video controls loop preload="metadata" src="videos/R2_dmadf_renoise_P2_6_00001_.mp4"></video></figure>
+  </div>
+  <div class="sync"><button onclick="syncPair(this)">&#9654; play both in sync</button>
+    <button onclick="pausePair(this)">&#9632; pause both</button></div>
+  <table>
+    <tr><th>metric (lower = stabler unless noted)</th><th>Euler</th><th>DMD re-noise</th><th>ratio renoise/euler</th></tr>
+    <tr><td>warp residual median (temporal stability)</td><td>10.6335</td><td>12.192</td><td>1.1466</td></tr>
+    <tr><td>alternation peak-power ratio (flicker)</td><td>0.00301</td><td>0.00335</td><td>1.113</td></tr>
+    <tr><td>HF mean Laplacian (sharpness; higher = sharper)</td><td>5.189</td><td>4.9839</td><td>0.9605</td></tr>
+    <tr><td>audio RMS dBFS</td><td>-26.478</td><td>-32.014</td><td>&mdash;</td></tr>
+    <tr><td>audio centroid Hz</td><td>1153.05</td><td>1795.61</td><td>&mdash;</td></tr>
+    <tr><td>pixel: re-noise vs Euler (PSNR / dE &mdash; how much the RULE changes the render)</td>
+        <td colspan="3">15.486 dB / dE 22.739</td></tr>
+  </table>
+</section>
+<section class="pair">
+  <h2>PDMD-4 (12/3, 4 NFE)</h2>
+  <p class="q">Does the SAME re-noise rule change PDMD's character too? (PDMD showed slight artifacts as well; its training rule is not DMAD's — this arm measures transfer, not correctness)</p>
+  <div class="vids">
+    <figure><figcaption>Euler (combined-eval arm 2)<span>gpu-batch-combined Part 2, 2026-10-06, dense SDPA, launch p2</span></figcaption>
+      <video controls loop preload="metadata" src="videos/A2_pdmd4_P2_6_00001_.mp4"></video></figure>
+    <figure><figcaption>DMD re-noise (THIS SET)<span>gpu-batch-samplerab, SABDMDReNoiseSampler</span></figcaption>
+      <video controls loop preload="metadata" src="videos/R4_pdmd4_renoise_P2_6_00001_.mp4"></video></figure>
+  </div>
+  <div class="sync"><button onclick="syncPair(this)">&#9654; play both in sync</button>
+    <button onclick="pausePair(this)">&#9632; pause both</button></div>
+  <table>
+    <tr><th>metric (lower = stabler unless noted)</th><th>Euler</th><th>DMD re-noise</th><th>ratio renoise/euler</th></tr>
+    <tr><td>warp residual median (temporal stability)</td><td>17.6406</td><td>18.3975</td><td>1.0429</td></tr>
+    <tr><td>alternation peak-power ratio (flicker)</td><td>0.0042</td><td>0.00638</td><td>1.519</td></tr>
+    <tr><td>HF mean Laplacian (sharpness; higher = sharper)</td><td>5.8395</td><td>6.8052</td><td>1.1654</td></tr>
+    <tr><td>audio RMS dBFS</td><td>-26.824</td><td>-25.678</td><td>&mdash;</td></tr>
+    <tr><td>audio centroid Hz</td><td>1009.49</td><td>1089.06</td><td>&mdash;</td></tr>
+    <tr><td>pixel: re-noise vs Euler (PSNR / dE &mdash; how much the RULE changes the render)</td>
+        <td colspan="3">14.213 dB / dE 24.479</td></tr>
+  </table>
+</section>
+<div class="meta">THE RULE
+  Euler (combined eval):      x' = (s_next/s) &middot; x + (1 &minus; s_next/s) &middot; x0          [ODE step]
+  DMD re-noise (DMAD's own):  x0 = x + s &middot; velocity;  x' = (1 &minus; s_next) &middot; x0 + s_next &middot; FRESH noise
+Both arms use the SAME sigma schedule: simple/4 @ shift 12 (video) / 2 or 3 (audio) —
+DMAD's own sigma_grid(4,12) is knot-identical to our card grid; only the step rule differs.
+On this engine the packed video+audio latent is carried as a single-schedule flow latent, and the
+uniform re-noise over the pack is EXACTLY DMAD's per-stream rule (audio re-noised at its own
+shifted sigma) — verified algebraically + numerically to 1e-16 before the run.
+
+CANARY GATES (39f pre-arms): re-noise ENGAGED (differs from Euler bit-wise), DETERMINISTIC
+(duplicate bit-identical through a cache-bust alias), knots == card grid, RMS finite, audio non-silent.
+
+SETTINGS: ref2va_pruned_int8 base &middot; LoRA @ 1.0 (208/208 modules, header-asserted) &middot; no CFG &middot; seed 421337 fixed
+PROMPT: P2_6 verbatim (the ledger's Set P2 registration). NOTE: the prompt's Shot-2 cut at 00:06.5 sits
+past the 5.17 s render (124f) — all four renders cover Shot 1 only, matched.
+Audio present on all four (native mp4s). Metric caveat: single seed, single cell — direction, not proof.</div>
+<script>
+function syncPair(btn){const s=btn.closest('.pair');const vs=[...s.querySelectorAll('video')];
+ vs.forEach(v=>{v.currentTime=vs[0].currentTime;v.play();});}
+function pausePair(btn){btn.closest('.pair').querySelectorAll('video').forEach(v=>v.pause());}
+</script>
+</body></html>

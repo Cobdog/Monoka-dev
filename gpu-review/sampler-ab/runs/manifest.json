@@ -1,0 +1,53 @@
+{
+ "set": "SAMPLER-RULE A/B \u2014 DMAD DMD re-noise vs Euler",
+ "seed": 421337,
+ "frames": 124,
+ "canvas": [
+  1088,
+  608
+ ],
+ "fps": 24,
+ "prompt": "P2_6 WET ROAD (the ledger's Set P2 registration verbatim)",
+ "engine": "ComfyUI 0.39.0 @ 8189, dense SDPA (pytorch attention)",
+ "pairs": [
+  {
+   "label": "Euler (combined-eval arm 4)",
+   "source": "setCMB/A4_dmadf_P2_6_00001_.mp4",
+   "staged": "videos/A4_dmadf_P2_6_00001_.mp4",
+   "sha256_16": "287f8fbb6540f49f",
+   "provenance": "gpu-batch-combined Part 2, 2026-10-06, dense SDPA, launch p2"
+  },
+  {
+   "label": "DMD re-noise (THIS SET)",
+   "source": "setSAB/R2_dmadf_renoise_P2_6_00001_.mp4",
+   "staged": "videos/R2_dmadf_renoise_P2_6_00001_.mp4",
+   "sha256_16": "b3ee77572d6c5754",
+   "provenance": "gpu-batch-samplerab, SABDMDReNoiseSampler"
+  },
+  {
+   "label": "Euler (combined-eval arm 2)",
+   "source": "setCMB/A2_pdmd4_P2_6_00001_.mp4",
+   "staged": "videos/A2_pdmd4_P2_6_00001_.mp4",
+   "sha256_16": "9267bf915f4663f3",
+   "provenance": "gpu-batch-combined Part 2, 2026-10-06, dense SDPA, launch p2"
+  },
+  {
+   "label": "DMD re-noise (THIS SET)",
+   "source": "setSAB/R4_pdmd4_renoise_P2_6_00001_.mp4",
+   "staged": "videos/R4_pdmd4_renoise_P2_6_00001_.mp4",
+   "sha256_16": "f2e0978d0b26bd17",
+   "provenance": "gpu-batch-samplerab, SABDMDReNoiseSampler"
+  }
+ ],
+ "gates": {
+  "G1_rule_engaged_differs": true,
+  "G2_determinism_canR_canR2": true,
+  "G3a_knots_euler_canary": true,
+  "G3b_knots_renoise_canary": true,
+  "G4a_steps_rns": true,
+  "G4b_steps_euler": true,
+  "G4c_rms_finite": true,
+  "G4d_frames": true,
+  "G5_audio_nonsilent": true
+ }
+}

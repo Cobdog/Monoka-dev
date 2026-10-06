@@ -25,3 +25,4 @@ __pycache__/
 # itself (scripts/gpu-review/) remains tracked.
 gpu-review/set*/
 gpu-review/combined/
+gpu-review/sampler-ab/
