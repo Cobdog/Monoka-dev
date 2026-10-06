@@ -1,0 +1,226 @@
+{
+ "set": "DPC \u2014 the corrected-rules DMAD-vs-PDMD comparison",
+ "seed": 421337,
+ "canvas": [
+  1088,
+  608
+ ],
+ "fps": 24,
+ "frames": {
+  "A": 124,
+  "B": 243
+ },
+ "engine": "ComfyUI 0.39.0 @ 8189, dense SDPA (pytorch attention)",
+ "sampler_rules": {
+  "dmad-rn": "SABDMDReNoiseSampler \u2014 x0 = x + s*velocity; x' = (1-s_n)*x0 + s_n*FRESH noise (DMAD's trained rule; sab_shims)",
+  "pdmd-eu": "MiniMaxH3TurboSampler \u2014 native-AV Euler (PDMD's preferred rule; the stock/combined-eval path)"
+ },
+ "null_gate": {
+  "pair": [
+   "A_gym_pdmdeu",
+   "A_null_pdmdeu"
+  ],
+  "bit_identical": true,
+  "video_md5": "186ce10c8ca32b8e98aacbb68a3f8725",
+  "audio_md5": "f3741413f74a4cf50ad3d6225b3e6ed8"
+ },
+ "canary_gates": {
+  "G1_rule_engaged_differs": true,
+  "G2_determinism_canR_canR2": true,
+  "G3a_knots_euler_canary": true,
+  "G3b_knots_renoise_canary": true,
+  "G4a_steps_rns": true,
+  "G4b_steps_euler": true,
+  "G4c_rms_finite": true,
+  "G4d_frames": true,
+  "G5_audio_nonsilent": true,
+  "G6_cross_launch_continuity": {
+   "can_E": {
+    "compared": true,
+    "video_identical": true,
+    "audio_identical": true,
+    "reference": "setSAB/can_E_euler_00001_.mp4"
+   },
+   "can_R": {
+    "compared": true,
+    "video_identical": true,
+    "audio_identical": true,
+    "reference": "setSAB/can_R_renoise_00001_.mp4"
+   },
+   "can_R2": {
+    "compared": true,
+    "video_identical": true,
+    "audio_identical": true,
+    "reference": "setSAB/can_R2_renoise_00001_.mp4"
+   }
+  }
+ },
+ "pairs": [
+  {
+   "key": "A_gym",
+   "title": "GYMNASTICS \u2014 variant A (the original P2_2 vault prompt, 124f / 5.2 s)",
+   "question": "The combined eval's Euler-run DMAD arms were void. With DMAD under its OWN re-noise rule at the same seed: does it displace PDMD on the original vault prompt \u2014 sprint, springboard, Yurchenko, stuck landing?",
+   "left": {
+    "label": "DMAD-4 full-critic @ 1.0 \u2014 DMD re-noise rule (its own trained rule)",
+    "run_id": "A_gym_dmadrn",
+    "source": "setDPC/A_gym_dmadrn_00001_.mp4",
+    "staged": "videos/A_gym_dmadrn_00001_.mp4",
+    "sha256_16": "9f0ebc0c7320aee5",
+    "wall_s": 114.4,
+    "vram_peak_mib": 23907
+   },
+   "right": {
+    "label": "PDMD-4 v6 @ 1.0 \u2014 Euler/simple (its own trained rule)",
+    "run_id": "A_gym_pdmdeu",
+    "source": "setDPC/A_gym_pdmdeu_00001_.mp4",
+    "staged": "videos/A_gym_pdmdeu_00001_.mp4",
+    "sha256_16": "161b34f24d3e6488",
+    "wall_s": 114.4,
+    "vram_peak_mib": 23907
+   }
+  },
+  {
+   "key": "A_bsk",
+   "title": "BASKET TOSS \u2014 variant A (the original P2_3 prompt, 124f / 5.2 s)",
+   "question": "Same corrected-rules question on multi-body coordination: three bases launch a flyer, apex, catch \u2014 which rule's render holds the bodies, the timing, and the gymnasium together?",
+   "left": {
+    "label": "DMAD-4 full-critic @ 1.0 \u2014 DMD re-noise rule (its own trained rule)",
+    "run_id": "A_bsk_dmadrn",
+    "source": "setDPC/A_bsk_dmadrn_00001_.mp4",
+    "staged": "videos/A_bsk_dmadrn_00001_.mp4",
+    "sha256_16": "e5f523a0bb9380ee",
+    "wall_s": 114.4,
+    "vram_peak_mib": 23907
+   },
+   "right": {
+    "label": "PDMD-4 v6 @ 1.0 \u2014 Euler/simple (its own trained rule)",
+    "run_id": "A_bsk_pdmdeu",
+    "source": "setDPC/A_bsk_pdmdeu_00001_.mp4",
+    "staged": "videos/A_bsk_pdmdeu_00001_.mp4",
+    "sha256_16": "47bcf6c6215e63bf",
+    "wall_s": 114.4,
+    "vram_peak_mib": 23907
+   }
+  },
+  {
+   "key": "B_gym",
+   "title": "GYMNASTICS \u2014 variant B (the PRESSURE prompt PB_2, 243f / 10.1 s)",
+   "question": "The pressure cell: tight on her face (chalk dust, two breaths), pull back into the sprint, cut at 00:04.2 to slow-motion hands on the table, floor-level landing with the crowd in her eyes. Which rule holds a character study \u2014 face fidelity, cut adherence, slow-motion plausibility?",
+   "left": {
+    "label": "DMAD-4 full-critic @ 1.0 \u2014 DMD re-noise rule (its own trained rule)",
+    "run_id": "B_gym_dmadrn",
+    "source": "setDPC/B_gym_dmadrn_00001_.mp4",
+    "staged": "videos/B_gym_dmadrn_00001_.mp4",
+    "sha256_16": "e6b6b2cddc90e2ed",
+    "wall_s": 299.2,
+    "vram_peak_mib": 23899
+   },
+   "right": {
+    "label": "PDMD-4 v6 @ 1.0 \u2014 Euler/simple (its own trained rule)",
+    "run_id": "B_gym_pdmdeu",
+    "source": "setDPC/B_gym_pdmdeu_00001_.mp4",
+    "staged": "videos/B_gym_pdmdeu_00001_.mp4",
+    "sha256_16": "d6132a74cb98d09b",
+    "wall_s": 299.2,
+    "vram_peak_mib": 23899
+   }
+  },
+  {
+   "key": "B_bsk",
+   "title": "BASKET TOSS \u2014 variant B (the PRESSURE prompt PB_3, 243f / 10.1 s)",
+   "question": "The pressure cell: the flyer's count and launch, rising with her past the ceiling lights, one held beat at apex, cut at 00:05.0 to the catch from below \u2014 concentration to triumph. Which rule carries the face and the vertical camera?",
+   "left": {
+    "label": "DMAD-4 full-critic @ 1.0 \u2014 DMD re-noise rule (its own trained rule)",
+    "run_id": "B_bsk_dmadrn",
+    "source": "setDPC/B_bsk_dmadrn_00001_.mp4",
+    "staged": "videos/B_bsk_dmadrn_00001_.mp4",
+    "sha256_16": "ec7819ba5637df65",
+    "wall_s": 299.2,
+    "vram_peak_mib": 23899
+   },
+   "right": {
+    "label": "PDMD-4 v6 @ 1.0 \u2014 Euler/simple (its own trained rule)",
+    "run_id": "B_bsk_pdmdeu",
+    "source": "setDPC/B_bsk_pdmdeu_00001_.mp4",
+    "staged": "videos/B_bsk_pdmdeu_00001_.mp4",
+    "sha256_16": "a71edc9f023e2a10",
+    "wall_s": 299.2,
+    "vram_peak_mib": 23899
+   }
+  }
+ ],
+ "videos": {
+  "A_gym_dmadrn": {
+   "label": "DMAD-4 full-critic @ 1.0 \u2014 DMD re-noise rule (its own trained rule)",
+   "run_id": "A_gym_dmadrn",
+   "source": "setDPC/A_gym_dmadrn_00001_.mp4",
+   "staged": "videos/A_gym_dmadrn_00001_.mp4",
+   "sha256_16": "9f0ebc0c7320aee5",
+   "wall_s": 114.4,
+   "vram_peak_mib": 23907
+  },
+  "A_gym_pdmdeu": {
+   "label": "PDMD-4 v6 @ 1.0 \u2014 Euler/simple (its own trained rule)",
+   "run_id": "A_gym_pdmdeu",
+   "source": "setDPC/A_gym_pdmdeu_00001_.mp4",
+   "staged": "videos/A_gym_pdmdeu_00001_.mp4",
+   "sha256_16": "161b34f24d3e6488",
+   "wall_s": 114.4,
+   "vram_peak_mib": 23907
+  },
+  "A_bsk_dmadrn": {
+   "label": "DMAD-4 full-critic @ 1.0 \u2014 DMD re-noise rule (its own trained rule)",
+   "run_id": "A_bsk_dmadrn",
+   "source": "setDPC/A_bsk_dmadrn_00001_.mp4",
+   "staged": "videos/A_bsk_dmadrn_00001_.mp4",
+   "sha256_16": "e5f523a0bb9380ee",
+   "wall_s": 114.4,
+   "vram_peak_mib": 23907
+  },
+  "A_bsk_pdmdeu": {
+   "label": "PDMD-4 v6 @ 1.0 \u2014 Euler/simple (its own trained rule)",
+   "run_id": "A_bsk_pdmdeu",
+   "source": "setDPC/A_bsk_pdmdeu_00001_.mp4",
+   "staged": "videos/A_bsk_pdmdeu_00001_.mp4",
+   "sha256_16": "47bcf6c6215e63bf",
+   "wall_s": 114.4,
+   "vram_peak_mib": 23907
+  },
+  "B_gym_dmadrn": {
+   "label": "DMAD-4 full-critic @ 1.0 \u2014 DMD re-noise rule (its own trained rule)",
+   "run_id": "B_gym_dmadrn",
+   "source": "setDPC/B_gym_dmadrn_00001_.mp4",
+   "staged": "videos/B_gym_dmadrn_00001_.mp4",
+   "sha256_16": "e6b6b2cddc90e2ed",
+   "wall_s": 299.2,
+   "vram_peak_mib": 23899
+  },
+  "B_gym_pdmdeu": {
+   "label": "PDMD-4 v6 @ 1.0 \u2014 Euler/simple (its own trained rule)",
+   "run_id": "B_gym_pdmdeu",
+   "source": "setDPC/B_gym_pdmdeu_00001_.mp4",
+   "staged": "videos/B_gym_pdmdeu_00001_.mp4",
+   "sha256_16": "d6132a74cb98d09b",
+   "wall_s": 299.2,
+   "vram_peak_mib": 23899
+  },
+  "B_bsk_dmadrn": {
+   "label": "DMAD-4 full-critic @ 1.0 \u2014 DMD re-noise rule (its own trained rule)",
+   "run_id": "B_bsk_dmadrn",
+   "source": "setDPC/B_bsk_dmadrn_00001_.mp4",
+   "staged": "videos/B_bsk_dmadrn_00001_.mp4",
+   "sha256_16": "ec7819ba5637df65",
+   "wall_s": 299.2,
+   "vram_peak_mib": 23899
+  },
+  "B_bsk_pdmdeu": {
+   "label": "PDMD-4 v6 @ 1.0 \u2014 Euler/simple (its own trained rule)",
+   "run_id": "B_bsk_pdmdeu",
+   "source": "setDPC/B_bsk_pdmdeu_00001_.mp4",
+   "staged": "videos/B_bsk_pdmdeu_00001_.mp4",
+   "sha256_16": "a71edc9f023e2a10",
+   "wall_s": 299.2,
+   "vram_peak_mib": 23899
+  }
+ }
+}
