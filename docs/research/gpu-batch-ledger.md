@@ -1244,3 +1244,14 @@ The maintainer's dispatch: the corrected rerun — DMAD under re-noise vs PDMD u
 3. **FACE-REGION (the B design surface, measured):** faces track at 75–98 % coverage; the GYM close-up reads 12–16 % of frame. Identity-vs-frame-0 comparable on B_gym (0.652/0.680), degrades on B_bsk for BOTH arms (0.106/0.268 — extreme pose sweep; disclosed, no eye-check). Face flicker splits (PDMD cleaner B_gym, DMAD cleaner B_bsk) — no direction-consistent face story; A-prompt faces marginal-quality (~0.1 % of frame), caveated.
 4. **Budget deviation disclosed:** the dispatch estimated ~12–15 GPU-min; measured 31.6 (the estimate's per-gen arithmetic was ~2.5× optimistic vs both the combined-eval and P2 warm numbers — 124f 4-NFE ≈ 114 s, 243f ≈ 299 s). Design executed as specified.
 5. **PROPOSED:** the sampler-rule correction is not cosmetic — the stability picture inverts with it, at matched cost. If the maintainer's 4-pair read concurs, the DMAD-vs-PDMD question inverts the combined eval's tainted crown; PDMD's P2 crown vs turbo-8 stands regardless (never involved DMAD). Full tables: [gpu-batch-dpc-results.md](gpu-batch-dpc-results.md).
+
+## THE CORRECTED DMAD-vs-PDMD VERDICT (maintainer, 2026-10-06)
+"All sets came out with some issues. DMAD in my eyes was inferior across the board. But I would like to leave both as an option for now."
+
+**The metrics-vs-eye divergence, recorded honestly**: the automated stability metrics favored DMAD-rn on 4/4 pairs (warp ×0.38-0.78, alternation ×0.52-0.83), but the maintainer's eye called PDMD superior across the board. This is Amendment 1's doctrine in action — the eye is the decision layer, and the stability metrics' salience caveat (recorded since Set P2) applies to DMAD's measured advantage exactly as it applied to PDMD's measured disadvantage. The metrics record; the eye decides.
+
+**The standing**: both distills remain available as user-selectable options. No crown declared. The recipe ledger records both operating points:
+- PDMD-4: v6 LoRA @ 1.0, Euler/simple, 4 steps, 12/3, no CFG, no prefix — the incumbent fast lane (its P2 crown over turbo-8 stands)
+- DMAD-4: full-critic @ 1.0, RE-NOISE (the sab_shims sampler), 4 steps, 12/2, no CFG — the challenger (correct-rule comparison showed measured stability advantages the eye didn't confirm as quality advantages)
+
+The sampler-rule column is now mandatory in all future arm registrations.
