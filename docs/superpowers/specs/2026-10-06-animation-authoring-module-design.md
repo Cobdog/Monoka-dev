@@ -116,11 +116,8 @@ Every key on the timeline is the same data structure regardless of how
 its image was obtained:
 
 ```
-KeySlot {
-  id: string
-  selectedImage: AssetReference | null
-  alternatives: AssetReference[]       // retained; re-rolls append
-  lock: boolean                         // protection against replacement
+KeyCandidate {
+  assetReference: AssetReference
   origin: 'import' | 'hero' | 'frame-promotion' | 'project-asset'
   provenance: {
     assetId: string                     // the stable image asset
@@ -129,13 +126,29 @@ KeySlot {
     generatingOp?: string               // when generated (attempt ID)
     inputRevisions?: Record<string, string>
   }
+  poseDescription: string | null        // bound to this image; follows selection
+  facing: FacingTerm | null             // the closed vocabulary picker value
+}
+
+KeySlot {
+  id: string
+  selectedCandidateId: CandidateId | null
+  candidates: KeyCandidate[]             // retained; re-rolls append
+  lock: boolean                          // protection against replacement
 }
 ```
 
+Origin and provenance live on **each candidate**, not on the slot — a
+slot can hold imported, hero-generated, and promoted alternatives
+simultaneously, and switching the selected candidate must not make the
+slot's provenance ambiguous. Pose descriptions and facing values also
+follow the candidate: choosing another frame may change both posture and
+facing.
+
 Origin, selection, and protection are **separate concepts**:
-- Origin is a small label (where the image came from).
-- Selection is the consistent timeline treatment (the chosen image).
-- Protection is an explicit lock indicator.
+- Origin is a per-candidate label (where that image came from).
+- Selection is the slot's chosen-candidate pointer.
+- Protection is an explicit lock on the slot.
 
 No permanent, substantially different tile treatments for different
 origins — they perform the same timeline role after selection.
@@ -262,18 +275,63 @@ All three share the frozen-attempt and explicit-selection lifecycle.
 
 ```
 AnimationRenderingService {
-  submit(frozenAttempt: AttemptInput): AttemptId
-  getState(attemptId): AttemptState
+  // Asynchronous: returns a durable AttemptId after the server validates
+  // and persists the frozen input snapshot — NOT after the render completes.
+  // Idempotent on idempotencyKey: a retry with the same key returns the
+  // existing attempt rather than submitting another render.
+  submit(frozenAttempt: AttemptInput, idempotencyKey: string): Promise<AttemptId>
+
+  getState(attemptId): Promise<AttemptState>
   subscribe(attemptId, callback): Unsubscribe
-  cancel(attemptId): void
-  extractFrame(attemptId, frameIndex): AssetReference
-  selectCandidate(documentId, keyId, attemptId, frameIndex): void  // document command
+  cancel(attemptId): Promise<void>
+  extractFrame(attemptId, frameIndex): Promise<AssetReference>
 }
 ```
+
+### 7.2.1 The three selection commands (document commands, not service calls)
+
+Selections are **document mutations** that go through the shared store,
+not rendering-service calls. They are distinct operations with distinct
+semantics:
+
+```
+// Select a candidate image as a beat key's chosen image.
+selectKeyCandidate(documentId, keyId, candidateId,
+                   expectedRevision: Revision): DocumentCommand
+
+// Select a frame from a rendered clip as the next rolling near-reference
+// for a tween span — WITHOUT creating or replacing a beat key.
+selectRollingReference(documentId, spanId, attemptId, frameIndex,
+                       expectedRevision: Revision): DocumentCommand
+
+// Choose a clip portion for assembly/export (editorial timing).
+selectClipContribution(documentId, spanId, attemptId,
+                       inFrame: number, outFrame: number, holdDuration: number,
+                       expectedRevision: Revision): DocumentCommand
+```
+
+All three carry `expectedRevision` and are server-enforced against
+concurrent or outdated requests: if the document has moved past the
+expected revision, the command is rejected and the client re-reads.
+Key-slot locks are checked server-side — a locked key cannot have its
+selection changed by any of these commands without an explicit unlock.
 
 Events notify the UI that persisted state changed. Reloading recovers the
 same truth without needing the original notification — **the contract is
 durable, not callback-chained**.
+
+### 7.2.2 Submission idempotency and async outcomes
+
+`submit()` is asynchronous. Its returned promise resolves when the server
+has validated and persisted the frozen input snapshot and enqueued the
+job — not when the render completes. If the response is lost (network
+failure, tab close), retrying with the same `idempotencyKey` returns the
+already-persisted attempt rather than submitting another expensive render.
+
+The server must validate the attempt's inputs (reference assets exist and
+are accessible, caption is well-formed, settings are supported) before
+dispatching to the engine. Validation failures reject the promise with a
+structured error; the attempt is not persisted.
 
 Frame extraction has two paths:
 1. **Proposed frame**: prepared automatically when the clip lands (the
@@ -382,19 +440,24 @@ must not also process that job.
 Persisted session state alone does not guarantee resumed execution. The
 server track must handle:
 - Return without the original subscription → recover persisted state.
-- Server or engine restart → an explicit reconciliation contract.
+- **Uncertain submission outcomes** (the submit response was lost; the
+  idempotency key resolves the attempt on retry).
+- **Reference-preparation failures** (the render landed but the frame
+  extraction failed; the retry path re-prepares without re-rendering).
+- Server or engine restart → an explicit reconciliation contract (what
+  auto-resumes, what requires user action — the restart policy below).
 - Results arriving after document changes → provenance preserved.
 
 ## 11. Open specification decisions
 
 These must be resolved before the implementation plan:
 
-| Decision | Status |
-|---|---|
-| Initial route (which URL, which registry entry) | Open |
-| Exact document schema (field names, nesting, IDs) | Open |
-| Export packaging (format, metadata, delivery) | Open |
-| Restart-recovery policy (what auto-resumes, what requires user action) | Open |
+| Decision | Status | Must incorporate |
+|---|---|---|
+| Initial route (which URL, which registry entry) | Open | — |
+| Exact document schema (field names, nesting, IDs) | Open | The three selection commands (§7.2.1) as distinct document operations; per-candidate provenance (§5.1); frozen-attempt snapshots (§8.1) |
+| Export packaging (format, metadata, delivery) | Open | Provenance requirements from §8 |
+| Restart-recovery policy | Open | Uncertain submission outcomes (§10.2); reference-preparation retries; whether in-flight renders auto-resume after an engine restart or require explicit user re-trigger |
 
 ## 12. Development strategy
 
@@ -455,12 +518,21 @@ Mock-backed previews can be visible much earlier.
 
 | Finding (Set K / assessment) | Design consequence |
 |---|---|
-| Tween chain saturates to the full arc | No step-size dial; no controls implying gradual stepping |
-| The dial is dead (both metric and eye) | No `landing <progress>` lever |
+| Tween chain saturated to the full arc on the tested beat | No step-size dial; no controls implying gradual stepping (observed on the tested beat, not proven universal) |
+| The dial was indistinguishable by metric and eye on the tested beat | No `landing <progress>` lever (the omission stands; the evidence is from one beat) |
 | Approach phase preferred over hold phase | Editorial timing lets users select the approach portions |
-| Identity holds across all methodologies | The core promise is reliable; no identity-failure UI needed |
-| Tween ≈ latent > FL2VA (eye's ranking) | Tween/latent are the fill mechanisms; FL2VA is not the primary lane |
+| Identity held in the tested conditions (zero breaks, 23 renders) | The core promise is supported; ordinary candidate review and replacement remain available |
+| Tween ≈ latent > FL2VA (eye's ranking) | The first module uses the three adapters' image-reference contracts; latent continuation is **deferred** (it requires latent artifact bindings and compatibility rules beyond this spec's scope) |
 | 22-frame clips at the card operating point | Hero returns a clip; frame selection is required |
 | ~3 minutes per render at 30–50 steps | "Leave and come back" is a foundation requirement |
 | Caption dialect has mechanical constraints | The compiler enforces them; the UI surfaces them as pickers/chips |
 | The rolling near-reference changes per step | The document distinguishes intent, current state, and frozen caption |
+
+**Latent-chain scope** (explicitly deferred): Set K's eye-ranking showed
+the latent chain (m-scalar continuation) produced fills indistinguishable
+from the tween chain. However, the latent workflow requires binding
+latent artifacts (not image references) to attempts, a latent-state
+compatibility rule across steps, and an execution strategy that differs
+from the image-reference contract. These are not specified here. The
+first module implements only the three adapters' documented
+image-reference contracts; latent continuation is a future increment.
