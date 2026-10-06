@@ -7,6 +7,12 @@ import sys
 from pathlib import Path
 root = Path(sys.argv[1])
 manifest = json.loads((root / 'pairs-frames.js').read_text().split('window.REVIEW_FRAMES = ', 1)[1].rstrip(';\n'))
+# the null pair is per-set (setJ's was p07; setK's is p01): read the kind
+# from pairs-metadata instead of hardcoding
+_null = [pid for pid, m in json.loads(
+    (root / 'pairs-metadata.js').read_text().split('window.PAIR_META = ', 1)[1].rstrip(';\n')
+).items() if m.get('kind') == 'null']
+NULL_PID = _null[0] if _null else None
 for pid, pair in manifest['pairs'].items():
     counts = {}
     for side in ('L', 'R'):
@@ -26,6 +32,6 @@ for pid, pair in manifest['pairs'].items():
         assert n == pair['count']
         counts[side] = hashes
     differences = [i for i, (l,r) in enumerate(zip(counts['L'], counts['R'])) if l != r]
-    if pid == 'p07':
-        assert not differences, 'p07 must be a pixel-identical null'
+    if NULL_PID and pid == NULL_PID:
+        assert not differences, f'{pid} must be a pixel-identical null'
     print(f'{pid}: {pair["count"]} frames/side pixel-exact; {len(differences)} L/R differences', flush=True)
