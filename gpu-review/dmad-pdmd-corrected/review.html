@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>The corrected-rules DMAD vs PDMD comparison (DPC)</title>
+<style>
+ body{font-family:system-ui,sans-serif;max-width:1240px;margin:0 auto;padding:24px;background:#111;color:#ddd}
+ h1{font-size:22px} h2{font-size:18px;margin-bottom:2px}
+ .q{color:#9cc;font-size:14px;margin-top:2px}
+ .pair{border:1px solid #333;border-radius:10px;padding:16px;margin:22px 0;background:#181818}
+ .vids{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ figure{margin:0} video{width:100%;border-radius:6px;background:#000}
+ figcaption{font-size:14px;font-weight:600;padding:6px 2px}
+ figcaption span{display:block;font-weight:400;color:#888;font-size:12px}
+ .sync button{margin-right:8px;padding:6px 14px;border-radius:6px;border:1px solid #555;background:#222;color:#ddd;cursor:pointer}
+ table{border-collapse:collapse;margin-top:12px;font-size:13px;width:100%}
+ th,td{border:1px solid #333;padding:5px 9px;text-align:left}
+ th{color:#9cc}
+ details{margin-top:10px} summary{cursor:pointer;color:#9cc;font-size:13px}
+ pre{white-space:pre-wrap;font-size:12px;color:#aaa;background:#141414;padding:10px;border-radius:6px}
+ .meta{font-size:13px;color:#aaa;white-space:pre-wrap;background:#181818;border:1px solid #333;border-radius:10px;padding:14px}
+</style></head><body>
+<h1>The corrected-rules DMAD vs PDMD — each distill under its OWN trained sampler rule</h1>
+<p class="q">4 A/B pairs, seed 421337, 1088&times;608, ref2va int8 base, LoRA @ 1.0, 4 NFE, no CFG, dense SDPA, ComfyUI 0.39.0.
+<b>Unblinded by design (the maintainer's ask): LEFT = DMAD under the DMD re-noise rule, RIGHT = PDMD under Euler.</b>
+The combined eval crowned PDMD against a DMAD running the WRONG rule; this surface is the corrected comparison.</p>
+
+<section class="pair">
+  <h2>GYMNASTICS — variant A (the original P2_2 vault prompt, 124f / 5.2 s)</h2>
+  <p class="q">The combined eval's Euler-run DMAD arms were void. With DMAD under its OWN re-noise rule at the same seed: does it displace PDMD on the original vault prompt — sprint, springboard, Yurchenko, stuck landing?</p>
+  <div class="vids">
+    <figure><figcaption>LEFT — DMAD-4 full-critic @ 1.0 — DMD re-noise rule (its own trained rule)<span>run A_gym_dmadrn · wall 114.4s · shifts 12/2</span></figcaption>
+      <video controls loop preload="metadata" src="videos/A_gym_dmadrn_00001_.mp4"></video></figure>
+    <figure><figcaption>RIGHT — PDMD-4 v6 @ 1.0 — Euler/simple (its own trained rule)<span>run A_gym_pdmdeu · wall 114.4s · shifts 12/3</span></figcaption>
+      <video controls loop preload="metadata" src="videos/A_gym_pdmdeu_00001_.mp4"></video></figure>
+  </div>
+  <div class="sync"><button onclick="syncPair(this)">&#9654; play both in sync</button>
+    <button onclick="pausePair(this)">&#9632; pause both</button></div>
+  
+  <table>
+    <tr><th>metric (secondary context — the eye decides)</th><th>DMAD-rn</th><th>PDMD-eu</th><th>ratio dmad/pdmd</th></tr>
+    <tr><td>warp residual median (temporal stability)</td><td>15.4892</td><td>20.0284</td><td>0.7734</td></tr>
+    <tr><td>alternation peak-power ratio (flicker)</td><td>0.00972</td><td>0.01276</td><td>0.7618</td></tr>
+    <tr><td>HF mean Laplacian (sharpness; higher = sharper)</td><td>9.0947</td><td>6.8353</td><td>1.3305</td></tr>
+    <tr><td>audio RMS dBFS</td><td>-22.102</td><td>-25.16</td><td>&mdash;</td></tr>
+    <tr><td>audio centroid Hz</td><td>1576.91</td><td>1904.69</td><td>&mdash;</td></tr>
+    <tr><td>audio rolloff85 Hz</td><td>1018.99</td><td>1262.76</td><td>&mdash;</td></tr>
+    <tr><td>pixel: DMAD-rn vs PDMD-eu (PSNR / dE — how different the renders are)</td>
+        <td colspan="3">12.144 dB / dE 32.655</td></tr>
+    <tr><th>face-region (the B design surface)</th><th>DMAD-rn</th><th>PDMD-eu</th><th>ratio</th></tr>
+    <tr><td>face coverage (frames with a face)</td><td>0.5887</td><td>1.0</td><td>x0.5887</td></tr><tr><td>mean face area (fraction of frame)</td><td>0.00114</td><td>0.00093</td><td>x1.2258</td></tr><tr><td>face-region HF (Laplacian in tracked bbox)</td><td>20.6339</td><td>17.2771</td><td>x1.1943</td></tr><tr><td>face-region alternation (3-13 Hz in bbox)</td><td>0.02925</td><td>0.00895</td><td>x3.2682</td></tr><tr><td>ArcFace identity vs own frame 0 (mean cos)</td><td>0.22927</td><td>0.19636</td><td>&mdash;</td></tr>
+  </table>
+</section>
+<section class="pair">
+  <h2>BASKET TOSS — variant A (the original P2_3 prompt, 124f / 5.2 s)</h2>
+  <p class="q">Same corrected-rules question on multi-body coordination: three bases launch a flyer, apex, catch — which rule's render holds the bodies, the timing, and the gymnasium together?</p>
+  <div class="vids">
+    <figure><figcaption>LEFT — DMAD-4 full-critic @ 1.0 — DMD re-noise rule (its own trained rule)<span>run A_bsk_dmadrn · wall 114.4s · shifts 12/2</span></figcaption>
+      <video controls loop preload="metadata" src="videos/A_bsk_dmadrn_00001_.mp4"></video></figure>
+    <figure><figcaption>RIGHT — PDMD-4 v6 @ 1.0 — Euler/simple (its own trained rule)<span>run A_bsk_pdmdeu · wall 114.4s · shifts 12/3</span></figcaption>
+      <video controls loop preload="metadata" src="videos/A_bsk_pdmdeu_00001_.mp4"></video></figure>
+  </div>
+  <div class="sync"><button onclick="syncPair(this)">&#9654; play both in sync</button>
+    <button onclick="pausePair(this)">&#9632; pause both</button></div>
+  
+  <table>
+    <tr><th>metric (secondary context — the eye decides)</th><th>DMAD-rn</th><th>PDMD-eu</th><th>ratio dmad/pdmd</th></tr>
+    <tr><td>warp residual median (temporal stability)</td><td>14.3228</td><td>20.3243</td><td>0.7047</td></tr>
+    <tr><td>alternation peak-power ratio (flicker)</td><td>0.00231</td><td>0.00316</td><td>0.731</td></tr>
+    <tr><td>HF mean Laplacian (sharpness; higher = sharper)</td><td>7.5711</td><td>11.298</td><td>0.6701</td></tr>
+    <tr><td>audio RMS dBFS</td><td>-16.759</td><td>-21.371</td><td>&mdash;</td></tr>
+    <tr><td>audio centroid Hz</td><td>1726.9</td><td>1554.15</td><td>&mdash;</td></tr>
+    <tr><td>audio rolloff85 Hz</td><td>1180.78</td><td>1315.86</td><td>&mdash;</td></tr>
+    <tr><td>pixel: DMAD-rn vs PDMD-eu (PSNR / dE — how different the renders are)</td>
+        <td colspan="3">12.274 dB / dE 30.79</td></tr>
+    <tr><th>face-region (the B design surface)</th><th>DMAD-rn</th><th>PDMD-eu</th><th>ratio</th></tr>
+    <tr><td>face coverage (frames with a face)</td><td>0.9919</td><td>1.0</td><td>x0.9919</td></tr><tr><td>mean face area (fraction of frame)</td><td>0.00122</td><td>0.00165</td><td>x0.7394</td></tr><tr><td>face-region HF (Laplacian in tracked bbox)</td><td>17.8206</td><td>18.9955</td><td>x0.9381</td></tr><tr><td>face-region alternation (3-13 Hz in bbox)</td><td>0.01772</td><td>0.07184</td><td>x0.2467</td></tr><tr><td>ArcFace identity vs own frame 0 (mean cos)</td><td>0.28991</td><td>0.41147</td><td>&mdash;</td></tr>
+  </table>
+</section>
+<section class="pair">
+  <h2>GYMNASTICS — variant B (the PRESSURE prompt PB_2, 243f / 10.1 s)</h2>
+  <p class="q">The pressure cell: tight on her face (chalk dust, two breaths), pull back into the sprint, cut at 00:04.2 to slow-motion hands on the table, floor-level landing with the crowd in her eyes. Which rule holds a character study — face fidelity, cut adherence, slow-motion plausibility?</p>
+  <div class="vids">
+    <figure><figcaption>LEFT — DMAD-4 full-critic @ 1.0 — DMD re-noise rule (its own trained rule)<span>run B_gym_dmadrn · wall 299.2s · shifts 12/2</span></figcaption>
+      <video controls loop preload="metadata" src="videos/B_gym_dmadrn_00001_.mp4"></video></figure>
+    <figure><figcaption>RIGHT — PDMD-4 v6 @ 1.0 — Euler/simple (its own trained rule)<span>run B_gym_pdmdeu · wall 299.2s · shifts 12/3</span></figcaption>
+      <video controls loop preload="metadata" src="videos/B_gym_pdmdeu_00001_.mp4"></video></figure>
+  </div>
+  <div class="sync"><button onclick="syncPair(this)">&#9654; play both in sync</button>
+    <button onclick="pausePair(this)">&#9632; pause both</button></div>
+  <details><summary>the PB prompt (verbatim)</summary><pre>integrated_multimodal_description: [Shot 1] Cinematic character study, extreme close-up: a gymnast in a red leotard, chalk dust on her cheek and her eyes narrowed down the runway, exhales slowly through her nose. The camera holds tight on her face for two breaths, then pulls back and tracks alongside at sprint speed as she drives down the diagonal, arms punching, the runway markers strobing past her shoulder.
+[Shot 2] At 00:04.2, the camera cuts to a slow-motion close-up of her palms slamming the vault table, the impact rippling through her fingers and whitening her knuckles, then drops to floor level in real time as she sticks the landing — her face swinging into frame, jaw tight, the floodlit crowd reflected in her eyes.
+overall_soundscape: A hushed arena held on her breathing: two slow inhales, a swallow, then sharp accelerating footfalls, the deep stretched thud of palms on the table under the slow motion, one crisp mat impact, and the crowd breaking into a roar as her arms snap up.
+non_diegetic_music: N/A</pre></details>
+  <table>
+    <tr><th>metric (secondary context — the eye decides)</th><th>DMAD-rn</th><th>PDMD-eu</th><th>ratio dmad/pdmd</th></tr>
+    <tr><td>warp residual median (temporal stability)</td><td>4.8057</td><td>12.7811</td><td>0.376</td></tr>
+    <tr><td>alternation peak-power ratio (flicker)</td><td>0.00912</td><td>0.01096</td><td>0.8321</td></tr>
+    <tr><td>HF mean Laplacian (sharpness; higher = sharper)</td><td>2.2168</td><td>4.5348</td><td>0.4888</td></tr>
+    <tr><td>audio RMS dBFS</td><td>-22.132</td><td>-17.73</td><td>&mdash;</td></tr>
+    <tr><td>audio centroid Hz</td><td>985.88</td><td>1291.15</td><td>&mdash;</td></tr>
+    <tr><td>audio rolloff85 Hz</td><td>464.57</td><td>844.45</td><td>&mdash;</td></tr>
+    <tr><td>pixel: DMAD-rn vs PDMD-eu (PSNR / dE — how different the renders are)</td>
+        <td colspan="3">10.994 dB / dE 38.034</td></tr>
+    <tr><th>face-region (the B design surface)</th><th>DMAD-rn</th><th>PDMD-eu</th><th>ratio</th></tr>
+    <tr><td>face coverage (frames with a face)</td><td>0.7531</td><td>0.9218</td><td>x0.817</td></tr><tr><td>mean face area (fraction of frame)</td><td>0.16231</td><td>0.12051</td><td>x1.3469</td></tr><tr><td>face-region HF (Laplacian in tracked bbox)</td><td>4.419</td><td>6.055</td><td>x0.7298</td></tr><tr><td>face-region alternation (3-13 Hz in bbox)</td><td>0.00795</td><td>0.00259</td><td>x3.0695</td></tr><tr><td>ArcFace identity vs own frame 0 (mean cos)</td><td>0.65211</td><td>0.68001</td><td>&mdash;</td></tr>
+  </table>
+</section>
+<section class="pair">
+  <h2>BASKET TOSS — variant B (the PRESSURE prompt PB_3, 243f / 10.1 s)</h2>
+  <p class="q">The pressure cell: the flyer's count and launch, rising with her past the ceiling lights, one held beat at apex, cut at 00:05.0 to the catch from below — concentration to triumph. Which rule carries the face and the vertical camera?</p>
+  <div class="vids">
+    <figure><figcaption>LEFT — DMAD-4 full-critic @ 1.0 — DMD re-noise rule (its own trained rule)<span>run B_bsk_dmadrn · wall 299.2s · shifts 12/2</span></figcaption>
+      <video controls loop preload="metadata" src="videos/B_bsk_dmadrn_00001_.mp4"></video></figure>
+    <figure><figcaption>RIGHT — PDMD-4 v6 @ 1.0 — Euler/simple (its own trained rule)<span>run B_bsk_pdmdeu · wall 299.2s · shifts 12/3</span></figcaption>
+      <video controls loop preload="metadata" src="videos/B_bsk_pdmdeu_00001_.mp4"></video></figure>
+  </div>
+  <div class="sync"><button onclick="syncPair(this)">&#9654; play both in sync</button>
+    <button onclick="pausePair(this)">&#9632; pause both</button></div>
+  <details><summary>the PB prompt (verbatim)</summary><pre>integrated_multimodal_description: [Shot 1] Intimate live-event coverage, close-up: a flyer in a white uniform locks eyes with her three bases, their lips moving through the final count as she sets her jaw and grips their shoulders. The camera rises with her at the launch — ponytail lifting, poms trailing, the gymnasium's ceiling lights sweeping past the lens — then settles with her into one held beat of stillness at apex, her face calm against the bright upper void.
+[Shot 2] At 00:05.0, the camera cuts to a low angle inside the cradle looking up: the bases' upturned faces rush into frame as they catch her at the waist, knees absorbing, and her expression shifts from tight concentration to open triumph as she snaps her poms overhead.
+overall_soundscape: A packed gymnasium: the bases' low chanted count, squeaking sneakers, a sharp group effort-call on the launch, wind rush and pom rustle through the rise, one near-silent beat at apex, then the solid double-thud of the catch and the crowd breaking in under her celebration.
+non_diegetic_music: N/A</pre></details>
+  <table>
+    <tr><th>metric (secondary context — the eye decides)</th><th>DMAD-rn</th><th>PDMD-eu</th><th>ratio dmad/pdmd</th></tr>
+    <tr><td>warp residual median (temporal stability)</td><td>6.5015</td><td>8.3514</td><td>0.7785</td></tr>
+    <tr><td>alternation peak-power ratio (flicker)</td><td>0.00235</td><td>0.00449</td><td>0.5234</td></tr>
+    <tr><td>HF mean Laplacian (sharpness; higher = sharper)</td><td>4.1399</td><td>5.6825</td><td>0.7285</td></tr>
+    <tr><td>audio RMS dBFS</td><td>-15.64</td><td>-20.917</td><td>&mdash;</td></tr>
+    <tr><td>audio centroid Hz</td><td>1401.62</td><td>1672.5</td><td>&mdash;</td></tr>
+    <tr><td>audio rolloff85 Hz</td><td>1011.4</td><td>1260.05</td><td>&mdash;</td></tr>
+    <tr><td>pixel: DMAD-rn vs PDMD-eu (PSNR / dE — how different the renders are)</td>
+        <td colspan="3">12.089 dB / dE 30.732</td></tr>
+    <tr><th>face-region (the B design surface)</th><th>DMAD-rn</th><th>PDMD-eu</th><th>ratio</th></tr>
+    <tr><td>face coverage (frames with a face)</td><td>0.9753</td><td>0.9835</td><td>x0.9917</td></tr><tr><td>mean face area (fraction of frame)</td><td>0.02087</td><td>0.01979</td><td>x1.0546</td></tr><tr><td>face-region HF (Laplacian in tracked bbox)</td><td>8.251</td><td>9.1534</td><td>x0.9014</td></tr><tr><td>face-region alternation (3-13 Hz in bbox)</td><td>0.00439</td><td>0.00575</td><td>x0.7635</td></tr><tr><td>ArcFace identity vs own frame 0 (mean cos)</td><td>0.10631</td><td>0.26757</td><td>&mdash;</td></tr>
+  </table>
+</section>
+<div class="meta">THE RULES (the sampler-rule column, now mandatory in arm registrations)
+  DMAD-rn (LEFT):  SABDMDReNoiseSampler — x0 = x + s*velocity;  x' = (1 - s_next)*x0 + s_next*FRESH noise
+                   (DMAD's trained inference rule; fresh-noise stream seeded seed+1, continuing across steps)
+  PDMD-eu (RIGHT): MiniMaxH3TurboSampler — the native-AV Euler solve (PDMD's preferred rule; the stock path)
+  Both arms share the sigma schedule simple/4 @ shift 12 (video) — DMAD's own sigma_grid(4,12) is knot-identical
+  to the card grid; audio shifts 2 (DMAD card) / 3 (PDMD card). Only the step rule + LoRA differ.
+
+GATES AT RUN TIME
+  Canary (39f pre-arms, DMAD-full 12/2): re-noise ENGAGED (can_R differs from can_E bit-wise — the
+    silently-Euler failure class falsified), DETERMINISTIC (can_R2 == can_R through the __setDPCr2
+    cache-bust alias), knots == card grid, 4 steps each, RMS finite, audio non-silent.
+  Null: A_null_pdmdeu == A_gym_pdmdeu bit-identical (framemd5 + audio md5) through the __setDPCnull
+    alias — PASS.
+  Cross-launch continuity vs the sampler-ab canaries (recorded, non-blocking): {"can_E": {"compared": true, "video_identical": true, "audio_identical": true, "reference": "setSAB/can_E_euler_00001_.mp4"}, "can_R": {"compared": true, "video_identical": true, "audio_identical": true, "reference": "setSAB/can_R_renoise_00001_.mp4"}, "can_R2": {"compared": true, "video_identical": true, "audio_identical": true, "reference": "setSAB/can_R2_renoise_00001_.mp4"}}.
+
+PROMPTS
+  A variant: P2_2 / P2_3 VERBATIM from the Set P2 registration (the originals).
+  B variant: PB_2 / PB_3 authored for this set — close-up single-character pressure studies of the
+  same scenes/wardrobe, two-shot with precise cut timing (00:04.2 / 00:05.0), ~10 s; the face is
+  the designed metric surface (full verbatim text in the collapsed block on each B pair and in
+  the ledger registration).
+
+CAVEATS: single seed, direction not proof; alternation/warp carry the eye-salience caveat from
+  Set P2's reconciliation (measured, real, below the deciding eye's JND on distilled arms at length).
+  Wall/VRAM per run in runs/manifest.json. Audio present on all natives (the mp4s carry it).</div>
+
+<script>
+function syncPair(btn){const s=btn.closest('.pair');const vs=[...s.querySelectorAll('video')];
+ vs.forEach(v=>{v.currentTime=vs[0].currentTime;v.play();});}
+function pausePair(btn){btn.closest('.pair').querySelectorAll('video').forEach(v=>v.pause());}
+</script>
+</body></html>
