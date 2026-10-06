@@ -193,3 +193,73 @@ line-art subject; per-clip audio auditionable in `runs/`).
   traceback — hardened to record in-flight exceptions before teardown).
   The latent run-1 partial (240-step beats 1–2) is archived at
   `out/latent_run1_partial/` as the misconfig's evidence.
+
+## ADDENDUM — the maintainer's blind review, reconciled (2026-10-06)
+
+8/8 called: 5 tie · 3 right · 0 cannot-assess · 0 notes (clean calls throughout). The null gate held by eye.
+
+### K1 verdicts — the eye OVERTURNS the metrics' methodology ranking
+
+The automated side said FL2VA-guide was "the only methodology that reproduced the beat as authored." The eye disagrees:
+
+| Pair | Call | Meaning |
+|---|---|---|
+| p02 (tween vs FL2VA) | **tween wins** | the tween's saturated-but-hand-drawn fill beats the FL2VA's correct-but-smooth fill |
+| p03 (tween vs latent) | **tie** | the tween and latent fills are indistinguishable by eye |
+| p04 (FL2VA vs latent) | **latent wins** | the latent chain's fill beats the FL2VA guide's fill |
+
+**The eye's methodology ranking: tween ≈ latent > FL2VA** — the inverse of the automated arc-fidelity metric. The hand-drawn on-twos character (which only the adapter lanes carry) matters more to the deciding eye than arc correctness. The FL2VA guide's "correct" arc is smooth and base-model-flavored; the tween's "incorrect" arc is saturated but has the hand-drawn look. **Style trumps structure for the eye.**
+
+### K2 — the dial is dead, confirmed by eye
+
+Both dial pairs (p05: quarter vs half, p06: half vs most) are **ties** — the eye cannot distinguish the landing-progress fractions. The step-size dial's no-bite finding is now eye-confirmed, not just metric-confirmed. The UI spec must not treat `landing <progress>` as a functional lever.
+
+### K2 — the drift curve has an aesthetic direction
+
+p07 (approach vs hold): the **approach phase** (chain steps 1–5, where the tween is still nominally advancing) is preferred over the **hold phase** (steps 6–10, post-arrival). The transition is more visually interesting than the destination. This is a UI insight: the timeline's chain segments should show the approach, not skip to the hold.
+
+### The context arm
+
+p08 (hero one-shot vs tween step 1): tie — the hero adapter's whole-beat bridge is indistinguishable from the tween's (saturated) first step. Consistent with the saturation finding.
+
+### Verbatim responses
+```
+{
+  "exported": "2026-10-06T18:59:15.089Z",
+  "responses": {
+    "p01": {
+      "call": "tie",
+      "ts": "2026-10-06T18:51:20.663Z"
+    },
+    "p02": {
+      "call": "right",
+      "ts": "2026-10-06T18:54:03.514Z"
+    },
+    "p03": {
+      "call": "tie",
+      "ts": "2026-10-06T18:54:25.012Z"
+    },
+    "p04": {
+      "call": "right",
+      "ts": "2026-10-06T18:54:40.091Z"
+    },
+    "p05": {
+      "call": "tie",
+      "ts": "2026-10-06T18:54:51.597Z"
+    },
+    "p06": {
+      "call": "tie",
+      "ts": "2026-10-06T18:55:00.220Z"
+    },
+    "p07": {
+      "call": "right",
+      "ts": "2026-10-06T18:59:04.851Z"
+    },
+    "p08": {
+      "call": "tie",
+      "ts": "2026-10-06T18:59:12.503Z"
+    }
+  },
+  "set": "K"
+}
+```
