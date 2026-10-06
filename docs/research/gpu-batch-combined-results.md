@@ -166,6 +166,10 @@ the **T2VA-trained DMAD checkpoints on the `ref2va_pruned_int8` base with
 our deterministic Euler solve — NOT the paper's stochastic re-noise rule**.
 The bake-off measures DMAD-as-adapted-to-our-stack, not the paper's exact
 method; any "DMAD loses" verdict would be against the adaptation.
+**Measured 2026-10-06** (the ledger's "THE SAMPLER-RULE A/B"): the
+adaptation is not silent — Euler-vs-re-noise is a 14–15 dB render change on
+P2_6, with the stability metrics slightly WORSE under the correct rule; the
+eye's labeled pairs at gpu-review/sampler-ab/ decide the quality question.
 
 ### 2.1 Economics (warm means)
 | arm | warm sampling | wall ratio vs turbo-8 | VRAM peak |
@@ -340,6 +344,9 @@ comparisons against pre-0.39.0 runs keep the §0.3 caveat.
 
 - **DMAD recipe adaptation** (§2 disclosure): T2VA-trained checkpoints on
   the ref2va base, deterministic Euler — not the paper's re-noise rule.
+  (Follow-up measured same day: the ledger's "THE SAMPLER-RULE A/B" —
+  the rule difference measured on P2_6, unblinded pairs at
+  gpu-review/sampler-ab/.)
 - **Canary coverage**: Part-2's launch + the §6.3 fresh launch; never
   "all five launches."
 - **VRAM**: "similar observed peaks" (1 s polling; the 30–190 MiB
