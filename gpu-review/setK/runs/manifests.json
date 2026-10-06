@@ -1,0 +1,338 @@
+{
+ "config": {
+  "set": "K - keyframe-animation eval",
+  "seed": 421337,
+  "flags": [
+   "--use-pytorch-cross-attention"
+  ],
+  "operating_point": "card verbatim: ref2va pruned int8, tween/hero LoRA @1.0, euler/simple 30 steps, no CFG, 12/3, 1344x768, 22f, 24fps",
+  "latent_lane": "simple/240 @ denoise 0.125 (30 steps from sigma_s=0.6316)"
+ },
+ "gates": [
+  {
+   "gate": "G-NULL",
+   "ok": true,
+   "t": "08:33:06"
+  },
+  {
+   "gate": "G-CAN2",
+   "ok": true,
+   "t": "08:52:47"
+  },
+  {
+   "gate": "G-NULL",
+   "ok": true,
+   "t": "08:56:05"
+  },
+  {
+   "gate": "G-CAN2",
+   "ok": true,
+   "t": "08:56:05"
+  },
+  {
+   "gate": "G-NULL",
+   "ok": true,
+   "t": "09:23:09"
+  },
+  {
+   "gate": "G-CAN2",
+   "ok": true,
+   "t": "09:23:09"
+  },
+  {
+   "gate": "G-CAN3",
+   "ok": true,
+   "t": "11:17:37"
+  },
+  {
+   "gate": "G-NULL",
+   "ok": true,
+   "t": "11:25:28"
+  },
+  {
+   "gate": "G-CAN2",
+   "ok": true,
+   "t": "11:25:28"
+  },
+  {
+   "gate": "G-BEAT1",
+   "ok": true,
+   "t": "11:57:51"
+  },
+  {
+   "gate": "G-CAN3",
+   "ok": true,
+   "t": "11:57:51"
+  }
+ ],
+ "runs": [
+  {
+   "run_id": "hero",
+   "arm": "key author - hero adapter from A (the beat's far key B)",
+   "tags": [
+    "hero"
+   ],
+   "wall_s": null,
+   "vram_peak_mib": null,
+   "framemd5_n": null,
+   "video_md5_full": null,
+   "audio_md5": null
+  },
+  {
+   "run_id": "hero",
+   "arm": "key author - hero adapter from A (the beat's far key B)",
+   "tags": [
+    "hero"
+   ],
+   "wall_s": 330.8,
+   "vram_peak_mib": 23901,
+   "framemd5_n": 22,
+   "video_md5_full": "efc6675dfdb42e263704696d20473095",
+   "audio_md5": "25a0b3e0c562031dc4456819f5fe8eda"
+  },
+  {
+   "run_id": "tween01",
+   "arm": "K1 arm1 tween step 1/5 (near A, far B)",
+   "tags": [
+    "tween",
+    "k1"
+   ],
+   "wall_s": 394.1,
+   "vram_peak_mib": 24045,
+   "framemd5_n": 22,
+   "video_md5_full": "111c06424b92f5572402e0a943ffd8c4",
+   "audio_md5": "75422c43c11b61c6dd8b7c0a7a948779"
+  },
+  {
+   "run_id": "nullK",
+   "arm": "NULL - tween01 duplicate through __setKnull alias",
+   "tags": [
+    "null"
+   ],
+   "wall_s": 394.1,
+   "vram_peak_mib": 23895,
+   "framemd5_n": 22,
+   "video_md5_full": "111c06424b92f5572402e0a943ffd8c4",
+   "audio_md5": "75422c43c11b61c6dd8b7c0a7a948779"
+  },
+  {
+   "run_id": "tween02",
+   "arm": "K1 arm1 tween step 2/5 (near rolls, far B fixed)",
+   "tags": [
+    "tween",
+    "k1"
+   ],
+   "wall_s": 193.0,
+   "vram_peak_mib": 24077,
+   "framemd5_n": 22,
+   "video_md5_full": "19baa1047db30d89a50f29e5fc9ab671",
+   "audio_md5": "8af3f4ad7070acd783874b70016ef582"
+  },
+  {
+   "run_id": "tween03",
+   "arm": "K1 arm1 tween step 3/5 (near rolls, far B fixed)",
+   "tags": [
+    "tween",
+    "k1"
+   ],
+   "wall_s": 193.0,
+   "vram_peak_mib": 23911,
+   "framemd5_n": 22,
+   "video_md5_full": "035300bb38228130df9f158c9e464a0e",
+   "audio_md5": "7b14b22c0a03bad7b4b1c349c9a829e2"
+  },
+  {
+   "run_id": "tween04",
+   "arm": "K1 arm1 tween step 4/5 (near rolls, far B fixed)",
+   "tags": [
+    "tween",
+    "k1"
+   ],
+   "wall_s": 193.0,
+   "vram_peak_mib": 23911,
+   "framemd5_n": 22,
+   "video_md5_full": "159ad073dfd86bfc2161d27ca695f4e2",
+   "audio_md5": "62321a9f7dd87d64ce56bfb25c88273e"
+  },
+  {
+   "run_id": "tween05",
+   "arm": "K1 arm1 tween step 5/5 (near rolls, far B fixed)",
+   "tags": [
+    "tween",
+    "k1"
+   ],
+   "wall_s": 189.9,
+   "vram_peak_mib": 23911,
+   "framemd5_n": 22,
+   "video_md5_full": "742436eee1d1d9525a993805a176abea",
+   "audio_md5": "cffe7fa3a4595afabfbe01c083d0dc06"
+  },
+  {
+   "run_id": "can2",
+   "arm": "CANARY mid - tween01 via __setKcan2",
+   "tags": [
+    "canary"
+   ],
+   "wall_s": 394.1,
+   "vram_peak_mib": 23895,
+   "framemd5_n": 22,
+   "video_md5_full": "111c06424b92f5572402e0a943ffd8c4",
+   "audio_md5": "75422c43c11b61c6dd8b7c0a7a948779"
+  },
+  {
+   "run_id": "fl2va",
+   "arm": "K1 arm2 FL2VA-guide (First A, guides t2@f43/t4@f86, Last B, 107f, base fl2va unpruned, no LoRA)",
+   "tags": [
+    "fl2va",
+    "k1"
+   ],
+   "wall_s": 1242.3,
+   "vram_peak_mib": 24077,
+   "framemd5_n": 107,
+   "video_md5_full": "b74844fa1d743105e779f9e5ff81fa52",
+   "audio_md5": "b904eaf6b96e2bd8be9244eb970a9e13"
+  },
+  {
+   "run_id": "latent1",
+   "arm": "K1 arm3 latent-chain (5 beats, refs fixed, latent continuation sigma_s=0.6316; beat files latent1..5)",
+   "tags": [
+    "latent",
+    "k1"
+   ],
+   "wall_s": null,
+   "vram_peak_mib": null,
+   "framemd5_n": null,
+   "video_md5_full": null,
+   "audio_md5": null
+  },
+  {
+   "run_id": "tween06",
+   "arm": "K2 drift tween step 6/10 (post-arrival hold)",
+   "tags": [
+    "tween",
+    "k2-drift"
+   ],
+   "wall_s": 193.0,
+   "vram_peak_mib": 24045,
+   "framemd5_n": 22,
+   "video_md5_full": "8a5f94a58ac7ffcb31755ef2ea4f7f16",
+   "audio_md5": "3af7f0b3afca939250eac2d77888df19"
+  },
+  {
+   "run_id": "tween07",
+   "arm": "K2 drift tween step 7/10 (post-arrival hold)",
+   "tags": [
+    "tween",
+    "k2-drift"
+   ],
+   "wall_s": 193.0,
+   "vram_peak_mib": 24045,
+   "framemd5_n": 22,
+   "video_md5_full": "6a42580923ad565059f4057af18d29fe",
+   "audio_md5": "7cd88e01cd3bd96464daed1e02f1b8d5"
+  },
+  {
+   "run_id": "tween08",
+   "arm": "K2 drift tween step 8/10 (post-arrival hold)",
+   "tags": [
+    "tween",
+    "k2-drift"
+   ],
+   "wall_s": 193.0,
+   "vram_peak_mib": 24045,
+   "framemd5_n": 22,
+   "video_md5_full": "d67e45acc9b93710850a7756cdc68ab1",
+   "audio_md5": "78542ad9f45ba4aed0e957b0af1586f8"
+  },
+  {
+   "run_id": "tween09",
+   "arm": "K2 drift tween step 9/10 (post-arrival hold)",
+   "tags": [
+    "tween",
+    "k2-drift"
+   ],
+   "wall_s": 193.0,
+   "vram_peak_mib": 23909,
+   "framemd5_n": 22,
+   "video_md5_full": "a4f4defa58faf3a0d670603e7a021144",
+   "audio_md5": "39a6bff6a8565906a9a06b1356317181"
+  },
+  {
+   "run_id": "tween10",
+   "arm": "K2 drift tween step 10/10 (post-arrival hold)",
+   "tags": [
+    "tween",
+    "k2-drift"
+   ],
+   "wall_s": 193.0,
+   "vram_peak_mib": 24045,
+   "framemd5_n": 22,
+   "video_md5_full": "9b1c9c03a64a1137b682b8805f58dcba",
+   "audio_md5": "a67ca53e63f62c3578f806a2dfbe4949"
+  },
+  {
+   "run_id": "dial_q",
+   "arm": "K2 dial 'q' - landing fraction from A",
+   "tags": [
+    "dial",
+    "k2"
+   ],
+   "wall_s": 394.1,
+   "vram_peak_mib": 23895,
+   "framemd5_n": 22,
+   "video_md5_full": "ccf3aa47b18ac829464e1dd944c95c00",
+   "audio_md5": "a90f0dd9704fe7a226bebb87e5bc5681"
+  },
+  {
+   "run_id": "dial_h",
+   "arm": "K2 dial 'h' - landing fraction from A",
+   "tags": [
+    "dial",
+    "k2"
+   ],
+   "wall_s": 394.1,
+   "vram_peak_mib": 23895,
+   "framemd5_n": 22,
+   "video_md5_full": "b4b7336edfed4f6c969a039e9e9d6554",
+   "audio_md5": "70039b2d876646a71b900d0f648504d2"
+  },
+  {
+   "run_id": "dial_m",
+   "arm": "K2 dial 'm' - landing fraction from A",
+   "tags": [
+    "dial",
+    "k2"
+   ],
+   "wall_s": 394.1,
+   "vram_peak_mib": 24045,
+   "framemd5_n": 22,
+   "video_md5_full": "f4636aecbc87bbe462a5727b568e52d1",
+   "audio_md5": "36671cf759689cf90e181e52c76d0132"
+  },
+  {
+   "run_id": "can3",
+   "arm": "CANARY end - tween01 via __setKcan3",
+   "tags": [
+    "canary"
+   ],
+   "wall_s": 394.1,
+   "vram_peak_mib": 23895,
+   "framemd5_n": 22,
+   "video_md5_full": "111c06424b92f5572402e0a943ffd8c4",
+   "audio_md5": "75422c43c11b61c6dd8b7c0a7a948779"
+  },
+  {
+   "run_id": "latent1",
+   "arm": "K1 arm3 latent-chain (5 beats, refs fixed, latent continuation sigma_s=0.6316; beat files latent1..5)",
+   "tags": [
+    "latent",
+    "k1"
+   ],
+   "wall_s": 1938.7,
+   "vram_peak_mib": 24015,
+   "framemd5_n": 22,
+   "video_md5_full": "111c06424b92f5572402e0a943ffd8c4",
+   "audio_md5": "75422c43c11b61c6dd8b7c0a7a948779"
+  }
+ ]
+}
