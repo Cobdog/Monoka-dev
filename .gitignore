@@ -24,3 +24,4 @@ __pycache__/
 # results docs (docs/research/gpu-batch-set*-results.md) — the instrument
 # itself (scripts/gpu-review/) remains tracked.
 gpu-review/set*/
+gpu-review/combined/
