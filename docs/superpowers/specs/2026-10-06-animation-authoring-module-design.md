@@ -448,16 +448,80 @@ server track must handle:
   auto-resumes, what requires user action — the restart policy below).
 - Results arriving after document changes → provenance preserved.
 
-## 11. Open specification decisions
+## 11. Resolved specification decisions
 
-These must be resolved before the implementation plan:
+### 11.1 Route
 
-| Decision | Status | Must incorporate |
-|---|---|---|
-| Initial route (which URL, which registry entry) | Open | — |
-| Exact document schema (field names, nesting, IDs) | Open | The three selection commands (§7.2.1) as distinct document operations; per-candidate provenance (§5.1); frozen-attempt snapshots (§8.1) |
-| Export packaging (format, metadata, delivery) | Open | Provenance requirements from §8 |
-| Restart-recovery policy | Open | Uncertain submission outcomes (§10.2); reference-preparation retries; whether in-flight renders auto-resume after an engine restart or require explicit user re-trigger |
+**A Workbench subview — no fifth registry entry.**
+
+```
+/?images=1&view=animation&project=<projectId>&document=<animationDocumentId>
+```
+
+The existing `images` registry ID is kept; bookmarks stay compatible. Its route component becomes a lightweight Workbench host that lazy-loads either the existing image editor or the animation module based on the `view` parameter.
+
+Entry points: Workbench navigation and a canvas sequence's "Open animation" action. The URL identifies the document; handoff payloads live in the shared store, not localStorage. Missing or invalid documents show a recoverable document-selection state.
+
+This gives animation a dedicated workspace within Creation without mounting the image editor's browser queue alongside it.
+
+### 11.2 Document schema
+
+**A versioned animation document plus separate attempt records** in the existing SQLite store. Animation state is not embedded inside a generic chain's settings.
+
+| Record | Owns |
+|---|---|
+| `animation_document` | ID, project ID, schema version, authored revision, name, settings, binding history, ordered keys, spans, editorial contributions, lifecycle timestamps |
+| `animation_attempt` | ID, document ID, operation target, tool, idempotency key, immutable input snapshot, shared job ID, execution/preparation state, result references |
+| Shared assets/blobs and outputs/takes | Media bytes, generated artifacts, retained take history |
+
+UUIDs for entity IDs; integer revisions. The authored document body is validated JSON. Attempts are separate records so progress updates do not conflict with authoring commands.
+
+**Within the document:**
+- **Key candidates** have IDs, asset references, individual provenance, pose descriptions, and facing (§5.1).
+- **Key slots** own candidate membership, selected-candidate ID, order, and lock.
+- **Spans** connect key slots and own motion intent, overrides, and ordered tween-step slots.
+- **Tween-step slots** retain attempt alternatives and an explicitly selected rolling-reference candidate. Re-rolling a step adds an attempt to that slot.
+- **Editorial contributions** form an ordered list referencing selected clips or drawings; separate from rolling-reference selection.
+- **Binding history** contains immutable versions; the document points to the active binding.
+
+**Attempt targeting**: hero attempts target a proposed key slot; tween attempts target a span's step slot; sequence attempts capture a selected key window.
+
+**Revision and locking**: all authoring commands use `expectedRevision`, validate server-side, and update selections and dependency staleness transactionally. Candidate landing never changes a selection. Attempt state has its own revision; completion events do not count as user edits. A lock protects the selected key and its effective pose metadata; it does not prevent adding alternatives or changing unrelated editorial contributions.
+
+**Staleness**: frozen snapshots include resolved references, binding version, authored dependencies, exact caption, compiler version, adapter/base identifiers, settings, and reproducibility information at submission. Changing intent or effective settings also makes affected work outdated; staleness is not limited to image replacement.
+
+### 11.3 Export packaging
+
+**One review package containing video and provenance.**
+
+A ZIP containing:
+- `sequence.mp4`: silent H.264, constant 24 fps, at the document's output dimensions.
+- `manifest.json`: versioned assembly recipe, source identifiers and hashes, selected frame ranges, drawing holds, binding history, contributing attempt snapshots and lineage.
+
+**Conventions**: integer frame indices throughout; clip ranges are start-inclusive, end-exclusive; drawing holds measured in output frames (the UI may display seconds). A selected clip retains its frame order and existing held frames without interpolation.
+
+**Integrity**: freeze an export snapshot before assembly; later edits cannot change a running export. Reject missing or incompatible selected media rather than silently dropping it. Stale selections remain usable after explicit acknowledgment and are recorded as stale in the manifest.
+
+**Scope**: a delivery package, not a portable editable project archive. Source media and unselected alternatives are not bundled. Project archive/export support must include the new animation records and referenced blobs so ordinary project preservation remains complete.
+
+### 11.4 Restart-recovery policy
+
+**Reconcile automatically; never automatically repeat uncertain GPU work.**
+
+| Situation | Policy |
+|---|---|
+| Editor closes or changes surface | Server continues; reopening reads persisted state and restores subscriptions |
+| Server restarts; engine job still queued/running | Reattach observation; do not resubmit |
+| Engine history contains completed output | Land idempotently; resume preparation |
+| Engine temporarily unreachable | Mark reconciliation pending; preserve the attempt |
+| Engine restarted; job/output confirmed lost | Mark interrupted; require explicit retry |
+| Dispatch may have succeeded; acknowledgment lost | Search queue/history using the durable attempt identifier; never blindly resubmit |
+| Reference preparation fails | Preserve the rendered clip; retry preparation without rendering again |
+| Cancellation races with completion | Preserve any landed output; never select it automatically |
+
+Submission first persists the attempt and dispatch intent. The engine request carries the attempt identifier for reconciliation. Reusing an idempotency key with identical inputs returns the existing attempt; different inputs produce a conflict.
+
+If dispatch remains uncertain, show that state explicitly. Retrying generation requires a user action and creates a new linked attempt. Reference extraction is idempotent by source take/frame and extraction version; transient preparation failures receive bounded automatic retries, then an explicit "Retry preparation" action.
 
 ## 12. Development strategy
 
