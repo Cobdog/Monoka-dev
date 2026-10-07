@@ -358,6 +358,12 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
      *  endpoint keys, ordered beats, preservation, overrides — the re-roll's
      *  durable input (a sequence draft owns no span). */
     sequence?: FrozenAttemptSnapshot['sequence']
+    /** TWEEN only: the promoted-frame near reference when the chain's
+     *  rolling reference is a frame of a landed step's clip (not the span's
+     *  start key) — the submission resolves it to the EXTRACTED frame image
+     *  (§7.2.2) before freezing, so the reference the tween adapters consume
+     *  is an image asset on every engine shape. */
+    promotedNear?: { attemptId: string; frameIndex: number }
   } {
     const body = document.body
     if (tool === 'hero') {
@@ -397,19 +403,21 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       // the last landed step before this one — falling back to the span's
       // start key while the chain has landed nothing. The promoted frame's
       // pose belongs to the frame, not the document: it carries none, and
-      // the compiler flags that honestly as a hint. (Honest limit, task 4's:
-      // this build's frame assets ARE the clip artifacts — kind 'video' —
-      // so a tween whose near reference is a promoted frame is refused by
-      // the service's image-only reference rule until frame-accurate
-      // extraction lands on the real-engine leg; a chain's FIRST step is
-      // unaffected, its near reference is the start key's image.)
+      // the compiler flags that honestly as a hint. The promoted frame rides
+      // as the marker (promotedNear) — the submission resolves it to the
+      // EXTRACTED frame image before freezing (the task-15 flip: the frozen
+      // reference is an image asset whether the engine lists decoded frames
+      // or only the clip). A chain's FIRST step is unaffected: its near
+      // reference is the start key's image.
       let near: PoseContext | null = null
+      let promotedNear: { attemptId: string; frameIndex: number } | undefined
       for (let index = slotIndex - 1; index >= 0; index -= 1) {
         const rolling = span.stepSlots[index].selectedRollingReference
         if (!rolling) continue
         const attempt = store.getAttempt(rolling.attemptId)
         if (!attempt?.result) throw new AnimationRuleError(`The rolling reference attempt ${rolling.attemptId} holds no landed clip.`, 400)
         near = { assetReference: attempt.result.candidate.assetReference, pose: { poseDescription: null, facing: null } }
+        promotedNear = rolling
         break
       }
       if (!near) near = poseContextOf(selectedCandidate(body, span.fromKeyId))
@@ -428,6 +436,7 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
           { role: 'rolling-near', assetReference: near.assetReference, poseDescription: near.pose.poseDescription, facing: near.pose.facing },
           { role: 'fixed-far', assetReference: far.assetReference, poseDescription: far.pose.poseDescription, facing: far.pose.facing },
         ],
+        ...(promotedNear !== undefined ? { promotedNear } : {}),
       }
     }
     // sequence — the selected key window (§11.2 "sequence attempts capture a
@@ -487,7 +496,23 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       const draft = recordField(body, 'draft', 'The submission needs a draft object (intent + overrides) — the server compiles and freezes the snapshot.')
       if (draft.tool !== tool) throw new AnimationRuleError(`The draft must be a ${tool} draft (draft.tool must match tool).`, 400)
 
-      const { compile, references, hero, sequence } = resolveDraft(document, tool, targetId, draft)
+      const resolved = resolveDraft(document, tool, targetId, draft)
+      let { compile, references } = resolved
+      const { hero, sequence } = resolved
+      // The promoted-frame near reference (the task-15 flip): the chain's
+      // rolling reference is a FRAME of the previous step's clip, not the
+      // clip — resolve it through the service's frame extraction (§7.2.2)
+      // so the frozen reference is the IMAGE the tween adapters consume. An
+      // unresolvable frame is a named state refusal here, never a
+      // video-asset rejection inside the submit.
+      if (resolved.promotedNear !== undefined) {
+        const frame = resolved.promotedNear
+        const nearAsset = await service.extractFrame(frame.attemptId, frame.frameIndex)
+        compile = compile.tool === 'tween'
+          ? { tool: 'tween', context: { ...compile.context, rollingReference: { ...compile.context.rollingReference, assetReference: nearAsset } } }
+          : compile
+        references = references.map((entry) => (entry.role === 'rolling-near' ? { ...entry, assetReference: nearAsset } : entry))
+      }
       // The one server-side compile dispatch (rendering.ts) — a compiler
       // refusal is a state refusal, never a structural 500.
       let compiled: ReturnType<AnimationRenderingService['compileCaption']>

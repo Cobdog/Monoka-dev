@@ -1196,23 +1196,111 @@ test('the §12.2 vertical slice — leave, land, return, review, select, continu
     await expect(back.locator('[data-anim-review-continue]')).toBeEnabled()
     // EXPLICITLY CONTINUE (§7.1): the chain advances one step — the new step
     // slot mints (the F1 append) and the next step's submission fires against
-    // it. THIS build's honest limit then answers at the wire: the promoted
-    // frame rides the clip artifact, and the tween adapters' reference slots
-    // consume images — the submission is refused until the engine leg's real
-    // frame extraction lands (the task-9 concern, surfaced by name).
-    await expect(back.locator('[data-anim-review-limit]')).toBeVisible()
+    // it. The promoted-frame path is REAL now (task 15): the near reference
+    // resolves to the EXTRACTED frame image at submit time, the step-2 render
+    // dispatches and lands — the honest-limit refusal and its panel note are
+    // gone (the §12.2 slice's continuation completes).
+    await expect(back.locator('[data-anim-review-limit]')).toHaveCount(0)
     await back.locator('[data-anim-review-continue]').click()
     await expect(page.locator(`[data-anim-span="${seeded.spanId}"] [data-anim-step-slot]`)).toHaveCount(2, { timeout: 15_000 })
-    const refusal = page.locator('[data-anim-command-error]')
-    await expect(refusal).toBeVisible({ timeout: 15_000 })
-    await expect(refusal).toContainText('image asset')
-    // The document: the chain structurally advanced (the empty second slot
-    // consumes no reference state), the selection survived the continuation.
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      const span = view.document.body.spans.find((entry) => entry.id === seeded.spanId)!
+      return span.stepSlots[1]!.attempts.length
+    }, { timeout: 45_000 }).toBe(1)
+    // The selection survived the continuation, and the panel followed the
+    // chain: it reviews step 2's take now.
     const continued = await readAnimationDocument(request, seeded.documentId)
     const continuedSpan = continued.document.body.spans.find((entry) => entry.id === seeded.spanId)!
     expect(continuedSpan.stepSlots).toHaveLength(2)
-    expect(continuedSpan.stepSlots[1]!.attempts).toEqual([])
     expect(continuedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 5 })
+    const stepTwoAttempt = continued.document.attempts.find((entry) => continuedSpan.stepSlots[1]!.attempts.includes(entry.attemptId))!
+    await expect(back).toHaveAttribute('data-anim-review-attempt', stepTwoAttempt.attemptId, { timeout: 15_000 })
+    await expect(back).toContainText('step 2')
+    // RENDER-IS-THE-PROOF: the engine holds exactly TWO records — reaching
+    // the engine at all is the flip (a video-asset near reference would have
+    // been refused before dispatch), and no second render fired for step 1.
+    expect(Object.keys(await engine.historyAll())).toHaveLength(2)
+    await expect(page.locator('[data-anim-command-error]')).toHaveCount(0)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  // The fake-engine child actually exited — never orphaned.
+  expect(engineExited).toBe(true)
+})
+
+// Task 15's regression case (task 10's Important-1 — the RELEASE BLOCKER): a
+// span holding a TRAILING EMPTY step slot (exactly what a continuation whose
+// submission was refused or interrupted leaves behind) still reviews the
+// FRONTIER step — and Continue from that review submits INTO the empty
+// trailing slot: no second hole mints, the near reference is the frontier's
+// promoted frame, and the chain advances one step exactly. Before the fix
+// the button was enabled while the command demanded the LAST slot's own
+// selection and refused loudly — the divergence.
+test('a trailing empty step slot receives the continuation — no second hole, the frontier review drives it (regression)', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  await engine.control({ steps: 6, stepDelayMs: 200 })
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Divergence regression')
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+
+    // Step 1 renders and lands; the reviewer selects frame 3 (the explicit
+    // §7.2.1 decision that gates the continuation).
+    const submitted = await request.post('/api/lan/animation/attempts', { data: tweenDraftBody(seeded.documentId, seeded.stepSlotId, `anim-e2e-reg-${Date.now()}`) })
+    expect(submitted.ok(), `step 1 submits (${await submitted.text()})`).toBe(true)
+    const attemptId = ((await submitted.json()) as { attemptId: string }).attemptId
+    await expect.poll(async () => {
+      const view = await readAttemptView(request, attemptId)
+      return view.attempt.execution === 'ready' && view.attempt.candidate !== null
+    }, { timeout: 30_000 }).toBe(true)
+    const landed = await readAnimationDocument(request, seeded.documentId)
+    expect(landed.document.revision).toBe(seeded.revision)
+    const selected = await request.post('/api/lan/animation/select/rolling-reference', {
+      data: { documentId: seeded.documentId, spanId: seeded.spanId, attemptId, frameIndex: 3, expectedRevision: landed.document.revision },
+    })
+    expect(selected.ok(), `the rolling reference selects (${await selected.text()})`).toBe(true)
+
+    // THE DIVERGENCE STATE: an empty trailing slot stands (the F1 append —
+    // exactly what a refused continuation leaves behind).
+    const appended = await request.post('/api/lan/animation/spans', {
+      data: { op: 'append-step-slot', documentId: seeded.documentId, spanId: seeded.spanId, expectedRevision: landed.document.revision + 1 },
+    })
+    expect(appended.ok(), `the step slot appends (${await appended.text()})`).toBe(true)
+    const stepTwoId = ((await appended.json()) as { stepSlotId: string }).stepSlotId
+
+    // The surface reviews the FRONTIER (step 1 — the newest landed take of
+    // the chain) and Continue is ENABLED: the panel's model and the command
+    // agree on the frontier now.
+    await page.goto(animationUrl)
+    await page.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    const panel = page.locator('[data-anim-review]')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    await expect(panel).toContainText('step 1')
+    await expect(panel.locator('[data-anim-review-continue]')).toBeEnabled()
+
+    // CONTINUE: the submission lands on the EXISTING empty slot — the span
+    // still holds exactly TWO slots (no second hole mints) and step 2
+    // renders from the frontier's promoted frame (the extracted image).
+    await panel.locator('[data-anim-review-continue]').click()
+    await expect(page.locator(`[data-anim-span="${seeded.spanId}"] [data-anim-step-slot]`)).toHaveCount(2)
+    await expect.poll(async () => {
+      const current = await readAnimationDocument(request, seeded.documentId)
+      const span = current.document.body.spans.find((entry) => entry.id === seeded.spanId)!
+      return span.stepSlots[1]!.attempts.length
+    }, { timeout: 45_000 }).toBe(1)
+    const continued = await readAnimationDocument(request, seeded.documentId)
+    const span = continued.document.body.spans.find((entry) => entry.id === seeded.spanId)!
+    expect(span.stepSlots).toHaveLength(2)
+    expect(span.stepSlots[1]!.id).toBe(stepTwoId)
+    expect(Object.keys(await engine.historyAll())).toHaveLength(2)
+    await expect(page.locator('[data-anim-command-error]')).toHaveCount(0)
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
     await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
@@ -1306,7 +1394,7 @@ test('a failed preparation recovers through the panel retry action (review)', as
     // PRESERVED.
     const history = await engine.historyAll()
     const jobId = Object.entries(history).find(([, record]) => {
-      const extra = Array.isArray(record.prompt) ? record.prompt[2] as { attempt_id?: string } | undefined : undefined
+      const extra = Array.isArray(record.prompt) ? record.prompt[3] as { attempt_id?: string } | undefined : undefined
       return extra?.attempt_id === submitted.attemptId
     })?.[0]
     expect(jobId, 'the engine holds the attempt\'s history record').toBeTruthy()

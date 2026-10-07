@@ -24,7 +24,8 @@
  * Live control (for break-it-on-purpose legs, no restart):
  *   POST /__control {"failMode":"validation"|"error"|"hang"|null,
  *                    "steps":n,"stepDelayMs":n,
- *                    "hideHistoryFor":"<promptId>"|null}
+ *                    "hideHistoryFor":"<promptId>"|null,
+ *                    "videoOnly":true|false}
  *   GET  /__control — current state
  *
  * "hideHistoryFor" masks ONE job's history record from every /history answer
@@ -32,6 +33,15 @@
  * index has not loaded that record yet). The record itself is untouched:
  * clearing the knob restores it, so a preparation/recovery leg can fail
  * against the gap, then succeed once it closes.
+ *
+ * "videoOnly" (default false) switches the animation lane's video jobs to
+ * the REAL engine's output shape: the clip and nothing else — no decoded
+ * frame images beside it — so the studio's frame-resolution seam exercises
+ * its ffmpeg extraction path (decode-the-frame-from-the-registered-clip)
+ * exactly as it must against a real ComfyUI save tail.
+ *
+ * History records carry the REAL tuple (docs/devdocs/comfyui-api §3):
+ * [number, prompt_id, prompt_graph, extra_data, outputs_to_execute].
  *
  * Video jobs (the animation lane) list the clip FIRST and then one output
  * IMAGE per conditioning frame — the frame-addressed listing the studio's
@@ -136,6 +146,10 @@ const state = {
   // A prompt id whose history record every /history answer OMITS while set
   // (see the header: the transient truth-gap knob — reversible, unlike wipe).
   hideHistoryFor: null,
+  // The animation lane's video jobs list ONLY the clip while true — the REAL
+  // engine's output shape (see the header: forces the studio's ffmpeg
+  // frame-extraction path).
+  videoOnly: false,
 }
 const control = (req, res, url) => {
   if (url.pathname === '/__control' && req.method === 'GET') {
@@ -207,13 +221,19 @@ function graphClipLength(graph) {
   return 22
 }
 
-function runPrompt(promptId, graph, extraData) {
+function runPrompt(promptId, graph, extraData, queueNumber) {
   const my = { promptId, timer: null, interrupted: false }
   running = my
   const tick = (fn, delay) => { my.timer = setTimeout(fn, delay) }
+  // The REAL history tuple (docs/devdocs/comfyui-api §3):
+  // [number, prompt_id, prompt_graph, extra_data, outputs_to_execute] — the
+  // save-tail node ids as the engine's queue records them.
+  const outputsToExecute = Object.entries(graph ?? {})
+    .filter(([, node]) => node && typeof node === 'object' && (node.class_type === 'SaveVideo' || node.class_type === 'SaveImage'))
+    .map(([id]) => id)
   const finishRecord = (images, status) => {
     const write = () => histories.set(promptId, {
-      prompt: [graph, { client_id: 'studio-realtime', prompt_id: promptId }, extraData],
+      prompt: [queueNumber, promptId, graph, extraData, outputsToExecute],
       outputs: { final: { images } },
       status: { status_str: status, completed: true, messages: [] },
     })
@@ -271,20 +291,22 @@ function runPrompt(promptId, graph, extraData) {
       }
     } else {
       // A video job lists its clip FIRST (the primary artifact the studio's
-      // landing consumes), then the decoded frames as output IMAGES — the
-      // frame-addressed listing the studio's preparer/extractor contract
-      // describes (an image-sequence-capable engine; the real-engine leg
-      // either adds the frame save tail or lands ffmpeg extraction behind
-      // the same seam). One PNG per conditioning frame, distinguishable per
-      // frame so content addressing never collapses two frames into one.
+      // landing consumes), then — unless videoOnly — the decoded frames as
+      // output IMAGES: the frame-addressed listing of an image-sequence-
+      // capable engine. videoOnly strips the frame images: the REAL engine's
+      // save-tail shape, where the studio's preparer/extractor must DECODE
+      // frames out of the registered clip (ffmpeg) instead of picking them
+      // from the listing.
       const length = graphClipLength(graph)
       const filename = `ComfyUI_${String(n).padStart(5, '0')}_.mp4`
       viewFiles.set(filename, { bytes: sampleMp4, mime: 'video/mp4' })
       images.push({ filename, subfolder: '', type: 'output' })
-      for (let frame = 0; frame < length; frame += 1) {
-        const frameName = `ComfyUI_${String(n).padStart(5, '0')}_frame${String(frame).padStart(3, '0')}.png`
-        viewFiles.set(frameName, { bytes: pngGradient(768, 432, n * 7 + frame * 31), mime: 'image/png' })
-        images.push({ filename: frameName, subfolder: '', type: 'output' })
+      if (!state.videoOnly) {
+        for (let frame = 0; frame < length; frame += 1) {
+          const frameName = `ComfyUI_${String(n).padStart(5, '0')}_frame${String(frame).padStart(3, '0')}.png`
+          viewFiles.set(frameName, { bytes: pngGradient(768, 432, n * 7 + frame * 31), mime: 'image/png' })
+          images.push({ filename: frameName, subfolder: '', type: 'output' })
+        }
       }
     }
     send({ type: 'executing', data: { prompt_id: promptId, node: 'MiniMaxH3ImageToVideo' } })
@@ -358,7 +380,7 @@ async function handle(req, res) {
           },
         })
       }
-      runPrompt(promptId, body.prompt ?? {}, body.extra_data ?? '')
+      runPrompt(promptId, body.prompt ?? {}, body.extra_data ?? '', jobCounter)
       return json(res, 200, { prompt_id: promptId, number: jobCounter, node_errors: {} })
     }
 

@@ -22,8 +22,12 @@
  *     only "selected" truth, and the panel reads it back from the document —
  *     a local selection state does not exist here by design.
  *   - Continue ("Generate next step") is gated on the durable selection
- *     naming THIS take: dependent advancement is always a user action taken
- *     after an explicit review decision (§7.1).
+ *     naming THIS take AND the subject being the chain's frontier (the last
+ *     slot holding attempts): dependent advancement is always a user action
+ *     taken after an explicit review decision (§7.1), and the chain
+ *     continues from the FRONTIER's rolling reference — never an older
+ *     step's (task 10's Important-1, closed at both the gate and the
+ *     command).
  *   - A re-roll is a fresh take for the SAME step — an alternative that
  *     never replaces the selection (§8.2); the take strip switches the
  *     review SUBJECT, not the document.
@@ -52,17 +56,15 @@ export type ReviewPanelProps = {
   takes: Array<{ attemptId: string }>
   /** True while a command is in flight (the store's busy). */
   busy: boolean
-  /** The shell's advisory honesty (this build's promoted-frame dispatch
-   *  limit) — null when no limit applies. */
-  limit: string | null
   /** Switches the review SUBJECT to another take (view state, never a
    *  document write). */
   onSelectTake(attemptId: string): void
   /** The explicit frame selection — §7.2.1 command 2 (the adapter routes
    *  non-proposed frames through on-demand extraction first, §7.2.2). */
   onSelectFrame(frameIndex: number): void
-  /** The continuation action — appends the next step slot and submits the
-   *  next step against it (§7.1: one step, explicit, never automatic). */
+  /** The continuation action — submits the next step into the span's
+   *  trailing empty slot when one stands, else appends the next step slot
+   *  and submits against it (§7.1: one step, explicit, never automatic). */
   onContinue(): void
   /** The re-roll action — a fresh take for this same step. */
   onReroll(): void
@@ -71,12 +73,25 @@ export type ReviewPanelProps = {
   onRetryPreparation(): void
 }
 
-export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, busy, limit, onSelectTake, onSelectFrame, onContinue, onReroll, onRetryPreparation }: ReviewPanelProps) {
+export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, busy, onSelectTake, onSelectFrame, onContinue, onReroll, onRetryPreparation }: ReviewPanelProps) {
   const status = REVIEW_STATUS[attempt.execution]
   const candidate = attempt.candidate
   const proposedFrame = attempt.preparation.proposedFrameIndex
   // The durable selection names THIS take — the §7.1 continuation gate.
   const selectionIsThisTake = slotSelection !== null && slotSelection.attemptId === attempt.attemptId
+  // ...AND the subject must be the chain's FRONTIER — the LAST slot holding
+  // attempts. When a later step has already landed, the chain's rolling
+  // reference is THAT step's promoted frame (the server's backward walk), so
+  // continuing from an older step's review would submit against a different
+  // near reference than the one reviewed. The panel's model and the
+  // continuation command agree exactly on the frontier (task 10's
+  // Important-1, closed both ways).
+  let frontierIndex = -1
+  for (let index = span.stepSlots.length - 1; index >= 0; index -= 1) {
+    if (span.stepSlots[index]!.attempts.length > 0) { frontierIndex = index; break }
+  }
+  const subjectIsFrontier = frontierIndex === stepIndex - 1
+  const canContinue = selectionIsThisTake && subjectIsFrontier
   const readyToReview = attempt.execution === 'ready' && candidate !== null
   const inFlight = IN_FLIGHT.has(attempt.execution)
   const isSelectedFrame = (frameIndex: number): boolean => selectionIsThisTake && slotSelection!.frameIndex === frameIndex
@@ -201,10 +216,12 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
         <Button
           variant="primary"
           busy={busy}
-          disabled={!selectionIsThisTake}
+          disabled={!canContinue}
           data-anim-review-continue
           title={selectionIsThisTake
-            ? 'Appends the next step slot and submits the next step against it (§7.1 — dependent advancement is always your action)'
+            ? (subjectIsFrontier
+                ? 'Submits the next step into the span’s trailing empty slot when one stands, else appends the next step slot and submits against it (§7.1 — dependent advancement is always your action)'
+                : 'The chain has already advanced past this step — its rolling reference is the latest landed step’s frame; continue from that step’s review')
             : 'Choose a reference frame from this take first — the next step needs its near reference (§7.1)'}
           onClick={onContinue}
         >
@@ -221,7 +238,6 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
           Generate another take
         </Button>
       </div>
-      {limit !== null && <p className="anim-note" role="status" data-anim-review-limit>{limit}</p>}
 
       {/* The frozen caption (F2's surfacing): what this attempt MEANT when it
           was submitted — later edits are the next draft, never its meaning. */}

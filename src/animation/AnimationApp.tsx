@@ -131,24 +131,12 @@ export function AnimationApp() {
       toKey: timeline.keys.find((key) => key.id === selectedSpan.toKeyId) ?? null,
     }
   }, [document, selectedSpan, timeline])
-  // The selected span's continuation truth (task 10): what the NEXT
-  // submission's near reference will resolve to — the server's own backward
-  // walk over the slots before the target (the first slot WITH a selection
-  // decides). The next step's target is APPENDED after every current slot,
-  // so the walk here covers them ALL. When it resolves to a landed clip,
-  // the near reference is a PROMOTED FRAME and this build's honest dispatch
-  // limit applies — the review panel names it (the slot still advances; the
-  // engine leg's real frame extraction is what flips the rule).
-  const nextNearIsPromotedFrame = useMemo(() => {
-    if (document === null || selectedSpan === null) return false
-    for (let index = selectedSpan.stepSlots.length - 1; index >= 0; index -= 1) {
-      const selected = selectedSpan.stepSlots[index]?.selectedRollingReference
-      if (!selected) continue
-      const attempt = document.attempts.find((entry) => entry.attemptId === selected.attemptId) ?? null
-      return attempt !== null && attempt.candidate !== null
-    }
-    return false
-  }, [document, selectedSpan])
+  // The selected span's continuation truth (task 10, completed by task 15):
+  // what the NEXT submission's near reference will resolve to — the server's
+  // own backward walk over the slots before the target (the first slot WITH
+  // a selection decides). A promoted frame resolves to its EXTRACTED image
+  // at submit time (the frame-resolution seam), so the chain advances from
+  // any landed step's reviewed frame.
   const reviewPanel = useMemo(() => {
     if (document === null || selectedSpan === null) return null
     // The span's tween attempts in landing order — the panel's subject is
@@ -162,11 +150,8 @@ export function AnimationApp() {
     const slotIndex = selectedSpan.stepSlots.findIndex((slot) => slot.id === subject.targetId)
     if (slotIndex < 0) return null
     const slot = selectedSpan.stepSlots[slotIndex]!
-    const limit = nextNearIsPromotedFrame
-      ? 'Honest limit of this build: the promoted frame extracts as a real image, but the tween submission still resolves its near reference from the landed clip artifact itself — the submit-time frame resolution is the engine leg\'s work — so generating the next step appends the step slot and submits, but the submission is refused (the clip is a video asset) until then.'
-      : null
-    return { subject, stepIndex: slotIndex + 1, slotSelection: slot.selectedRollingReference, takes: slot.attempts.map((attemptId) => ({ attemptId })), limit }
-  }, [document, selectedSpan, reviewTake, nextNearIsPromotedFrame])
+    return { subject, stepIndex: slotIndex + 1, slotSelection: slot.selectedRollingReference, takes: slot.attempts.map((attemptId) => ({ attemptId })) }
+  }, [document, selectedSpan, reviewTake])
   // The selected KEY's hero surfaces (task 11, §5.2): the review of the hero
   // takes that targeted it (the newest, or the reviewer's explicit take) and
   // the authoring panel sourcing it as the current key of the NEXT
@@ -410,11 +395,10 @@ export function AnimationApp() {
                   slotSelection={reviewPanel.slotSelection}
                   takes={reviewPanel.takes}
                   busy={busy}
-                  limit={reviewPanel.limit}
                   onSelectTake={(attemptId) => setReviewTake({ spanId: selectedSpan.id, attemptId })}
                   onSelectFrame={(frameIndex) => void session.commands.selectReferenceFrame(selectedSpan.id, reviewPanel.subject.attemptId, frameIndex)}
                   onContinue={() => void session.commands.continueChain(selectedSpan.id)}
-                  onReroll={() => void session.commands.rerollStep(selectedSpan.id)}
+                  onReroll={() => void session.commands.rerollStep(selectedSpan.id, reviewPanel.subject.targetId)}
                   onRetryPreparation={() => void session.commands.retryPreparation(reviewPanel.subject.attemptId)}
                 />
               )}

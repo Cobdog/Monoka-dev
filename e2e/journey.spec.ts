@@ -133,14 +133,14 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
     await expect.poll(async () => {
       const history = (await mirrorJson(mirrorPort, '/history')) as Record<string, MirrorHistoryEntry>
       return Object.values(history).some((entry) => {
-        const graph = (entry.prompt?.[0] ?? {}) as Record<string, { class_type?: string; inputs?: Record<string, unknown> }>
+        const graph = (entry.prompt?.[2] ?? {}) as Record<string, { class_type?: string; inputs?: Record<string, unknown> }>
         return Object.values(graph).some((node) => typeof node?.class_type === 'string' && /MiniMaxH3PreviewOverride/.test(node.class_type))
       })
     }, { timeout: 20_000 }).toBe(true)
     // …with the decoder the mirror actually serves (the taeh3 fallback pick).
     const history = (await mirrorJson(mirrorPort, '/history')) as Record<string, MirrorHistoryEntry>
     const videoGraph = Object.values(history).flatMap((entry) => {
-      const graph = (entry.prompt?.[0] ?? {}) as Record<string, { class_type?: string; inputs?: Record<string, unknown> }>
+      const graph = (entry.prompt?.[2] ?? {}) as Record<string, { class_type?: string; inputs?: Record<string, unknown> }>
       return Object.values(graph)
     })
     const overrideNode = videoGraph.find((node) => typeof node?.class_type === 'string' && /MiniMaxH3PreviewOverride/.test(node.class_type!))
@@ -316,7 +316,7 @@ test('the start-frame (image→video) lane wires the PreviewOverride pack node',
     const findStartFrameGraph = async () => {
       const history = (await mirrorJson(mirrorPort, '/history')) as Record<string, MirrorHistoryEntry>
       for (const entry of Object.values(history)) {
-        const graph = (entry.prompt?.[0] ?? {}) as Record<string, GraphNode>
+        const graph = (entry.prompt?.[2] ?? {}) as Record<string, GraphNode>
         if (Object.values(graph).some((node) => node.class_type === 'MiniMaxH3ImageToVideo')) return graph
       }
       return null
@@ -438,7 +438,7 @@ test('reference prep on the mirror: longest side to the resolution, aspect prese
     const findReferenceGraph = async () => {
       const history = (await mirrorJson(mirrorPort, '/history')) as Record<string, MirrorHistoryEntry>
       for (const entry of Object.values(history)) {
-        const graph = (entry.prompt?.[0] ?? {}) as Record<string, GraphNode>
+        const graph = (entry.prompt?.[2] ?? {}) as Record<string, GraphNode>
         if (Object.values(graph).some((node) => node.class_type === 'MiniMaxH3ReferenceToVideo')) return graph
       }
       return null

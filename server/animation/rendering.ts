@@ -19,13 +19,16 @@
  *   2. THE BLOB SINK + FRAME PREPARER — the document store's blob tree
  *      behind a two-method interface (registerBytes/readBlob), and the
  *      production prepareFrame the completion owner consumes: resolving the
- *      review asset for a proposed frame from the engine's output listing.
- *      HONEST LIMIT: the engine serves output FILES; for the video artifacts
- *      this lane produces, the frame asset IS the clip artifact and the
- *      frame INDEX rides as preparation metadata (an image-sequence engine
- *      output would resolve to the actual frame file). Frame-accurate image
- *      extraction (ffmpeg) belongs to the real-engine leg's review pipeline,
- *      not to the engine contract.
+ *      review asset for a frame from the engine's output listing. Two
+ *      listing shapes, both real: an image-sequence listing (the fake
+ *      engine's animation lane, an engine that saves decoded frames beside
+ *      the clip) resolves the frame-addressed IMAGE directly; a VIDEO-ONLY
+ *      listing (the real engine's save tail) frame-accurately decodes the
+ *      requested frame from the registered clip through ffmpeg and registers
+ *      the PNG — the tween chain's rolling reference and the hero frame
+ *      selection consume IMAGE assets either way. Registration is
+ *      content-addressed, so the whole resolution is idempotent by
+ *      (attempt, frame, extraction recipe) — §11.4's extraction identity.
  *
  *   3. THE SERVICE — submit/getState/cancel/extractFrame + compileCaption.
  *      submit() resolves once the attempt is validated, persisted (durable
@@ -41,6 +44,8 @@
  */
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   AnimationConflictError,
@@ -58,6 +63,7 @@ import { COMPILER_VERSION, compileHeroCaption, compileSequenceCaption, compileTw
 import type { CompiledCaption, HeroContext, SequenceContext, TweenContext } from '../../shared/animation/compiler'
 import { animationInputHash, isUuid } from '../../shared/animation/types'
 import type { AnimationTool, AssetReference, AttemptExecutionState, FrozenAttemptSnapshot, MediumString } from '../../shared/animation/types'
+import { runTool } from '../datasets/probe'
 
 // ---------------------------------------------------------------------------
 // the service contract (§7.2)
@@ -272,11 +278,13 @@ lostSettleMs?: number }): EnginePort {
 
   /** The clip's frame count from the graph the engine stored in the history
    *  record — the conditioning node's `length` input (the fake and real
-   *  engines both store the full graph with the record). */
+   *  engines both store the full graph with the record). The history tuple
+   *  is [number, prompt_id, prompt_graph, extra_data, outputs_to_execute]
+   *  (docs/devdocs/comfyui-api §3): the GRAPH lives at index 2. */
   function frameCountOf(record: Record<string, unknown>): number {
     const prompt = record.prompt
-    if (Array.isArray(prompt) && prompt[0] && typeof prompt[0] === 'object') {
-      for (const node of Object.values(prompt[0] as Record<string, unknown>)) {
+    if (Array.isArray(prompt) && isRecord(prompt[2])) {
+      for (const node of Object.values(prompt[2] as Record<string, unknown>)) {
         const entry = node as { class_type?: unknown; inputs?: Record<string, unknown> } | null
         if (!entry || typeof entry !== 'object') continue
         if (entry.class_type === 'MiniMaxH3ImageToVideo' || entry.class_type === 'MiniMaxH3ReferenceToVideo') {
@@ -421,13 +429,15 @@ lostSettleMs?: number }): EnginePort {
       const history = await fetchJson<Record<string, Record<string, unknown>>>('/history')
       const prefix = attemptOutputPrefix(attemptId)
       for (const [jobId, record] of Object.entries(history ?? {})) {
-        const extra = Array.isArray(record.prompt) && record.prompt[2] && typeof record.prompt[2] === 'object'
-          ? (record.prompt[2] as Record<string, unknown>)
-          : null
+        // The history tuple (docs/devdocs/comfyui-api §3):
+        // [number, prompt_id, prompt_graph, extra_data, outputs_to_execute]
+        // — extra_data at [3], the graph at [2]. The search reads BOTH
+        // carriers the request stamped (extra_data verbatim, the save-tail
+        // prefix inside the graph).
+        const prompt = record.prompt
+        const extra = Array.isArray(prompt) && isRecord(prompt[3]) ? prompt[3] : null
         if (extra !== null && extra.attempt_id === attemptId) return jobId
-        const graph = Array.isArray(record.prompt) && record.prompt[0] && typeof record.prompt[0] === 'object'
-          ? (record.prompt[0] as Record<string, unknown>)
-          : null
+        const graph = Array.isArray(prompt) && isRecord(prompt[2]) ? prompt[2] : null
         if (graph !== null && graphCarriesPrefix(graph, prefix)) return jobId
       }
       return null
@@ -492,9 +502,8 @@ function graphCarriesPrefix(graph: Record<string, unknown>, prefix: string): boo
  *  artifacts resolves frame N to the Nth image — an image-sequence engine
  *  output IS the frame-addressed form (the fake engine's animation lane
  *  lists the decoded frames beside the clip). A listing without images (the
- *  real engine's video-only output) resolves every frame to the positional
- *  artifact with its own kind — the honest limit until the real-engine leg
- *  lands frame-accurate extraction. */
+ *  real engine's video-only output) names the clip itself; the caller
+ *  frame-accurately extracts from it (decodeClipFrame below). */
 function frameArtifactOf(outputs: NonNullable<EngineJobStatus['outputs']>, frameIndex: number): { relPath: string; kind: 'image' | 'video' } {
   const images = outputs.filter((artifact) => artifact.kind === 'image')
   if (images.length > 0) return images[Math.max(0, Math.min(frameIndex, images.length - 1))]
@@ -502,24 +511,76 @@ function frameArtifactOf(outputs: NonNullable<EngineJobStatus['outputs']>, frame
   return { relPath: positional.relPath, kind: positional.kind }
 }
 
-/** Resolves the review asset for a frame from the engine's output listing:
- *  the frame-addressed artifact (frameArtifactOf), registered as a blob by
- *  the port (registration is content-addressed, so this is idempotent by
- *  (take, frame, extraction version)). Throws when the engine cannot be
- *  asked — that IS a preparation failure, and the owner's bounded retry +
- *  preserve-the-clip policy takes over (§11.4). */
-export function makeFramePreparer(deps: { engine: EnginePort; store: AnimationStore }): (attemptId: string, frameIndex: number) => Promise<AssetReference> {
-  return async (attemptId, frameIndex) => {
-    const attempt = deps.store.getAttempt(attemptId)
-    if (!attempt || !attempt.engineJobId || !attempt.result) {
-      throw new Error(`Attempt ${attemptId} has no landed clip to prepare a frame from.`)
-    }
-    const status = await deps.engine.history(attempt.engineJobId)
-    const outputs = status.outputs ?? []
-    if (outputs.length === 0) throw new Error(`The engine holds no outputs for attempt ${attemptId}.`)
-    const artifact = frameArtifactOf(outputs, frameIndex)
-    return { assetId: artifact.relPath, relPath: artifact.relPath, kind: artifact.kind }
+/** Decodes ONE frame of a clip into PNG bytes — the frame-accurate form:
+ *  the trim filter passes exactly [frameIndex, frameIndex+1) with no
+ *  keyframe seeking and no timestamp rounding, so frame N is frame N (the
+ *  export module's own length discipline, applied to a single frame). */
+export async function decodeClipFrame(ffmpegPath: string, clipBytes: Buffer, frameIndex: number): Promise<Buffer> {
+  const work = await mkdtemp(join(tmpdir(), 'minimax-animation-frame-'))
+  try {
+    // ffmpeg probes container content, not the extension — the staged input
+    // carries no format claim.
+    const input = join(work, 'clip')
+    const output = join(work, 'frame.png')
+    await writeFile(input, clipBytes)
+    await runTool(ffmpegPath, ['-y', '-v', 'error', '-i', input, '-vf', `trim=start_frame=${frameIndex}:end_frame=${frameIndex + 1}`, '-frames:v', '1', '-an', output], 120_000)
+    return await readFile(output).catch(() => {
+      throw new Error(`The clip holds no decodable frame at index ${frameIndex} (the decoder produced no output).`)
+    })
+  } finally {
+    await rm(work, { recursive: true, force: true }).catch(() => undefined)
   }
+}
+
+/** The frame-resolution seam's dependencies: the engine (its output
+ *  listing), the store (the landed attempt), the blob sink (the registered
+ *  clip + the extracted frame's registration), and the ffmpeg binary
+ *  (re-resolved per call — settings changes apply without a restart). */
+export type FrameResolutionDeps = {
+  engine: EnginePort
+  store: AnimationStore
+  blobs: AnimationBlobSink
+  ffmpegPath: () => string
+}
+
+/** Resolves the review asset for a frame of a LANDED attempt — §7.2.2's two
+ *  paths (the proposed frame's automatic preparation and on-demand
+ *  extraction) share this resolution: an image-sequence listing resolves the
+ *  frame-addressed IMAGE directly; a video-only listing (the real engine's
+ *  save tail) decodes the frame from the registered clip through ffmpeg and
+ *  registers the PNG as an IMAGE asset. Content addressing makes the whole
+ *  resolution idempotent by (attempt, frame, extraction recipe). Throws when
+ *  the engine cannot be asked or the frame cannot be decoded — that IS a
+ *  preparation failure, and the owner's bounded retry + preserve-the-clip
+ *  policy takes over (§11.4). */
+async function resolveFrameAsset(deps: FrameResolutionDeps, attemptId: string, frameIndex: number): Promise<AssetReference> {
+  const attempt = deps.store.getAttempt(attemptId)
+  if (!attempt || !attempt.engineJobId || !attempt.result) {
+    throw new Error(`Attempt ${attemptId} has no landed clip to resolve a frame from.`)
+  }
+  const status = await deps.engine.history(attempt.engineJobId)
+  const outputs = status.outputs ?? []
+  if (outputs.length === 0) throw new Error(`The engine holds no outputs for attempt ${attemptId}.`)
+  const artifact = frameArtifactOf(outputs, frameIndex)
+  if (artifact.kind === 'image') {
+    return { assetId: artifact.relPath, relPath: artifact.relPath, kind: 'image' }
+  }
+  // The video-only listing (the real engine's shape): the clip is already a
+  // registered blob (the port registered it when the job materialized) —
+  // decode the frame, register the PNG, hand back an IMAGE asset.
+  const clip = deps.blobs.readBlob(artifact.relPath)
+  if (clip === null) {
+    throw new Error(`The clip artifact (${artifact.relPath}) is not readable from the store — its frames cannot be extracted.`)
+  }
+  const png = await decodeClipFrame(deps.ffmpegPath(), clip, frameIndex)
+  const registered = deps.blobs.registerBytes('image', png, `frame-${attemptId.slice(0, 8)}-${frameIndex}.png`)
+  return { assetId: registered.relPath, relPath: registered.relPath, kind: 'image' }
+}
+
+/** The completion owner's prepareFrame: the frame-resolution seam over the
+ *  engine's output listing (see resolveFrameAsset). */
+export function makeFramePreparer(deps: FrameResolutionDeps): (attemptId: string, frameIndex: number) => Promise<AssetReference> {
+  return (attemptId, frameIndex) => resolveFrameAsset(deps, attemptId, frameIndex)
 }
 
 // ---------------------------------------------------------------------------
@@ -550,11 +611,14 @@ export function createAnimationRenderingService(deps: {
    *  instance into both). */
   owner: CompletionOwner
   blobs: AnimationBlobSink
+  /** The frame-extraction binary (the same re-resolved-per-call seam the
+   *  exporter uses): on-demand extraction of a video-only listing's frame. */
+  ffmpegPath: () => string
   compile: { hero: typeof compileHeroCaption; tween: typeof compileTweenCaption; sequence: typeof compileSequenceCaption }
   emit: (type: string, payload: unknown) => void
   now?: () => number
 }): AnimationRenderingService {
-  const { store, engine, owner, blobs, compile, emit } = deps
+  const { store, engine, owner, blobs, compile, emit, ffmpegPath } = deps
   const now = deps.now ?? Date.now
 
   /** §7.2.2 validation — everything checked BEFORE anything is persisted. */
@@ -761,14 +825,18 @@ export function createAnimationRenderingService(deps: {
         throw new AnimationRuleError(`frameIndex must be an integer within the clip (0..${attempt.result.candidate.frameCount - 1}).`, 400)
       }
       if (!attempt.engineJobId) throw new AnimationRuleError('The attempt has no engine job to extract from.', 400)
-      // On-demand extraction (§7.2.2 path 2): the same frame-addressed
-      // artifact resolution the preparer performs — content addressing makes
-      // it idempotent per (take, frame, extraction version).
-      const status = await engine.history(attempt.engineJobId)
-      const outputs = status.outputs ?? []
-      if (outputs.length === 0) throw new AnimationRuleError('The engine holds no outputs for this attempt.', 400)
-      const artifact = frameArtifactOf(outputs, frameIndex)
-      return { assetId: artifact.relPath, relPath: artifact.relPath, kind: artifact.kind }
+      // On-demand extraction (§7.2.2 path 2): the SAME frame-resolution seam
+      // the preparer performs — an image-sequence listing resolves the
+      // frame-addressed image, a video-only listing frame-accurately decodes
+      // through ffmpeg. Content addressing makes it idempotent per (take,
+      // frame, extraction recipe); an unresolvable frame is a NAMED refusal
+      // (never a video-asset reference the submission would reject).
+      try {
+        return await resolveFrameAsset({ engine, store, blobs, ffmpegPath }, attemptId, frameIndex)
+      } catch (error) {
+        if (error instanceof AnimationRuleError) throw error
+        throw new AnimationRuleError(`The frame could not be extracted: ${error instanceof Error ? error.message : String(error)}`, 400)
+      }
     },
 
     compileCaption(input) {

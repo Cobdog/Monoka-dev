@@ -186,26 +186,33 @@ type AnimationSessionState = {
    *  candidate — the clone-and-select authoring path, lock-guarded). */
   setKeyFacing(keyId: string, facing: FacingTerm | null): Promise<boolean>
   /** Submits one tween step: flushes the intent, resolves the target step
-   *  slot from the live document, submits the draft (a fresh idempotency key
-   *  per deliberate click). Null = the failure surface already names it. */
-  submitTweenStep(spanId: string, draft: { movement: string; preservation: string; overrides: SessionOverrideInput }): Promise<{ attemptId: string } | null>
+   *  slot from the live document (the named slot when `targetStepSlotId` is
+   *  given, else the span's last), submits the draft (a fresh idempotency
+   *  key per deliberate click). Null = the failure surface already names
+   *  it. */
+  submitTweenStep(spanId: string, draft: { movement: string; preservation: string; overrides: SessionOverrideInput }, targetStepSlotId?: string): Promise<{ attemptId: string } | null>
   /** Task 10 — the review panel's commands. */
   /** The EXPLICIT reference-frame selection (§7.2.1 command 2). A frame
    *  other than the prepared proposal rides §7.2.2's on-demand extraction
    *  first; an extraction failure names itself and stops — the selection is
    *  never written against a frame that could not be resolved. */
   selectReferenceFrame(spanId: string, attemptId: string, frameIndex: number): Promise<boolean>
-  /** The §7.1 continuation — ONE step, always a user action: appends the
-   *  next step slot (the F1 command), then submits the next step against it
-   *  from the span's durable intent. The appended slot survives a refused
-   *  submission (it consumes no reference state) — the failure surface
-   *  names whatever the submit answered. */
+  /** The §7.1 continuation — ONE step, always a user action: submits the
+   *  next step from the span's durable intent, into the span's trailing
+   *  EMPTY slot when one stands (a continuation whose submission was
+   *  refused or interrupted left exactly that), else appending the next
+   *  step slot (the F1 command) first. The gate is the CHAIN's current
+   *  rolling reference — the nearest promoted selection at or before the
+   *  target, the server's own backward walk — never the last slot's own
+   *  selection (task 10's Important-1: the panel reviews the frontier
+   *  step; an empty trailing slot must not strand that review). */
   continueChain(spanId: string): Promise<{ attemptId: string } | null>
-  /** The re-roll — a fresh take for the SAME last step slot (a new
+  /** The re-roll — a fresh take for the step slot UNDER REVIEW (a new
    *  idempotency key: a deliberate roll, never §7.2.2's retry key). Lands
    *  as an alternative beside the previous takes; the selection never
-   *  moves (§8.2). */
-  rerollStep(spanId: string): Promise<{ attemptId: string } | null>
+   *  moves (§8.2). Without `stepSlotId` the span's last slot is the
+   *  target (the inspector's arm). */
+  rerollStep(spanId: string, stepSlotId?: string): Promise<{ attemptId: string } | null>
   /** F3's recovery action: re-prepares the proposed frame of a LANDED clip
    *  without re-rendering. The outcome rides the command's own durable
    *  read (preparation detail events stay server-internal). */
@@ -336,12 +343,26 @@ export type TweenPreview = {
  *  reference is always the destination key's selected candidate. A step
  *  whose selected attempt has NOT landed stops the walk with a named
  *  problem — the server refuses that submission with the same name, and the
- *  preview must never silently skip past an explicit selection. */
-export function deriveTweenPreview(document: AnimationDocumentView, spanId: string): TweenPreview {
+ *  preview must never silently skip past an explicit selection.
+ *
+ *  `targetStepSlotId` (optional) pins the submission target to a NAMED step
+ *  slot instead of the span's last — the re-roll's arm (a re-roll targets
+ *  the step UNDER REVIEW; with a trailing empty slot in the span, the last
+ *  slot is NOT it — task 10's Important-1). The walk then starts from that
+ *  slot's own position, exactly as the server's resolution does for the
+ *  submitted targetId. */
+export function deriveTweenPreview(document: AnimationDocumentView, spanId: string, targetStepSlotId?: string): TweenPreview {
   const span = document.body.spans.find((entry) => entry.id === spanId) ?? null
   if (span === null) {
     const problem = 'This span no longer exists in the document.'
     return { spanId, stepCount: 0, targetStepSlotId: null, rollingReference: { ok: false, problem }, farReference: { ok: false, problem }, problems: [problem] }
+  }
+  const targetIndex = targetStepSlotId !== undefined
+    ? span.stepSlots.findIndex((slot) => slot.id === targetStepSlotId)
+    : span.stepSlots.length - 1
+  if (targetIndex < 0) {
+    const problem = 'The named step slot no longer exists in this span.'
+    return { spanId, stepCount: span.stepSlots.length, targetStepSlotId: null, rollingReference: { ok: false, problem }, farReference: { ok: false, problem }, problems: [problem] }
   }
 
   const keyRef = (keyId: string, label: string): TweenRef => {
@@ -358,7 +379,7 @@ export function deriveTweenPreview(document: AnimationDocumentView, spanId: stri
   // The backward walk over EARLIER steps, the server's loop verbatim: skip
   // steps with no promoted selection, stop at the first one — landed or not.
   let rolling: TweenRef | null = null
-  for (let index = span.stepSlots.length - 2; index >= 0; index -= 1) {
+  for (let index = targetIndex - 1; index >= 0; index -= 1) {
     const selected = span.stepSlots[index]?.selectedRollingReference
     if (!selected) continue
     const attempt = document.attempts.find((entry) => entry.attemptId === selected.attemptId) ?? null
@@ -380,7 +401,7 @@ export function deriveTweenPreview(document: AnimationDocumentView, spanId: stri
   const problems: string[] = []
   if (!rollingReference.ok) problems.push(rollingReference.problem)
   if (!farReference.ok) problems.push(farReference.problem)
-  const lastSlot = span.stepSlots[span.stepSlots.length - 1] ?? null
+  const lastSlot = span.stepSlots[targetIndex] ?? null
   return { spanId, stepCount: span.stepSlots.length, targetStepSlotId: lastSlot === null ? null : lastSlot.id, rollingReference, farReference, problems }
 }
 
@@ -746,7 +767,7 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     }
   },
 
-  submitTweenStep: async (spanId, draft) => {
+  submitTweenStep: async (spanId, draft, targetStepSlotId) => {
     const current = get().document
     if (!current || get().busy) return null
     if (!draft.movement.trim()) {
@@ -764,7 +785,7 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     }
     const fresh = get().document
     if (!fresh) return null
-    const preview = deriveTweenPreview(fresh, spanId)
+    const preview = deriveTweenPreview(fresh, spanId, targetStepSlotId)
     if (preview.targetStepSlotId === null || !preview.rollingReference.ok || !preview.farReference.ok) {
       set({ commandError: preview.problems.join(' ') || 'The tween references are not resolvable.' })
       return null
@@ -830,34 +851,70 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
       set({ commandError: 'That span no longer exists in the document.' })
       return null
     }
+    // §7.1's gate at the command, keyed to the CHAIN's truth (task 10's
+    // Important-1 closed): the next step needs the span's current rolling
+    // reference — the nearest promoted selection walking back over the
+    // slots, exactly the resolution the server performs for the submission's
+    // target. NOT the LAST slot's own selection: a span whose trailing slot
+    // is still EMPTY (a continuation whose submission was refused or
+    // interrupted) continues INTO that slot from the PREVIOUS step's
+    // selection — the review panel models the frontier step, and this guard
+    // must agree with it.
+    const holdsPromotedReference = (() => {
+      for (let index = span.stepSlots.length - 1; index >= 0; index -= 1) {
+        const selected = span.stepSlots[index]?.selectedRollingReference
+        if (!selected) continue
+        const attempt = current.attempts.find((entry) => entry.attemptId === selected.attemptId) ?? null
+        return attempt !== null && attempt.candidate !== null
+      }
+      return false
+    })()
+    if (!holdsPromotedReference) {
+      // The panel disables the action — this guard keeps a stale click
+      // honest, never a silent no-op.
+      set({ commandError: 'Choose a reference frame from a landed step before continuing — the next step needs its near reference (§7.1).' })
+      return null
+    }
     const lastSlot = span.stepSlots[span.stepSlots.length - 1] ?? null
-    if (lastSlot === null || lastSlot.selectedRollingReference === null) {
-      // §7.1's gate at the command too (the panel disables the action —
-      // this guard keeps a stale click honest, never a silent no-op).
-      set({ commandError: 'Choose a reference frame from the latest step before continuing — the next step needs its near reference (§7.1).' })
+    if (lastSlot === null) {
+      set({ commandError: 'That span holds no step slots to continue into.' })
       return null
     }
     const ticket = openTicket
     set({ busy: true, commandError: null })
-    let appended: Awaited<ReturnType<typeof animationApi.appendStepSlot>>
-    try {
-      appended = await animationApi.appendStepSlot(current.id, spanId, get().document?.revision ?? 0)
-    } catch (error) {
-      await failCommand(error, ticket)
-      return null
+    let documentForSubmit = current
+    if (lastSlot.attempts.length > 0) {
+      // The chain's frontier holds a step: the continuation APPENDS the next
+      // slot (the F1 command) — the minted slot is the submission's target.
+      let appended: Awaited<ReturnType<typeof animationApi.appendStepSlot>>
+      try {
+        appended = await animationApi.appendStepSlot(current.id, spanId, get().document?.revision ?? 0)
+      } catch (error) {
+        await failCommand(error, ticket)
+        return null
+      }
+      if (ticket !== openTicket) return null
+      // The append is a completed authoring command (busy clears; the submit
+      // that follows owns its own busy window) — and the minted slot is now
+      // the span's LAST, exactly what submitTweenStep targets.
+      set({ document: appended.document, conflict: null, busy: false, attemptState: seedAttemptState(appended.document.attempts) })
+      documentForSubmit = appended.document
     }
-    if (ticket !== openTicket) return null
-    // The append is a completed authoring command (busy clears; the submit
-    // that follows owns its own busy window) — and the minted slot is now
-    // the span's LAST, exactly what submitTweenStep targets.
-    set({ document: appended.document, conflict: null, busy: false, attemptState: seedAttemptState(appended.document.attempts) })
-    return get().submitTweenStep(spanId, reviewDraftOf(appended.document, spanId, span))
+    // A trailing EMPTY slot is the continuation's own target already —
+    // submitting into it advances the chain WITHOUT minting another hole.
+    set({ busy: false })
+    return get().submitTweenStep(spanId, reviewDraftOf(documentForSubmit, spanId))
   },
 
-  rerollStep: async (spanId) => {
+  rerollStep: async (spanId, stepSlotId) => {
     const current = get().document
     if (!current) return null
-    return get().submitTweenStep(spanId, reviewDraftOf(current, spanId))
+    // A re-roll targets the step UNDER REVIEW (the named slot — the panel's
+    // subject), never the span's last slot by default: with a trailing empty
+    // slot in the span, the last slot would capture a "re-roll" as the NEXT
+    // step instead of an alternative for the reviewed one (task 10's
+    // Important-1, the re-roll arm).
+    return get().submitTweenStep(spanId, reviewDraftOf(current, spanId), stepSlotId)
   },
 
   retryPreparation: async (attemptId) => {

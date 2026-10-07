@@ -63,6 +63,13 @@
 //       ref_image_size max, dotted autogrow ref keys — the Set K wire-format
 //       finding), and the graph the DIST build actually submitted (read back
 //       from the fake engine's history) validates clean too
+//   (j) the real-engine output shape (task 15) — a VIDEO-ONLY listing (the
+//       mirror's videoOnly knob; the real save tail lists the clip and
+//       nothing beside it) lands the video clip and still PREPARES review
+//       frames: the frame-resolution seam decodes the requested frame out of
+//       the registered clip through ffmpeg, answers a registered PNG image
+//       asset, is idempotent per (attempt, frame), and refuses a
+//       beyond-decodable-range frame BY NAME
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -114,6 +121,7 @@ const {
 const {
   createAnimationRenderingService,
   createComfyEnginePort,
+  decodeClipFrame,
   makeDocumentStoreBlobSink,
   makeFramePreparer,
 } = require(path.join(REPO, 'dist-server/server/animation/rendering.js'))
@@ -122,6 +130,7 @@ const { createCompletionOwner } = require(path.join(REPO, 'dist-server/server/an
 const freePort = makePortAllocator('animation-rendering')
 const uuid = () => randomUUID()
 const sampleClipBytes = fs.readFileSync(path.join(REPO, 'e2e/fixtures/sample-clip.mp4'))
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -191,6 +200,9 @@ let attemptG2 = null
 let docH = null
 let keyH1 = null
 let keyH2 = null
+// (j)
+let docJ = null
+let attemptJ = null
 
 // ---- fixtures ----------------------------------------------------------------
 
@@ -354,7 +366,7 @@ beforeAll(async () => {
   // fires, since the attemptId only exists after submit). Every other
   // preparation runs through the real preparer.
   prepOverrides = new Map()
-  productionPreparer = makeFramePreparer({ engine: engineClient, store: anim, blobs: sink })
+  productionPreparer = makeFramePreparer({ engine: engineClient, store: anim, blobs: sink, ffmpegPath: () => 'ffmpeg' })
   owner = createCompletionOwner({
     store: anim,
     engine: engineClient,
@@ -371,6 +383,7 @@ beforeAll(async () => {
     engine: engineClient,
     owner,
     blobs: sink,
+    ffmpegPath: () => 'ffmpeg',
     compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
     emit,
   })
@@ -418,7 +431,9 @@ test('(a) submit resolves at enqueue; progress → rendering; the watcher lands 
   // carries the per-attempt output prefix (reconciliation's search key).
   await waitUntil(async () => (await engineRecord(early.engineJobId)) !== null, 10_000, 'the fake engine recording the submitted job')
   recordA = await engineRecord(early.engineJobId)
-  const graph = recordA.prompt[0]
+  // The history tuple (docs/devdocs/comfyui-api §3): [number, prompt_id,
+  // prompt_graph, extra_data, outputs_to_execute] — the graph at index 2.
+  const graph = recordA.prompt[2]
   const classes = Object.values(graph).map((node) => node.class_type)
   assert.ok(classes.includes('MiniMaxH3ImageToVideo'), 'the hero graph conditions through MiniMaxH3ImageToVideo')
   const saveNode = Object.values(graph).find((node) => node.class_type === 'SaveVideo')
@@ -483,7 +498,7 @@ test('(b) done-driven duplicate completion and a re-run observe() ⇒ still exac
   const ownRevisionAfterLanding = landed.ownRevision
 
   // The graph used the tween tool's node class with the dotted autogrow keys.
-  const graph = (await engineRecord(landed.engineJobId)).prompt[0]
+  const graph = (await engineRecord(landed.engineJobId)).prompt[2]
   const tweenNode = Object.values(graph).find((node) => node.class_type === 'MiniMaxH3ReferenceToVideo')
   assert.ok(tweenNode, 'the tween graph conditions through MiniMaxH3ReferenceToVideo')
   assert.ok('ref_images.ref_image_0' in tweenNode.inputs && 'ref_images.ref_image_1' in tweenNode.inputs, 'the refs ride DOTTED autogrow keys (the Set K wire-format finding)')
@@ -724,7 +739,7 @@ test('(g) reconcile resolves a lost dispatch by attempt-identifier search — ne
   const deadEngine = createComfyEnginePort({ baseUrl: `http://127.0.0.1:${deadPort}`, blobs: sink })
   const deadOwner = createCompletionOwner({ store: anim, engine: deadEngine, emit: () => undefined, prepareFrame: productionPreparer, pollMs: 50 })
   const deadService = createAnimationRenderingService({
-    store: anim, engine: deadEngine, owner: deadOwner, blobs: sink,
+    store: anim, engine: deadEngine, owner: deadOwner, blobs: sink, ffmpegPath: () => 'ffmpeg',
     compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
     emit: () => undefined,
   })
@@ -763,7 +778,7 @@ test('(g2) reattach-while-running lands; wiped engines interrupt; a lost-ack ren
   const landed = await waitAttemptState(reattach.attemptId, ['ready'], 'the re-attached watcher landing the render')
   assert.ok(landed.result, 'the re-attached observation landed the candidate')
   assert.equal(await engineRecordCount(), countBeforeA + 1, 'exactly ONE engine job for the reattached attempt (countBeforeA predates its completion) — no resubmission')
-  const reattachRecords = Object.values(await engineHistoryAll()).filter((record) => record.prompt?.[2]?.attempt_id === reattach.attemptId)
+  const reattachRecords = Object.values(await engineHistoryAll()).filter((record) => record.prompt?.[3]?.attempt_id === reattach.attemptId)
   assert.equal(reattachRecords.length, 1, 'the engine holds exactly one record carrying the attempt id (the extra_data carrier rides)')
 
   // ---- Leg B — confirmed lost with a KNOWN job id: the engine forgets the
@@ -804,7 +819,7 @@ test('(g2) reattach-while-running lands; wiped engines interrupt; a lost-ack ren
   assert.equal(anim.getAttempt(racing.attemptId).execution.state, 'reconciling', 'a non-empty engine queue keeps the lost-ack attempt pending — the job may be ours')
   // The job the attempt actually dispatched, found by the marker exactly as
   // the sweep finds it (waitUntil returns a boolean — the key is re-read).
-  const racingJobOf = async () => Object.entries(await engineHistoryAll()).find(([, record]) => record.prompt?.[2]?.attempt_id === racing.attemptId)?.[0] ?? null
+  const racingJobOf = async () => Object.entries(await engineHistoryAll()).find(([, record]) => record.prompt?.[3]?.attempt_id === racing.attemptId)?.[0] ?? null
   await waitUntil(async () => (await racingJobOf()) !== null, 10_000, 'the racing job completing into history (the marker answerable)')
   const racingJob = await racingJobOf()
   await owner.reconcile()
@@ -970,7 +985,7 @@ test('(i) every builder emission validates CLEAN against the REAL captured schem
   // And the graph the DIST build actually submitted (read back from the
   // fake engine's history in (a)) validates clean too — same gate, same
   // truth, through the real submit path.
-  assert.deepEqual(validateGraphAgainstSchemas(recordA.prompt[0], REAL_INFO), [], 'the submitted production graph passes the engine gate')
+  assert.deepEqual(validateGraphAgainstSchemas(recordA.prompt[2], REAL_INFO), [], 'the submitted production graph passes the engine gate')
 
   // The wrong-role snapshot is refused loudly by the pure builders (a
   // cross-tool snapshot is refused even earlier, by the tool guard).
@@ -982,3 +997,64 @@ test('(i) every builder emission validates CLEAN against the REAL captured schem
   assert.throws(() => buildSequenceGraph(sequenceWithHeroRefs, settings), /window-start/)
   assert.throws(() => buildHeroGraph(snapshots.tween, settings), /hero attempts/, 'a cross-tool snapshot is refused by the tool guard')
 })
+
+// ---------------------------------------------------------------------------
+// (j) the real-engine output shape — frame-accurate extraction (task 15)
+// ---------------------------------------------------------------------------
+
+test('(j) a video-only listing (the real engine\'s save tail) lands the clip and frame-accurately EXTRACTS review frames through ffmpeg', async () => {
+  docJ = anim.createDocument({ projectId, name: 'Juliet', binding: makeBinding() })
+  // The REAL engine's output shape: the clip and NOTHING beside it (the
+  // mirror's videoOnly knob strips the decoded frame images the
+  // image-sequence shape lists).
+  await engineControl({ videoOnly: true, steps: 4, stepDelayMs: 60 })
+  try {
+    attemptJ = await submitHero(docJ, uuid(), 'idem-j')
+    const landed = await waitAttemptState(attemptJ.attemptId, ['ready'], 'the hero attempt landing against the video-only listing')
+
+    // The listing the engine serves holds exactly ONE artifact — the clip.
+    const record = await engineRecord(landed.engineJobId)
+    const listed = Object.values(record.outputs).flatMap((node) => node.images ?? [])
+    assert.equal(listed.length, 1, 'the video-only listing carries the clip alone')
+    // The landed candidate IS that clip (a video asset), frame count from the
+    // graph's conditioning (the history tuple's graph at [2]).
+    assert.equal(landed.result.candidate.assetReference.kind, 'video')
+    assert.equal(landed.result.candidate.frameCount, 22)
+
+    // And yet the proposed frame PREPARED — the frame-resolution seam
+    // DECODED frame 11 out of the registered clip through ffmpeg.
+    const state = service.getState(attemptJ.attemptId)
+    assert.equal(state.preparation.state, 'proposed', `preparation proposed (state ${JSON.stringify(state.preparation)})`)
+    assert.equal(state.preparation.proposedFrameIndex, 11)
+
+    // On-demand extraction (§7.2.2 path 2) answers an IMAGE asset — a real
+    // PNG of the sample clip's own frame geometry (320x180), never the clip
+    // itself and never a listing image (there are none).
+    const first = await service.extractFrame(attemptJ.attemptId, 5)
+    assert.equal(first.kind, 'image')
+    assert.notEqual(first.relPath, landed.result.candidate.assetReference.relPath)
+    const png = documents.readBlob(first.relPath)
+    assert.ok(png, 'the extracted frame is a registered blob')
+    assert.ok(png.subarray(0, 8).equals(PNG_MAGIC), 'the extracted bytes are a PNG')
+    assert.equal(png.readUInt32BE(16), 320, 'the extracted frame carries the clip\'s width')
+    assert.equal(png.readUInt32BE(20), 180, 'the extracted frame carries the clip\'s height')
+
+    // §11.4's extraction identity: the same (attempt, frame) resolves to the
+    // SAME registered asset (content addressing over a deterministic
+    // decode); a different frame is a different asset.
+    const again = await service.extractFrame(attemptJ.attemptId, 5)
+    assert.equal(again.relPath, first.relPath, 'the same (attempt, frame) extracts to the same asset')
+    const other = await service.extractFrame(attemptJ.attemptId, 6)
+    assert.notEqual(other.relPath, first.relPath, 'a different frame extracts to a different asset')
+
+    // A frame beyond the clip's decodable range refuses BY NAME — never a
+    // silently-wrong frame (the raw seam: the fixture clip decodes 72
+    // frames; the service-level bounds answer earlier against the row's 22).
+    await assert.rejects(() => decodeClipFrame('ffmpeg', sampleClipBytes, 100), /no decodable frame at index 100/)
+  } finally {
+    // The knob is REVERSIBLE — the suite's standing image-sequence shape
+    // restores for whatever runs after.
+    await engineControl({ videoOnly: false })
+  }
+})
+
