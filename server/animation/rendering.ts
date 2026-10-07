@@ -107,7 +107,11 @@ export type AttemptStateView = {
   execution: AttemptExecutionState
   progress?: { value: number; max: number }
   preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number }
-  candidate: { assetReference: AssetReference; frameCount: number; earlierRevision: boolean } | null
+  /** Mirrors the store's result candidate: `id` is the MINTED document
+   *  candidate id (hero landings — the correlation key against the document
+   *  body's slot candidates); null when the tool mints nothing (tween
+   *  attaches by attempt id, sequence surfaces through editorial selection). */
+  candidate: { id: string | null; assetReference: AssetReference; frameCount: number; earlierRevision: boolean } | null
 }
 
 export type AnimationRenderingService = {

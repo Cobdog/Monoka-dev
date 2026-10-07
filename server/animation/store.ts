@@ -81,7 +81,13 @@ export type AnimationAttemptRow = {
   engineJobId: string | null
   execution: { state: AttemptExecutionState; progress?: { value: number; max: number } }
   preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number; error?: string }
-  result: { candidate: { assetReference: AssetReference; frameCount: number; earlierRevision: boolean } } | null
+  /** `candidate.id` is the MINTED document candidate id — the id inside the
+   *  document body's key slot (hero landings); null when the tool mints
+   *  nothing (tween attaches by attempt id, sequence surfaces through
+   *  editorial selection) and for rows persisted before the field existed.
+   *  It is what the fabric's attempt-ready envelope must correlate against —
+   *  never the engine artifact path. */
+  result: { candidate: { id: string | null; assetReference: AssetReference; frameCount: number; earlierRevision: boolean } } | null
   ownRevision: number
 }
 
@@ -330,6 +336,9 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
     attemptByIdem: db.prepare('SELECT * FROM animation_attempt WHERE idempotency_key = ?'),
     attemptByJob: db.prepare('SELECT * FROM animation_attempt WHERE engine_job_id = ?'),
     allAttempts: db.prepare('SELECT * FROM animation_attempt ORDER BY created_at ASC, rowid ASC'),
+    /** Scoped to one document — the recovery read must never hydrate (and
+     *  choke on) OTHER documents' rows. */
+    attemptsByDocument: db.prepare('SELECT * FROM animation_attempt WHERE document_id = ? ORDER BY created_at ASC, rowid ASC'),
     setAttemptResult: db.prepare('UPDATE animation_attempt SET result_json = ?, own_revision = own_revision + 1, updated_at = ? WHERE id = ?'),
     setAttemptExecution: db.prepare('UPDATE animation_attempt SET execution_json = ?, engine_job_id = COALESCE(?, engine_job_id), own_revision = own_revision + 1, updated_at = ? WHERE id = ?'),
     setAttemptPreparation: db.prepare('UPDATE animation_attempt SET preparation_json = ?, own_revision = own_revision + 1, updated_at = ? WHERE id = ?'),
@@ -376,7 +385,13 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       engineJobId: row.engine_job_id === null ? null : str(row.engine_job_id),
       execution: parseJson<AnimationAttemptRow['execution']>(row.execution_json, { state: 'queued' as const }),
       preparation: parseJson<AnimationAttemptRow['preparation']>(row.preparation_json, { state: 'pending' as const }),
-      result: parseJson<AnimationAttemptRow['result']>(row.result_json, null),
+      result: (() => {
+        const parsed = parseJson<AnimationAttemptRow['result']>(row.result_json, null)
+        // candidate.id normalization: rows persisted before the field
+        // existed hydrate with `undefined` — the type's truth is `| null`.
+        if (parsed?.candidate && typeof parsed.candidate.id !== 'string') parsed.candidate.id = null
+        return parsed
+      })(),
       ownRevision: Number(row.own_revision),
     }
   }
@@ -386,6 +401,23 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
     const row = statements.document.get(documentId) as Record<string, unknown> | undefined
     if (!row) throw new AnimationRuleError(`No animation document with id ${documentId}.`, 404)
     return row
+  }
+
+  /** Rows → hydrated attempts with POISON ISOLATION (the documents listing's
+   *  version-refusal isolation, M4): a row this build cannot hydrate (a
+   *  future tool, a corrupt snapshot) is skipped in isolation — one bad row
+   *  never takes a whole document read or the boot sweep down. The skipped
+   *  row stays untouched; its own direct read still surfaces the refusal. */
+  function hydrateAll(rows: Array<Record<string, unknown>>): AnimationAttemptRow[] {
+    const hydrated: AnimationAttemptRow[] = []
+    for (const row of rows) {
+      try {
+        hydrated.push(hydrateAttempt(row))
+      } catch {
+        // Isolation only — see the doc comment.
+      }
+    }
+    return hydrated
   }
 
   // ---- the authoring-command core -------------------------------------------
@@ -736,14 +768,14 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
     // attempts — separate rows, their OWN revision; completion events are
     // not user edits (§11.2) -------------------------------------------------
     /** The recovery read's attempt half (the route pairs it with the
-     *  document): every attempt of one document, oldest first. Attempt rows
-     *  outlive their span — a tween attempt whose target step slot was later
-     *  removed stays readable here (its landing is the owner's refusal, not
-     *  this read's). */
+     *  document): every attempt of one document, oldest first, scoped at the
+     *  QUERY (never hydrate-then-filter — a poison row from another document
+     *  must not reach this read at all) and hydrated with per-row isolation
+     *  (hydrateAll). Attempt rows outlive their span — a tween attempt whose
+     *  target step slot was later removed stays readable here (its landing
+     *  is the owner's refusal, not this read's). */
     attemptsForDocument: (documentId: string): AnimationAttemptRow[] =>
-      (statements.allAttempts.all() as Array<Record<string, unknown>>)
-        .map(hydrateAttempt)
-        .filter((attempt) => attempt.documentId === documentId),
+      hydrateAll(statements.attemptsByDocument.all(documentId ?? '') as Array<Record<string, unknown>>),
     recordAttempt: (input: { id: string; documentId: string; tool: AnimationTool; targetId: string; idempotencyKey: string; inputHash: string; snapshot: FrozenAttemptSnapshot }) => {
       // Same key ⇒ the existing attempt, whatever the new inputs carry — the
       // different-inputs CONFLICT is the route's call (it compares the stored
@@ -820,6 +852,12 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       // `true` is honored (its semantics may outrun the revision count).
       const earlierRevision = candidate.earlierRevision === true || frozenRevision < currentRevision
 
+      // The MINTED document candidate id (a hero landing pushes a
+      // KeyCandidate into the body — that id is the correlation key the
+      // fabric's attempt-ready envelope carries; the tools that mint nothing
+      // leave it null). Declared before the tool arms so the result write
+      // below is one shape for all three.
+      let mintedCandidateId: string | null = null
       if (tool === 'hero') {
         // A hero clip lands as a KEY CANDIDATE of its (proposed) slot — the
         // slot materializes when absent; selection stays an explicit command.
@@ -829,8 +867,9 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
           slot = { id: targetId, order, selectedCandidateId: null, candidates: [], lock: false }
           body.keys.push(slot)
         }
+        mintedCandidateId = randomUUID()
         slot.candidates.push({
-          id: randomUUID(),
+          id: mintedCandidateId,
           assetReference,
           origin: 'hero',
           provenance: {
@@ -857,7 +896,7 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
         throw new Error(`Landing into document ${str(documentRowData.id)} produced a body that fails validation — the landing was refused, nothing was persisted.`)
       }
       statements.setDocumentBodyLanding.run(JSON.stringify(revalidated), documentRowData.id)
-      const result: NonNullable<AnimationAttemptRow['result']> = { candidate: { assetReference, frameCount: candidate.frameCount, earlierRevision } }
+      const result: NonNullable<AnimationAttemptRow['result']> = { candidate: { id: mintedCandidateId, assetReference, frameCount: candidate.frameCount, earlierRevision } }
       statements.setAttemptResult.run(JSON.stringify(result), now(), attemptIdValue)
       return { attempt: hydrateAttempt(statements.attempt.get(attemptIdValue) as Record<string, unknown>) }
     }),
@@ -894,8 +933,7 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
     },
 
     attemptsInFlight: (): AnimationAttemptRow[] =>
-      (statements.allAttempts.all() as Array<Record<string, unknown>>)
-        .map(hydrateAttempt)
+      hydrateAll(statements.allAttempts.all() as Array<Record<string, unknown>>)
         .filter((attempt) => IN_FLIGHT_STATES.has(attempt.execution.state)),
 
     attemptByEngineJobId: (engineJobId: string) => {

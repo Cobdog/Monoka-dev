@@ -249,6 +249,7 @@ let tweenAttemptC = null
 let spanC = null
 // (d)
 let docD = null
+let attemptD = null
 // (e)
 let docE = null
 // (f)
@@ -481,6 +482,16 @@ test('(c) submit emits attempt-state envelopes on the animation channel; the lan
   const heroSlot = (await api.get(`/api/lan/animation/document?id=${docC.id}`)).body.document.body.keys.find((key) => key.id === keyC1)
   assert.equal(heroSlot.candidates.length, 2, 'the landed hero candidate APPENDED as an alternative')
   assert.equal(heroSlot.selectedCandidateId, key1.candidateId, 'completion NEVER auto-selects (§8.2)')
+  // Review Important-1: attempt-ready's candidateId is the MINTED DOCUMENT
+  // CANDIDATE id — correlatable against the key slot's candidates — never
+  // the engine artifact path.
+  const heroReady = fabric.envelopes.find((envelope) => envelope.ch === 'animation' && envelope.type === 'attempt-ready' && envelope.payload.attemptId === heroAttemptC)
+  assert.ok(heroReady, 'the attempt-ready envelope was collected')
+  assert.ok(
+    heroSlot.candidates.some((candidate) => candidate.id === heroReady.payload.candidateId),
+    'attempt-ready.candidateId matches a candidate id in the document body',
+  )
+  assert.notEqual(heroReady.payload.candidateId, heroState.body.attempt.candidate.assetReference.assetId, 'the candidateId is not the engine artifact path')
 
   // TWEEN — the first step of a chain: the rolling near reference resolves
   // from the span's start key (nothing has landed on the chain yet), the
@@ -503,6 +514,8 @@ test('(c) submit emits attempt-state envelopes on the animation channel; the lan
   const landedSpan = afterTween.body.document.body.spans.find((span) => span.id === spanC.id)
   assert.deepEqual(landedSpan.stepSlots[0].attempts, [tweenAttemptC], 'the landed tween attempt attached to its step slot')
   assert.equal(landedSpan.stepSlots[0].selectedRollingReference, null, 'the rolling reference stays an explicit selection')
+  const tweenReady = fabric.envelopes.find((envelope) => envelope.ch === 'animation' && envelope.type === 'attempt-ready' && envelope.payload.attemptId === tweenAttemptC)
+  assert.equal(tweenReady?.payload.candidateId, null, 'a tween landing mints no document candidate — candidateId is null, correlated by attemptId')
 
   // The two span-anchored selection routes answer on the real document.
   const rolling = await api.post('/api/lan/animation/select/rolling-reference', {
@@ -542,6 +555,7 @@ test('(d) same key + same draft ⇒ { created: false } and no second engine job;
   const first = await api.post('/api/lan/animation/attempts', body)
   assert.equal(first.status, 200)
   assert.equal(first.body.created, true)
+  attemptD = first.body.attemptId
   await api.get(`/api/lan/animation/attempt?id=${first.body.attemptId}`).then((state) => assert.ok(['queued', 'rendering', 'preparing', 'ready'].includes(state.body.attempt.execution)))
   const countAfterFirst = await engineRecordCount()
 
@@ -600,6 +614,28 @@ test('(e) a schema_version 99 row answers 400 naming the versions — never a do
   // The poison is isolated: the healthy documents still read.
   const healthy = await api.get(`/api/lan/animation/document?id=${docD.id}`)
   assert.equal(healthy.status, 200)
+
+  // Review Important-2: poison ATTEMPT rows degrade only themselves — one
+  // on THIS document (unhydratable: a future tool + a corrupt snapshot,
+  // skipped in isolation) and one on ANOTHER document (never reached by the
+  // scoped query). Neither may take the document read down.
+  const poison = new Database(path.join(home, 'studio.db'))
+  try {
+    const insertPoison = poison.prepare(
+      "INSERT INTO animation_attempt (id, document_id, tool, target_id, idempotency_key, input_hash, snapshot_json, engine_job_id, execution_json, preparation_json, result_json, own_revision, created_at, updated_at) VALUES (?, ?, 'quantum-morph', 't', ?, 'h', 'not-json', NULL, '{\"state\":\"queued\"}', '{\"state\":\"pending\"}', NULL, 0, 1, 1)",
+    )
+    insertPoison.run(uuid(), docD.id, `poison-${uuid().slice(0, 8)}`)
+    insertPoison.run(uuid(), docE.id, `poison-${uuid().slice(0, 8)}`)
+  } finally {
+    poison.close()
+  }
+  const surviving = await api.get(`/api/lan/animation/document?id=${docD.id}`)
+  assert.equal(surviving.status, 200, 'a poison attempt row does not take the document read down')
+  assert.deepEqual(
+    surviving.body.document.attempts.map((attempt) => attempt.attemptId),
+    [attemptD],
+    'the document serves exactly its one healthy attempt — the poison row skipped, the other document’s poison never reached',
+  )
 })
 
 // ---------------------------------------------------------------------------

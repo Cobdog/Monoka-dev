@@ -160,12 +160,16 @@ export function animationFabricEmitter(emitAnimation: (type: string, payload: un
         return
       case 'animation.attempt.ready': {
         if (!isNonEmptyString(payload.attemptId) || !isNonEmptyString(payload.documentId)) return
+        // candidateId is the MINTED DOCUMENT CANDIDATE ID (hero landings —
+        // the id the client correlates against the key slot's candidates),
+        // never the engine artifact path; null when the tool mints nothing
+        // (a tween's landed result correlates by attemptId, which the
+        // envelope already carries).
         const candidate = isRecord(payload.candidate) ? payload.candidate : null
-        const asset = candidate && isRecord(candidate.assetReference) ? candidate.assetReference : null
         emitAnimation('attempt-ready', {
           documentId: payload.documentId,
           attemptId: payload.attemptId,
-          candidateId: asset && isNonEmptyString(asset.assetId) ? asset.assetId : null,
+          candidateId: candidate && typeof candidate.id === 'string' ? candidate.id : null,
         })
         return
       }
