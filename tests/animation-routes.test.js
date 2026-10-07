@@ -40,12 +40,19 @@
 //       hideHistoryFor knob) retries through the endpoint: the clip stays
 //       landed, the same deterministic frame is re-proposed, and the engine
 //       count proves no re-render (§11.4)
+//   (h) the promoted-frame continuation (task 15) — a tween step 2+ whose
+//       near reference is a promoted frame freezes the EXTRACTED frame image
+//       (§7.2.2's frame-resolution seam at submit time): the submission
+//       reaches the engine — where this build's old honest limit refused the
+//       clip artifact as a video asset — and the engine's own record shows
+//       the extracted frame as the uploaded near reference
 //
 // Run after `pnpm build` (the server + web dist boot from dist-server).
 // Scratch homes through the Wave 4 ledger; ports through the allocator.
 import { test, beforeAll, afterAll } from 'vitest'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+import { engineInputName } from '../shared/animation/graphs'
 
 const require = createRequire(import.meta.url)
 const __dirname = require('node:path').dirname(fileURLToPath(import.meta.url))
@@ -94,7 +101,7 @@ async function engineRecordCount() {
  *  durable per-attempt marker (each /prompt receipt creates exactly one). */
 async function engineRecordsFor(attemptId) {
   const all = await engineHistoryAll()
-  return Object.values(all).filter((record) => record.prompt?.[2]?.attempt_id === attemptId)
+  return Object.values(all).filter((record) => record.prompt?.[3]?.attempt_id === attemptId)
 }
 
 // ---- server boot (the documents.test.js pattern) --------------------------
@@ -976,7 +983,7 @@ test('(g) a failed preparation retries through the endpoint — the clip survive
   // The transient engine truth gap: the job's history record disappears from
   // every /history answer — the preparation read finds no outputs (§11.4's
   // preparation-failure class; the knob is reversible, unlike wipe).
-  const jobId = Object.entries(await engineHistoryAll()).find(([, record]) => record.prompt?.[2]?.attempt_id === attemptId)?.[0]
+  const jobId = Object.entries(await engineHistoryAll()).find(([, record]) => record.prompt?.[3]?.attempt_id === attemptId)?.[0]
   assert.ok(jobId, 'the engine holds the attempt’s history record')
   await engineControl({ hideHistoryFor: jobId })
 
@@ -1016,4 +1023,89 @@ test('(g) a failed preparation retries through the endpoint — the clip survive
   const missing = await apiB.post('/api/lan/animation/attempt/retry-preparation', { attemptId: uuid() })
   assert.equal(missing.status, 404)
   assert.match(missing.body.error, /No attempt/)
+})
+
+// ---------------------------------------------------------------------------
+// (h) the promoted-frame continuation (task 15): a tween step 2+ whose near
+//     reference is a PROMOTED FRAME resolves it to the EXTRACTED frame image
+//     at submit time — the frozen reference is an image asset (the image-only
+//     rule's old refusal of the clip artifact is gone), and the engine
+//     receives the extracted frame as its uploaded near reference.
+// ---------------------------------------------------------------------------
+
+test('(h) a tween step 2+ freezes the EXTRACTED promoted frame as its near reference — the image-only refusal is flipped', async () => {
+  const created = await apiB.post('/api/lan/animation/documents', { projectId, name: 'Hotel', binding: makeBinding() })
+  assert.equal(created.status, 200)
+  const docH = created.body.document
+  const from = await makeSelectedKey(apiB, docH.id, docH.revision, 'h-from')
+  const to = await makeSelectedKey(apiB, docH.id, from.revision, 'h-to')
+
+  const span = await apiB.post('/api/lan/animation/spans', {
+    op: 'insert', documentId: docH.id, fromKeyId: from.keyId, toKeyId: to.keyId,
+    intent: { movement: 'she pushes off the back foot into a full stride', preservation: 'coat hem and scarf stay consistent' },
+    expectedRevision: to.revision,
+  })
+  assert.equal(span.status, 200, `the span inserts (${span.body.error ?? ''})`)
+  const spanId = span.body.spanId
+  const stepOne = span.body.document.body.spans.find((entry) => entry.id === spanId).stepSlots[0].id
+
+  // Step 1 renders and lands; the reviewer selects frame 5 (NOT the proposed
+  // mid-clip frame, so the selection rides the on-demand path too).
+  const first = await apiB.post('/api/lan/animation/attempts', {
+    documentId: docH.id, tool: 'tween', targetId: stepOne, idempotencyKey: 'idem-h-step-1',
+    draft: { tool: 'tween', targetStepSlotId: stepOne, movementStep: 'she pushes off the back foot', overrides: { medium: 'clean line on white' } },
+  })
+  assert.equal(first.status, 200, `step 1 submits (${first.body.error ?? ''})`)
+  await waitUntil(async () => {
+    const response = await apiB.get(`/api/lan/animation/attempt?id=${first.body.attemptId}`)
+    return response.body.attempt?.execution === 'ready' && response.body.attempt?.candidate !== null
+  }, 30_000, 'step 1 landing')
+  const stepOneView = (await apiB.get(`/api/lan/animation/document?id=${docH.id}`)).body.document
+  const stepOneSlot = stepOneView.body.spans.find((entry) => entry.id === spanId).stepSlots[0]
+  assert.deepEqual(stepOneSlot.attempts, [first.body.attemptId])
+  const selected = await apiB.post('/api/lan/animation/select/rolling-reference', {
+    documentId: docH.id, spanId, attemptId: first.body.attemptId, frameIndex: 5, expectedRevision: stepOneView.revision,
+  })
+  assert.equal(selected.status, 200, `the rolling reference selects (${selected.body.error ?? ''})`)
+
+  // The chain advances (the F1 append) — and step 2 SUBMITS CLEAN where this
+  // build's old honest limit refused the clip artifact as a video asset: the
+  // route resolves the near reference through the frame-resolution seam, so
+  // the frozen reference is the EXTRACTED frame IMAGE.
+  const appended = await apiB.post('/api/lan/animation/spans', {
+    op: 'append-step-slot', documentId: docH.id, spanId, expectedRevision: selected.body.document.revision,
+  })
+  assert.equal(appended.status, 200, `the step slot appends (${appended.body.error ?? ''})`)
+  const stepTwo = appended.body.stepSlotId
+
+  // The extracted frame the seam must freeze: on-demand extraction of frame 5
+  // (a REGISTERED image distinct from the clip) — resolved here first only to
+  // pin what the submission freezes, not to feed it.
+  const extracted = await apiB.post('/api/lan/animation/attempt/extract-frame', { attemptId: first.body.attemptId, frameIndex: 5 })
+  assert.equal(extracted.status, 200, `frame 5 extracts (${extracted.body.error ?? ''})`)
+  assert.equal(extracted.body.assetReference.kind, 'image')
+  const clipRelPath = (await apiB.get(`/api/lan/animation/attempt?id=${first.body.attemptId}`)).body.attempt.candidate.assetReference.relPath
+  assert.notEqual(extracted.body.assetReference.relPath, clipRelPath)
+
+  const second = await apiB.post('/api/lan/animation/attempts', {
+    documentId: docH.id, tool: 'tween', targetId: stepTwo, idempotencyKey: 'idem-h-step-2',
+    draft: { tool: 'tween', targetStepSlotId: stepTwo, movementStep: 'the stride opens through the hips', overrides: { medium: 'clean line on white' } },
+  })
+  assert.equal(second.status, 200, `step 2 submits against the promoted frame (${second.body.error ?? ''})`)
+
+  // The frozen reference IS the extracted image (the snapshot the attempt
+  // carries; the clip would have been refused as a video asset — reaching
+  // the engine at all is the flip's proof).
+  await waitUntil(async () => {
+    const response = await apiB.get(`/api/lan/animation/attempt?id=${second.body.attemptId}`)
+    return response.body.attempt?.execution === 'ready'
+  }, 30_000, 'step 2 landing')
+  const stepTwoRecord = (await engineRecordsFor(second.body.attemptId))[0]
+  assert.ok(stepTwoRecord, 'the engine holds step 2\'s submitted graph')
+  const stepTwoGraph = stepTwoRecord.prompt[2]
+  const loadImageNodes = Object.values(stepTwoGraph).filter((node) => node?.class_type === 'LoadImage')
+  assert.ok(
+    loadImageNodes.some((node) => node.inputs.image === engineInputName({ ...extracted.body.assetReference, kind: 'image' })),
+    'the engine received the EXTRACTED frame as step 2\'s uploaded near reference',
+  )
 })

@@ -597,12 +597,17 @@ export function createStudioServer(paths: StudioServerPaths) {
     // feed the owner's observation through the SAME shared socket (§10.1 —
     // no shadow engine client).
     const emit = animationFabricEmitter((type, payload) => realtimeHub.emitAnimation(type, payload))
-    const owner = createCompletionOwner({ store, engine, emit, prepareFrame: makeFramePreparer({ engine, store }) })
+    // The frame-extraction binary (the exporter's own re-resolved seam): the
+    // real engine's video-only listing resolves review frames by decoding
+    // them out of the registered clip.
+    const animationFfmpeg = () => loadSettingsCached().ffmpegPath || 'ffmpeg'
+    const owner = createCompletionOwner({ store, engine, emit, prepareFrame: makeFramePreparer({ engine, store, blobs, ffmpegPath: animationFfmpeg }) })
     const service = createAnimationRenderingService({
       store,
       engine,
       owner,
       blobs,
+      ffmpegPath: animationFfmpeg,
       compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
       emit,
     })
