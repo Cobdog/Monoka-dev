@@ -334,6 +334,12 @@ const RULES = [
   },
   { match: ['src/lib/camera/**'], suites: ['camera'], reason: 'camera path model + parity goldens.' },
   { match: ['src/poserig/**'], suites: ['poserig'], reason: 'pose rig domain (logic modules; PoseRigApp.tsx rides the dir).' },
+  {
+    match: ['src/animation/**'],
+    suites: [],
+    forceE2e: true,
+    reason: 'animation browser modules (k2q0n9s task 6) — e2e owns their behavior; the timeline model (task 8) becomes the node-tested pure core and joins this rule as the animation-timeline-model suite when it lands (the suite joins SUITES + this list in that task, per the catalog lockstep).',
+  },
   { match: ['src/lib/graph/h3image.ts'], suites: ['canvas', 'h3img', 'registry', 'workflows'], reason: 'the H3 image graph factory — loaded by four suites.' },
   { match: ['src/lib/graph/engineFamilies.ts', 'tests/engine-families.test.js'], suites: ['canvas', 'engine-families', 'workflows'], reason: 'the engine-family registry (A-3): the canvas selector/panel seam + its own suite; workflows loads the graph barrel.' },
   { match: ['src/lib/preflightRemediation.ts'], suites: ['enginewatch'], reason: 'the R-17 remediation rows: pure data over the same registries preflight maps (enginewatch owns the preflight seams).' },

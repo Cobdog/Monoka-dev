@@ -1,0 +1,27 @@
+/* The animation module shell (task 6, k2q0n9s) — GEOMETRY ONLY (the P06
+   doctrine): this sheet owns the shell's layout (titlebar, boot, selection
+   state, the Phase B stage); tones and type ride the tokens. No new colors,
+   fonts, or shared recipes. */
+
+.anim-root { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--color-surface-deep); color: var(--text); z-index: 40; }
+.anim-titlebar { display: flex; align-items: center; gap: 16px; padding: 8px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+.anim-brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+.anim-doc-name { font-size: var(--text-md); }
+.anim-revision { margin-left: auto; color: var(--muted); font-size: var(--text-sm); cursor: help; }
+.anim-back { font-size: var(--text-md); }
+
+.anim-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 24px; display: grid; gap: 16px; align-content: start; }
+.anim-boot-body { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--muted); font-size: var(--text-md); }
+
+/* The recoverable document-selection state (§11.1) and the honest read
+   failure: one card shape — heading, reason, the way back, the pick rows. */
+.anim-select { display: grid; gap: 10px; max-width: 72ch; justify-self: start; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-select h2 { margin: 0; font-size: var(--text-xl); }
+.anim-select p { margin: 0; color: var(--muted); font-size: var(--text-md); line-height: 1.55; overflow-wrap: anywhere; }
+.anim-select code { color: var(--text); }
+.anim-note { margin: 0; color: var(--muted); font-size: var(--text-md); line-height: 1.55; }
+.anim-docs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.anim-docs a { display: inline-flex; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); font-size: var(--text-md); }
+
+/* Phase B's stage — the timeline's mount point while the shell stands in. */
+.anim-stage { display: grid; gap: 8px; max-width: 72ch; padding: 16px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: var(--text-md); line-height: 1.55; }
