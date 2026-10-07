@@ -53,6 +53,7 @@ const REPO = path.resolve(__dirname, '..')
  * The ci-map self-test enforces this stays in lockstep with tests/.
  */
 const SUITES = {
+  'animation-types': { build: null, windows: false, python: false, ffmpeg: false },
   benchmarks: { build: 'server', windows: true, python: true, ffmpeg: false },
   'button-classes': { build: null, windows: false, python: false, ffmpeg: false },
   camera: { build: null, windows: false, python: false, ffmpeg: false },
@@ -243,6 +244,13 @@ const RULES = [
     match: ['scripts/**'],
     suites: [],
     reason: 'one-off scripts/codemods — no unit suite; add a precise rule above if a suite starts depending on one.',
+  },
+
+  // ---------- shared (server + client + compiler contracts) -------------
+  {
+    match: ['shared/animation/types.ts'],
+    suites: ['animation-types'],
+    reason: 'the animation domain types + guards.',
   },
 
   // ---------- server (behavioral map from each suite's imports) --------
