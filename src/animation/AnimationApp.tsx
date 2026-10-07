@@ -148,8 +148,14 @@ export function AnimationApp() {
         )}
         {conflict && (
           <p className="anim-note anim-conflict" role="status" data-anim-conflict>
-            This document changed while the binding was being written (the server is now at revision {conflict.currentRevision}) — the fresh copy is loaded; submit again if the binding is still wanted. {conflict.message}
+            This document changed while a write was in flight (the server is now at revision {conflict.currentRevision}) — the fresh copy is loaded; submit again if the change is still wanted. {conflict.message}
           </p>
+        )}
+        {/* The bound timeline's own failure surface: the seed's named
+            refusals and any non-409 command failure (network, 5xx) land
+            here — never a silent no-op. Cleared by the next command. */}
+        {commandError && (
+          <p className="anim-note anim-conflict" role="alert" data-anim-command-error>The last command failed: {commandError}</p>
         )}
         {activeBinding ? (
           <>

@@ -566,6 +566,43 @@ test('keys render as image cards with lock chips and origin badges (timeline)', 
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+test('a timeline command failure surfaces in the bound arm, then clears on success (timeline)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await seedTimelineDocument(request, projectId, 'Failure surface')
+  const timeline = await openTimeline(page, projectId, seeded.documentId)
+  const lockChip = timeline.locator(`[data-anim-key="${seeded.keyIds[2]}"] [data-anim-key-lock]`)
+  await expect(lockChip).toHaveAttribute('aria-pressed', 'true')
+  // Hold the lock ops at the wire and answer with a NAMED failure: the store
+  // lands it in commandError and the BOUND arm must render it — the
+  // timeline's own commands never fail silently (the same surface the seed's
+  // named refusals render through).
+  await page.route('**/api/lan/animation/keys', async (route) => {
+    const body = route.request().postDataJSON() as { op?: string }
+    if (body.op === 'lock' || body.op === 'unlock') {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'the lock write was refused by the test wire' }) })
+      return
+    }
+    await route.continue()
+  })
+  await lockChip.click()
+  const failure = page.locator('[data-anim-command-error]')
+  await expect(failure).toBeVisible()
+  await expect(failure).toContainText('the lock write was refused by the test wire')
+  await expect(failure).toContainText('The last command failed')
+  // The chip keeps telling the SERVER's truth while the write failed, and
+  // the document did not move.
+  await expect(lockChip).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('[data-anim-revision]')).toHaveText(`rev ${seeded.revision}`)
+  // The next successful command clears the surface.
+  await page.unroute('**/api/lan/animation/keys')
+  await lockChip.click()
+  await expect(lockChip).toHaveAttribute('aria-pressed', 'false')
+  await expect(failure).toHaveCount(0)
+  await expect(page.locator('[data-anim-revision]')).toHaveText(`rev ${seeded.revision + 1}`)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 test('selecting a span highlights it and its two endpoint keys; step slots nest inside the bar (timeline)', async ({ page, request }) => {
   const problems = await trackErrors(page)
   const projectId = `anim-e2e-${Date.now()}`
