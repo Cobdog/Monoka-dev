@@ -50,7 +50,9 @@ export type AnimationDocumentView = {
  *  reload (a tween's target IS its step slot), the review panel shows the
  *  frozen caption and the compiler that built it. HERO rows add
  *  `sourceKeyId` (§5.2: targetId is the PROPOSED slot; this is the key the
- *  arc describes FROM) + `movementArc` (the authored arc, frozen verbatim). */
+ *  arc describes FROM) + `movementArc` (the authored arc, frozen verbatim);
+ *  SEQUENCE rows add the frozen window's end key + the authored beats,
+ *  preservation, and overrides (targetId IS the window start, §11.2). */
 export type AttemptStateView = {
   attemptId: string
   tool: AnimationTool
@@ -60,6 +62,16 @@ export type AttemptStateView = {
   /** The resolved overrides the frozen caption compiled with — the re-roll's
    *  byte-identical resubmission input. */
   heroOverrides?: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
+  /** SEQUENCE rows (task 12): the window's end key id — `targetId` is the
+   *  window start. The review names the frozen window; the re-roll keys off
+   *  the pair. */
+  windowEndKeyId?: string
+  /** SEQUENCE rows: the ordered action beats + the preservation text frozen
+   *  verbatim, and the resolved overrides the frozen caption compiled with —
+   *  the re-roll's byte-identical resubmission input. */
+  sequenceActions?: string[]
+  sequencePreservation?: string
+  sequenceOverrides?: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
   caption: string
   compilerVersion: string
   execution: AttemptExecutionState
@@ -69,7 +81,8 @@ export type AttemptStateView = {
 }
 
 /** The bootstrap vocabularies (§6.3's closed sets) + the document defaults
- *  (the operating point; stepsMin/stepsMax clamp the inspector's dial). */
+ *  (the operating point — stepsMin/stepsMax clamp the frozen settings' step
+ *  count, never a UI dial; §6.5 banned generation-time timing controls). */
 export type AnimationBootstrap = {
   schemaVersion: number
   compilerVersion: string

@@ -127,6 +127,17 @@ export type AttemptStateView = {
   /** HERO rows: the resolved overrides the frozen caption compiled with —
    *  the re-roll's byte-identical resubmission input. */
   heroOverrides?: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
+  /** SEQUENCE rows (task 12, §5.2/§8.1): the key whose selected drawing is
+   *  the window's own natural end — `targetId` IS the window start (§11.2
+   *  "sequence attempts capture a selected key window"). The review names
+   *  the frozen window and the re-roll keys off the pair. */
+  windowEndKeyId?: string
+  /** SEQUENCE rows: the ordered action beats frozen verbatim + the
+   *  preservation text — the re-roll's byte-identical resubmission input. */
+  sequenceActions?: string[]
+  sequencePreservation?: string
+  /** SEQUENCE rows: the resolved overrides the frozen caption compiled with. */
+  sequenceOverrides?: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
   caption: string
   compilerVersion: string
   execution: AttemptExecutionState
@@ -714,6 +725,14 @@ export function createAnimationRenderingService(deps: {
               sourceKeyId: attempt.snapshot.hero.sourceKeyId,
               movementArc: attempt.snapshot.hero.movementArc,
               heroOverrides: attempt.snapshot.hero.overrides,
+            }
+          : {}),
+        ...(attempt.tool === 'sequence' && attempt.snapshot.sequence !== undefined
+          ? {
+              windowEndKeyId: attempt.snapshot.sequence.windowEndKeyId,
+              sequenceActions: attempt.snapshot.sequence.orderedActions,
+              sequencePreservation: attempt.snapshot.sequence.preservation,
+              sequenceOverrides: attempt.snapshot.sequence.overrides,
             }
           : {}),
         caption: attempt.snapshot.caption,

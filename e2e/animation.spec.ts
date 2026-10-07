@@ -1737,3 +1737,245 @@ test('an outdated hero result keeps its provenance and is marked generated from 
   }
   expect(engineExited).toBe(true)
 })
+
+// ---------------------------------------------------------------------------
+// Task 12 — the sequence tool (§5.2 the sequence sourcing path, §6.2 the
+// sequence caption template, §7.3 the status vocabulary, §8.2 candidate
+// landing, §11.2 "sequence attempts capture a selected key window"): TWO
+// references — the window's first drawing and its own natural end — with no
+// new mapping taught (surfacing held animation already in the base
+// distribution). The selected key is the window START; the END is an explicit
+// pick; the attempt targets the window snapshot (start-key target + the
+// frozen end, beats, and preservation riding the row). The landing changes no
+// document truth — the clip surfaces through editorial selection — and the
+// re-roll resubmits the frozen window as a retained alternative. The
+// production completion owner runs everything; the fake engine is the only
+// double.
+// ---------------------------------------------------------------------------
+
+/** The sequence flow's seed: a bound document with TWO selected keys (real
+ *  blob images, distinct poses + facings — the window's two drawings). */
+async function seedSequenceDocument(request: APIRequestContext, projectId: string, name: string) {
+  const relPathStart = await ingestKeyImage(request, 'anim-seq-start.png')
+  const relPathEnd = await ingestKeyImage(request, 'anim-seq-end.png')
+  const created = await (await request.post('/api/lan/animation/documents', {
+    data: { projectId, name, binding: { characterDescription: 'a lanky courier in a long coat', referenceAssetIds: [uuid()], medium: 'clean line on white', initialKeyAssetId: relPathStart } },
+  })).json() as { document: { id: string; revision: number } }
+  const documentId = created.document.id
+  let revision = created.document.revision
+  const addSelected = async (relPath: string, pose: string, facing: string) => {
+    const keyId = uuid()
+    const candidateId = uuid()
+    let landed = await (await request.post('/api/lan/animation/keys', {
+      data: {
+        op: 'add-candidate', documentId, keyId, expectedRevision: revision,
+        candidate: { id: candidateId, assetReference: { assetId: `animref-${uuid().slice(0, 8)}`, relPath, kind: 'image' }, origin: 'import', provenance: { assetId: `animref-${uuid().slice(0, 8)}` }, poseDescription: pose, facing },
+      },
+    })).json() as { document: { revision: number } }
+    revision = landed.document.revision
+    landed = await (await request.post('/api/lan/animation/select/key-candidate', { data: { documentId, keyId, candidateId, expectedRevision: revision } })).json() as { document: { revision: number } }
+    revision = landed.document.revision
+    return keyId
+  }
+  const startKeyId = await addSelected(relPathStart, 'seated on the bench, hands folded', 'toward camera')
+  const endKeyId = await addSelected(relPathEnd, 'standing, one hand raised to the hat brim', 'screen-left')
+  return { documentId, revision, startKeyId, endKeyId }
+}
+
+const SEQUENCE_BEATS = ['she rises from the bench', 'the coat swings as she turns', 'she settles facing the platform']
+const SEQUENCE_PRESERVATION = 'the coat hem stays consistent; the rhythm stays even'
+
+test('the §5.2 sequence slice — pick the window explicitly, render it, review the held take, re-roll (sequence)', async ({ page, request }) => {
+  test.setTimeout(150_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  // A render slow enough (~4s at 12 steps × 350ms) that the mid-flight
+  // reload below deterministically lands INSIDE the flight window — at the
+  // default speed the render can land while the page reloads, and a READY
+  // sequence attempt on a selected start key marks no playhead (the review
+  // decision that dissolves the marker is the editorial lane's, §9).
+  await engine.control({ steps: 12, stepDelayMs: 350 })
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedSequenceDocument(request, projectId, 'The sequence slice')
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+    await page.goto(animationUrl)
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    // Selecting the START key opens the sequence panel beside the hero panel
+    // — one selection, two tools: the key sources the next hero generation
+    // AND opens as a window start.
+    await timeline.locator(`[data-anim-key="${seeded.startKeyId}"]`).click()
+    const panel = page.locator('[data-anim-seq-panel]')
+    await expect(panel).toBeVisible()
+    await expect(panel).toHaveAttribute('data-anim-seq-panel-key', seeded.startKeyId)
+    await expect(page.locator('[data-anim-hero-panel]')).toBeVisible()
+    await expect(panel.locator('[data-anim-seq-start] img')).toBeVisible()
+    // The window-end picker EXCLUDES the start key; the pick is the explicit
+    // act this tool owns.
+    const endGroup = page.locator('[data-anim-seq-end]')
+    await expect(endGroup.getByRole('radio', { name: 'key #0' })).toHaveCount(0)
+    await endGroup.getByRole('radio', { name: 'key #1' }).click()
+    await expect(panel.locator('[data-anim-seq-end-card] img')).toBeVisible()
+    // The beats (line order IS beat order) + the preservation.
+    await page.locator('[data-anim-seq-actions]').fill(SEQUENCE_BEATS.join('\n'))
+    await page.locator('[data-anim-seq-preservation]').fill(SEQUENCE_PRESERVATION)
+    // The §6.2 caption preview: the alignment line first, Subject on twos
+    // with the medium, the beats joined in order, Preserve last — the
+    // sequence template's own section set.
+    await page.locator('[data-anim-seq-caption-preview] summary').click()
+    const caption = page.locator('[data-anim-seq-caption-text]')
+    await expect(caption).toBeVisible()
+    await expect(caption).toContainText('Alignment: Reference 1 (the window start) opens the sequence; Reference 2 (the window end) closes it', { timeout: 5_000 })
+    await expect(caption).toContainText('animated on twos in clean line on white')
+    await expect(caption).toContainText(`Action: ${SEQUENCE_BEATS.join('; ')}`)
+    await expect(caption).toContainText(`Preserve: ${SEQUENCE_PRESERVATION}`)
+    const previewed = await caption.textContent()
+    expect(previewed?.startsWith('Alignment:'), 'the alignment line opens the caption').toBe(true)
+    expect(previewed).not.toContain('SCENE:')
+    // RENDER (§7.1's explicit action): the attempt targets the window's START
+    // key — the durable row settles first, then the §7.4 restore pins the
+    // in-flight playhead on that key (the timeline's rule 2 for the
+    // sequence lane).
+    await page.locator('[data-anim-seq-submit]').click()
+    let sequenceAttemptId = ''
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      const take = view.document.attempts.find((entry) => entry.tool === 'sequence')
+      sequenceAttemptId = take?.attemptId ?? ''
+      return take !== undefined
+    }, { timeout: 15_000 }).toBe(true)
+    await page.reload()
+    const reloaded = page.locator('[data-anim-timeline]')
+    await expect(reloaded).toBeVisible({ timeout: 15_000 })
+    await expect(reloaded.locator('[data-anim-playhead]')).toHaveAttribute('data-anim-playhead-at', seeded.startKeyId, { timeout: 15_000 })
+    await expect(reloaded.locator('[data-anim-playhead]')).toHaveAttribute('data-anim-playhead-kind', 'key')
+    // The landing (the completion owner's own polling): ready + the review
+    // mounts for the window takes, in §7.3's vocabulary.
+    await expect.poll(async () => (await readAttemptView(request, sequenceAttemptId)).attempt.execution, { timeout: 30_000 }).toBe('ready')
+    const review = page.locator('[data-anim-seq-review]')
+    await expect(review).toBeVisible({ timeout: 15_000 })
+    await expect(review).toHaveAttribute('data-anim-review-attempt', sequenceAttemptId)
+    await expect(review).toHaveAttribute('data-anim-review-state', 'ready')
+    await expect(review.locator('[data-anim-review-status]')).toHaveText('Ready to review')
+    await expect(review.locator('[data-anim-review-meaning]')).toContainText('selection unchanged')
+    // The frozen window names the pair (§8.1) — the start is the target, the
+    // end the frozen draft's pick.
+    await expect(review.locator('[data-anim-seq-review-window]')).toContainText('Window: key #0 → key #1')
+    const clip = review.locator('[data-anim-review-clip]')
+    await expect(clip).toBeVisible()
+    await expect(clip).toHaveAttribute('src', /\/api\/lan\/documents\/blobs\/file/)
+    // No frame strip in this lane: a window render's explicit selection IS
+    // the window; the clip portions that contribute are §9's editorial
+    // surface, not a frame pick here.
+    await expect(review.locator('[data-anim-review-frames]')).toHaveCount(0)
+    // The frozen caption is the previewed text VERBATIM (byte-equal), and
+    // the row carries the frozen window snapshot (§11.2).
+    const attemptState = await (await request.get(`/api/lan/animation/attempt?id=${sequenceAttemptId}`)).json() as { attempt: { caption: string; targetId: string; windowEndKeyId: string; sequenceActions: string[]; sequencePreservation: string } }
+    expect(attemptState.attempt.caption).toBe(previewed)
+    expect(attemptState.attempt.targetId).toBe(seeded.startKeyId, 'the attempt targets the window START key')
+    expect(attemptState.attempt.windowEndKeyId).toBe(seeded.endKeyId, 'the frozen draft names the window END key')
+    expect(attemptState.attempt.sequenceActions).toEqual(SEQUENCE_BEATS)
+    expect(attemptState.attempt.sequencePreservation).toBe(SEQUENCE_PRESERVATION)
+    // §8.2 for this lane: the landing changed NO body truth — both keys'
+    // candidates and selections exactly what they were, the revision unmoved
+    // (a sequence landing mints nothing; the clip surfaces through editorial
+    // selection).
+    const landed = await readAnimationDocument(request, seeded.documentId)
+    expect(landed.document.revision).toBe(seeded.revision)
+    for (const [keyId, order] of [[seeded.startKeyId, 0], [seeded.endKeyId, 1]] as const) {
+      const slot = landed.document.body.keys.find((entry) => entry.id === keyId)!
+      expect(slot.candidates).toHaveLength(1, `key #${order} gained nothing from the window landing`)
+      expect(slot.selectedCandidateId).not.toBeNull()
+    }
+    // The in-flight guard has cleared: the panel's in-flight note is gone
+    // (the panel remounted on the reload, so its authoring draft is fresh —
+    // the button honestly stays gated until the window is re-picked).
+    await expect(page.locator('[data-anim-seq-inflight]')).toHaveCount(0)
+    // RE-ROLL: the frozen window draft resubmitted — a fresh take for the
+    // SAME window, landing as a retained alternative that replaces nothing.
+    await review.locator('[data-anim-review-reroll]').click()
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      const takes = view.document.attempts.filter((entry) => entry.tool === 'sequence' && entry.targetId === seeded.startKeyId)
+      return takes.length === 2 && takes[1]!.execution === 'ready'
+    }, { timeout: 30_000 }).toBe(true)
+    const rolled = await readAnimationDocument(request, seeded.documentId)
+    const rolledSlot = rolled.document.body.keys.find((entry) => entry.id === seeded.startKeyId)!
+    expect(rolledSlot.candidates).toHaveLength(1, 'the re-roll landed no candidate into the body either')
+    expect(rolledSlot.selectedCandidateId).toBe(landed.document.body.keys.find((entry) => entry.id === seeded.startKeyId)!.selectedCandidateId, 'the re-roll never moved a selection (§8.2)')
+    // The strip lists BOTH takes of this window; the subject follows the
+    // newest; switching back to take 1 is the reviewer's explicit view act.
+    await expect(review).toHaveAttribute('data-anim-review-state', 'ready', { timeout: 30_000 })
+    const takes = review.locator('[data-anim-review-take]')
+    await expect(takes).toHaveCount(2)
+    const firstTake = rolled.document.attempts.filter((entry) => entry.tool === 'sequence')[0]!
+    await review.locator(`[data-anim-review-take="${firstTake.attemptId}"]`).click()
+    await expect(review).toHaveAttribute('data-anim-review-attempt', firstTake.attemptId)
+    await expect(review.locator('[data-anim-review-caption-text]')).toContainText(`Action: ${SEQUENCE_BEATS.join('; ')}`)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('the window pick is explicit and bounded — gated submit, the distinct-endpoint refusal (sequence)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await seedSequenceDocument(request, projectId, 'Window bounds')
+  // A THIRD key with a candidate but NO selection — it cannot bound a window
+  // and the picker must say so.
+  const current = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { revision: number } }
+  const unselected = await (await request.post('/api/lan/animation/keys', {
+    data: {
+      op: 'add-candidate', documentId: seeded.documentId, keyId: uuid(), expectedRevision: current.document.revision,
+      candidate: { id: uuid(), assetReference: { assetId: `animref-${uuid().slice(0, 8)}`, relPath: null, kind: 'image' }, origin: 'import', provenance: { assetId: 'animref-seq-unselected' }, poseDescription: null, facing: null },
+    },
+  })).json() as { document: { body: { keys: Array<{ id: string; selectedCandidateId: string | null }> } } }
+  const unselectedKey = unselected.document.body.keys.find((entry) => entry.selectedCandidateId === null)!.id
+  await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+  const timeline = page.locator('[data-anim-timeline]')
+  await expect(timeline).toBeVisible({ timeout: 15_000 })
+  await timeline.locator(`[data-anim-key="${seeded.startKeyId}"]`).click()
+  const panel = page.locator('[data-anim-seq-panel]')
+  await expect(panel).toBeVisible()
+  // The submit gate is the honest one: no end picked, no beats, no
+  // preservation — each missing input keeps the action disabled.
+  const submit = page.locator('[data-anim-seq-submit]')
+  await expect(submit).toBeDisabled()
+  const endGroup = page.locator('[data-anim-seq-end]')
+  // Key #3 (no selected image) is present but DISABLED — a key with no
+  // selection cannot bound a window, and the chip says so.
+  const unselectedChip = endGroup.locator(`[data-anim-seq-end-key="${unselectedKey}"]`)
+  await expect(unselectedChip).toBeDisabled()
+  await endGroup.getByRole('radio', { name: 'key #1' }).click()
+  await page.locator('[data-anim-seq-actions]').fill(SEQUENCE_BEATS[0]!)
+  await expect(submit).toBeDisabled()
+  await page.locator('[data-anim-seq-preservation]').fill(SEQUENCE_PRESERVATION)
+  await expect(submit).toBeEnabled()
+  // §5.2's bound at the route: a window spans two DISTINCT keys — the same
+  // key as both endpoints is the degenerate window, refused BY NAME before
+  // anything dispatches or persists (the picker excludes it; the route is
+  // the defense in depth).
+  const refusal = await page.evaluate(async ({ documentId, keyId, beat, preservation }) => {
+    const response = await fetch('/api/lan/animation/attempts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        documentId, tool: 'sequence', targetId: keyId, idempotencyKey: `anim-e2e-seq-self-${Date.now()}`,
+        draft: { tool: 'sequence', windowStartKeyId: keyId, windowEndKeyId: keyId, orderedActions: [beat], preservation, overrides: { medium: 'clean line on white' } },
+      }),
+    })
+    return { status: response.status, error: ((await response.json()) as { error?: string }).error ?? '' }
+  }, { documentId: seeded.documentId, keyId: seeded.startKeyId, beat: SEQUENCE_BEATS[0], preservation: SEQUENCE_PRESERVATION })
+  expect(refusal.status).toBe(400)
+  expect(refusal.error).toContain('two distinct keys')
+  // Nothing dispatched, nothing persisted — the document holds no attempts.
+  const view = await readAnimationDocument(request, seeded.documentId)
+  expect(view.document.attempts.length).toBe(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
