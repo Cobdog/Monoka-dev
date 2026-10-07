@@ -20,6 +20,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
+import { upAnimationTables } from './animation/store'
 import { upCanvasDocuments } from './documents'
 import { upDatasetTables } from './datasets/store'
 import { appAuthoredDiagnostic, sanitizeErrorMessage } from './logSanitize'
@@ -220,6 +221,16 @@ export const migrations: Migration[] = [
         ALTER TABLE canvas_chain ADD COLUMN identity_revision INTEGER NOT NULL DEFAULT 0;
       `)
     },
+  },
+  {
+    // Animation-authoring module (spec 2026-10-06-animation-authoring-module-
+    // design.md §11.2): versioned animation documents + separate attempt
+    // records beside the canvas tables. Own tables only — nothing existing is
+    // touched; the DDL + the append-only attempt trigger live with the store
+    // (server/animation/store.ts, the canvas_documents precedent).
+    id: 6,
+    name: '006-animation-documents',
+    up: upAnimationTables,
   },
 ]
 

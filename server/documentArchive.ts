@@ -26,7 +26,35 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { deflateRawSync, inflateRawSync } from 'node:zlib'
+import { ANIMATION_SCHEMA_VERSION } from './animation/store'
 import { CANVAS_ARCHIVE_VERSION, CANVAS_SCHEMA_VERSION, CanvasSchemaVersionError, DocumentsRuleError, type DocumentStore } from './documents'
+
+/** Collects every blob relPath referenced inside an animation JSON payload
+ *  (body_json / snapshot_json / result_json): a recursive walk for `relPath`
+ *  string properties, lenient by design — the collectOutputRefs precedent, so
+ *  an evolved-but-compatible document shape still yields every blob edge
+ *  (export must never MISS a referenced blob because a new key appeared). */
+function collectAnimationRelPaths(value: unknown, into: Set<string>): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectAnimationRelPaths(item, into)
+    return
+  }
+  if (!value || typeof value !== 'object') return
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (key === 'relPath' && typeof child === 'string' && child) into.add(child)
+    else collectAnimationRelPaths(child, into)
+  }
+}
+
+/** One animation JSON column's referenced paths, tolerant of a corrupt blob
+ *  (our own writes are guarded like the store's reads — a bad row shows up as
+ *  a missing-blob manifest entry, never a crashed export). */
+function animationJsonRelPaths(raw: unknown, into: Set<string>): void {
+  if (typeof raw !== 'string' || !raw) return
+  try {
+    collectAnimationRelPaths(JSON.parse(raw), into)
+  } catch { /* tolerant: the referenced-path walk degrades, the row still rides */ }
+}
 
 // ---------------------------------------------------------------------------
 // ZIP (spec-conformant subset: local file headers + central directory + EOCD,
@@ -222,6 +250,16 @@ export function exportProjectArchive(store: DocumentStore, projectId: string): {
   const planRows = db.prepare('SELECT * FROM canvas_plan WHERE project_id = ?').all(projectId) as Array<Record<string, unknown>>
   const forkRows = db.prepare('SELECT * FROM canvas_asset_fork WHERE project_id = ?').all(projectId) as Array<Record<string, unknown>>
 
+  // Animation records (spec §11.3 scope: "Project archive/export support must
+  // include the new animation records and referenced blobs so ordinary project
+  // preservation remains complete") — the project's documents, their attempts,
+  // and every blob the three JSON payloads reference.
+  const animationDocumentRows = db.prepare('SELECT * FROM animation_document WHERE project_id = ?').all(projectId) as Array<Record<string, unknown>>
+  const animationDocIds = animationDocumentRows.map((row) => String(row.id))
+  const animationAttemptRows = animationDocIds.length
+    ? (db.prepare(`SELECT * FROM animation_attempt WHERE document_id IN (${animationDocIds.map(() => '?').join(',')})`).all(...animationDocIds) as Array<Record<string, unknown>>)
+    : []
+
   // referenced blobs + files
   const blobRows = new Map<string, Record<string, unknown>>()
   const referencedPaths = new Set<string>()
@@ -234,6 +272,11 @@ export function exportProjectArchive(store: DocumentStore, projectId: string): {
   for (const track of controlRows) {
     referencedPaths.add(String(track.input_ref))
     if (typeof track.mask_ref === 'string' && track.mask_ref) referencedPaths.add(String(track.mask_ref))
+  }
+  for (const document of animationDocumentRows) animationJsonRelPaths(document.body_json, referencedPaths)
+  for (const attempt of animationAttemptRows) {
+    animationJsonRelPaths(attempt.snapshot_json, referencedPaths)
+    animationJsonRelPaths(attempt.result_json, referencedPaths)
   }
   const blobEntries: Array<{ name: string; data: Buffer }> = []
   const packedHashes = new Set<string>()
@@ -306,6 +349,8 @@ export function exportProjectArchive(store: DocumentStore, projectId: string): {
       identityPayloads: identityRows.length,
       plans: planRows.length,
       assetForks: forkRows.length,
+      animationDocuments: animationDocumentRows.length,
+      animationAttempts: animationAttemptRows.length,
       blobs: blobs.length,
       missingBlobs: missingBlobs.length,
     },
@@ -324,6 +369,8 @@ export function exportProjectArchive(store: DocumentStore, projectId: string): {
     controlTracks: controlRows,
     plans: planRows,
     assetForks: forkRows,
+    animationDocuments: animationDocumentRows,
+    animationAttempts: animationAttemptRows,
     blobRows: [...blobRows.values()],
   }
   const archive = packZip([
@@ -397,7 +444,24 @@ export function importProjectArchive(store: DocumentStore, archive: Buffer): Arc
         controlTracks: (payload.controlTracks ?? []) as Array<Record<string, unknown>>,
         plans: (payload.plans ?? []) as Array<Record<string, unknown>>,
         assetForks: (payload.assetForks ?? []) as Array<Record<string, unknown>>,
+        animationDocuments: (payload.animationDocuments ?? []) as Array<Record<string, unknown>>,
+        animationAttempts: (payload.animationAttempts ?? []) as Array<Record<string, unknown>>,
         blobRows: (payload.blobRows ?? []) as Array<Record<string, unknown>>,
+      }
+
+      // Animation version + id-collision gates (the project idiom, applied to
+      // the module's own records): an archive from a studio whose animation
+      // documents this build cannot read refuses LOUDLY, and a document id
+      // already present in this studio refuses with a clear reason — never a
+      // silent merge into another project's document.
+      for (const document of rows.animationDocuments) {
+        const found = Number(document.schema_version)
+        if (found > ANIMATION_SCHEMA_VERSION) {
+          throw new CanvasSchemaVersionError(found, ANIMATION_SCHEMA_VERSION, manifest.writerAppVersion, `animation document "${String(document.name ?? document.id)}" inside project "${manifest.projectName}"`)
+        }
+        if (db.prepare('SELECT id FROM animation_document WHERE id = ?').get(String(document.id))) {
+          throw new Error(`An animation document with id ${String(document.id)} already exists in this studio. Delete or rename it before importing this archive.`)
+        }
       }
 
       // Global assets ride by id + hash: a fork whose global asset is absent
@@ -475,6 +539,13 @@ export function importProjectArchive(store: DocumentStore, archive: Buffer): Arc
       insertAll('canvas_control_track', rows.controlTracks)
       insertAll('canvas_plan', rows.plans)
       insertAll('canvas_asset_fork', rows.assetForks)
+      // Animation records: documents before attempts (the attempt's FK).
+      // Plain INSERT — the attempt rows arrive exactly as exported, and the
+      // BEFORE UPDATE append-only trigger does not fire on INSERT; an id or
+      // idempotency-key collision aborts through the constraint handler below
+      // (a hostile archive is a refusal, never a merge).
+      insertAll('animation_document', rows.animationDocuments)
+      insertAll('animation_attempt', rows.animationAttempts)
       // canvas_blob rows: UPSERT-WITH-VERIFY (the path is the PK and content
       // addressing makes rows idempotent). A pre-existing row with the SAME
       // hash is refreshed to present (this import just proved the bytes); a

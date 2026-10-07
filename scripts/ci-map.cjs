@@ -53,6 +53,7 @@ const REPO = path.resolve(__dirname, '..')
  * The ci-map self-test enforces this stays in lockstep with tests/.
  */
 const SUITES = {
+  'animation-store': { build: 'server', windows: false, python: false, ffmpeg: false },
   'animation-types': { build: null, windows: false, python: false, ffmpeg: false },
   benchmarks: { build: 'server', windows: true, python: true, ffmpeg: false },
   'button-classes': { build: null, windows: false, python: false, ffmpeg: false },
@@ -249,8 +250,8 @@ const RULES = [
   // ---------- shared (server + client + compiler contracts) -------------
   {
     match: ['shared/animation/types.ts'],
-    suites: ['animation-types'],
-    reason: 'the animation domain types + guards.',
+    suites: ['animation-types', 'animation-store'],
+    reason: 'the animation domain types + guards — the store suite drives parseAnimationDocumentBody + the candidate parser through every authoring command and landing.',
   },
 
   // ---------- server (behavioral map from each suite's imports) --------
@@ -264,8 +265,9 @@ const RULES = [
     suites: BOOTING,
     reason: 'shared server utilities in the index/core import closure — every booting suite loads them.',
   },
-  { match: ['server/db.ts'], suites: ['datasets', 'documents', 'storage'], reason: 'the sqlite layer: migrations (documents), dataset tables (datasets), jobs/library (storage).' },
-  { match: ['server/documents.ts', 'server/documentArchive.ts'], suites: ['documents'], reason: 'document store + zip archive.' },
+  { match: ['server/db.ts'], suites: ['datasets', 'documents', 'storage', 'animation-store'], reason: 'the sqlite layer: migrations (documents + animation-store via 006), dataset tables (datasets), jobs/library (storage).' },
+  { match: ['server/animation/store.ts'], suites: ['animation-store'], reason: 'the animation document store — its suite drives it directly off dist-server (the animation-rendering + animation-routes suites join this rule when they land, tasks 4/5; ci-map hygiene forbids naming uncatalogued suites).' },
+  { match: ['server/documents.ts', 'server/documentArchive.ts'], suites: ['documents', 'animation-store'], reason: 'document store + zip archive — the animation round-trip (spec §11.3) rides the same archive, exercised by the animation-store suite.' },
   { match: ['server/realtime.ts'], suites: ['realtime', 'manager-install'], reason: 'WS realtime framing/delivery; the Manager cm-queue event normalizer (0pktw5h) is exercised by the manager-install suite too.' },
   { match: ['server/llm/**'], suites: ['llm'], reason: 'LLM family registry + providers.' },
   { match: ['server/datasets/**'], suites: ['datasets'], reason: 'dataset manager domain.' },
