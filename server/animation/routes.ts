@@ -348,6 +348,10 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
      *  authoring draft, stamped into the snapshot so the re-roll and the
      *  span-into-the-accepted-key action read durable truth. */
     hero?: FrozenAttemptSnapshot['hero']
+    /** SEQUENCE only (§5.2/§8.1, task 12): the frozen authoring window —
+     *  endpoint keys, ordered beats, preservation, overrides — the re-roll's
+     *  durable input (a sequence draft owns no span). */
+    sequence?: FrozenAttemptSnapshot['sequence']
   } {
     const body = document.body
     if (tool === 'hero') {
@@ -424,11 +428,19 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
     // selected key window"); the target id is the window's start key.
     if (draft.windowStartKeyId !== targetId) throw new AnimationRuleError('The sequence draft must name the window start key as its target.', 400)
     const windowEndKeyId = uuidField(draft, 'windowEndKeyId')
+    // A window spans TWO drawings — its first and its own natural end (§5.2).
+    // The same key twice is the degenerate window this contract refuses, the
+    // hero arm's target≠source rule in the sequence lane's own words.
+    if (windowEndKeyId === targetId) {
+      throw new AnimationRuleError('A sequence window spans two distinct keys — its first drawing and its own natural end (§5.2); the window end must differ from the start.', 400)
+    }
     if (!Array.isArray(draft.orderedActions) || draft.orderedActions.length > 64 || !draft.orderedActions.every((action) => isNonEmptyString(action) && action.length <= TEXT_LIMIT)) {
       throw new AnimationRuleError('orderedActions must be an array of at most 64 non-empty text beats.', 400)
     }
     const start = poseContextOf(selectedCandidate(body, targetId))
     const end = poseContextOf(selectedCandidate(body, windowEndKeyId))
+    const overrides = parseOverrides(draft.overrides)
+    const preservation = boundedText(draft.preservation, 'The preservation text')
     return {
       compile: {
         tool: 'sequence',
@@ -436,14 +448,17 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
           windowStart: start,
           windowEnd: end,
           orderedActions: draft.orderedActions as string[],
-          preservation: boundedText(draft.preservation, 'The preservation text'),
-          overrides: parseOverrides(draft.overrides),
+          preservation,
+          overrides,
         },
       },
       references: [
         { role: 'window-start', assetReference: start.assetReference, poseDescription: start.pose.poseDescription, facing: start.pose.facing },
         { role: 'window-end', assetReference: end.assetReference, poseDescription: end.pose.poseDescription, facing: end.pose.facing },
       ],
+      // The frozen authoring window (§8.1) — a sequence draft owns no span,
+      // so the snapshot is its only durable home (the re-roll's input).
+      sequence: { windowStartKeyId: targetId, windowEndKeyId, orderedActions: draft.orderedActions as string[], preservation, overrides },
     }
   }
 
@@ -466,7 +481,7 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       const draft = recordField(body, 'draft', 'The submission needs a draft object (intent + overrides) — the server compiles and freezes the snapshot.')
       if (draft.tool !== tool) throw new AnimationRuleError(`The draft must be a ${tool} draft (draft.tool must match tool).`, 400)
 
-      const { compile, references, hero } = resolveDraft(document, tool, targetId, draft)
+      const { compile, references, hero, sequence } = resolveDraft(document, tool, targetId, draft)
       // The one server-side compile dispatch (rendering.ts) — a compiler
       // refusal is a state refusal, never a structural 500.
       let compiled: ReturnType<AnimationRenderingService['compileCaption']>
@@ -490,8 +505,10 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
         settings: { idempotencyKey },
         documentRevision: document.revision,
         // HERO rows freeze the authored draft (§8.1/§5.2) — the re-roll and
-        // the span-into-the-accepted-key action read it.
+        // the span-into-the-accepted-key action read it. SEQUENCE rows freeze
+        // the authored window the same way (§8.1 — the re-roll's input).
         ...(hero ? { hero } : {}),
+        ...(sequence ? { sequence } : {}),
       }
       if (body.seed !== undefined && !isNonNegativeInt(body.seed)) throw new AnimationRuleError('The seed must be a non-negative integer.', 400)
       const seed = body.seed !== undefined ? body.seed : Number.parseInt(animationInputHash(seedless).slice(0, 8), 16) >>> 0

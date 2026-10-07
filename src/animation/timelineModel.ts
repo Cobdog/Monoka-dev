@@ -137,9 +137,13 @@ export function deriveReviewPosition(body: AnimationDocumentBody, attempts: Read
       if (span) return { kind: 'span', id: span.id }
       continue
     }
-    // Hero targets a key slot; sequence targets its window-start key (§11.2)
-    // — the landing mints/holds candidates, so the slot is open until a
-    // selection exists.
+    // Hero targets a key slot (the PROPOSED slot the landing mints a
+    // candidate into — open until the explicit selection exists); sequence
+    // targets its window-start key (§11.2), which must ALREADY hold a
+    // selection to submit — its landing mints nothing (the clip surfaces
+    // through editorial selection), so this arm fires for sequence only in
+    // the degenerate case of a cleared selection, and the in-flight rule
+    // below is the sequence lane's live playhead path.
     const key = body.keys.find((entry) => entry.id === attempt.targetId)
     if (key && key.selectedCandidateId === null) return { kind: 'key', id: key.id }
   }

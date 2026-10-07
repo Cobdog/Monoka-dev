@@ -20,10 +20,14 @@
 //       landed hero candidate NEVER auto-selects; the tween lane's first
 //       step resolves its references from the selected keys and lands onto
 //       the step slot, then the rolling-reference + clip-contribution
-//       selection routes answer on the real document
+//       selection routes answer on the real document; the SEQUENCE lane
+//       (task 12) submits the selected key window — start-key target, the
+//       frozen window + beats surfaced on the row, the §8.2 no-body-change
+//       landing asserted against document truth
 //   (d) idempotency at the ROUTE — same key + same draft ⇒ { created: false }
 //       with no second engine job; same key + different draft ⇒ 409 (Review
-//       Focus #3)
+//       Focus #3); §5.2's named sequence-window refusals (a window spans
+//       two DISTINCT keys; the draft names the window start as its target)
 //   (e) the unknown-newer schema version refuses loudly — a schema_version 99
 //       row written directly into scratch SQLite ⇒ GET answers 400 naming
 //       the versions (§2/F9, never a downgrade)
@@ -235,6 +239,18 @@ const heroDraft = (sourceKeyId) => ({
   overrides: { medium: 'clean line on white', scene: 'a rain-slick street at dusk' },
 })
 
+/** A sequence draft over an explicit window (task 12's §5.2/§11.2 semantics:
+ *  the submission's targetId IS the window's START key; the draft separately
+ *  names the END key, the ordered beats, and the preservation). */
+const sequenceDraft = (windowStartKeyId, windowEndKeyId) => ({
+  tool: 'sequence',
+  windowStartKeyId,
+  windowEndKeyId,
+  orderedActions: ['she rises from the bench', 'the coat swings as she turns', 'she settles facing the platform'],
+  preservation: 'the coat hem stays consistent; the rhythm stays even',
+  overrides: { medium: 'flat cel colour on white', scene: 'a station platform' },
+})
+
 // ---- cross-section state (sequential tests share it) -----------------------
 
 let home = ''
@@ -255,6 +271,7 @@ let keyC1 = null
 let keyC2 = null
 let heroAttemptC = null
 let tweenAttemptC = null
+let sequenceAttemptC = null
 let spanC = null
 // (d)
 let docD = null
@@ -629,6 +646,61 @@ test('(c) submit emits attempt-state envelopes on the animation channel; the lan
       `the document-changed envelope for ${reason}`,
     )
   }
+
+  // SEQUENCE — the selected key window (task 12, §5.2/§11.2): the attempt
+  // targets the window's START key while the draft names the END key; the
+  // landing mints NOTHING (the clip surfaces through editorial selection).
+  const beforeSequence = contribution.body.document
+  const sequence = await api.post('/api/lan/animation/attempts', {
+    documentId: docC.id, tool: 'sequence', targetId: keyC1, idempotencyKey: 'idem-c-sequence',
+    draft: sequenceDraft(keyC1, keyC2),
+  })
+  assert.equal(sequence.status, 200, `the sequence attempt submits (${sequence.body.error ?? ''})`)
+  sequenceAttemptC = sequence.body.attemptId
+  await fabric.waitFor(
+    (envelopes) => envelopes.some((envelope) => envelope.ch === 'animation' && envelope.type === 'attempt-ready' && envelope.payload.attemptId === sequenceAttemptC),
+    'the sequence attempt landing',
+  )
+  const sequenceState = await api.get(`/api/lan/animation/attempt?id=${sequenceAttemptC}`)
+  assert.equal(sequenceState.status, 200)
+  assert.equal(sequenceState.body.attempt.execution, 'ready')
+  assert.ok(sequenceState.body.attempt.candidate.assetReference.relPath, 'the landed window clip is a registered blob')
+  assert.equal(sequenceState.body.attempt.candidate.id, null, 'a sequence landing mints no document candidate')
+  const sequenceReady = fabric.envelopes.find((envelope) => envelope.ch === 'animation' && envelope.type === 'attempt-ready' && envelope.payload.attemptId === sequenceAttemptC)
+  assert.equal(sequenceReady?.payload.candidateId, null, 'the sequence attempt-ready envelope carries candidateId null (§8.2: nothing auto-lands into the body)')
+  // The widened view (F2 + task 12's sequence fields): the FROZEN WINDOW —
+  // targetId IS the start key, windowEndKeyId names the end, the beats and
+  // the preservation ride verbatim (the re-roll's resubmission input).
+  const seq = sequenceState.body.attempt
+  assert.equal(seq.tool, 'sequence')
+  assert.equal(seq.targetId, keyC1, 'the attempt targets the window START key (§11.2 "sequence attempts capture a selected key window")')
+  assert.equal(seq.windowEndKeyId, keyC2, 'the frozen draft names the window END key')
+  assert.deepEqual(seq.sequenceActions, sequenceDraft(keyC1, keyC2).orderedActions, 'the ordered beats froze verbatim')
+  assert.equal(seq.sequencePreservation, sequenceDraft(keyC1, keyC2).preservation, 'the preservation froze verbatim')
+  assert.equal(seq.sequenceOverrides.medium, 'flat cel colour on white', 'the resolved overrides froze with the caption')
+  // The §6.2 sequence caption: alignment first, Subject on twos, the beats
+  // in order, Preserve last — and none of the hero/tween section headers.
+  assert.ok(seq.caption.startsWith('Alignment:'), 'the alignment line opens the caption')
+  assert.ok(seq.caption.includes('animated on twos in flat cel colour on white'), 'Subject carries the on-twos phrase and the medium')
+  assert.ok(seq.caption.includes(`Action: ${sequenceDraft(keyC1, keyC2).orderedActions.join('; ')}`), 'the beats join in order')
+  assert.ok(seq.caption.endsWith(`Preserve: ${sequenceDraft(keyC1, keyC2).preservation}`), 'Preserve closes the caption verbatim')
+  assert.ok(!seq.caption.includes('SCENE:') && !seq.caption.includes('STATIC:') && !seq.caption.includes('FIRST FRAME'), 'the sequence template owns its own section set')
+  // §8.2's never-silently list for this lane: the landing changed NO body
+  // truth — no slot materialized, no candidate moved, the revision unmoved.
+  const sequenceDocumentC = (await api.get(`/api/lan/animation/document?id=${docC.id}`)).body.document
+  assert.equal(sequenceDocumentC.revision, beforeSequence.revision, 'a sequence landing bumps no revision')
+  assert.equal(sequenceDocumentC.body.keys.length, beforeSequence.body.keys.length, 'no slot materialized (the hero lane\'s landing arm is not this lane\'s)')
+  for (const slot of beforeSequence.body.keys) {
+    const after = sequenceDocumentC.body.keys.find((entry) => entry.id === slot.id)
+    assert.equal(after.candidates.length, slot.candidates.length, `key ${slot.id} gained nothing from the window landing`)
+    assert.equal(after.selectedCandidateId, slot.selectedCandidateId, `key ${slot.id}'s selection never moved`)
+  }
+  // The document read's attempts carry the same frozen window truth (the
+  // review re-attaches by targetId after a reload, F2's ruling).
+  const seqInView = sequenceDocumentC.attempts.find((attempt) => attempt.attemptId === sequenceAttemptC)
+  assert.equal(seqInView.tool, 'sequence')
+  assert.equal(seqInView.targetId, keyC1)
+  assert.equal(seqInView.windowEndKeyId, keyC2)
 })
 
 // ---------------------------------------------------------------------------
@@ -689,6 +761,16 @@ test('(d) same key + same draft ⇒ { created: false } and no second engine job;
   assert.match(noSelection.body.error, /no selected candidate/)
   const missingSource = await api.post('/api/lan/animation/attempts', { ...body, idempotencyKey: 'idem-d-bad5', targetId: uuid(), draft: heroDraft(uuid()) })
   assert.equal(missingSource.status, 404, 'a source key that does not exist is a 404')
+  // §5.2 (task 12) in the sequence lane: a window spans two DISTINCT keys —
+  // the same key as both endpoints is the degenerate window, refused by
+  // name; and the draft must name the window start as its target.
+  const sequenceBody = { documentId: docD.id, tool: 'sequence', targetId: key.keyId, idempotencyKey: 'idem-d-bad-seq', draft: sequenceDraft(key.keyId, key.keyId) }
+  const selfWindow = await api.post('/api/lan/animation/attempts', sequenceBody)
+  assert.equal(selfWindow.status, 400)
+  assert.match(selfWindow.body.error, /two distinct keys/)
+  const mismatched = await api.post('/api/lan/animation/attempts', { ...sequenceBody, idempotencyKey: 'idem-d-bad-seq2', targetId: uuid(), draft: sequenceDraft(key.keyId, uuid()) })
+  assert.equal(mismatched.status, 400)
+  assert.match(mismatched.body.error, /window start key as its target/)
 
   // Deterministic section close: the first submission's engine record EXISTS
   // before (f) snapshots its count (a still-rendering earlier job would

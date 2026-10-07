@@ -67,13 +67,24 @@
  * resubmitting the frozen source key + arc), and `openSpanIntoKey` (the
  * accepted key becomes the incoming tween span's far reference — the span
  * creation seeded from the hero arc).
+ *
+ * What task 12 adds: the SEQUENCE surface — `deriveSequencePreview` (the
+ * live preview selector for the window's two endpoint references — the
+ * submit route's sequence resolution mirrored; the window END is an
+ * authoring choice, so the resolver takes it as an argument and the panel
+ * calls it with its own picked end) plus the commands `submitSequence`
+ * (§5.2/§11.2: the attempt targets the SELECTED KEY WINDOW — targetId is
+ * the window's start key, the draft names the end key, the ordered beats,
+ * and the preservation) and `rerollSequence` (a fresh take for the SAME
+ * window, resubmitting the frozen window draft — a sequence draft owns no
+ * span, so the frozen attempt is its only durable home).
  */
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { animationApi, animationHref, AnimationConflict, AnimationHttpError, type AnimationDocumentView } from './client'
 import { subscribeAnimationEvents } from './fabric'
 import { documentsApi } from '../canvas/api'
-import { ANIMATION_MEDIA, type AssetReference, type AttemptExecutionState, type BindingInput, type FacingTerm, type MediumString, type Span } from '../../shared/animation/types'
+import { ANIMATION_MEDIA, type AssetReference, type AttemptExecutionState, type BindingInput, type FacingTerm, type KeyCandidate, type MediumString, type Span } from '../../shared/animation/types'
 import type { PoseRef, SessionOverrideInput } from '../../shared/animation/compiler'
 
 /** The states whose engine-side truth is not settled — the seeded attribute
@@ -194,6 +205,16 @@ type AnimationSessionState = {
    *  arc as the movement draft. Returns the span id for the shell to
    *  select. */
   openSpanIntoKey(fromKeyId: string, toKeyId: string, seedMovement: string): Promise<string | null>
+  /** Task 12 — the sequence tool's commands. */
+  /** §5.2/§11.2's window render: the attempt targets the SELECTED KEY WINDOW
+   *  — targetId is the window's start key, the draft names the end key, the
+   *  ordered beats, and the preservation. One render per window at a time.
+   *  Null = the failure surface already names it. */
+  submitSequence(windowStartKeyId: string, windowEndKeyId: string, draft: { orderedActions: string[]; preservation: string; overrides: SessionOverrideInput }): Promise<{ attemptId: string } | null>
+  /** A fresh take for the SAME window (a new idempotency key): resubmits
+   *  the newest take's frozen window draft — endpoint keys, beats,
+   *  preservation, overrides — byte-identically, so only the seed varies. */
+  rerollSequence(windowStartKeyId: string): Promise<{ attemptId: string } | null>
   /** The selection state's creation arm (task 7's Minor-2): creates the
    *  pre-binding document in the named project and navigates to it. */
   createEmptyDocument(projectId: string): Promise<boolean>
@@ -353,6 +374,61 @@ export function deriveHeroPreview(document: AnimationDocumentView, keyId: string
       keyOrder: slot.order,
     },
   }
+}
+
+// ---------------------------------------------------------------------------
+// deriveSequencePreview — the sequence live preview selector (task 12,
+// §5.2/§6.2/§11.2)
+// ---------------------------------------------------------------------------
+
+/** The key shape the window resolver reads — the document's own key slots
+ *  AND the timeline model's keys (whose `candidate` is the already-resolved
+ *  selection) both satisfy it structurally, so the panel resolves its chosen
+ *  end locally while the submit command re-resolves from the live document
+ *  through the same function. */
+export type SequenceKeyish = { id: string; order: number; selectedCandidateId: string | null; candidates: KeyCandidate[] }
+
+/** One window endpoint (the start or the end): ok carries the selected
+ *  candidate's asset + pose; not-ok the NAMED problem (the same name the
+ *  server's submission refusal would carry). */
+export type SequenceWindowRef =
+  | { ok: true; assetReference: AssetReference; pose: PoseRef; keyId: string; keyOrder: number }
+  | { ok: false; problem: string }
+
+/** The sequence compile context's client-side resolution: the window's two
+ *  endpoint references. `windowEndKeyId` is the authoring CHOICE (null =
+ *  not picked yet — the honest not-chosen problem, never a guessed end). */
+export type SequencePreview = {
+  windowStartKeyId: string
+  windowEndKeyId: string | null
+  windowStart: SequenceWindowRef
+  windowEnd: SequenceWindowRef
+  /** Every named problem — empty when the window compiles. */
+  problems: string[]
+}
+
+/** The pure mirror of the submit route's sequence draft resolution
+ *  (server/animation/routes.ts' resolveDraft sequence arm): each endpoint is
+ *  that key's SELECTED candidate (pose follows the image, §5.1) — a key with
+ *  no selection cannot bound a window and the problem names it the same way
+ *  the server's refusal would. */
+export function deriveSequencePreview(keys: ReadonlyArray<SequenceKeyish>, windowStartKeyId: string, windowEndKeyId: string | null): SequencePreview {
+  const refOf = (keyId: string, label: string): SequenceWindowRef => {
+    const slot = keys.find((entry) => entry.id === keyId) ?? null
+    const candidate = slot === null || slot.selectedCandidateId === null
+      ? null
+      : slot.candidates.find((entry) => entry.id === slot.selectedCandidateId) ?? null
+    if (slot === null) return { ok: false, problem: `The ${label} key no longer exists in the document.` }
+    if (candidate === null) return { ok: false, problem: `The ${label} key (#${slot.order}) has no selected image — the caption needs its pose. Accept a frame or select a candidate first.` }
+    return { ok: true, assetReference: candidate.assetReference, pose: { poseDescription: candidate.poseDescription, facing: candidate.facing }, keyId, keyOrder: slot.order }
+  }
+  const notChosen: SequenceWindowRef = { ok: false, problem: 'No window end chosen yet — pick the key whose selected drawing is the window\'s own natural end.' }
+  const windowStart = refOf(windowStartKeyId, 'window start')
+  const windowEnd = windowEndKeyId === null ? notChosen : refOf(windowEndKeyId, 'window end')
+  const problems: string[] = []
+  if (!windowStart.ok) problems.push(windowStart.problem)
+  if (!windowEnd.ok) problems.push(windowEnd.problem)
+  return { windowStartKeyId, windowEndKeyId, windowStart, windowEnd, problems }
 }
 
 /** The continuation / re-roll draft (task 10), resolved from DURABLE truth:
@@ -917,6 +993,104 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     }
   },
 
+  submitSequence: async (windowStartKeyId, windowEndKeyId, draft) => {
+    const current = get().document
+    if (!current || get().busy) return null
+    if (draft.orderedActions.length === 0) {
+      set({ commandError: 'The ordered actions need at least one beat before submission.' })
+      return null
+    }
+    if (!draft.preservation.trim()) {
+      set({ commandError: 'The preservation text needs content before submission.' })
+      return null
+    }
+    // The same resolver the panel previews through, over the LIVE document —
+    // the server re-resolves authoritatively, this guard names the problem
+    // before a doomed command fires.
+    const preview = deriveSequencePreview(current.body.keys, windowStartKeyId, windowEndKeyId)
+    if (preview.problems.length > 0) {
+      set({ commandError: preview.problems.join(' ') })
+      return null
+    }
+    // One render per WINDOW at a time (the button disables per chosen end;
+    // this guard keys off the frozen pair, never the start key alone — two
+    // different windows from one start are independent renders).
+    const inFlight = current.attempts.find((entry) => entry.tool === 'sequence' && entry.targetId === windowStartKeyId
+      && entry.windowEndKeyId === windowEndKeyId && IN_FLIGHT.has(entry.execution))
+    if (inFlight) {
+      set({ commandError: 'A render of this window is already in flight — review its landing before generating another.' })
+      return null
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // §11.2: the attempt targets the selected key window — targetId is the
+      // window's START key (the playhead's in-flight rule marks it), the
+      // draft names the end. A fresh idempotency key per deliberate click.
+      const submitted = await animationApi.submit({
+        documentId: current.id,
+        tool: 'sequence',
+        targetId: windowStartKeyId,
+        draft: { tool: 'sequence', windowStartKeyId, windowEndKeyId, orderedActions: draft.orderedActions, preservation: draft.preservation, overrides: draft.overrides },
+      }, `anim-seq-${windowStartKeyId.slice(0, 8)}-${crypto.randomUUID()}`)
+      if (ticket !== openTicket) return null
+      // The attempt row reaches the view through the durable read (the
+      // document itself did not move — sequence landings change no body).
+      set({ busy: false })
+      void get().refresh()
+      return { attemptId: submitted.attemptId }
+    } catch (error) {
+      await failCommand(error, ticket)
+      return null
+    }
+  },
+
+  rerollSequence: async (windowStartKeyId) => {
+    const current = get().document
+    if (!current) return null
+    // The durable re-roll truth: the newest sequence take of this window
+    // start carries the frozen draft (§8.1) — endpoint keys, beats,
+    // preservation, overrides — and the re-roll resubmits them UNCHANGED
+    // against the SAME window, so only the seed varies between takes.
+    const takes = current.attempts.filter((entry) => entry.tool === 'sequence' && entry.targetId === windowStartKeyId)
+    const newest = takes[takes.length - 1] ?? null
+    if (newest === null || newest.windowEndKeyId === undefined || newest.sequenceActions === undefined
+      || newest.sequencePreservation === undefined || newest.sequenceOverrides === undefined) {
+      set({ commandError: 'This key has no sequence take with a frozen window to re-roll from.' })
+      return null
+    }
+    const windowEndKeyId = newest.windowEndKeyId
+    const preview = deriveSequencePreview(current.body.keys, windowStartKeyId, windowEndKeyId)
+    if (preview.problems.length > 0) {
+      set({ commandError: preview.problems.join(' ') })
+      return null
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      const submitted = await animationApi.submit({
+        documentId: current.id,
+        tool: 'sequence',
+        targetId: windowStartKeyId,
+        draft: {
+          tool: 'sequence',
+          windowStartKeyId,
+          windowEndKeyId,
+          orderedActions: newest.sequenceActions,
+          preservation: newest.sequencePreservation,
+          overrides: newest.sequenceOverrides,
+        },
+      }, `anim-seq-${windowStartKeyId.slice(0, 8)}-${crypto.randomUUID()}`)
+      if (ticket !== openTicket) return null
+      set({ busy: false })
+      void get().refresh()
+      return { attemptId: submitted.attemptId }
+    } catch (error) {
+      await failCommand(error, ticket)
+      return null
+    }
+  },
+
   createEmptyDocument: async (projectId) => {
     if (get().busy) return false
     set({ busy: true, commandError: null })
@@ -1012,6 +1186,8 @@ export function useAnimationDocument(documentId: string, projectId = '') {
       acceptHeroFrame: session.acceptHeroFrame,
       rerollHero: session.rerollHero,
       openSpanIntoKey: session.openSpanIntoKey,
+      submitSequence: session.submitSequence,
+      rerollSequence: session.rerollSequence,
       createEmptyDocument: session.createEmptyDocument,
       retry: session.retry,
       clearCommandError: session.clearCommandError,

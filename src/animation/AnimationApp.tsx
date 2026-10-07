@@ -32,6 +32,11 @@
  *     targeted it (the clip, the frame strip, the EXPLICIT acceptance that
  *     establishes the key, the far-reference span action) above the hero
  *     authoring panel that sources the NEXT generation from its selection;
+ *     since task 12 the SEQUENCE surfaces join them (§5.2/§11.2) — the
+ *     selected key is a WINDOW START: its window takes' review (§7.3
+ *     vocabulary, the retained takes, the re-roll resubmitting the frozen
+ *     window) above the authoring panel whose explicit END-KEY pick bounds
+ *     the window (alignment + ordered action + preservation caption);
  *   - the conflict rebase notice (a 409 is never silent) and the failed
  *     silent-refresh notice, both role=status; the selection state carries
  *     the "new animation document" creation arm (task 7's Minor-2).
@@ -47,6 +52,8 @@ import { SpanInspector } from './SpanInspector'
 import { ReviewPanel } from './ReviewPanel'
 import { HeroPanel } from './HeroPanel'
 import { HeroReview } from './HeroReview'
+import { SequencePanel } from './SequencePanel'
+import { SequenceReview } from './SequenceReview'
 import { IN_FLIGHT } from './reviewStatus'
 import { deriveReviewPosition, deriveTimeline } from './timelineModel'
 import { deriveHeroPreview, deriveTweenPreview, useAnimationDocument } from './state'
@@ -72,6 +79,9 @@ export function AnimationApp() {
   // The hero review's SUBJECT override — same doctrine, keyed by the target
   // key slot (task 11): switching keys forgets the stale take.
   const [heroTake, setHeroTake] = useState<{ keyId: string; attemptId: string } | null>(null)
+  // The sequence review's SUBJECT override — same doctrine, keyed by the
+  // window-start key slot (task 12).
+  const [sequenceTake, setSequenceTake] = useState<{ keyId: string; attemptId: string } | null>(null)
   const session = useAnimationDocument(params.documentId, params.projectId)
   const { phase, errorDetail, document, projectDocuments, assets, assetsFailed, conflict, busy, commandError, refreshFailed } = session
 
@@ -172,6 +182,29 @@ export function AnimationApp() {
   const heroPanel = useMemo(() => {
     if (document === null || selectedKey === null) return null
     return { keyEntity: selectedKey, preview: deriveHeroPreview(document, selectedKey.id) }
+  }, [document, selectedKey])
+  // The selected KEY's sequence surfaces (task 12, §5.2/§11.2): the review of
+  // the window takes that START from it (the newest, or the reviewer's
+  // explicit take — grouped by the subject's frozen window, so one key's
+  // several windows never mix strips) and beneath the hero surfaces the
+  // authoring panel whose explicit pick is the window's END key.
+  const sequenceReview = useMemo(() => {
+    if (document === null || selectedKey === null || timeline === null) return null
+    const windowTakes = document.attempts.filter((entry) => entry.tool === 'sequence' && entry.targetId === selectedKey.id)
+    if (windowTakes.length === 0) return null
+    const chosen = sequenceTake !== null && sequenceTake.keyId === selectedKey.id
+      ? windowTakes.find((entry) => entry.attemptId === sequenceTake.attemptId) ?? null
+      : null
+    const subject = chosen ?? windowTakes[windowTakes.length - 1]!
+    const takes = windowTakes.filter((entry) => entry.windowEndKeyId === subject.windowEndKeyId)
+    const endKey = subject.windowEndKeyId === undefined
+      ? null
+      : timeline.keys.find((key) => key.id === subject.windowEndKeyId) ?? null
+    return { subject, takes: takes.map((entry) => ({ attemptId: entry.attemptId })), endKey }
+  }, [document, selectedKey, sequenceTake, timeline])
+  const inFlightSequenceFromKey = useMemo(() => {
+    if (document === null || selectedKey === null) return []
+    return document.attempts.filter((entry) => entry.tool === 'sequence' && entry.targetId === selectedKey.id && IN_FLIGHT.has(entry.execution))
   }, [document, selectedKey])
 
   if (phase === 'loading') {
@@ -377,6 +410,33 @@ export function AnimationApp() {
                   busy={busy}
                   onFacingChange={session.commands.setKeyFacing}
                   onSubmit={session.commands.submitHero}
+                />
+              )}
+              {/* The sequence surfaces (task 12, §5.2/§11.2): the selected key
+                  is a WINDOW START — its window takes' review above the
+                  authoring panel whose explicit pick is the window's end. */}
+              {sequenceReview !== null && selectedKey !== null && (
+                <SequenceReview
+                  attempt={sequenceReview.subject}
+                  keyEntity={selectedKey}
+                  endKey={sequenceReview.endKey}
+                  takes={sequenceReview.takes}
+                  busy={busy}
+                  onSelectTake={(attemptId) => setSequenceTake({ keyId: selectedKey.id, attemptId })}
+                  onReroll={() => void session.commands.rerollSequence(selectedKey.id)}
+                  onRetryPreparation={() => void session.commands.retryPreparation(sequenceReview.subject.attemptId)}
+                />
+              )}
+              {selectedKey !== null && timeline !== null && (
+                <SequencePanel
+                  key={selectedKey.id}
+                  keyEntity={selectedKey}
+                  keys={timeline.keys}
+                  binding={activeBinding}
+                  inFlightAttempts={inFlightSequenceFromKey}
+                  busy={busy}
+                  onFacingChange={session.commands.setKeyFacing}
+                  onSubmit={session.commands.submitSequence}
                 />
               )}
             </section>

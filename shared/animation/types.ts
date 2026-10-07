@@ -115,6 +115,21 @@ export type FrozenAttemptSnapshot = {
     movementArc: string
     overrides: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
   }
+  /** SEQUENCE only (task 12, §5.2/§6.2 + §8.1 "submission freezes the
+   *  attempt's inputs"): the frozen authoring window — the two endpoint
+   *  keys (targetId IS the window start; this block carries the end), the
+   *  ordered action beats verbatim, the preservation text, and the resolved
+   *  overrides. A sequence draft owns no span (§8.1: spans own tween motion
+   *  intent), so the frozen attempt is its ONLY durable home — the re-roll
+   *  resubmits this block byte-identically; hero/tween snapshots leave it
+   *  unset. */
+  sequence?: {
+    windowStartKeyId: string
+    windowEndKeyId: string
+    orderedActions: string[]
+    preservation: string
+    overrides: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
+  }
 }
 
 export type AttemptExecutionState = 'queued' | 'rendering' | 'preparing' | 'ready' | 'failed' | 'cancelled' | 'interrupted' | 'reconciling'
