@@ -131,3 +131,22 @@
 .anim-caption-text { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); font-size: var(--text-sm); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 .anim-caption-hints { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .anim-caption-hint { padding: 6px 10px; border-left: 3px solid var(--accent); color: var(--muted); font-size: var(--text-sm); line-height: 1.5; overflow-wrap: anywhere; }
+
+/* The review panel (task 10, §7.3) — the .anim-select card shape again:
+   one review surface under the inspector, geometry only (tokens, the kit's
+   Button/Refusal recipes carry the rest). */
+.anim-review { display: grid; gap: 12px; max-width: 88ch; justify-self: start; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-review h3 { margin: 0; font-size: var(--text-lg); }
+.anim-review-header { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.anim-review-status { padding: 2px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: var(--text-sm); }
+.anim-review-progress { color: var(--muted); font-size: var(--text-sm); }
+.anim-review-meaning { margin: 0; color: var(--muted); font-size: var(--text-md); line-height: 1.55; }
+.anim-review-clip { width: 320px; max-width: 100%; aspect-ratio: 16 / 9; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.anim-review-frames-block { display: grid; gap: 8px; }
+.anim-review-frames-lede { margin: 0; color: var(--muted); font-size: var(--text-md); line-height: 1.55; }
+.anim-review-frames, .anim-review-takes { display: flex; flex-wrap: wrap; gap: 6px; }
+.anim-review-frame, .anim-review-take { min-width: 36px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--muted); font-size: var(--text-sm); cursor: pointer; }
+.anim-review-frame[data-anim-frame-proposed='true'] { border-style: dashed; }
+.anim-review-frame[data-anim-frame-selected='true'], .anim-review-take[data-anim-take-selected='true'] { border-color: var(--accent); color: var(--text); }
+.anim-review-selected { margin: 0; color: var(--text); font-size: var(--text-md); }
+.anim-review-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }

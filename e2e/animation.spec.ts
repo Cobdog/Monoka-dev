@@ -1,5 +1,8 @@
 import http from 'node:http'
+import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { spawn, type ChildProcess } from 'node:child_process'
+import type { AddressInfo } from 'node:net'
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 
 // Animation-authoring module, task 6 (k2q0n9s, spec
@@ -949,4 +952,494 @@ test('submitting freezes the previewed caption verbatim (inspector)', async ({ p
       stub.close(() => resolve())
     })
   }
+})
+
+// ---------------------------------------------------------------------------
+// Task 10 — the review panel + the wired vertical slice (§7.3 the status
+// vocabulary, §7.4 during the wait / on return, §7.2.2 the two frame paths,
+// §12.2 THE SLICE, §12.3 duplicate completion): the PRODUCTION completion
+// owner runs end to end; the ONLY test double is the FAKE ENGINE
+// (e2e/mirror/fakeEngineServer.mjs on an allocated port, the server's
+// comfyUrl pointed at it — the journey.spec.ts pattern). No route, service,
+// or landing path is stubbed: bind two keys → submit one tween attempt →
+// leave the editor → completion lands SERVER-SIDE with no animation surface
+// attached → return → the session restores and highlights "Ready to review"
+// → review the clip → select a reference frame EXPLICITLY (the on-demand
+// extraction path) → explicitly continue (appendStepSlot + the next step's
+// submission). Asserted throughout: the landed candidate never changed any
+// selection by itself.
+// ---------------------------------------------------------------------------
+
+const ANIMATION_PROFILE = 'e2e/mirror/profiles/animation-h3.json'
+
+type FakeEngine = {
+  port: number
+  control(patch: Record<string, unknown>): Promise<unknown>
+  historyAll(): Promise<Record<string, { prompt?: unknown[] }>>
+  kill(): Promise<boolean>
+}
+
+/** Every live engine child, for the afterAll sweep: a test whose finally is
+ *  preempted (a worker abort, a fixture teardown failure) must never leave
+ *  an orphan behind — the sweep is the second belt. */
+const liveEngines = new Set<ChildProcess>()
+
+test.afterAll(async () => {
+  for (const engine of liveEngines) {
+    if (engine.exitCode === null && engine.signalCode === null) {
+      engine.kill('SIGINT')
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => { engine.kill('SIGKILL'); resolve() }, 5_000)
+        engine.once('exit', () => { clearTimeout(timer); resolve() })
+      })
+    }
+    liveEngines.delete(engine)
+  }
+})
+
+/** The standing fake engine as a child process (the journey.spec.ts pattern):
+ *  a port is RESERVED first, the child owns it, the health-check gates the
+ *  return, and kill() asserts the child actually exited (never orphaned). */
+async function startFakeEngine(): Promise<FakeEngine> {
+  const holder = http.createServer(() => undefined)
+  const port = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const engine: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(port), '--profile', ANIMATION_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
+  liveEngines.add(engine)
+  let log = ''
+  engine.stdout?.on('data', (chunk: Buffer) => { log += chunk.toString() })
+  engine.stderr?.on('data', (chunk: Buffer) => { log += chunk.toString() })
+  engine.once('exit', () => { liveEngines.delete(engine) })
+  // The settle: the fake engine answers /system_stats (a named condition —
+  // a spawn that died names itself in the log instead).
+  await expect.poll(async () => {
+    try { const response = await fetch(`http://127.0.0.1:${port}/system_stats`); return response.ok } catch { return false }
+  }, { timeout: 15_000 }).toBe(true)
+  return {
+    port,
+    control: (patch) => fetch(`http://127.0.0.1:${port}/__control`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) }).then((response) => response.json()),
+    historyAll: () => fetch(`http://127.0.0.1:${port}/history`).then((response) => response.json() as Promise<Record<string, { prompt?: unknown[] }>>),
+    kill: async () => {
+      engine.kill('SIGINT')
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => { engine.kill('SIGKILL'); resolve() }, 5_000)
+        engine.once('exit', () => { clearTimeout(timer); resolve() })
+      })
+      if (engine.exitCode === null && engine.signalCode === null) return false
+      if (log.includes('EADDRINUSE')) throw new Error(`the fake engine failed to bind: ${log}`)
+      return true
+    },
+  }
+}
+
+/** Points the shared server's comfyUrl at the fake engine and returns the
+ *  original settings for the restore (the wave1/journey swap pattern). */
+async function pointAtEngine(request: APIRequestContext, enginePort: number) {
+  const original = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  await request.post('/api/lan/settings', { data: { settings: { ...original, comfyUrl: `http://127.0.0.1:${enginePort}` } } })
+  return original
+}
+
+type SliceDocument = {
+  document: {
+    revision: number
+    body: {
+      keys: Array<{ id: string; selectedCandidateId: string | null }>
+      spans: Array<{ id: string; stepSlots: Array<{ id: string; attempts: string[]; selectedRollingReference: { attemptId: string; frameIndex: number } | null }> }>
+    }
+    attempts: Array<{ attemptId: string; tool: string; targetId: string; execution: string }>
+  }
+}
+
+const readAnimationDocument = async (request: APIRequestContext, documentId: string) =>
+  (await (await request.get(`/api/lan/animation/document?id=${documentId}`)).json()) as { document: SliceDocument['document'] }
+
+const readAttemptView = async (request: APIRequestContext, attemptId: string) =>
+  (await (await request.get(`/api/lan/animation/attempt?id=${attemptId}`)).json()) as { attempt: { execution: string; preparation: { state: string; proposedFrameIndex?: number }; candidate: unknown } }
+
+/** One tween draft body for page-context submissions (a KNOWN idempotency key
+ *  so a second tab context can replay the identical request). */
+const tweenDraftBody = (documentId: string, stepSlotId: string, idempotencyKey: string) => ({
+  documentId,
+  tool: 'tween',
+  targetId: stepSlotId,
+  idempotencyKey,
+  draft: { tool: 'tween', targetStepSlotId: stepSlotId, movementStep: 'she pushes off the back foot into a full stride', overrides: { medium: 'clean line on white' } },
+})
+
+test('the §12.2 vertical slice — leave, land, return, review, select, continue (slice)', async ({ page, request }) => {
+  test.setTimeout(150_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  // A render slow enough to LEAVE the surface before it lands (~4s at 12
+  // steps × 350ms — the honest during-the-wait window, §7.4).
+  await engine.control({ steps: 12, stepDelayMs: 350 })
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'The slice')
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+    await page.goto(animationUrl)
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    // Select the span — the inspector opens (§6.1); no attempts yet, so no
+    // review panel stands.
+    await timeline.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    await expect(page.locator('[data-anim-inspector]')).toBeVisible()
+    await expect(page.locator('[data-anim-review]')).toHaveCount(0)
+    // The truths completion must NEVER change by itself (asserted before,
+    // after the landing, and again after the return).
+    await expect(timeline.locator(`[data-anim-key="${seeded.fromKeyId}"] [data-anim-key-badge]`)).toHaveAttribute('data-anim-key-badge', 'import')
+
+    // SUBMIT one tween step (§7.1's explicit action — the real button).
+    await page.locator('[data-anim-inspector-submit]').click()
+    // The timeline keeps the sequence visible with the running attempt
+    // attached (§7.4): the review panel mounts in-flight vocabulary and the
+    // playhead marks the span owning the step.
+    const panel = page.locator('[data-anim-review]')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    await expect(panel).toHaveAttribute('data-anim-review-state', /queued|reconciling|rendering|preparing/, { timeout: 15_000 })
+    await expect(panel.locator('[data-anim-review-status]')).toHaveText(/Queued|Rendering|Preparing review/)
+    await expect(timeline.locator('[data-anim-playhead]')).toHaveAttribute('data-anim-playhead-at', seeded.spanId)
+
+    // The durable read settles the attempt row (the settle point is the API,
+    // not the POST's response — the submit already returned).
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      return view.document.attempts.filter((entry) => entry.tool === 'tween' && entry.targetId === seeded.stepSlotId).length
+    }, { timeout: 15_000 }).toBe(1)
+    const submitted = await readAnimationDocument(request, seeded.documentId)
+    const attemptId = submitted.document.attempts.find((entry) => entry.tool === 'tween' && entry.targetId === seeded.stepSlotId)!.attemptId
+
+    // LEAVE the surface — the canvas, a different workstation entirely.
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator('[data-anim-root]')).toHaveCount(0)
+
+    // Completion lands SERVER-SIDE with no animation surface attached: the
+    // bounded wait is the attempt row itself (execution ready, the frame
+    // prepared, the clip landed) — the production completion owner's own
+    // polling did the landing, never a browser.
+    await expect.poll(async () => {
+      const view = await readAttemptView(request, attemptId)
+      return view.attempt.execution === 'ready' && view.attempt.preparation.state === 'proposed' && view.attempt.candidate !== null
+    }, { timeout: 30_000 }).toBe(true)
+
+    // The landing changed NO selection by itself: both keys' selections, the
+    // authored revision (landing is not an authoring edit, §11.2), and the
+    // step slot's rolling reference are exactly what they were.
+    const landed = await readAnimationDocument(request, seeded.documentId)
+    const landedSpan = landed.document.body.spans.find((entry) => entry.id === seeded.spanId)!
+    expect(landed.document.revision, 'landing bumps no revision').toBe(seeded.revision)
+    expect(landed.document.body.keys.find((entry) => entry.id === seeded.fromKeyId)!.selectedCandidateId).toBe(seeded.fromSelected)
+    expect(landedSpan.stepSlots[0]!.attempts).toEqual([attemptId])
+    expect(landedSpan.stepSlots[0]!.selectedRollingReference, 'the landed candidate selected nothing').toBeNull()
+
+    // RETURN (§7.4): the session restores — the review position auto-focuses
+    // the span and the panel highlights Ready to review.
+    await page.goto(animationUrl)
+    const back = page.locator('[data-anim-review]')
+    await expect(back).toBeVisible({ timeout: 15_000 })
+    await expect(back).toHaveAttribute('data-anim-review-attempt', attemptId)
+    await expect(back).toHaveAttribute('data-anim-review-state', 'ready')
+    await expect(back.locator('[data-anim-review-status]')).toHaveText('Ready to review')
+    await expect(back.locator('[data-anim-review-meaning]')).toContainText('selection unchanged')
+    // Review the clip: the landed candidate displays through the real blob
+    // route, and the selections are STILL untouched at the UI.
+    const clip = back.locator('[data-anim-review-clip]')
+    await expect(clip).toBeVisible()
+    await expect(clip).toHaveAttribute('src', /\/api\/lan\/documents\/blobs\/file/)
+    await expect(page.locator(`[data-anim-key="${seeded.fromKeyId}"] [data-anim-key-badge]`)).toHaveAttribute('data-anim-key-badge', 'import')
+    // The frame strip: the clip's 22 frames, the PROPOSED one marked — and
+    // NOTHING selected (§7.2.2: the system proposes, it never selects).
+    const frames = back.locator('[data-anim-review-frame]')
+    await expect(frames).toHaveCount(22)
+    await expect(back.locator('[data-anim-review-frame="11"]')).toHaveAttribute('data-anim-frame-proposed', 'true')
+    await expect(back.locator('[data-anim-frame-selected="true"]')).toHaveCount(0)
+    await expect(back.locator('[data-anim-review-selected-frame]')).toContainText('No frame chosen')
+    // Dependent advancement is a user action gated on a selection (§7.1).
+    await expect(back.locator('[data-anim-review-continue]')).toBeDisabled()
+
+    // SELECT a reference frame — explicit, and deliberately NOT the proposal
+    // (frame 5), so the choice rides §7.2.2's on-demand extraction path.
+    let extractCalls = 0
+    page.on('request', (route) => { if (route.url().includes('/api/lan/animation/attempt/extract-frame')) extractCalls += 1 })
+    await back.locator('[data-anim-review-frame="5"]').click()
+    await expect(back.locator('[data-anim-review-frame="5"]')).toHaveAttribute('data-anim-frame-selected', 'true')
+    await expect(back.locator('[data-anim-review-selected-frame]')).toContainText('frame 5')
+    expect(extractCalls, 'a non-proposed frame selects through on-demand extraction').toBe(1)
+    // The selection is DOCUMENT truth (§7.2.1 command 2): the slot names
+    // this attempt + frame 5, the revision moved exactly the one selection,
+    // and the span carries the §8.3 stale mark (later steps consume the new
+    // near reference).
+    const selected = await readAnimationDocument(request, seeded.documentId)
+    const selectedSpan = selected.document.body.spans.find((entry) => entry.id === seeded.spanId)!
+    expect(selectedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 5 })
+    expect(selected.document.revision).toBe(seeded.revision + 1)
+    await expect(page.locator(`[data-anim-span="${seeded.spanId}"]`)).toHaveAttribute('data-anim-span-stale', 'true')
+
+    // Continue is enabled ONLY now — the selection is the gate.
+    await expect(back.locator('[data-anim-review-continue]')).toBeEnabled()
+    // EXPLICITLY CONTINUE (§7.1): the chain advances one step — the new step
+    // slot mints (the F1 append) and the next step's submission fires against
+    // it. THIS build's honest limit then answers at the wire: the promoted
+    // frame rides the clip artifact, and the tween adapters' reference slots
+    // consume images — the submission is refused until the engine leg's real
+    // frame extraction lands (the task-9 concern, surfaced by name).
+    await expect(back.locator('[data-anim-review-limit]')).toBeVisible()
+    await back.locator('[data-anim-review-continue]').click()
+    await expect(page.locator(`[data-anim-span="${seeded.spanId}"] [data-anim-step-slot]`)).toHaveCount(2, { timeout: 15_000 })
+    const refusal = page.locator('[data-anim-command-error]')
+    await expect(refusal).toBeVisible({ timeout: 15_000 })
+    await expect(refusal).toContainText('image asset')
+    // The document: the chain structurally advanced (the empty second slot
+    // consumes no reference state), the selection survived the continuation.
+    const continued = await readAnimationDocument(request, seeded.documentId)
+    const continuedSpan = continued.document.body.spans.find((entry) => entry.id === seeded.spanId)!
+    expect(continuedSpan.stepSlots).toHaveLength(2)
+    expect(continuedSpan.stepSlots[1]!.attempts).toEqual([])
+    expect(continuedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 5 })
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  // The fake-engine child actually exited — never orphaned.
+  expect(engineExited).toBe(true)
+})
+
+test('a duplicate completion at the surface leaves exactly one candidate (review)', async ({ page, request }) => {
+  test.setTimeout(90_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Duplicate at the surface')
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    await expect(page.locator('[data-anim-timeline]')).toBeVisible({ timeout: 15_000 })
+    // The first submission from the page context with a KNOWN idempotency
+    // key (the walk replays the identical request later).
+    const key = `anim-e2e-dup-${Date.now()}`
+    const body = tweenDraftBody(seeded.documentId, seeded.stepSlotId, key)
+    const first = await page.evaluate(async (payload) => {
+      const response = await fetch('/api/lan/animation/attempts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+      return await response.json() as { attemptId: string; created: boolean }
+    }, body)
+    expect(first.created).toBe(true)
+    await expect.poll(async () => {
+      const view = await readAttemptView(request, first.attemptId)
+      return view.attempt.execution === 'ready' && view.attempt.candidate !== null
+    }, { timeout: 30_000 }).toBe(true)
+    // The panel shows the ONE landed candidate.
+    await page.reload()
+    const panel = page.locator('[data-anim-review]')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    await expect(panel.locator('[data-anim-review-clip]')).toHaveCount(1)
+    const historySize = Object.keys(await engine.historyAll()).length
+    expect(historySize).toBe(1)
+
+    // The duplicate attempt-ready (§12.3): the SAME idempotency key + the
+    // SAME inputs from a second tab context — the route answers with the
+    // EXISTING attempt (§7.2.2), never a second render.
+    const second = await page.evaluate(async (payload) => {
+      const response = await fetch('/api/lan/animation/attempts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+      return await response.json() as { attemptId: string; created: boolean }
+    }, body)
+    expect(second.attemptId).toBe(first.attemptId)
+    expect(second.created).toBe(false)
+    // The surface still shows exactly ONE candidate (Review Focus #1), the
+    // engine still holds exactly ONE completed record, and the document
+    // holds exactly ONE attempt row for the step slot.
+    await expect(panel.locator('[data-anim-review-clip]')).toHaveCount(1)
+    await expect(panel.locator('[data-anim-review-status]')).toHaveText('Ready to review')
+    expect(Object.keys(await engine.historyAll()).length).toBe(historySize)
+    const view = await readAnimationDocument(request, seeded.documentId)
+    expect(view.document.attempts.filter((entry) => entry.targetId === seeded.stepSlotId)).toHaveLength(1)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('a failed preparation recovers through the panel retry action (review)', async ({ page, request }) => {
+  test.setTimeout(90_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Preparation recovery')
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    await expect(page.locator('[data-anim-timeline]')).toBeVisible({ timeout: 15_000 })
+    const submitted = await page.evaluate(async (payload) => {
+      const response = await fetch('/api/lan/animation/attempts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+      return await response.json() as { attemptId: string }
+    }, tweenDraftBody(seeded.documentId, seeded.stepSlotId, `anim-e2e-prep-${Date.now()}`))
+    await expect.poll(async () => {
+      const view = await readAttemptView(request, submitted.attemptId)
+      return view.attempt.execution === 'ready' && view.attempt.preparation.state === 'proposed'
+    }, { timeout: 30_000 }).toBe(true)
+
+    // §11.4's preparation-failure class: the fake engine's reversible truth
+    // gap masks the job's history record, so the preparation read finds no
+    // outputs (the same knob the routes suite drives). The retry against
+    // the gap exhausts the bounded attempts — preparation FAILED, the clip
+    // PRESERVED.
+    const history = await engine.historyAll()
+    const jobId = Object.entries(history).find(([, record]) => {
+      const extra = Array.isArray(record.prompt) ? record.prompt[2] as { attempt_id?: string } | undefined : undefined
+      return extra?.attempt_id === submitted.attemptId
+    })?.[0]
+    expect(jobId, 'the engine holds the attempt\'s history record').toBeTruthy()
+    await engine.control({ hideHistoryFor: jobId! })
+    await request.post('/api/lan/animation/attempt/retry-preparation', { data: { attemptId: submitted.attemptId } })
+    const failed = await readAttemptView(request, submitted.attemptId)
+    expect(failed.attempt.preparation.state).toBe('failed')
+    expect(failed.attempt.execution).toBe('ready')
+
+    // The panel names the failed preparation and offers the explicit
+    // recovery action (F3) — the durable read carries it (reload).
+    await page.reload()
+    const panel = page.locator('[data-anim-review]')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    await expect(panel).toHaveAttribute('data-anim-review-preparation', 'failed')
+    await expect(panel.locator('[data-anim-review-clip]')).toBeVisible()
+    await expect(panel.locator('[data-anim-review-status]')).toHaveText('Ready to review')
+
+    // The gap closes; the panel's retry wires the client's retryPreparation —
+    // the proposal returns, WITHOUT any new engine work.
+    await engine.control({ hideHistoryFor: null })
+    await panel.locator('[data-refusal-satisfy]').click()
+    await expect(panel).toHaveAttribute('data-anim-review-preparation', 'proposed', { timeout: 15_000 })
+    await expect(panel.locator('[data-anim-review-frame="11"]')).toHaveAttribute('data-anim-frame-proposed', 'true')
+    expect(Object.keys(await engine.historyAll()).length).toBe(1)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('a failed attempt renders the Failed-or-canceled vocabulary without touching selections (review)', async ({ page, request }) => {
+  test.setTimeout(90_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  await engine.control({ failMode: 'error' })
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Failed vocabulary')
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    await expect(page.locator('[data-anim-timeline]')).toBeVisible({ timeout: 15_000 })
+    const submitted = await page.evaluate(async (payload) => {
+      const response = await fetch('/api/lan/animation/attempts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+      return await response.json() as { attemptId: string }
+    }, tweenDraftBody(seeded.documentId, seeded.stepSlotId, `anim-e2e-fail-${Date.now()}`))
+    await expect.poll(async () => (await readAttemptView(request, submitted.attemptId)).attempt.execution, { timeout: 30_000 }).toBe('failed')
+
+    await page.reload()
+    // §7.4's restored-session highlight is spec-worded for "Ready to review"
+    // — a terminal failure is reached through the span the user authored
+    // (the playhead marks open decisions and running work, not dead ones).
+    const failedTimeline = page.locator('[data-anim-timeline]')
+    await expect(failedTimeline).toBeVisible({ timeout: 15_000 })
+    await failedTimeline.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    const panel = page.locator('[data-anim-review]')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    await expect(panel).toHaveAttribute('data-anim-review-state', 'failed')
+    await expect(panel.locator('[data-anim-review-status]')).toHaveText('Failed or canceled')
+    await expect(panel.locator('[data-anim-review-meaning]')).toContainText('previous selections remain')
+    // No candidate landed: no clip, no frame strip, nothing to continue
+    // from — and a re-roll stays available (a fresh take is a new attempt).
+    await expect(panel.locator('[data-anim-review-clip]')).toHaveCount(0)
+    await expect(panel.locator('[data-anim-review-frames]')).toHaveCount(0)
+    await expect(panel.locator('[data-anim-review-continue]')).toBeDisabled()
+    await expect(panel.locator('[data-anim-review-reroll]')).toBeEnabled()
+    // The failure changed no selection (§8.2's never-silently list).
+    const view = await readAnimationDocument(request, seeded.documentId)
+    expect(view.document.body.keys.find((entry) => entry.id === seeded.fromKeyId)!.selectedCandidateId).toBe(seeded.fromSelected)
+    expect(view.document.body.spans.find((entry) => entry.id === seeded.spanId)!.stepSlots[0]!.selectedRollingReference).toBeNull()
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await engine.control({ failMode: null }).catch(() => undefined)
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('a re-roll adds an alternative take without replacing the selection (review)', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Re-roll takes')
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+    await page.goto(animationUrl)
+    await expect(page.locator('[data-anim-timeline]')).toBeVisible({ timeout: 15_000 })
+    // Take 1 lands and the user selects frame 3 from it explicitly.
+    const takeOne = await page.evaluate(async (payload) => {
+      const response = await fetch('/api/lan/animation/attempts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+      return await response.json() as { attemptId: string }
+    }, tweenDraftBody(seeded.documentId, seeded.stepSlotId, `anim-e2e-roll-1-${Date.now()}`))
+    await expect.poll(async () => {
+      const view = await readAttemptView(request, takeOne.attemptId)
+      return view.attempt.execution === 'ready' && view.attempt.candidate !== null
+    }, { timeout: 30_000 }).toBe(true)
+    await page.reload()
+    const panel = page.locator('[data-anim-review]')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    await panel.locator('[data-anim-review-frame="3"]').click()
+    await expect(panel.locator('[data-anim-review-frame="3"]')).toHaveAttribute('data-anim-frame-selected', 'true')
+
+    // RE-ROLL: a fresh take for the SAME step (a new idempotency key — a
+    // deliberate roll, never §7.2.2's retry key). The take lands as an
+    // ALTERNATIVE; the selection from take 1 is never replaced.
+    await panel.locator('[data-anim-review-reroll]').click()
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      return view.document.attempts.filter((entry) => entry.targetId === seeded.stepSlotId).length
+    }, { timeout: 30_000 }).toBe(2)
+    const both = await readAnimationDocument(request, seeded.documentId)
+    const takeTwo = both.document.attempts.find((entry) => entry.targetId === seeded.stepSlotId && entry.attemptId !== takeOne.attemptId)!.attemptId
+    // The panel's subject follows the NEWEST take to its own Ready state,
+    // and the take strip lists BOTH with take 1 still the selected one.
+    await expect(panel).toHaveAttribute('data-anim-review-attempt', takeTwo)
+    await expect(panel).toHaveAttribute('data-anim-review-state', 'ready', { timeout: 30_000 })
+    const takes = panel.locator('[data-anim-review-take]')
+    await expect(takes).toHaveCount(2)
+    await expect(panel.locator(`[data-anim-review-take="${takeOne.attemptId}"]`)).toHaveAttribute('data-anim-take-selected', 'true')
+    await expect(panel.locator(`[data-anim-review-take="${takeTwo}"]`)).toHaveAttribute('data-anim-take-selected', 'false')
+    // The DOCUMENT truth: the selection still names take 1 (§8.2 — the
+    // landing never replaced it), while the slot holds both takes.
+    const rolled = await readAnimationDocument(request, seeded.documentId)
+    const rolledSlot = rolled.document.body.spans.find((entry) => entry.id === seeded.spanId)!.stepSlots[0]!
+    expect(rolledSlot.attempts).toEqual([takeOne.attemptId, takeTwo])
+    expect(rolledSlot.selectedRollingReference).toEqual({ attemptId: takeOne.attemptId, frameIndex: 3 })
+
+    // Switching takes is an EXPLICIT user act: reviewing take 2 and choosing
+    // frame 8 moves the selection — the user did it, not the system.
+    await panel.locator(`[data-anim-review-take="${takeTwo}"]`).click()
+    await expect(panel).toHaveAttribute('data-anim-review-attempt', takeTwo)
+    await panel.locator('[data-anim-review-frame="8"]').click()
+    await expect(panel.locator('[data-anim-review-frame="8"]')).toHaveAttribute('data-anim-frame-selected', 'true')
+    const switched = await readAnimationDocument(request, seeded.documentId)
+    expect(switched.document.body.spans.find((entry) => entry.id === seeded.spanId)!.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId: takeTwo, frameIndex: 8 })
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
 })

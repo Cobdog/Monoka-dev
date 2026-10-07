@@ -20,10 +20,13 @@
  *     already placed in a lane stacks one lane up — deterministic (document
  *     order breaks ties), and step-slot content never moves a lane (steps
  *     nest INSIDE the bar, not beside it);
- *   - the REVIEW POSITION for the playhead (§7.4): the newest attempt's
- *     target resolved onto the timeline — hero and sequence target key
- *     slots, tween targets a step slot and resolves to the span OWNING it.
- *     No attempts ⇒ null (the marker is absent, never a lying position).
+ *   - the REVIEW POSITION for the playhead (§7.4, finalized in task 10):
+ *     the newest READY attempt whose review decision is still OPEN (a tween
+ *     step slot with no rolling-reference selection; a hero key slot with
+ *     no candidate selection), else the newest attempt still in flight —
+ *     hero and sequence target key slots, tween targets a step slot and
+ *     resolves to the span OWNING it. Nothing awaiting the user ⇒ null
+ *     (the marker is absent, never a lying position).
  *
  * Input contract: a PARSED AnimationDocumentBody (parseAnimationDocumentBody
  * enforces the pointer integrity these derivations lean on — span endpoints
@@ -31,7 +34,7 @@
  * anyway: an unexpected dangling id degrades to a defensible value rather
  * than crashing the render.
  */
-import type { AnimationDocumentBody, AnimationTool, KeyCandidate, KeySlot, Span } from '../../shared/animation/types'
+import type { AnimationDocumentBody, AnimationTool, AttemptExecutionState, KeyCandidate, KeySlot, Span } from '../../shared/animation/types'
 
 /** Where a key's chosen image came from (the closed §5.1 vocabulary). */
 export type KeyOrigin = KeyCandidate['origin']
@@ -51,8 +54,14 @@ export type TimelineReviewPosition = { kind: 'key' | 'span'; id: string } | null
 
 /** The attempt facts the review position derives from — the recovery read's
  *  AttemptStateView satisfies this structurally (the newest is the LAST:
- *  the store serves attempts oldest-first). */
-export type TimelineAttemptSummary = { attemptId: string; tool: AnimationTool; targetId: string }
+ *  the store serves attempts oldest-first). Task 10 finalized the shape:
+ *  the position is chosen by OUTCOME (what awaits the user), so the
+ *  execution state rides along. */
+export type TimelineAttemptSummary = { attemptId: string; tool: AnimationTool; targetId: string; execution: AttemptExecutionState }
+
+/** The states whose engine-side truth is not settled (the state adapter's
+ *  own set, mirrored — the review position treats them all as "running"). */
+const IN_FLIGHT: ReadonlySet<AttemptExecutionState> = new Set(['queued', 'rendering', 'preparing', 'reconciling'])
 
 /** Two spans overlap when their key-order intervals share more than an
  *  endpoint: a bar ends where the next key's card sits, so [0,1) and [1,2)
@@ -99,15 +108,48 @@ export function deriveTimeline(body: AnimationDocumentBody): TimelineModel {
   return { keys, spans }
 }
 
+/** The review position (§7.4), FINALIZED in task 10 (task 8's newest-
+ *  attempt rule was supersedeable): the position is what awaits the user,
+ *  not merely what happened last —
+ *    rule 1 — the newest READY attempt whose review decision is still OPEN
+ *    (a tween whose step slot has no rolling-reference selection; a hero
+ *    whose key slot has no candidate selection): "On return, the editor
+ *    restores the session and highlights 'Ready to review'." A slot that
+ *    HAS a selection is resolved — the chain can continue from it, and a
+ *    later re-roll landing beside it is an alternative, not a blocker;
+ *    rule 2 — else the newest attempt still IN FLIGHT: "the timeline …
+ *    attaches the running attempt to the relevant span";
+ *    rule 3 — else null (the marker is absent, never a lying position).
+ *  Completion advancing the marker is NOT automatic progress: rule 1 marks
+ *  what the USER must decide, and the user's own selection dissolves it. */
 export function deriveReviewPosition(body: AnimationDocumentBody, attempts: ReadonlyArray<TimelineAttemptSummary>): TimelineReviewPosition {
-  const newest = attempts[attempts.length - 1]
-  if (!newest) return null
-  if (newest.tool === 'tween') {
-    // A tween attempt targets a step slot — the reviewable position is the
-    // span that owns it (the bar the step chips nest inside).
-    const span = body.spans.find((entry) => entry.stepSlots.some((slot) => slot.id === newest.targetId))
-    return span ? { kind: 'span', id: span.id } : null
+  // Rule 1 — the open review decision (§7.4's return-and-highlight).
+  for (let index = attempts.length - 1; index >= 0; index -= 1) {
+    const attempt = attempts[index]!
+    if (attempt.execution !== 'ready') continue
+    if (attempt.tool === 'tween') {
+      // A tween attempt targets a step slot — the reviewable position is
+      // the span that owns it (the bar the step chips nest inside).
+      const span = body.spans.find((entry) => entry.stepSlots.some((slot) => slot.id === attempt.targetId && slot.selectedRollingReference === null))
+      if (span) return { kind: 'span', id: span.id }
+      continue
+    }
+    // Hero targets a key slot; sequence targets its window-start key (§11.2)
+    // — the landing mints/holds candidates, so the slot is open until a
+    // selection exists.
+    const key = body.keys.find((entry) => entry.id === attempt.targetId)
+    if (key && key.selectedCandidateId === null) return { kind: 'key', id: key.id }
   }
-  // Hero targets a key slot; sequence targets its window-start key (§11.2).
-  return body.keys.some((entry) => entry.id === newest.targetId) ? { kind: 'key', id: newest.targetId } : null
+  // Rule 2 — the running attempt (§7.4's during-the-wait attachment).
+  for (let index = attempts.length - 1; index >= 0; index -= 1) {
+    const attempt = attempts[index]!
+    if (!IN_FLIGHT.has(attempt.execution)) continue
+    if (attempt.tool === 'tween') {
+      const span = body.spans.find((entry) => entry.stepSlots.some((slot) => slot.id === attempt.targetId))
+      if (span) return { kind: 'span', id: span.id }
+      continue
+    }
+    if (body.keys.some((entry) => entry.id === attempt.targetId)) return { kind: 'key', id: attempt.targetId }
+  }
+  return null
 }
