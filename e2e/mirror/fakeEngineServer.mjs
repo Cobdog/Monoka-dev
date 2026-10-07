@@ -113,6 +113,11 @@ const state = {
   stepDelayMs: profile.render?.stepDelayMs ?? 350,
   outputKind: profile.render?.outputKind ?? 'video', // video | image
   emitBinaryPreviews: profile.render?.emitBinaryPreviews ?? true,
+  // Completion-lag injection (task 4 review Minor-3): when > 0, the job's
+  // queue slot empties at completion but its HISTORY record appears only
+  // after this delay — forcing the torn queue-empty/history-absent window a
+  // reconciler must survive before it may answer 'lost'.
+  historyLagMs: 0,
   // POST /refresh hit count (truth-surface sweep #2, 68e9k17): the mirror
   // counts engine-side folder re-scan asks so tests can PROVE a client
   // re-pull carried refresh semantics (read it via GET /__control).
@@ -130,6 +135,13 @@ const control = (req, res, url) => {
     req.on('end', () => {
       try {
         const patch = JSON.parse(body || '{}')
+        // ACTION (not state): simulate an engine restart — the running job is
+        // killed without a record and every history record is forgotten, the
+        // confirmed-lost shape a reconciler must classify as 'lost'.
+        if (patch.wipe === true) {
+          if (running) { clearTimeout(running.timer); running = null }
+          histories.clear()
+        }
         for (const key of Object.keys(state)) if (key in patch) state[key] = patch[key]
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ profile: profile.id, ...state }))
@@ -165,16 +177,18 @@ const sendPreview = (seed, step) => {
 }
 
 // ---------------------------------------------------------------- scripted execution
-function runPrompt(promptId, graph) {
+function runPrompt(promptId, graph, extraData) {
   const my = { promptId, timer: null, interrupted: false }
   running = my
   const tick = (fn, delay) => { my.timer = setTimeout(fn, delay) }
   const finishRecord = (images, status) => {
-    histories.set(promptId, {
-      prompt: [graph, { client_id: 'studio-realtime', prompt_id: promptId }, ''],
+    const write = () => histories.set(promptId, {
+      prompt: [graph, { client_id: 'studio-realtime', prompt_id: promptId }, extraData],
       outputs: { final: { images } },
       status: { status_str: status, completed: true, messages: [] },
     })
+    if (state.historyLagMs > 0) setTimeout(write, state.historyLagMs)
+    else write()
   }
   send({ type: 'status', data: { status: { exec_info: { queue_remaining: 1 } } } })
   send({ type: 'execution_start', data: { prompt_id: promptId } })
@@ -301,7 +315,7 @@ async function handle(req, res) {
           },
         })
       }
-      runPrompt(promptId, body.prompt ?? {})
+      runPrompt(promptId, body.prompt ?? {}, body.extra_data ?? '')
       return json(res, 200, { prompt_id: promptId, number: jobCounter, node_errors: {} })
     }
 

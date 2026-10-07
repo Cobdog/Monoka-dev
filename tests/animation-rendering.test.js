@@ -43,6 +43,15 @@
 //       once, with the engine's submission count NOT increasing; a DEAD
 //       engine port ⇒ submission stays reconciling-pending, attempt
 //       preserved
+//   (g2) the reconciliation queue half + the lost verdicts (review
+//       Important-1/2/3): reattach-while-running (a restart mid-render
+//       re-attaches observation and lands once); confirmed-lost with a KNOWN
+//       job id (a wiped engine ⇒ interrupted, prior work preserved);
+//       dispatch-never-landed (lost ack + empty engine ⇒ interrupted); lost
+//       ack while the job still RENDERS ⇒ reconcile stays pending — the
+//       queue is non-empty and bare ids cannot correlate — and the NEXT
+//       sweep lands the completed record without any resubmission; and the
+//       torn-window pin (completion history lags the queue ⇒ never 'lost')
 //   (h) frame-preparation failure — prepareFrame rejecting twice then
 //       succeeding lands proposed via bounded auto-retry; rejecting past the
 //       bound preserves the clip (§11.4) with preparation failed until the
@@ -172,8 +181,9 @@ let keyE3 = null
 let docF = null
 let keyF1 = null
 let keyF2 = null
-// (g)
+// (g)/(g2)
 let docG = null
+let docG2 = null
 let stepG1 = null
 let attemptG1 = null
 let attemptG2 = null
@@ -726,6 +736,95 @@ test('(g) reconcile resolves a lost dispatch by attempt-identifier search — ne
   assert.equal(anim.getAttempt(attemptG2.attemptId).execution.state, 'reconciling', 'an unreachable engine leaves the dispatch outcome pending')
   await deadOwner.reconcile()
   assert.equal(anim.getAttempt(attemptG2.attemptId).execution.state, 'reconciling', 'reconcile against a dead engine stays pending — the attempt is preserved, never dropped')
+})
+
+// ---------------------------------------------------------------------------
+// (g2) the reconciliation queue half + the lost verdicts (review round)
+// ---------------------------------------------------------------------------
+
+test('(g2) reattach-while-running lands; wiped engines interrupt; a lost-ack render stays pending and lands on the next sweep — never an orphan, never a resubmit', async () => {
+  docG2 = anim.createDocument({ projectId, name: 'Golf-2', binding: makeBinding() })
+
+  // A prior landed render on this document — the lost legs must preserve it.
+  const prior = await submitHero(docG2, uuid(), 'idem-g2-prior')
+  await waitAttemptState(prior.attemptId, ['ready'], 'the prior render landing')
+  const candidatesBefore = anim.getDocument(docG2.id).body.keys.length
+
+  // ---- Leg A — reattach-while-running: a restart mid-render re-attaches
+  // observation through the KNOWN engine job id and lands exactly once.
+  await engineControl({ stepDelayMs: 400 })
+  const reattach = await submitHero(docG2, uuid(), 'idem-g2-reattach')
+  owner.stopObserving() // the restart: watchers drop, the row keeps its job id
+  await sleep(250) // the in-flight tick settles against the pre-restart row (running)
+  assert.ok(['queued', 'rendering'].includes(anim.getAttempt(reattach.attemptId).execution.state), 'the attempt is still in flight across the restart')
+  const countBeforeA = await engineRecordCount()
+  await owner.reconcile()
+  assert.equal(anim.getAttempt(reattach.attemptId).execution.state, 'rendering', 'the sweep re-attached observation of the running job')
+  const landed = await waitAttemptState(reattach.attemptId, ['ready'], 'the re-attached watcher landing the render')
+  assert.ok(landed.result, 'the re-attached observation landed the candidate')
+  assert.equal(await engineRecordCount(), countBeforeA + 1, 'exactly ONE engine job for the reattached attempt (countBeforeA predates its completion) — no resubmission')
+  const reattachRecords = Object.values(await engineHistoryAll()).filter((record) => record.prompt?.[2]?.attempt_id === reattach.attemptId)
+  assert.equal(reattachRecords.length, 1, 'the engine holds exactly one record carrying the attempt id (the extra_data carrier rides)')
+
+  // ---- Leg B — confirmed lost with a KNOWN job id: the engine forgets the
+  // job entirely (the wipe: history gone, running job killed) ⇒ interrupted.
+  const lost = await submitHero(docG2, uuid(), 'idem-g2-lost')
+  owner.stopObserving()
+  await sleep(250)
+  await engineControl({ wipe: true })
+  await owner.reconcile()
+  const lostRow = await waitAttemptState(lost.attemptId, ['interrupted'], 'the wiped-engine attempt resolving interrupted')
+  assert.equal(lostRow.result, null)
+  assert.equal(anim.getDocument(docG2.id).body.keys.length, candidatesBefore + 1, 'prior landed work is preserved (only the reattached leg A candidate was added)')
+
+  // ---- Leg C — dispatch-never-landed: the acknowledgment was lost AND the
+  // engine (reachable, quiet) holds no trace ⇒ interrupted, never resubmitted.
+  const neverLanded = await submitHero(docG2, uuid(), 'idem-g2-never')
+  owner.stopObserving()
+  await sleep(250)
+  db.prepare('UPDATE animation_attempt SET engine_job_id = NULL WHERE id = ?').run(neverLanded.attemptId)
+  await engineControl({ wipe: true }) // the engine restarts QUIET: the dispatched job dies unrecorded
+  const countBeforeC = await engineRecordCount()
+  await owner.reconcile()
+  const neverRow = await waitAttemptState(neverLanded.attemptId, ['interrupted'], 'the never-landed dispatch resolving interrupted')
+  assert.equal(neverRow.result, null)
+  assert.equal(neverRow.engineJobId, null)
+  assert.equal(await engineRecordCount(), countBeforeC, 'the never-landed dispatch was never retried as new GPU work')
+
+  // ---- Leg D — the Important-1 core: the acknowledgment was lost while the
+  // job still RENDERS. The queue is non-empty and bare ids cannot correlate,
+  // so the sweep answers UNCERTAIN — never interrupted — and the NEXT sweep
+  // lands the completed record through the attempt-identifier search.
+  const racing = await submitHero(docG2, uuid(), 'idem-g2-racing')
+  owner.stopObserving()
+  await sleep(250)
+  db.prepare('UPDATE animation_attempt SET engine_job_id = NULL WHERE id = ?').run(racing.attemptId)
+  const countBeforeD = await engineRecordCount()
+  await owner.reconcile()
+  assert.equal(anim.getAttempt(racing.attemptId).execution.state, 'reconciling', 'a non-empty engine queue keeps the lost-ack attempt pending — the job may be ours')
+  // The job the attempt actually dispatched, found by the marker exactly as
+  // the sweep finds it (waitUntil returns a boolean — the key is re-read).
+  const racingJobOf = async () => Object.entries(await engineHistoryAll()).find(([, record]) => record.prompt?.[2]?.attempt_id === racing.attemptId)?.[0] ?? null
+  await waitUntil(async () => (await racingJobOf()) !== null, 10_000, 'the racing job completing into history (the marker answerable)')
+  const racingJob = await racingJobOf()
+  await owner.reconcile()
+  const raced = await waitAttemptState(racing.attemptId, ['ready'], 'the next sweep landing the completed lost-ack attempt')
+  assert.equal(raced.engineJobId, racingJob, 'the search re-adopted the engine job id')
+  assert.ok(raced.result, 'the completed output LANDED — no orphan')
+  assert.equal(await engineRecordCount(), countBeforeD + 1, 'exactly the ONE dispatched job completed across both sweeps — never resubmitted')
+  await engineControl({ stepDelayMs: 40 })
+
+  // ---- Minor-3 — the torn-window pin: the job's queue slot empties at
+  // completion but its history record lags 150 ms. The watcher's poll inside
+  // that window must NOT conclude 'lost' — the settle holds, the record
+  // lands, and the render completes normally.
+  await engineControl({ historyLagMs: 150 })
+  const lagged = await submitHero(docG2, uuid(), 'idem-g2-lag')
+  const lagRow = await waitAttemptState(lagged.attemptId, ['ready'], 'the lagged-completion render landing normally')
+  assert.ok(lagRow.result, 'the lagged history record was waited out, not misread as lost')
+  const lostEmits = events.filter((event) => event.type === 'animation.attempt.lost' && event.payload.attemptId === lagged.attemptId)
+  assert.deepEqual(lostEmits, [], 'the torn window never produced a lost verdict')
+  await engineControl({ historyLagMs: 0 })
 })
 
 // ---------------------------------------------------------------------------

@@ -90,6 +90,13 @@ export type EnginePort = {
    *  attempt identifier the request carried. Null = the engine was asked and
    *  has no such job; an unreachable engine throws. */
   findJobByAttempt(attemptId: string): Promise<string | null>
+  /** The engine's queued+running job ids — BARE prompt ids (the queue cannot
+   *  correlate a job to an attempt; only completed history records carry the
+   *  request graph with its attempt marker). The §11.4 uncertain-dispatch
+   *  discriminator: a NON-empty queue means work is in flight that may be
+   *  ours, so a missing history trace is UNCERTAIN, not absent. Throws when
+   *  unreachable. */
+  queuedJobIds(): Promise<string[]>
   /** Uploads a reference asset into the engine's input folder under the
    *  shared deterministic name (graphs.ts' engineInputName). */
   uploadReference(assetId: string, bytes: Buffer): Promise<void>
@@ -170,8 +177,10 @@ export function attemptOutputPrefix(attemptId: string): string {
   return `animation/${attemptId}/`
 }
 
-export function createComfyEnginePort(options: { baseUrl: string; clientId?: string; blobs: AnimationBlobSink }): EnginePort {
+export function createComfyEnginePort(options: { baseUrl: string; clientId?: string; blobs: AnimationBlobSink; /** How long a queue-empty + history-absent verdict must PERSIST before the port answers 'lost' — the completion transition (queue slot emptied, history record not yet visible) must not be misread as a lost job. Default 300 ms. */
+lostSettleMs?: number }): EnginePort {
   const base = options.baseUrl.replace(/\/$/, '')
+  const lostSettleMs = options.lostSettleMs ?? 300
   // F6 Option A's stable id: the one clientId whose WebSocket session the
   // engine actually finds (the realtime hub's). Tests default to the same
   // constant; Task 5's wiring passes realtimeHub.clientId().
@@ -324,15 +333,19 @@ export function createComfyEnginePort(options: { baseUrl: string; clientId?: str
       }
       let record = await readRecord()
       if (!record) {
-        // Not in history — is it queued? The verdict is torn-read sensitive:
-        // a job can finish (leaving the queue) while its history record is
-        // still being written, so a queue miss alone must never read as
-        // 'lost', and a FAILED queue read is an unreachable-class answer
-        // (never a silent "not queued"). One FRESH history re-read after the
-        // queue check closes the window; a genuinely lost job is absent from
-        // both, seconds apart.
+        // Not in history — is it queued? A job PRESENT in the queue is
+        // definitively running regardless of history. A queue miss plus a
+        // history miss is torn-read sensitive: the completion transition
+        // (queue slot emptied, history record not yet visible — real engines
+        // may write it after dequeue, the mirror can force it with
+        // historyLagMs) must not be misread as 'lost', and a FAILED queue
+        // read is an unreachable-class answer (never a silent "not queued").
+        // The absence must therefore PERSIST across lostSettleMs before the
+        // port answers 'lost'; a genuinely lost job is absent from both
+        // sources indefinitely, so the settle only delays the verdict.
         const queue = await queueIds()
         if (queue.has(engineJobId)) return { status: 'running' }
+        if (lostSettleMs > 0) await new Promise((resolve) => setTimeout(resolve, lostSettleMs))
         record = await readRecord()
         if (!record) return { status: 'lost' }
       }
@@ -372,6 +385,10 @@ export function createComfyEnginePort(options: { baseUrl: string; clientId?: str
         if (graph !== null && graphCarriesPrefix(graph, prefix)) return jobId
       }
       return null
+    },
+
+    async queuedJobIds() {
+      return Array.from(await queueIds())
     },
 
     async uploadReference(assetId, bytes) {
