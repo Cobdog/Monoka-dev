@@ -88,13 +88,16 @@ export type AnimationAttemptRow = {
 /** Thrown when an authoring command loses the expectedRevision race: routes
  *  map this to 409 with the CURRENT document attached so the client can
  *  rebase and retry — never a silent lost update (the PlanConflictError
- *  idiom, spec §11.2 "all authoring commands use expectedRevision"). */
+ *  idiom, spec §11.2 "all authoring commands use expectedRevision"). The
+ *  optional message override carries the OTHER 409 this family owns: the
+ *  rendering service's same-idempotency-key-different-inputs conflict
+ *  (§7.2.2/§11.4) — same status, same current-document surface. */
 export class AnimationConflictError extends Error {
   readonly status = 409
   readonly currentRevision: number
-  readonly currentDocument: AnimationDocumentRow
-  constructor(currentRevision: number, currentDocument: AnimationDocumentRow) {
-    super('This animation document changed while it was being edited — reload it and retry the edit on the fresh copy.')
+  readonly currentDocument: AnimationDocumentRow | null
+  constructor(currentRevision: number, currentDocument: AnimationDocumentRow | null, message?: string) {
+    super(message ?? 'This animation document changed while it was being edited — reload it and retry the edit on the fresh copy.')
     this.name = 'AnimationConflictError'
     this.currentRevision = currentRevision
     this.currentDocument = currentDocument
