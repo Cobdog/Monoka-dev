@@ -344,21 +344,38 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
   function resolveDraft(document: AnimationDocumentRow, tool: AnimationTool, targetId: string, draft: Record<string, unknown>): {
     compile: { tool: 'hero'; context: HeroContext } | { tool: 'tween'; context: TweenContext } | { tool: 'sequence'; context: SequenceContext }
     references: FrozenAttemptSnapshot['references']
+    /** HERO only (§5.2, task 11 — the F5 contract-review fix): the frozen
+     *  authoring draft, stamped into the snapshot so the re-roll and the
+     *  span-into-the-accepted-key action read durable truth. */
+    hero?: FrozenAttemptSnapshot['hero']
   } {
     const body = document.body
     if (tool === 'hero') {
-      if (draft.targetKeyId !== targetId) throw new AnimationRuleError('The hero draft must name the target key slot as its targetKeyId.', 400)
-      const candidate = selectedCandidate(body, targetId)
+      // §5.2's hero contract: ONE reference — the CURRENT key the movement
+      // arc describes FROM — and the attempt targets the PROPOSED slot the
+      // clip lands into. Hero generates the NEXT key, never a re-roll of the
+      // current one: the target must be a UUID distinct from the source
+      // (re-rolls RETARGET the same proposed slot with a new idempotency
+      // key, appending alternatives §5.3).
+      const sourceKeyId = uuidField(draft, 'sourceKeyId')
+      if (!isUuid(targetId)) throw new AnimationRuleError('The hero attempt needs a UUID target key slot — the proposed slot the clip lands into.', 400)
+      if (targetId === sourceKeyId) {
+        throw new AnimationRuleError('A hero attempt generates the NEXT key — its target (the proposed slot) must differ from the source key (§5.2).', 400)
+      }
+      const candidate = selectedCandidate(body, sourceKeyId)
+      const movementArc = boundedText(draft.movementArc, 'The movement arc')
+      const overrides = parseOverrides(draft.overrides)
       return {
         compile: {
           tool: 'hero',
           context: {
             currentKey: poseContextOf(candidate),
-            movementArc: boundedText(draft.movementArc, 'The movement arc'),
-            overrides: parseOverrides(draft.overrides),
+            movementArc,
+            overrides,
           },
         },
         references: [{ role: 'current-key', assetReference: candidate.assetReference, poseDescription: candidate.poseDescription, facing: candidate.facing }],
+        hero: { sourceKeyId, movementArc, overrides },
       }
     }
     if (tool === 'tween') {
@@ -449,7 +466,7 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       const draft = recordField(body, 'draft', 'The submission needs a draft object (intent + overrides) — the server compiles and freezes the snapshot.')
       if (draft.tool !== tool) throw new AnimationRuleError(`The draft must be a ${tool} draft (draft.tool must match tool).`, 400)
 
-      const { compile, references } = resolveDraft(document, tool, targetId, draft)
+      const { compile, references, hero } = resolveDraft(document, tool, targetId, draft)
       // The one server-side compile dispatch (rendering.ts) — a compiler
       // refusal is a state refusal, never a structural 500.
       let compiled: ReturnType<AnimationRenderingService['compileCaption']>
@@ -472,6 +489,9 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
         compilerVersion: compiled.compilerVersion,
         settings: { idempotencyKey },
         documentRevision: document.revision,
+        // HERO rows freeze the authored draft (§8.1/§5.2) — the re-roll and
+        // the span-into-the-accepted-key action read it.
+        ...(hero ? { hero } : {}),
       }
       if (body.seed !== undefined && !isNonNegativeInt(body.seed)) throw new AnimationRuleError('The seed must be a non-negative integer.', 400)
       const seed = body.seed !== undefined ? body.seed : Number.parseInt(animationInputHash(seedless).slice(0, 8), 16) >>> 0

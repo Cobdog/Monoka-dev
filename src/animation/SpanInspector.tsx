@@ -69,14 +69,16 @@ const DRAFT_SETTLE_MS = 400
 /** Facing chip keys — the FACING_TERMS strings carry spaces, and the kit's
  *  exclusive ChipGroup keys a member by its id AND renders it as the DOM id
  *  (the mediumChipId rule; this pair is view-local until a second facing
- *  surface exists). */
-function facingChipId(term: FacingTerm): string {
-  return `anim-facing-${term.replace(/[^a-z]+/g, '-')}`
+ *  surface exists). The GROUP prefix namespaces the ids (task 9's Minor-5,
+ *  fixed in task 11): the inspector mounts two pickers, and duplicate DOM
+ *  ids across them broke label/aria association. */
+function facingChipId(term: FacingTerm, group: string): string {
+  return `anim-facing-${group}-${term.replace(/[^a-z]+/g, '-')}`
 }
 
-function facingFromChipId(chipId: string): FacingTerm | null {
+function facingFromChipId(chipId: string, group: string): FacingTerm | null {
   for (const term of FACING_TERMS) {
-    if (facingChipId(term) === chipId) return term
+    if (facingChipId(term, group) === chipId) return term
   }
   return null
 }
@@ -112,10 +114,12 @@ function FrameImage({ relPath, assetId, alt }: { relPath: string | null; assetId
 
 /** The closed-vocabulary facing picker. Clicking the checked chip CLEARS the
  *  facing (null is legal and hint-noted as missing); a locked key disables
- *  the group — the server would refuse the selection change (§7.2.1). */
-function FacingPicker({ keyEntity, busy, onChange, id }: { keyEntity: TimelineKey; busy: boolean; onChange(facing: FacingTerm | null): void; id: string }) {
+ *  the group — the server would refuse the selection change (§7.2.1). The
+ *  `group` slug namespaces the member chip ids (two pickers mount here;
+ *  task 11 exports the picker for the hero panel's current-key card). */
+export function FacingPicker({ keyEntity, busy, onChange, id, group }: { keyEntity: TimelineKey; busy: boolean; onChange(facing: FacingTerm | null): void; id: string; group: string }) {
   const candidate = keyEntity.candidate
-  const value = candidate !== null && candidate.facing !== null ? facingChipId(candidate.facing) : null
+  const value = candidate !== null && candidate.facing !== null ? facingChipId(candidate.facing, group) : null
   return (
     <Field
       label="Facing"
@@ -135,11 +139,11 @@ function FacingPicker({ keyEntity, busy, onChange, id }: { keyEntity: TimelineKe
             onChange(null)
             return
           }
-          onChange(facingFromChipId(picked))
+          onChange(facingFromChipId(picked, group))
         }}
       >
         {FACING_TERMS.map((term) => (
-          <Chip key={term} id={facingChipId(term)} variant="radio" className="anim-chip" disabled={busy || keyEntity.lock || candidate === null}>{term}</Chip>
+          <Chip key={term} id={facingChipId(term, group)} variant="radio" className="anim-chip" disabled={busy || keyEntity.lock || candidate === null}>{term}</Chip>
         ))}
       </ChipGroup>
     </Field>
@@ -259,7 +263,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
                 </p>
               )}
               {near.source.kind === 'start-key' && fromKey !== null ? (
-                <FacingPicker keyEntity={fromKey} busy={busy} id="anim-inspector-facing-first" onChange={(facing) => { void onFacingChange(fromKey.id, facing) }} />
+                <FacingPicker keyEntity={fromKey} busy={busy} id="anim-inspector-facing-first" group="first" onChange={(facing) => { void onFacingChange(fromKey.id, facing) }} />
               ) : (
                 <p className="anim-frame-source">Facing: none — a promoted frame carries none in this build; the caption hint notes it.</p>
               )}
@@ -283,7 +287,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
               ) : (
                 <p className="anim-frame-pose anim-frame-pose-empty" data-anim-frame-pose-empty>This image carries no pose description yet.</p>
               )}
-              {toKey !== null && <FacingPicker keyEntity={toKey} busy={busy} id="anim-inspector-facing-target" onChange={(facing) => { void onFacingChange(toKey.id, facing) }} />}
+              {toKey !== null && <FacingPicker keyEntity={toKey} busy={busy} id="anim-inspector-facing-target" group="target" onChange={(facing) => { void onFacingChange(toKey.id, facing) }} />}
             </>
           ) : (
             <p className="anim-frame-pose anim-frame-pose-empty">{far.problem}</p>

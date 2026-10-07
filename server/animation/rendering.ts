@@ -57,7 +57,7 @@ import {
 import { COMPILER_VERSION, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../../shared/animation/compiler'
 import type { CompiledCaption, HeroContext, SequenceContext, TweenContext } from '../../shared/animation/compiler'
 import { animationInputHash, isUuid } from '../../shared/animation/types'
-import type { AnimationTool, AssetReference, AttemptExecutionState, FrozenAttemptSnapshot } from '../../shared/animation/types'
+import type { AnimationTool, AssetReference, AttemptExecutionState, FrozenAttemptSnapshot, MediumString } from '../../shared/animation/types'
 
 // ---------------------------------------------------------------------------
 // the service contract (§7.2)
@@ -73,7 +73,11 @@ export type AttemptInput = { documentId: string; tool: AnimationTool; targetId: 
  *  the owner must distinguish a user cancel from a failure. */
 export type EngineJobStatus = {
   status: 'running' | 'done' | 'error' | 'interrupted' | 'lost'
-  outputs?: Array<{ relPath: string; frameCount: number }>
+  /** Output artifacts with their registered KIND (task 11): an
+   *  image-sequence listing resolves per-frame IMAGE assets through the
+   *  frame preparer/extractor contract below, while outputs[0] stays the
+   *  primary artifact the candidate lands from. */
+  outputs?: Array<{ relPath: string; frameCount: number; kind: 'image' | 'video' }>
 }
 
 export type EnginePort = {
@@ -112,6 +116,17 @@ export type AttemptStateView = {
    *  built it). No behavioral change — the fields were always persisted. */
   tool: AnimationTool
   targetId: string
+  /** HERO rows (task 11, §5.2): the key the movement arc describes FROM —
+   *  `targetId` is the PROPOSED slot the clip lands into. The playhead's
+   *  in-flight rule and the span-into-the-accepted-key action key off it;
+   *  tween/sequence rows leave it unset. */
+  sourceKeyId?: string
+  /** HERO rows: the authored movement arc frozen verbatim (§8.1) — the
+   *  re-roll resubmits it and the span creation seeds its intent from it. */
+  movementArc?: string
+  /** HERO rows: the resolved overrides the frozen caption compiled with —
+   *  the re-roll's byte-identical resubmission input. */
+  heroOverrides?: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
   caption: string
   compilerVersion: string
   execution: AttemptExecutionState
@@ -186,7 +201,7 @@ export function makeDocumentStoreBlobSink(documentStore: { registerBlobFile(kind
 type EngineOutputFile = { filename: string; subfolder: string; type: string }
 
 type MaterializedJob = {
-  files: Array<EngineOutputFile & { relPath: string }>
+  files: Array<EngineOutputFile & { relPath: string; kind: 'image' | 'video' }>
   frameCount: number
 }
 
@@ -281,9 +296,10 @@ lostSettleMs?: number }): EnginePort {
     const frameCount = frameCountOf(record)
     const files: MaterializedJob['files'] = []
     for (const file of recordFiles(record)) {
+      const kind = kindForFilename(file.filename)
       const bytes = await fetchOutputBytes(file)
-      const registered = blobs.registerBytes(kindForFilename(file.filename), bytes, file.filename)
-      files.push({ ...file, relPath: registered.relPath })
+      const registered = blobs.registerBytes(kind, bytes, file.filename)
+      files.push({ ...file, relPath: registered.relPath, kind })
     }
     const job: MaterializedJob = { files, frameCount }
     materialized.set(engineJobId, job)
@@ -373,7 +389,7 @@ lostSettleMs?: number }): EnginePort {
       const job = await materialize(engineJobId, record)
       return {
         status: 'done',
-        outputs: job.files.map((file) => ({ relPath: file.relPath, frameCount: job.frameCount })),
+        outputs: job.files.map((file) => ({ relPath: file.relPath, frameCount: job.frameCount, kind: file.kind })),
       }
     },
 
@@ -460,9 +476,24 @@ function graphCarriesPrefix(graph: Record<string, unknown>, prefix: string): boo
 // the production frame preparer (the completion owner's prepareFrame dep)
 // ---------------------------------------------------------------------------
 
+/** The frame-addressed artifact of a landed job's output listing (the
+ *  preparer/extractor contract, task 11): a listing that carries IMAGE
+ *  artifacts resolves frame N to the Nth image — an image-sequence engine
+ *  output IS the frame-addressed form (the fake engine's animation lane
+ *  lists the decoded frames beside the clip). A listing without images (the
+ *  real engine's video-only output) resolves every frame to the positional
+ *  artifact with its own kind — the honest limit until the real-engine leg
+ *  lands frame-accurate extraction. */
+function frameArtifactOf(outputs: NonNullable<EngineJobStatus['outputs']>, frameIndex: number): { relPath: string; kind: 'image' | 'video' } {
+  const images = outputs.filter((artifact) => artifact.kind === 'image')
+  if (images.length > 0) return images[Math.max(0, Math.min(frameIndex, images.length - 1))]
+  const positional = outputs[Math.max(0, Math.min(frameIndex, outputs.length - 1))]
+  return { relPath: positional.relPath, kind: positional.kind }
+}
+
 /** Resolves the review asset for a frame from the engine's output listing:
- *  the artifact at the frame's position, registered as a blob by the port
- *  (registration is content-addressed, so this is idempotent by
+ *  the frame-addressed artifact (frameArtifactOf), registered as a blob by
+ *  the port (registration is content-addressed, so this is idempotent by
  *  (take, frame, extraction version)). Throws when the engine cannot be
  *  asked — that IS a preparation failure, and the owner's bounded retry +
  *  preserve-the-clip policy takes over (§11.4). */
@@ -475,8 +506,8 @@ export function makeFramePreparer(deps: { engine: EnginePort; store: AnimationSt
     const status = await deps.engine.history(attempt.engineJobId)
     const outputs = status.outputs ?? []
     if (outputs.length === 0) throw new Error(`The engine holds no outputs for attempt ${attemptId}.`)
-    const artifact = outputs[Math.max(0, Math.min(frameIndex, outputs.length - 1))]
-    return { assetId: artifact.relPath, relPath: artifact.relPath, kind: 'video' }
+    const artifact = frameArtifactOf(outputs, frameIndex)
+    return { assetId: artifact.relPath, relPath: artifact.relPath, kind: artifact.kind }
   }
 }
 
@@ -678,6 +709,13 @@ export function createAnimationRenderingService(deps: {
         attemptId: attempt.id,
         tool: attempt.tool,
         targetId: attempt.targetId,
+        ...(attempt.tool === 'hero' && attempt.snapshot.hero !== undefined
+          ? {
+              sourceKeyId: attempt.snapshot.hero.sourceKeyId,
+              movementArc: attempt.snapshot.hero.movementArc,
+              heroOverrides: attempt.snapshot.hero.overrides,
+            }
+          : {}),
         caption: attempt.snapshot.caption,
         compilerVersion: attempt.snapshot.compilerVersion,
         execution: attempt.execution.state,
@@ -704,14 +742,14 @@ export function createAnimationRenderingService(deps: {
         throw new AnimationRuleError(`frameIndex must be an integer within the clip (0..${attempt.result.candidate.frameCount - 1}).`, 400)
       }
       if (!attempt.engineJobId) throw new AnimationRuleError('The attempt has no engine job to extract from.', 400)
-      // On-demand extraction (§7.2.2 path 2): the same artifact resolution
-      // the preparer performs — content addressing makes it idempotent per
-      // (take, frame, extraction version).
+      // On-demand extraction (§7.2.2 path 2): the same frame-addressed
+      // artifact resolution the preparer performs — content addressing makes
+      // it idempotent per (take, frame, extraction version).
       const status = await engine.history(attempt.engineJobId)
       const outputs = status.outputs ?? []
       if (outputs.length === 0) throw new AnimationRuleError('The engine holds no outputs for this attempt.', 400)
-      const artifact = outputs[Math.min(frameIndex, outputs.length - 1)]
-      return { assetId: artifact.relPath, relPath: artifact.relPath, kind: 'video' }
+      const artifact = frameArtifactOf(outputs, frameIndex)
+      return { assetId: artifact.relPath, relPath: artifact.relPath, kind: artifact.kind }
     },
 
     compileCaption(input) {

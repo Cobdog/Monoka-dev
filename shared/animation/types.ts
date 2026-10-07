@@ -102,6 +102,19 @@ export type FrozenAttemptSnapshot = {
   compilerVersion: string
   settings: Record<string, unknown>
   documentRevision: number
+  /** HERO only (task 11, §5.2 + §8.1 "submission freezes the attempt's
+   *  inputs"): the frozen authoring draft — the key the arc describes FROM
+   *  (its selected candidate froze as the 'current-key' reference, while
+   *  `targetId` names the PROPOSED slot the clip lands into), the authored
+   *  movement arc verbatim, and the resolved overrides. The playhead's
+   *  in-flight rule, the re-roll's byte-identical resubmission, and the
+   *  span-into-the-accepted-key action all read this; tween/sequence
+   *  snapshots leave it unset. */
+  hero?: {
+    sourceKeyId: string
+    movementArc: string
+    overrides: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
+  }
 }
 
 export type AttemptExecutionState = 'queued' | 'rendering' | 'preparing' | 'ready' | 'failed' | 'cancelled' | 'interrupted' | 'reconciling'

@@ -153,9 +153,13 @@ export function createCompletionOwner(deps: {
       return 'error'
     }
     setExecution(attempt, 'preparing')
+    // The PRIMARY artifact (outputs[0]) is the clip the candidate lands from;
+    // its kind rides the artifact itself (a video-first listing — the
+    // animation lane's save tail — lands a video clip, task 11's kind-aware
+    // outputs), never a hardcoded guess.
     const primary = outputs[0]
     const landed = store.landCandidate(attempt.id, {
-      assetReference: { assetId: primary.relPath, relPath: primary.relPath, kind: 'video' },
+      assetReference: { assetId: primary.relPath, relPath: primary.relPath, kind: primary.kind },
       frameCount: primary.frameCount,
       // The store computes the truth from the frozen revision vs the current
       // document (§8.2) — the owner never claims otherwise.

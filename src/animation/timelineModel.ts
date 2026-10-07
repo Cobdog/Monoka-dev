@@ -56,8 +56,11 @@ export type TimelineReviewPosition = { kind: 'key' | 'span'; id: string } | null
  *  AttemptStateView satisfies this structurally (the newest is the LAST:
  *  the store serves attempts oldest-first). Task 10 finalized the shape:
  *  the position is chosen by OUTCOME (what awaits the user), so the
- *  execution state rides along. */
-export type TimelineAttemptSummary = { attemptId: string; tool: AnimationTool; targetId: string; execution: AttemptExecutionState }
+ *  execution state rides along. Task 11 adds `sourceKeyId` (hero rows): an
+ *  in-flight hero render whose PROPOSED target slot has not materialized
+ *  yet marks its SOURCE key — the next-key render attaches to where it
+ *  starts. */
+export type TimelineAttemptSummary = { attemptId: string; tool: AnimationTool; targetId: string; sourceKeyId?: string; execution: AttemptExecutionState }
 
 /** The states whose engine-side truth is not settled (the state adapter's
  *  own set, mirrored — the review position treats them all as "running"). */
@@ -150,6 +153,12 @@ export function deriveReviewPosition(body: AnimationDocumentBody, attempts: Read
       continue
     }
     if (body.keys.some((entry) => entry.id === attempt.targetId)) return { kind: 'key', id: attempt.targetId }
+    // An in-flight hero render targets a PROPOSED slot that materializes
+    // only at landing — before that, the render attaches to its SOURCE key
+    // (§5.2: the next key grows out of the current one).
+    if (attempt.tool === 'hero' && attempt.sourceKeyId !== undefined && body.keys.some((entry) => entry.id === attempt.sourceKeyId)) {
+      return { kind: 'key', id: attempt.sourceKeyId }
+    }
   }
   return null
 }

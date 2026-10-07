@@ -882,6 +882,15 @@ test('(h) bounded auto-retry then success; past the bound the clip survives unti
   assert.deepEqual(frame1, frame2)
   assert.ok(frame1.relPath)
   assert.ok(documents.readBlob(frame1.relPath), 'the extracted frame asset is materialized in the blob store')
+  // Task 11's frame-addressed listing: the fake engine lists the decoded
+  // frames beside the clip, so extraction answers a real IMAGE asset — the
+  // form the hero acceptance mints as a key candidate and the tween far
+  // reference consumes. Distinct frames resolve to distinct artifacts.
+  assert.equal(frame1.kind, 'image', 'the extracted frame is an image asset')
+  const frameNext = await service.extractFrame(h1.attemptId, 5)
+  assert.equal(frameNext.kind, 'image')
+  assert.notEqual(frame1.relPath, frameNext.relPath, 'distinct frames resolve to distinct artifacts')
+  assert.notEqual(frame1.relPath, h1Row.result.candidate.assetReference.relPath, 'a frame is not the clip artifact')
   await assert.rejects(() => service.extractFrame(h1.attemptId, 22), (err) => err.status === 400, 'a frame index outside the clip is a 400')
   await assert.rejects(() => service.extractFrame(uuid(), 0), (err) => err.status === 404)
 })

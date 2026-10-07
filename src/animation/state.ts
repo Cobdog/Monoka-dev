@@ -55,6 +55,18 @@
  * replacement), and `retryPreparation` (F3's recovery action; the outcome
  * rides the next read — preparation detail events stay server-internal by
  * design, so the command's own durable read IS the recovery surface).
+ *
+ * What task 11 adds: the HERO surface — `deriveHeroPreview` (the live
+ * preview selector for the hero caption: ONE reference, the current key's
+ * selected image — the submit route's hero resolution mirrored), plus the
+ * commands `submitHero` (§5.2: targets a FRESH PROPOSED key slot, never the
+ * source — hero generates the NEXT key), `acceptHeroFrame` (the explicit
+ * frame selection: on-demand extraction, then the accepted image becomes a
+ * NEW candidate of the proposed slot + the explicit selection,
+ * lock-guarded), `rerollHero` (a fresh take for the SAME proposed slot,
+ * resubmitting the frozen source key + arc), and `openSpanIntoKey` (the
+ * accepted key becomes the incoming tween span's far reference — the span
+ * creation seeded from the hero arc).
  */
 import { useEffect } from 'react'
 import { create } from 'zustand'
@@ -161,6 +173,27 @@ type AnimationSessionState = {
    *  without re-rendering. The outcome rides the command's own durable
    *  read (preparation detail events stay server-internal). */
   retryPreparation(attemptId: string): Promise<boolean>
+  /** Task 11 — the hero tool's commands. */
+  /** §5.2's hero generation: describes the movement FROM the named current
+   *  key and targets a FRESH PROPOSED key slot (minted here) — the hero
+   *  generates the NEXT key, never a re-roll of the source. Null = the
+   *  failure surface already names it. */
+  submitHero(keyId: string, draft: { movementArc: string; overrides: SessionOverrideInput }): Promise<{ attemptId: string; keyId: string } | null>
+  /** The explicit frame acceptance (§5.2/§7.2.1): on-demand extraction,
+   *  then the accepted image becomes a NEW candidate of the hero's proposed
+   *  key slot and the EXPLICIT selection follows — the slot's selection is
+   *  the user's act, lock-guarded (§7.2.1). */
+  acceptHeroFrame(keyId: string, attemptId: string, frameIndex: number): Promise<boolean>
+  /** A fresh hero take for the SAME proposed slot (a new idempotency key),
+   *  resubmitting the newest take's frozen source key + arc — an
+   *  alternative that never replaces the selection (§8.2). */
+  rerollHero(keyId: string): Promise<{ attemptId: string } | null>
+  /** The accepted hero key becomes the incoming tween span's fixed far
+   *  reference (§5.2): creates the span source→key (idempotent — an
+   *  existing span between the pair is the answer) seeded with the hero
+   *  arc as the movement draft. Returns the span id for the shell to
+   *  select. */
+  openSpanIntoKey(fromKeyId: string, toKeyId: string, seedMovement: string): Promise<string | null>
   /** The selection state's creation arm (task 7's Minor-2): creates the
    *  pre-binding document in the named project and navigates to it. */
   createEmptyDocument(projectId: string): Promise<boolean>
@@ -280,6 +313,46 @@ export function deriveTweenPreview(document: AnimationDocumentView, spanId: stri
   if (!farReference.ok) problems.push(farReference.problem)
   const lastSlot = span.stepSlots[span.stepSlots.length - 1] ?? null
   return { spanId, stepCount: span.stepSlots.length, targetStepSlotId: lastSlot === null ? null : lastSlot.id, rollingReference, farReference, problems }
+}
+
+// ---------------------------------------------------------------------------
+// deriveHeroPreview — the hero live preview selector (task 11, §5.2/§6.2)
+// ---------------------------------------------------------------------------
+
+/** The hero compile context's client-side resolution: ONE reference — the
+ *  current key's SELECTED candidate (pose follows the image, §5.1). The
+ *  problem string is the same name the server's submission refusal would
+ *  carry (a key with no selection cannot source a hero render). */
+export type HeroPreview = {
+  keyId: string
+  currentKey: { ok: true; assetReference: AssetReference; pose: PoseRef; keyOrder: number } | { ok: false; problem: string }
+}
+
+/** The pure mirror of the submit route's hero draft resolution
+ *  (server/animation/routes.ts' resolveDraft hero arm): the current key's
+ *  selected candidate is the caption's single reference line and the
+ *  submission's 'current-key' frozen reference. No destination exists by
+ *  design (§5.2 — showing where the action goes is showing the answer). */
+export function deriveHeroPreview(document: AnimationDocumentView, keyId: string): HeroPreview {
+  const slot = document.body.keys.find((entry) => entry.id === keyId) ?? null
+  const candidate = slot === null || slot.selectedCandidateId === null
+    ? null
+    : slot.candidates.find((entry) => entry.id === slot.selectedCandidateId) ?? null
+  if (slot === null) {
+    return { keyId, currentKey: { ok: false, problem: 'That key slot no longer exists in the document.' } }
+  }
+  if (candidate === null) {
+    return { keyId, currentKey: { ok: false, problem: `Key ${slot.order} has no selected image — the hero caption needs the current key's pose. Accept a frame from its review first, or select a candidate.` } }
+  }
+  return {
+    keyId,
+    currentKey: {
+      ok: true,
+      assetReference: candidate.assetReference,
+      pose: { poseDescription: candidate.poseDescription, facing: candidate.facing },
+      keyOrder: slot.order,
+    },
+  }
 }
 
 /** The continuation / re-roll draft (task 10), resolved from DURABLE truth:
@@ -669,6 +742,181 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     }
   },
 
+  submitHero: async (keyId, draft) => {
+    const current = get().document
+    if (!current || get().busy) return null
+    if (!draft.movementArc.trim()) {
+      set({ commandError: 'The movement arc needs text before submission.' })
+      return null
+    }
+    const preview = deriveHeroPreview(current, keyId)
+    if (!preview.currentKey.ok) {
+      set({ commandError: preview.currentKey.problem })
+      return null
+    }
+    // One next-key render per source at a time (the button disables; this
+    // guard keeps a stale click honest, never a silent parallel render).
+    const inFlight = current.attempts.find((entry) => entry.tool === 'hero' && entry.sourceKeyId === keyId && IN_FLIGHT.has(entry.execution))
+    if (inFlight) {
+      set({ commandError: 'A next-key render from this key is already in flight — review its landing before generating another.' })
+      return null
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // §5.2: the attempt targets a FRESH PROPOSED key slot (minted here);
+      // the source key is the draft's — hero generates the NEXT key, never
+      // a re-roll of the current one. A fresh idempotency key per
+      // deliberate click (§7.2.2's retry key belongs to a lost response).
+      const proposedKeyId = crypto.randomUUID()
+      const submitted = await animationApi.submit({
+        documentId: current.id,
+        tool: 'hero',
+        targetId: proposedKeyId,
+        draft: { tool: 'hero', sourceKeyId: keyId, movementArc: draft.movementArc, overrides: draft.overrides },
+      }, `anim-hero-${keyId.slice(0, 8)}-${crypto.randomUUID()}`)
+      if (ticket !== openTicket) return null
+      // The attempt row reaches the view through the durable read (the
+      // document itself did not move — the review follows the fabric).
+      set({ busy: false })
+      void get().refresh()
+      return { attemptId: submitted.attemptId, keyId: proposedKeyId }
+    } catch (error) {
+      await failCommand(error, ticket)
+      return null
+    }
+  },
+
+  acceptHeroFrame: async (keyId, attemptId, frameIndex) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const attempt = current.attempts.find((entry) => entry.attemptId === attemptId) ?? null
+    if (attempt === null || attempt.tool !== 'hero' || attempt.targetId !== keyId) {
+      set({ commandError: 'That hero take no longer targets this key — reload picked up a change.' })
+      return false
+    }
+    if (attempt.candidate === null || !Number.isInteger(frameIndex) || frameIndex < 0 || frameIndex >= attempt.candidate.frameCount) {
+      set({ commandError: 'That frame is not part of the landed clip.' })
+      return false
+    }
+    const slot = current.body.keys.find((entry) => entry.id === keyId) ?? null
+    if (slot === null) {
+      set({ commandError: 'That key slot no longer exists — reload picked up a change.' })
+      return false
+    }
+    // The server enforces the same refusal (§7.2.1) — naming it here keeps
+    // the strip's affordance honest instead of firing a doomed selection.
+    if (slot.lock) {
+      set({ commandError: `Key ${slot.order} is locked — unlock it before changing its selection.` })
+      return false
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // §7.2.2's on-demand extraction — ALWAYS for hero acceptance: the
+      // accepted frame MINTS a key candidate, so the frame's asset must
+      // resolve (the tween lane's proposal skip does not apply — that
+      // selection stores only {attemptId, frameIndex} metadata, this one
+      // needs the image itself).
+      const extracted = await animationApi.extractFrame(attemptId, frameIndex)
+      // §5.2: the accepted image becomes the key — a NEW candidate of the
+      // PROPOSED slot (origin 'hero', the frame's provenance naming the
+      // take and frame), then the EXPLICIT selection (§5.3's
+      // append-then-select, the seed command's two-command idiom). The
+      // landed clip candidates stay beside it as retained alternatives.
+      const candidateId = crypto.randomUUID()
+      const added = await animationApi.keyCommand(current.id, 'add-candidate', {
+        keyId,
+        candidate: {
+          id: candidateId,
+          assetReference: extracted,
+          origin: 'hero',
+          provenance: {
+            assetId: extracted.assetId,
+            sourceTake: attemptId,
+            sourceFrame: frameIndex,
+            generatingOp: attemptId,
+            inputRevisions: { document: `r${current.revision}` },
+          },
+          poseDescription: null,
+          facing: null,
+        },
+      }, get().document?.revision ?? 0)
+      const view = await animationApi.selectKeyCandidate(current.id, keyId, candidateId, added.revision)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  rerollHero: async (keyId) => {
+    const current = get().document
+    if (!current) return null
+    // The durable re-roll truth: the newest hero take of this slot carries
+    // the frozen draft (§8.1) — source key, arc, and resolved overrides —
+    // and the re-roll resubmits them UNCHANGED against the SAME proposed
+    // slot, so only the seed varies between takes.
+    const takes = current.attempts.filter((entry) => entry.tool === 'hero' && entry.targetId === keyId)
+    const newest = takes[takes.length - 1] ?? null
+    if (newest === null || newest.sourceKeyId === undefined || newest.movementArc === undefined || newest.heroOverrides === undefined) {
+      set({ commandError: 'That key has no hero take to re-roll from.' })
+      return null
+    }
+    const sourceKeyId = newest.sourceKeyId
+    const movementArc = newest.movementArc
+    const overrides = newest.heroOverrides
+    const preview = deriveHeroPreview(current, sourceKeyId)
+    if (!preview.currentKey.ok) {
+      set({ commandError: preview.currentKey.problem })
+      return null
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      const submitted = await animationApi.submit({
+        documentId: current.id,
+        tool: 'hero',
+        targetId: keyId,
+        draft: { tool: 'hero', sourceKeyId, movementArc, overrides },
+      }, `anim-hero-${keyId.slice(0, 8)}-${crypto.randomUUID()}`)
+      if (ticket !== openTicket) return null
+      set({ busy: false })
+      void get().refresh()
+      return { attemptId: submitted.attemptId }
+    } catch (error) {
+      await failCommand(error, ticket)
+      return null
+    }
+  },
+
+  openSpanIntoKey: async (fromKeyId, toKeyId, seedMovement) => {
+    const current = get().document
+    if (!current || get().busy) return null
+    // Idempotent: a span between the pair already IS the binding — select it.
+    const existing = current.body.spans.find((span) => span.fromKeyId === fromKeyId && span.toKeyId === toKeyId) ?? null
+    if (existing !== null) return existing.id
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      const inserted = await animationApi.spanCommand(current.id, 'insert', {
+        fromKeyId,
+        toKeyId,
+        // The hero arc IS the span's motion draft (§5.2: the accepted key
+        // serves as the far reference of the span leading into it);
+        // preservation authors in the inspector — the insert only seeds.
+        intent: { movement: seedMovement, preservation: '' },
+      }, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return null
+      set({ document: inserted.document, conflict: null, busy: false, attemptState: seedAttemptState(inserted.document.attempts) })
+      return inserted.spanId ?? null
+    } catch (error) {
+      await failCommand(error, ticket)
+      return null
+    }
+  },
+
   createEmptyDocument: async (projectId) => {
     if (get().busy) return false
     set({ busy: true, commandError: null })
@@ -760,6 +1008,10 @@ export function useAnimationDocument(documentId: string, projectId = '') {
       continueChain: session.continueChain,
       rerollStep: session.rerollStep,
       retryPreparation: session.retryPreparation,
+      submitHero: session.submitHero,
+      acceptHeroFrame: session.acceptHeroFrame,
+      rerollHero: session.rerollHero,
+      openSpanIntoKey: session.openSpanIntoKey,
       createEmptyDocument: session.createEmptyDocument,
       retry: session.retry,
       clearCommandError: session.clearCommandError,

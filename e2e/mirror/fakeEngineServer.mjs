@@ -33,6 +33,10 @@
  * clearing the knob restores it, so a preparation/recovery leg can fail
  * against the gap, then succeed once it closes.
  *
+ * Video jobs (the animation lane) list the clip FIRST and then one output
+ * IMAGE per conditioning frame — the frame-addressed listing the studio's
+ * frame preparer/extractor contract consumes (see graphClipLength).
+ *
  * NEVER point this at anything GPU-adjacent: it is a plain node HTTP+ws
  * server, and the studio that talks to it must run with an ISOLATED home.
  */
@@ -187,6 +191,22 @@ const sendPreview = (seed, step) => {
 }
 
 // ---------------------------------------------------------------- scripted execution
+
+/** The clip length a video graph conditions on — the conditioning node's
+ * `length` input (the studio port's frameCountOf reads the same fact). The
+ * animation lane's per-frame output listing below lists exactly this many
+ * frame images beside the clip. */
+function graphClipLength(graph) {
+  for (const node of Object.values(graph ?? {})) {
+    if (!node || typeof node !== 'object') continue
+    if (node.class_type === 'MiniMaxH3ImageToVideo' || node.class_type === 'MiniMaxH3ReferenceToVideo') {
+      const length = node.inputs?.length
+      if (typeof length === 'number' && Number.isInteger(length) && length > 0) return length
+    }
+  }
+  return 22
+}
+
 function runPrompt(promptId, graph, extraData) {
   const my = { promptId, timer: null, interrupted: false }
   running = my
@@ -250,9 +270,22 @@ function runPrompt(promptId, graph, extraData) {
         images.push({ filename, subfolder: '', type: 'output' })
       }
     } else {
+      // A video job lists its clip FIRST (the primary artifact the studio's
+      // landing consumes), then the decoded frames as output IMAGES — the
+      // frame-addressed listing the studio's preparer/extractor contract
+      // describes (an image-sequence-capable engine; the real-engine leg
+      // either adds the frame save tail or lands ffmpeg extraction behind
+      // the same seam). One PNG per conditioning frame, distinguishable per
+      // frame so content addressing never collapses two frames into one.
+      const length = graphClipLength(graph)
       const filename = `ComfyUI_${String(n).padStart(5, '0')}_.mp4`
       viewFiles.set(filename, { bytes: sampleMp4, mime: 'video/mp4' })
       images.push({ filename, subfolder: '', type: 'output' })
+      for (let frame = 0; frame < length; frame += 1) {
+        const frameName = `ComfyUI_${String(n).padStart(5, '0')}_frame${String(frame).padStart(3, '0')}.png`
+        viewFiles.set(frameName, { bytes: pngGradient(768, 432, n * 7 + frame * 31), mime: 'image/png' })
+        images.push({ filename: frameName, subfolder: '', type: 'output' })
+      }
     }
     send({ type: 'executing', data: { prompt_id: promptId, node: 'MiniMaxH3ImageToVideo' } })
     send({ type: 'executed', data: { prompt_id: promptId, node: 'save', output: { images } } })
