@@ -25,7 +25,8 @@
  *   POST /__control {"failMode":"validation"|"error"|"hang"|null,
  *                    "steps":n,"stepDelayMs":n,
  *                    "hideHistoryFor":"<promptId>"|null,
- *                    "videoOnly":true|false}
+ *                    "videoOnly":true|false,
+ *                    "underdeliverFrames":n}
  *   GET  /__control — current state
  *
  * "hideHistoryFor" masks ONE job's history record from every /history answer
@@ -150,6 +151,12 @@ const state = {
   // engine's output shape (see the header: forces the studio's ffmpeg
   // frame-extraction path).
   videoOnly: false,
+  // The animation lane's video jobs list this many FEWER frame images than
+  // the graph conditions on — an engine under-delivering versus its OWN graph
+  // (the final review's M2 shape: the studio's frame-resolution seam must
+  // refuse a beyond-listing frame index BY NAME, never clamp to the last
+  // image).
+  underdeliverFrames: 0,
 }
 const control = (req, res, url) => {
   if (url.pathname === '/__control' && req.method === 'GET') {
@@ -302,7 +309,8 @@ function runPrompt(promptId, graph, extraData, queueNumber) {
       viewFiles.set(filename, { bytes: sampleMp4, mime: 'video/mp4' })
       images.push({ filename, subfolder: '', type: 'output' })
       if (!state.videoOnly) {
-        for (let frame = 0; frame < length; frame += 1) {
+        const listedFrames = Math.max(0, length - (state.underdeliverFrames | 0))
+        for (let frame = 0; frame < listedFrames; frame += 1) {
           const frameName = `ComfyUI_${String(n).padStart(5, '0')}_frame${String(frame).padStart(3, '0')}.png`
           viewFiles.set(frameName, { bytes: pngGradient(768, 432, n * 7 + frame * 31), mime: 'image/png' })
           images.push({ filename: frameName, subfolder: '', type: 'output' })

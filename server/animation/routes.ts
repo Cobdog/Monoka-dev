@@ -31,7 +31,10 @@
  *      client's explicit seed when re-rolling, else one derived from the
  *      hash of (draft inputs + idempotency key). Same request retried ⇒
  *      same seed ⇒ same input hash ⇒ the existing attempt; a new key ⇒ a
- *      new seed ⇒ a fresh roll.
+ *      new seed ⇒ a fresh roll. The retry's idempotency check runs BEFORE
+ *      the promoted-near extraction (the final review's M6): a lost-response
+ *      retry answers { created: false } even while the engine is
+ *      unreachable — the row's frozen near reference is the retry's.
  *
  *   3. THE FABRIC VOCABULARY — `animationFabricEmitter` adapts the service
  *      and completion owner's internal `animation.attempt.*` events onto
@@ -497,55 +500,81 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       if (draft.tool !== tool) throw new AnimationRuleError(`The draft must be a ${tool} draft (draft.tool must match tool).`, 400)
 
       const resolved = resolveDraft(document, tool, targetId, draft)
-      let { compile, references } = resolved
-      const { hero, sequence } = resolved
+      const { hero, sequence, promotedNear } = resolved
+      // The one server-side compile dispatch (rendering.ts) — a compiler
+      // refusal is a state refusal, never a structural 500. The compiled
+      // caption carries pose/context TEXT only (assets never ride the
+      // caption), so the promoted-near swap below changes the frozen
+      // REFERENCE, never the caption — compiled once, swapped per freeze.
+      let compiled: ReturnType<AnimationRenderingService['compileCaption']>
+      try {
+        compiled = service.compileCaption(resolved.compile)
+      } catch (error) {
+        throw new AnimationRuleError(`The draft does not compile: ${error instanceof Error ? error.message : String(error)}`, 400)
+      }
+      if (body.seed !== undefined && !isNonNegativeInt(body.seed)) throw new AnimationRuleError('The seed must be a non-negative integer.', 400)
+
+      /** The frozen snapshot for one near-reference asset: the SEED (the
+       *  route's policy — the client's explicit seed on a deliberate re-roll,
+       *  else one derived from the hash of (inputs + key), deterministic per
+       *  request so a lost-response retry reproduces the SAME frozen
+       *  snapshot, varied per key so two different submissions never silently
+       *  share a roll) derived over the swapped references, nothing
+       *  persisted. */
+      const freeze = (nearAsset?: AssetReference): FrozenAttemptSnapshot => {
+        const references = promotedNear !== undefined && nearAsset !== undefined
+          ? resolved.references.map((entry) => (entry.role === 'rolling-near' ? { ...entry, assetReference: nearAsset } : entry))
+          : resolved.references
+        const seedless: FrozenAttemptSnapshot = {
+          tool,
+          targetId,
+          references,
+          caption: compiled.caption,
+          compilerVersion: compiled.compilerVersion,
+          settings: { idempotencyKey },
+          documentRevision: document.revision,
+          // HERO rows freeze the authored draft (§8.1/§5.2) — the re-roll and
+          // the span-into-the-accepted-key action read it. SEQUENCE rows
+          // freeze the authored window the same way (§8.1 — the re-roll's
+          // input).
+          ...(hero ? { hero } : {}),
+          ...(sequence ? { sequence } : {}),
+        }
+        const seed = body.seed !== undefined ? body.seed : Number.parseInt(animationInputHash(seedless).slice(0, 8), 16) >>> 0
+        return { ...seedless, settings: { seed } }
+      }
+
+      // §11.4 idempotency BEFORE the engine-dependent near resolution (the
+      // final review's M6): a same-key retry of a promoted-near submit must
+      // answer { created: false } even while the engine is unreachable. The
+      // row's frozen near reference IS the retry's near reference — the same
+      // draft against the same document revision resolves the same promoted
+      // frame, and its extraction is content-addressed — so the input-hash
+      // comparison runs with the ROW's asset in the near slot and no
+      // extraction (no engine call) fires. A mismatch falls through to the
+      // full path, whose own hash check answers the 409.
+      const existing = store.attemptByIdempotencyKey(idempotencyKey)
+      if (existing) {
+        const rowNear = promotedNear !== undefined
+          ? existing.snapshot.references.find((entry) => entry.role === 'rolling-near')?.assetReference
+          : undefined
+        if (promotedNear === undefined || rowNear !== undefined) {
+          if (animationInputHash(freeze(rowNear)) === existing.inputHash) {
+            return sendJson(response, 200, { attemptId: existing.id, created: false })
+          }
+        }
+      }
+
       // The promoted-frame near reference (the task-15 flip): the chain's
       // rolling reference is a FRAME of the previous step's clip, not the
       // clip — resolve it through the service's frame extraction (§7.2.2)
       // so the frozen reference is the IMAGE the tween adapters consume. An
       // unresolvable frame is a named state refusal here, never a
       // video-asset rejection inside the submit.
-      if (resolved.promotedNear !== undefined) {
-        const frame = resolved.promotedNear
-        const nearAsset = await service.extractFrame(frame.attemptId, frame.frameIndex)
-        compile = compile.tool === 'tween'
-          ? { tool: 'tween', context: { ...compile.context, rollingReference: { ...compile.context.rollingReference, assetReference: nearAsset } } }
-          : compile
-        references = references.map((entry) => (entry.role === 'rolling-near' ? { ...entry, assetReference: nearAsset } : entry))
-      }
-      // The one server-side compile dispatch (rendering.ts) — a compiler
-      // refusal is a state refusal, never a structural 500.
-      let compiled: ReturnType<AnimationRenderingService['compileCaption']>
-      try {
-        compiled = service.compileCaption(compile)
-      } catch (error) {
-        throw new AnimationRuleError(`The draft does not compile: ${error instanceof Error ? error.message : String(error)}`, 400)
-      }
-
-      // The SEED (the route's policy): the client's explicit seed on a
-      // deliberate re-roll, else one derived from the hash of (inputs + key)
-      // — deterministic per request so a lost-response retry reproduces the
-      // SAME frozen snapshot, varied per key so two different submissions
-      // never silently share a roll.
-      const seedless: FrozenAttemptSnapshot = {
-        tool,
-        targetId,
-        references,
-        caption: compiled.caption,
-        compilerVersion: compiled.compilerVersion,
-        settings: { idempotencyKey },
-        documentRevision: document.revision,
-        // HERO rows freeze the authored draft (§8.1/§5.2) — the re-roll and
-        // the span-into-the-accepted-key action read it. SEQUENCE rows freeze
-        // the authored window the same way (§8.1 — the re-roll's input).
-        ...(hero ? { hero } : {}),
-        ...(sequence ? { sequence } : {}),
-      }
-      if (body.seed !== undefined && !isNonNegativeInt(body.seed)) throw new AnimationRuleError('The seed must be a non-negative integer.', 400)
-      const seed = body.seed !== undefined ? body.seed : Number.parseInt(animationInputHash(seedless).slice(0, 8), 16) >>> 0
-      const snapshot: FrozenAttemptSnapshot = { ...seedless, settings: { seed } }
-
-      const submitted = await service.submit({ documentId, tool, targetId, snapshot }, idempotencyKey)
+      const nearAsset = promotedNear !== undefined
+        ? await service.extractFrame(promotedNear.attemptId, promotedNear.frameIndex)
+        : undefined
+      const submitted = await service.submit({ documentId, tool, targetId, snapshot: freeze(nearAsset) }, idempotencyKey)
       return sendJson(response, 200, submitted)
     } catch (error) {
       if (animationFailure(response, error)) return

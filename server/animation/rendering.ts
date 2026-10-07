@@ -19,7 +19,11 @@
  *   2. THE BLOB SINK + FRAME PREPARER — the document store's blob tree
  *      behind a two-method interface (registerBytes/readBlob), and the
  *      production prepareFrame the completion owner consumes: resolving the
- *      review asset for a frame from the engine's output listing. Two
+ *      review asset for a frame from the engine's output listing — or, when
+ *      the engine's VOLATILE history holds nothing usable for a landed
+ *      attempt (a restart/eviction emptied it long after the output landed),
+ *      from the DURABLE registered clip itself (the final review's F1: frame
+ *      resolution is durable, not engine-coupled). Two
  *      listing shapes, both real: an image-sequence listing (the fake
  *      engine's animation lane, an engine that saves decoded frames beside
  *      the clip) resolves the frame-addressed IMAGE directly; a VIDEO-ONLY
@@ -501,12 +505,22 @@ function graphCarriesPrefix(graph: Record<string, unknown>, prefix: string): boo
  *  preparer/extractor contract, task 11): a listing that carries IMAGE
  *  artifacts resolves frame N to the Nth image — an image-sequence engine
  *  output IS the frame-addressed form (the fake engine's animation lane
- *  lists the decoded frames beside the clip). A listing without images (the
- *  real engine's video-only output) names the clip itself; the caller
- *  frame-accurately extracts from it (decodeClipFrame below). */
+ *  lists the decoded frames beside the clip). A frame index beyond the
+ *  image listing refuses BY NAME (the final review's M2) — a listing that
+ *  under-delivers versus the row's frameCount must never silently resolve a
+ *  neighbouring frame, the same reject-don't-drop discipline the video-only
+ *  branch's decode refusal enforces. A listing without images (the real
+ *  engine's video-only output) names the clip itself — one clip artifact IS
+ *  every frame's resolution source, so the positional branch clamps to it
+ *  and decodeClipFrame owns the range check. */
 function frameArtifactOf(outputs: NonNullable<EngineJobStatus['outputs']>, frameIndex: number): { relPath: string; kind: 'image' | 'video' } {
   const images = outputs.filter((artifact) => artifact.kind === 'image')
-  if (images.length > 0) return images[Math.max(0, Math.min(frameIndex, images.length - 1))]
+  if (images.length > 0) {
+    if (frameIndex < 0 || frameIndex >= images.length) {
+      throw new Error(`The engine's image listing holds no frame at index ${frameIndex} (it lists ${images.length}).`)
+    }
+    return images[frameIndex]
+  }
   const positional = outputs[Math.max(0, Math.min(frameIndex, outputs.length - 1))]
   return { relPath: positional.relPath, kind: positional.kind }
 }
@@ -543,16 +557,38 @@ export type FrameResolutionDeps = {
   ffmpegPath: () => string
 }
 
+/** The shared decode tail of the frame-resolution seam: read a registered
+ *  clip, frame-accurately decode the requested frame through ffmpeg, and
+ *  register the PNG content-addressed as an IMAGE asset — idempotent by
+ *  (attempt, frame, extraction recipe), the §11.4 extraction identity. */
+async function decodeFrameFromRegisteredClip(deps: FrameResolutionDeps, attemptId: string, clipRelPath: string, frameIndex: number): Promise<AssetReference> {
+  const clip = deps.blobs.readBlob(clipRelPath)
+  if (clip === null) {
+    throw new Error(`The clip artifact (${clipRelPath}) is not readable from the store — its frames cannot be extracted.`)
+  }
+  const png = await decodeClipFrame(deps.ffmpegPath(), clip, frameIndex)
+  const registered = deps.blobs.registerBytes('image', png, `frame-${attemptId.slice(0, 8)}-${frameIndex}.png`)
+  return { assetId: registered.relPath, relPath: registered.relPath, kind: 'image' }
+}
+
 /** Resolves the review asset for a frame of a LANDED attempt — §7.2.2's two
  *  paths (the proposed frame's automatic preparation and on-demand
  *  extraction) share this resolution: an image-sequence listing resolves the
  *  frame-addressed IMAGE directly; a video-only listing (the real engine's
  *  save tail) decodes the frame from the registered clip through ffmpeg and
  *  registers the PNG as an IMAGE asset. Content addressing makes the whole
- *  resolution idempotent by (attempt, frame, extraction recipe). Throws when
- *  the engine cannot be asked or the frame cannot be decoded — that IS a
- *  preparation failure, and the owner's bounded retry + preserve-the-clip
- *  policy takes over (§11.4). */
+ *  resolution idempotent by (attempt, frame, extraction recipe). The engine
+ *  is asked FIRST (the cheap listing path for the hot case), but its history
+ *  is VOLATILE — a RAM dict with oldest-eviction and no persistence (the
+ *  canonical execution.py `self.history = {}`), so a routine restart empties
+ *  it for attempts whose output landed long ago; when it holds no record (or
+ *  no usable outputs) the DURABLE registered clip answers instead (the final
+ *  review's F1 — §7.2.1/§10.2's "durable, not callback-chained" contract,
+ *  applied to frame resolution: the tween chain's promoted-near submits and
+ *  the hero frame acceptance keep working across an engine restart). Throws
+ *  when the frame cannot be resolved anywhere — a NAMED refusal, never a
+ *  silently wrong frame — and that IS a preparation failure the owner's
+ *  bounded retry + preserve-the-clip policy handles (§11.4). */
 async function resolveFrameAsset(deps: FrameResolutionDeps, attemptId: string, frameIndex: number): Promise<AssetReference> {
   const attempt = deps.store.getAttempt(attemptId)
   if (!attempt || !attempt.engineJobId || !attempt.result) {
@@ -560,7 +596,20 @@ async function resolveFrameAsset(deps: FrameResolutionDeps, attemptId: string, f
   }
   const status = await deps.engine.history(attempt.engineJobId)
   const outputs = status.outputs ?? []
-  if (outputs.length === 0) throw new Error(`The engine holds no outputs for attempt ${attemptId}.`)
+  if (outputs.length === 0) {
+    // The engine's history holds nothing usable — the restart/eviction shape.
+    // The landed candidate's clip is DURABLE in the app's own blob store
+    // whether or not the engine remembers producing it: decode the frame from
+    // it through the same content-addressed registration the video-only
+    // branch performs (same asset for the same (attempt, frame) — content
+    // addressing proves the path equivalence), same named beyond-range
+    // refusal from the decoder.
+    const clipRelPath = attempt.result.candidate.assetReference.relPath
+    if (clipRelPath === null) {
+      throw new Error(`The engine holds no outputs for attempt ${attemptId} and its landed candidate carries no registered clip path — the frame cannot be resolved.`)
+    }
+    return decodeFrameFromRegisteredClip(deps, attemptId, clipRelPath, frameIndex)
+  }
   const artifact = frameArtifactOf(outputs, frameIndex)
   if (artifact.kind === 'image') {
     return { assetId: artifact.relPath, relPath: artifact.relPath, kind: 'image' }
@@ -568,13 +617,7 @@ async function resolveFrameAsset(deps: FrameResolutionDeps, attemptId: string, f
   // The video-only listing (the real engine's shape): the clip is already a
   // registered blob (the port registered it when the job materialized) —
   // decode the frame, register the PNG, hand back an IMAGE asset.
-  const clip = deps.blobs.readBlob(artifact.relPath)
-  if (clip === null) {
-    throw new Error(`The clip artifact (${artifact.relPath}) is not readable from the store — its frames cannot be extracted.`)
-  }
-  const png = await decodeClipFrame(deps.ffmpegPath(), clip, frameIndex)
-  const registered = deps.blobs.registerBytes('image', png, `frame-${attemptId.slice(0, 8)}-${frameIndex}.png`)
-  return { assetId: registered.relPath, relPath: registered.relPath, kind: 'image' }
+  return decodeFrameFromRegisteredClip(deps, attemptId, artifact.relPath, frameIndex)
 }
 
 /** The completion owner's prepareFrame: the frame-resolution seam over the

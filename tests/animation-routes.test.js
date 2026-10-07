@@ -35,17 +35,28 @@
 //       resolves on a FRESH boot without a second engine submission (the
 //       §11.4 restart policy, asserted against the fake engine's own
 //       records)
-//   (g) retry-preparation over HTTP (contract review F3) — a preparation
-//       failure against a transient engine truth gap (the fake engine's
-//       hideHistoryFor knob) retries through the endpoint: the clip stays
-//       landed, the same deterministic frame is re-proposed, and the engine
-//       count proves no re-render (§11.4)
+//   (g) retry-preparation over HTTP (contract review F3 + the final review's
+//       F1) — a masked history record (the fake engine's hideHistoryFor
+//       knob) no longer starves preparation: the explicit retry re-proposes
+//       the same deterministic frame straight from the DURABLE registered
+//       clip, no re-render; the preparation-FAILURE class keeps its HTTP pin
+//       through an engine whose image listing under-delivers versus its own
+//       graph (the M2 refusal) — clip preserved, retry still refusing
 //   (h) the promoted-frame continuation (task 15) — a tween step 2+ whose
 //       near reference is a promoted frame freezes the EXTRACTED frame image
 //       (§7.2.2's frame-resolution seam at submit time): the submission
 //       reaches the engine — where this build's old honest limit refused the
 //       clip artifact as a video asset — and the engine's own record shows
 //       the extracted frame as the uploaded near reference
+//   (i) the final review's F1 at the route — a LANDED take whose engine
+//       history is WIPED (the restart shape) still feeds the chain: the
+//       extract-frame endpoint (hero acceptance's server half) answers a
+//       registered IMAGE from the durable clip, and the step-2 promoted-near
+//       submit SUCCEEDS where the engine-coupled build 400'd
+//   (j) the final review's M6 — a same-key retry of a promoted-near submit
+//       while the engine is UNREACHABLE answers { created: false } with the
+//       existing attempt id: the idempotency check precedes any extraction
+//       work, so no engine call (and no 400) can fire on the retry
 //
 // Run after `pnpm build` (the server + web dist boot from dist-server).
 // Scratch homes through the Wave 4 ledger; ports through the allocator.
@@ -323,7 +334,10 @@ beforeAll(async () => {
 afterAll(async () => {
   fabric?.close()
   killAllServers()
-  if (engine && engine.exitCode === null) {
+  // A signal-killed child leaves exitCode null, so `killed` is the guard:
+  // section (j) already SIGINT'd and reaped the engine — don't re-kill (the
+  // second exit listener would never fire and the timer would burn 10 s).
+  if (engine && engine.exitCode === null && !engine.killed) {
     engine.kill('SIGINT')
     await new Promise((resolve) => {
       const timer = setTimeout(resolve, 10_000)
@@ -980,29 +994,52 @@ test('(g) a failed preparation retries through the endpoint — the clip survive
   }, 20_000, 'the attempt landing with its frame proposed')
   assert.ok(state.candidate, 'the clip landed')
 
-  // The transient engine truth gap: the job's history record disappears from
-  // every /history answer — the preparation read finds no outputs (§11.4's
-  // preparation-failure class; the knob is reversible, unlike wipe).
+  // F1: the transient engine truth gap no longer starves preparation — the
+  // landed clip is DURABLE. The job's history record disappears from every
+  // /history answer (the reversible mask), and the explicit retry still
+  // re-proposes: the frame-resolution seam decodes the SAME deterministic
+  // proposal straight from the registered clip.
   const jobId = Object.entries(await engineHistoryAll()).find(([, record]) => record.prompt?.[3]?.attempt_id === attemptId)?.[0]
   assert.ok(jobId, 'the engine holds the attempt’s history record')
   await engineControl({ hideHistoryFor: jobId })
 
-  const failed = await apiB.post('/api/lan/animation/attempt/retry-preparation', { attemptId })
-  assert.equal(failed.status, 200, `the retry endpoint answers (${failed.body.error ?? ''})`)
-  assert.equal(failed.body.retried, true)
+  const masked = await apiB.post('/api/lan/animation/attempt/retry-preparation', { attemptId })
+  assert.equal(masked.status, 200, `the retry endpoint answers (${masked.body.error ?? ''})`)
+  assert.equal(masked.body.retried, true)
   state = (await apiB.get(`/api/lan/animation/attempt?id=${attemptId}`)).body.attempt
-  assert.equal(state.preparation.state, 'failed', 'preparation past the bounded retries marks failed')
+  assert.equal(state.preparation.state, 'proposed', 'the retry re-proposes through the DURABLE clip — history gone is no longer a preparation failure')
   assert.equal(state.execution, 'ready', 'the landed clip is PRESERVED (§11.4)')
   assert.ok(state.candidate)
-
-  // The gap closes; the explicit retry finishes preparation — no re-render.
-  await engineControl({ hideHistoryFor: null })
-  const retried = await apiB.post('/api/lan/animation/attempt/retry-preparation', { attemptId })
-  assert.equal(retried.status, 200)
-  state = (await apiB.get(`/api/lan/animation/attempt?id=${attemptId}`)).body.attempt
-  assert.equal(state.preparation.state, 'proposed')
   assert.equal(state.preparation.proposedFrameIndex, Math.floor(state.candidate.frameCount / 2), 'the SAME deterministic mid-clip proposal')
+  await engineControl({ hideHistoryFor: null })
   assert.equal(await engineRecordCount(), countBefore + 1, 'exactly the ONE render — preparation retrying NEVER re-rendered')
+
+  // The preparation-FAILURE class keeps its HTTP pin (the M2 refusal as the
+  // deterministic injection): an engine whose image listing under-delivers
+  // versus its own graph refuses the LANDING's mid-clip proposal BY NAME —
+  // the clip stays landed, execution ready (§11.4 preserve-the-clip), and
+  // the retry keeps refusing while the engine's own listing is short (engine
+  // truth, not a transient gap).
+  await engineControl({ underdeliverFrames: 12 })
+  const short = await apiB.post('/api/lan/animation/attempts', {
+    documentId: docG.id, tool: 'hero', targetId: uuid(), idempotencyKey: 'idem-g-prep-short',
+    draft: heroDraft(key.keyId),
+  })
+  assert.equal(short.status, 200, `the under-delivering attempt submits (${short.body.error ?? ''})`)
+  let shortState = null
+  await waitUntil(async () => {
+    const response = await apiB.get(`/api/lan/animation/attempt?id=${short.body.attemptId}`)
+    shortState = response.body.attempt
+    return shortState?.execution === 'ready'
+  }, 20_000, 'the under-delivering attempt resolving with its clip preserved')
+  assert.equal(shortState.preparation.state, 'failed', 'the out-of-listing proposal is the named refusal (the message itself is pinned in the rendering suite\'s M2 leg — the HTTP state view carries only the state)')
+  assert.ok(shortState.candidate, '§11.4: the rendered clip is PRESERVED when preparation fails')
+  const shortRetry = await apiB.post('/api/lan/animation/attempt/retry-preparation', { attemptId: short.body.attemptId })
+  assert.equal(shortRetry.status, 200)
+  shortState = (await apiB.get(`/api/lan/animation/attempt?id=${short.body.attemptId}`)).body.attempt
+  assert.equal(shortState.preparation.state, 'failed', 'the retry keeps refusing while the listing is short — no wrong frame, ever')
+  await engineControl({ underdeliverFrames: 0 })
+  assert.equal(await engineRecordCount(), countBefore + 2, 'two renders total — nothing re-rendered for any preparation work')
 
   // The refusal class: an attempt that never landed has no preparation to
   // retry (400); an unknown attempt is a 404.
@@ -1108,4 +1145,168 @@ test('(h) a tween step 2+ freezes the EXTRACTED promoted frame as its near refer
     loadImageNodes.some((node) => node.inputs.image === engineInputName({ ...extracted.body.assetReference, kind: 'image' })),
     'the engine received the EXTRACTED frame as step 2\'s uploaded near reference',
   )
+})
+
+// ---------------------------------------------------------------------------
+// (i) the final review's F1 at the route — the engine's history is VOLATILE;
+//     a LANDED take whose history is WIPED still feeds the chain from the
+//     DURABLE registered clip: the extract-frame endpoint (hero acceptance's
+//     server half — state.ts ALWAYS extracts) and the step-2 promoted-near
+//     submit both answer where the engine-coupled build 400'd.
+// ---------------------------------------------------------------------------
+
+test('(i) a history-wiped landed take still feeds the chain — extraction answers and step 2 submits from the durable clip', async () => {
+  await engineControl({ videoOnly: true })
+  try {
+    const created = await apiB.post('/api/lan/animation/documents', { projectId, name: 'India', binding: makeBinding() })
+    assert.equal(created.status, 200)
+    const docI = created.body.document
+    const from = await makeSelectedKey(apiB, docI.id, docI.revision, 'i-from')
+    const to = await makeSelectedKey(apiB, docI.id, from.revision, 'i-to')
+    const span = await apiB.post('/api/lan/animation/spans', {
+      op: 'insert', documentId: docI.id, fromKeyId: from.keyId, toKeyId: to.keyId,
+      intent: { movement: 'she pushes off the back foot into a full stride', preservation: 'coat hem and scarf stay consistent' },
+      expectedRevision: to.revision,
+    })
+    assert.equal(span.status, 200, `the span inserts (${span.body.error ?? ''})`)
+    const spanId = span.body.spanId
+    const stepOne = span.body.document.body.spans.find((entry) => entry.id === spanId).stepSlots[0].id
+
+    const first = await apiB.post('/api/lan/animation/attempts', {
+      documentId: docI.id, tool: 'tween', targetId: stepOne, idempotencyKey: 'idem-i-step-1',
+      draft: { tool: 'tween', targetStepSlotId: stepOne, movementStep: 'she pushes off the back foot', overrides: { medium: 'clean line on white' } },
+    })
+    assert.equal(first.status, 200, `step 1 submits (${first.body.error ?? ''})`)
+    await waitUntil(async () => {
+      const response = await apiB.get(`/api/lan/animation/attempt?id=${first.body.attemptId}`)
+      return response.body.attempt?.execution === 'ready' && response.body.attempt?.candidate !== null
+    }, 30_000, 'step 1 landing (its clip registered at landing)')
+    const stepOneClip = (await apiB.get(`/api/lan/animation/attempt?id=${first.body.attemptId}`)).body.attempt.candidate.assetReference.relPath
+    assert.ok(stepOneClip)
+
+    // The engine forgets EVERY history record — the irreversible restart
+    // shape. The registered clip stays in the app's own blob store.
+    await engineControl({ wipe: true })
+    assert.equal((await engineRecordsFor(first.body.attemptId)).length, 0, 'the engine holds no record for the landed step-1 take')
+
+    // Hero acceptance's server half: state.ts accepts a hero frame through
+    // the extract-frame endpoint on EVERY acceptance — against wiped history
+    // it answers a registered IMAGE decoded from the durable clip.
+    const extracted = await apiB.post('/api/lan/animation/attempt/extract-frame', { attemptId: first.body.attemptId, frameIndex: 5 })
+    assert.equal(extracted.status, 200, `frame 5 extracts against wiped history (${extracted.body.error ?? ''})`)
+    assert.equal(extracted.body.assetReference.kind, 'image')
+    assert.notEqual(extracted.body.assetReference.relPath, stepOneClip, 'the frame is not the clip artifact')
+
+    // The chain's advancement: select the promoted frame, append step 2, and
+    // SUBMIT — the old build 400'd at promotedNear resolution here; the
+    // durable fallback carries the submit clean.
+    const stepOneView = (await apiB.get(`/api/lan/animation/document?id=${docI.id}`)).body.document
+    const selected = await apiB.post('/api/lan/animation/select/rolling-reference', {
+      documentId: docI.id, spanId, attemptId: first.body.attemptId, frameIndex: 5, expectedRevision: stepOneView.revision,
+    })
+    assert.equal(selected.status, 200, `the rolling reference selects (${selected.body.error ?? ''})`)
+    const appended = await apiB.post('/api/lan/animation/spans', {
+      op: 'append-step-slot', documentId: docI.id, spanId, expectedRevision: selected.body.document.revision,
+    })
+    assert.equal(appended.status, 200, `the step slot appends (${appended.body.error ?? ''})`)
+    const stepTwo = appended.body.stepSlotId
+
+    const second = await apiB.post('/api/lan/animation/attempts', {
+      documentId: docI.id, tool: 'tween', targetId: stepTwo, idempotencyKey: 'idem-i-step-2',
+      draft: { tool: 'tween', targetStepSlotId: stepTwo, movementStep: 'the stride opens through the hips', overrides: { medium: 'clean line on white' } },
+    })
+    assert.equal(second.status, 200, `step 2 submits against the history-wiped take (${second.body.error ?? ''})`)
+
+    // The frozen near reference IS the durable-path extracted image: step
+    // 2's own engine record (fresh — the wipe predates it) shows it as the
+    // uploaded near reference.
+    await waitUntil(async () => {
+      const response = await apiB.get(`/api/lan/animation/attempt?id=${second.body.attemptId}`)
+      return response.body.attempt?.execution === 'ready'
+    }, 30_000, 'step 2 landing')
+    const stepTwoRecord = (await engineRecordsFor(second.body.attemptId))[0]
+    assert.ok(stepTwoRecord, 'the engine holds step 2\'s submitted graph')
+    const stepTwoGraph = stepTwoRecord.prompt[2]
+    const loadImageNodes = Object.values(stepTwoGraph).filter((node) => node?.class_type === 'LoadImage')
+    assert.ok(
+      loadImageNodes.some((node) => node.inputs.image === engineInputName({ ...extracted.body.assetReference, kind: 'image' })),
+      'the engine received the DURABLE-path extracted frame as step 2\'s uploaded near reference',
+    )
+  } finally {
+    await engineControl({ videoOnly: false })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// (j) the final review's M6 — the idempotency check precedes the promoted-
+//     near extraction: a same-key retry of a promoted-near submit while the
+//     engine is UNREACHABLE answers the idempotent return. The engine being
+//     DEAD makes the pin strict — any extraction call would have thrown, so
+//     the 200 itself proves none fired.
+// ---------------------------------------------------------------------------
+
+test('(j) a same-key retry of a promoted-near submit with the engine DOWN answers { created: false } — no extraction call', async () => {
+  const created = await apiB.post('/api/lan/animation/documents', { projectId, name: 'Juliet', binding: makeBinding() })
+  assert.equal(created.status, 200)
+  const docJ = created.body.document
+  const from = await makeSelectedKey(apiB, docJ.id, docJ.revision, 'j-from')
+  const to = await makeSelectedKey(apiB, docJ.id, from.revision, 'j-to')
+  const span = await apiB.post('/api/lan/animation/spans', {
+    op: 'insert', documentId: docJ.id, fromKeyId: from.keyId, toKeyId: to.keyId,
+    intent: { movement: 'the weight settles back onto the heel', preservation: 'silhouette intact' },
+    expectedRevision: to.revision,
+  })
+  assert.equal(span.status, 200, `the span inserts (${span.body.error ?? ''})`)
+  const spanId = span.body.spanId
+  const stepOne = span.body.document.body.spans.find((entry) => entry.id === spanId).stepSlots[0].id
+
+  const first = await apiB.post('/api/lan/animation/attempts', {
+    documentId: docJ.id, tool: 'tween', targetId: stepOne, idempotencyKey: 'idem-j-step-1',
+    draft: { tool: 'tween', targetStepSlotId: stepOne, movementStep: 'the weight settles', overrides: { medium: 'clean line on white' } },
+  })
+  assert.equal(first.status, 200, `step 1 submits (${first.body.error ?? ''})`)
+  await waitUntil(async () => {
+    const response = await apiB.get(`/api/lan/animation/attempt?id=${first.body.attemptId}`)
+    return response.body.attempt?.execution === 'ready' && response.body.attempt?.candidate !== null
+  }, 30_000, 'step 1 landing')
+  const stepOneView = (await apiB.get(`/api/lan/animation/document?id=${docJ.id}`)).body.document
+  const selected = await apiB.post('/api/lan/animation/select/rolling-reference', {
+    documentId: docJ.id, spanId, attemptId: first.body.attemptId, frameIndex: 5, expectedRevision: stepOneView.revision,
+  })
+  assert.equal(selected.status, 200, `the rolling reference selects (${selected.body.error ?? ''})`)
+  const appended = await apiB.post('/api/lan/animation/spans', {
+    op: 'append-step-slot', documentId: docJ.id, spanId, expectedRevision: selected.body.document.revision,
+  })
+  assert.equal(appended.status, 200, `the step slot appends (${appended.body.error ?? ''})`)
+  const stepTwo = appended.body.stepSlotId
+
+  // The lost-response shape: a SLOW render widens the window so the step-2
+  // attempt is still in flight (the document NOT yet moved by its landing —
+  // a landing would bump the revision and make the retry different inputs),
+  // the response is "lost", and the engine dies before the retry.
+  await engineControl({ stepDelayMs: 800 })
+  const body = {
+    documentId: docJ.id, tool: 'tween', targetId: stepTwo, idempotencyKey: 'idem-j-step-2',
+    draft: { tool: 'tween', targetStepSlotId: stepTwo, movementStep: 'the shoulders follow the turn', overrides: { medium: 'clean line on white' } },
+  }
+  const submitted = await apiB.post('/api/lan/animation/attempts', body)
+  assert.equal(submitted.status, 200, `step 2 submits while the engine lives (${submitted.body.error ?? ''})`)
+  assert.equal(submitted.body.created, true)
+
+  engine.kill('SIGINT')
+  // A signal-killed child leaves exitCode null — the EXIT EVENT is the truth
+  // (the rendering suite's teardown idiom).
+  const exit = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve('timeout'), 10_000)
+    engine.once('exit', (code) => { clearTimeout(timer); resolve(code) })
+  })
+  assert.ok(exit !== 'timeout', 'the fake engine child exited before the retry')
+
+  // The retry: the SAME key, the SAME draft, against a dead engine. The
+  // idempotency check runs BEFORE any extraction work — the row's frozen
+  // near reference is the retry's — so no engine call fires and the answer
+  // is the idempotent return (the pre-fix order 400'd at extraction here).
+  const retry = await apiB.post('/api/lan/animation/attempts', body)
+  assert.equal(retry.status, 200, `the dead-engine retry answers the idempotent return (${retry.body.error ?? ''})`)
+  assert.deepEqual(retry.body, { attemptId: submitted.body.attemptId, created: false })
 })

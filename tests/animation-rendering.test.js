@@ -70,6 +70,18 @@
 //       the registered clip through ffmpeg, answers a registered PNG image
 //       asset, is idempotent per (attempt, frame), and refuses a
 //       beyond-decodable-range frame BY NAME
+//   (k) durable frame resolution (the final review's F1) — the engine's
+//       history is VOLATILE (a wipe is the irreversible restart shape); a
+//       LANDED attempt whose history is gone still resolves frames from the
+//       DURABLE registered clip: extractFrame answers the SAME asset the
+//       engine-path extraction registered (content addressing proves the
+//       path equivalence), idempotent on repeat, and the owner's
+//       retryPreparation re-proposes through the same fallback
+//   (k2) the M2 pin — an engine whose image listing UNDER-DELIVERS versus
+//       its own graph (the mirror's underdeliverFrames knob): extraction at
+//       an in-clip-range but beyond-listing index refuses BY NAME, never
+//       clamps to the last image; the boundary frame inside the listing
+//       still resolves
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -203,6 +215,8 @@ let keyH2 = null
 // (j)
 let docJ = null
 let attemptJ = null
+// (k)/(k2)
+let docK = null
 
 // ---- fixtures ----------------------------------------------------------------
 
@@ -1055,6 +1069,101 @@ test('(j) a video-only listing (the real engine\'s save tail) lands the clip and
     // The knob is REVERSIBLE — the suite's standing image-sequence shape
     // restores for whatever runs after.
     await engineControl({ videoOnly: false })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// (k) durable frame resolution — the final review's F1 (engine history is
+//     volatile; the landed clip is not)
+// ---------------------------------------------------------------------------
+
+test('(k) a LANDED attempt with its engine history WIPED still resolves frames from the durable registered clip — same asset, idempotent, preparation retriable', async () => {
+  docK = anim.createDocument({ projectId, name: 'Kilo', binding: makeBinding() })
+  await engineControl({ videoOnly: true })
+  try {
+    const attempt = await submitHero(docK, uuid(), 'idem-k')
+    const landed = await waitAttemptState(attempt.attemptId, ['ready'], 'the video-only attempt landing (its clip registered at landing)')
+    assert.ok(landed.result, 'the clip landed')
+
+    // The PRE-WIPE extraction through the engine's own listing: the
+    // video-only shape decodes frame 8 out of the registered clip and
+    // registers the PNG content-addressed.
+    const preWipe = await service.extractFrame(attempt.attemptId, 8)
+    assert.equal(preWipe.kind, 'image')
+    assert.ok(documents.readBlob(preWipe.relPath), 'the pre-wipe extraction is a materialized blob')
+
+    // The engine forgets EVERY history record — the irreversible restart
+    // shape (the fake engine's wipe). The registered clip stays in the
+    // app's own blob store, independent of engine history.
+    await engineControl({ wipe: true })
+    assert.equal(await engineRecord(landed.engineJobId), null, 'the engine holds no record for the landed job')
+
+    // The SAME extraction now resolves through the DURABLE fallback — and
+    // content addressing proves the path equivalence: identical decode
+    // inputs (the same registered clip bytes, the same frame) ⇒ the SAME
+    // registered asset.
+    const postWipe = await service.extractFrame(attempt.attemptId, 8)
+    assert.equal(postWipe.kind, 'image')
+    assert.equal(postWipe.relPath, preWipe.relPath, 'the durable fallback resolves the SAME asset the engine path registered')
+    const png = documents.readBlob(postWipe.relPath)
+    assert.ok(png && png.subarray(0, 8).equals(PNG_MAGIC), 'the resolved bytes are the registered PNG')
+    const repeat = await service.extractFrame(attempt.attemptId, 8)
+    assert.equal(repeat.relPath, postWipe.relPath, 'idempotent on repeat — the (attempt, frame) identity holds across both paths')
+    const other = await service.extractFrame(attempt.attemptId, 9)
+    assert.notEqual(other.relPath, postWipe.relPath, 'a different frame is a different asset')
+    // The row's own bounds keep refusing BY NAME (never a wrong frame).
+    await assert.rejects(
+      () => service.extractFrame(attempt.attemptId, 22),
+      (err) => err instanceof AnimationRuleError && err.status === 400 && /within the clip/.test(err.message),
+      'a frame index outside the clip is a named 400 either way',
+    )
+
+    // §10.2's recovery action runs the SAME seam: re-preparing the proposed
+    // frame of a landed clip without re-rendering — and now without the
+    // engine's history either.
+    await owner.retryPreparation(attempt.attemptId)
+    const row = anim.getAttempt(attempt.attemptId)
+    assert.equal(row.preparation.state, 'proposed', 'the explicit preparation retry succeeds through the durable fallback')
+    assert.equal(row.preparation.proposedFrameIndex, 11, 'the SAME deterministic mid-clip proposal')
+    assert.equal(row.execution.state, 'ready', 'the landed clip was never at risk')
+  } finally {
+    await engineControl({ videoOnly: false })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// (k2) the M2 pin — an image listing that under-delivers versus its own graph
+// ---------------------------------------------------------------------------
+
+test('(k2) an under-delivered image listing refuses a beyond-listing frame BY NAME — never the last image', async () => {
+  try {
+    await engineControl({ underdeliverFrames: 2 })
+    const submitted = await submitHero(docK, uuid(), 'idem-k2')
+    const landed = await waitAttemptState(submitted.attemptId, ['ready'], 'the under-delivering attempt landing (its proposal inside the shortened listing)')
+    // The engine's OWN truth: 1 clip + 20 frame images against the graph's
+    // 22 — the row's frameCount stays graph-derived.
+    const record = await engineRecord(landed.engineJobId)
+    const listed = Object.values(record.outputs).flatMap((node) => node.images ?? [])
+    assert.equal(listed.length, 21, 'the listing carries the clip and 20 frame images (the graph conditioned on 22)')
+    assert.equal(landed.result.candidate.frameCount, 22, 'the row keeps the graph-derived frame count')
+    assert.equal(landed.preparation.state, 'proposed', 'the mid-clip proposal (frame 11) is inside the shortened listing')
+
+    // Frame 19 is the listing's last image; frame 20 is INSIDE the clip's
+    // row-bounds but BEYOND the listing — the pre-fix clamp would have
+    // silently resolved frame 19.
+    const lastListed = await service.extractFrame(submitted.attemptId, 19)
+    assert.equal(lastListed.kind, 'image')
+    await assert.rejects(
+      () => service.extractFrame(submitted.attemptId, 20),
+      (err) => err instanceof AnimationRuleError && err.status === 400 && /no frame at index 20/.test(err.message),
+      'a beyond-listing index is the named refusal, never the clamped last image',
+    )
+    await assert.rejects(
+      () => service.extractFrame(submitted.attemptId, 21),
+      (err) => err instanceof AnimationRuleError && err.status === 400 && /no frame at index 21/.test(err.message),
+    )
+  } finally {
+    await engineControl({ underdeliverFrames: 0 })
   }
 })
 

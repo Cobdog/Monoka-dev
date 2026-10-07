@@ -1003,10 +1003,16 @@ test.afterAll(async () => {
 /** The standing fake engine as a child process (the journey.spec.ts pattern):
  *  a port is RESERVED first, the child owns it, the health-check gates the
  *  return, and kill() asserts the child actually exited (never orphaned). */
-async function startFakeEngine(): Promise<FakeEngine> {
-  const holder = http.createServer(() => undefined)
-  const port = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
-  await new Promise<void>((resolve) => holder.close(() => resolve()))
+async function startFakeEngine(onPort?: number): Promise<FakeEngine> {
+  // An explicit port REBINDS a previously killed engine's address — the
+  // restart shape (a fresh process with EMPTY history on the same URL the
+  // server already points at).
+  let port = onPort ?? 0
+  if (!onPort) {
+    const holder = http.createServer(() => undefined)
+    port = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+    await new Promise<void>((resolve) => holder.close(() => resolve()))
+  }
   const engine: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(port), '--profile', ANIMATION_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
   liveEngines.add(engine)
   let log = ''
@@ -1370,7 +1376,7 @@ test('a duplicate completion at the surface leaves exactly one candidate (review
 test('a failed preparation recovers through the panel retry action (review)', async ({ page, request }) => {
   test.setTimeout(90_000)
   const problems = await trackErrors(page)
-  const engine = await startFakeEngine()
+  let engine = await startFakeEngine()
   const originalSettings = await pointAtEngine(request, engine.port)
   let engineExited = false
   try {
@@ -1387,18 +1393,12 @@ test('a failed preparation recovers through the panel retry action (review)', as
       return view.attempt.execution === 'ready' && view.attempt.preparation.state === 'proposed'
     }, { timeout: 30_000 }).toBe(true)
 
-    // §11.4's preparation-failure class: the fake engine's reversible truth
-    // gap masks the job's history record, so the preparation read finds no
-    // outputs (the same knob the routes suite drives). The retry against
-    // the gap exhausts the bounded attempts — preparation FAILED, the clip
-    // PRESERVED.
-    const history = await engine.historyAll()
-    const jobId = Object.entries(history).find(([, record]) => {
-      const extra = Array.isArray(record.prompt) ? record.prompt[3] as { attempt_id?: string } | undefined : undefined
-      return extra?.attempt_id === submitted.attemptId
-    })?.[0]
-    expect(jobId, 'the engine holds the attempt\'s history record').toBeTruthy()
-    await engine.control({ hideHistoryFor: jobId! })
+    // §11.4's preparation-failure class after F1: a masked history record no
+    // longer starves preparation (the DURABLE registered clip answers), so
+    // the honest remaining failure is the engine being UNREACHABLE. Kill it;
+    // the retry's bounded attempts exhaust against the dead port —
+    // preparation FAILED, the clip PRESERVED.
+    expect(await engine.kill()).toBe(true)
     await request.post('/api/lan/animation/attempt/retry-preparation', { data: { attemptId: submitted.attemptId } })
     const failed = await readAttemptView(request, submitted.attemptId)
     expect(failed.attempt.preparation.state).toBe('failed')
@@ -1413,13 +1413,16 @@ test('a failed preparation recovers through the panel retry action (review)', as
     await expect(panel.locator('[data-anim-review-clip]')).toBeVisible()
     await expect(panel.locator('[data-anim-review-status]')).toHaveText('Ready to review')
 
-    // The gap closes; the panel's retry wires the client's retryPreparation —
-    // the proposal returns, WITHOUT any new engine work.
-    await engine.control({ hideHistoryFor: null })
+    // The engine RETURNS — restarted on the same port with EMPTY history
+    // (the routine-restart shape). The panel's retry wires the client's
+    // retryPreparation, and the proposal returns through the DURABLE clip
+    // (F1: history gone is no longer a preparation failure) — WITHOUT any
+    // new engine work: the restarted engine still holds zero records.
+    engine = await startFakeEngine(engine.port)
     await panel.locator('[data-refusal-satisfy]').click()
     await expect(panel).toHaveAttribute('data-anim-review-preparation', 'proposed', { timeout: 15_000 })
     await expect(panel.locator('[data-anim-review-frame="11"]')).toHaveAttribute('data-anim-frame-proposed', 'true')
-    expect(Object.keys(await engine.historyAll()).length).toBe(1)
+    expect(Object.keys(await engine.historyAll()).length).toBe(0)
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
     await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
