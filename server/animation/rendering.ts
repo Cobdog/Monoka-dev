@@ -104,6 +104,16 @@ export type EnginePort = {
 
 export type AttemptStateView = {
   attemptId: string
+  /** The persisted attempt row, surfaced read-only (the foundation contract
+   *  review's F2): the timeline attaches a running attempt to its span
+   *  after a reload (tool + targetId — a tween's target IS its step slot),
+   *  and the review panel shows what was actually submitted (§6.4's
+   *  "compiled caption ... frozen in the attempt" + the compiler that
+   *  built it). No behavioral change — the fields were always persisted. */
+  tool: AnimationTool
+  targetId: string
+  caption: string
+  compilerVersion: string
   execution: AttemptExecutionState
   progress?: { value: number; max: number }
   preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number }
@@ -119,6 +129,11 @@ export type AnimationRenderingService = {
   getState(attemptId: string): AttemptStateView
   cancel(attemptId: string): Promise<void>
   extractFrame(attemptId: string, frameIndex: number): Promise<AssetReference>
+  /** §11.4's explicit preparation retry (the foundation contract review's
+   *  F3) — the owner's recovery action behind the service facade (the
+   *  cancel idiom): re-prepare the proposed frame of a LANDED clip without
+   *  re-rendering. */
+  retryPreparation(attemptId: string): Promise<void>
   /** The authoritative server-side compile dispatch (the shared module
    *  through the injected seam) — Task 5's route builds frozen captions
    *  here, so the compiler has exactly one server-side import site. */
@@ -661,6 +676,10 @@ export function createAnimationRenderingService(deps: {
       if (!attempt) throw new AnimationRuleError(`No attempt with id ${attemptId}.`, 404)
       const view: AttemptStateView = {
         attemptId: attempt.id,
+        tool: attempt.tool,
+        targetId: attempt.targetId,
+        caption: attempt.snapshot.caption,
+        compilerVersion: attempt.snapshot.compilerVersion,
         execution: attempt.execution.state,
         preparation: { state: attempt.preparation.state, ...(attempt.preparation.proposedFrameIndex !== undefined ? { proposedFrameIndex: attempt.preparation.proposedFrameIndex } : {}) },
         candidate: attempt.result ? attempt.result.candidate : null,
@@ -671,6 +690,10 @@ export function createAnimationRenderingService(deps: {
 
     cancel(attemptId) {
       return owner.cancel(attemptId)
+    },
+
+    retryPreparation(attemptId) {
+      return owner.retryPreparation(attemptId)
     },
 
     async extractFrame(attemptId, frameIndex) {

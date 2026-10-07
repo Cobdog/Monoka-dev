@@ -34,7 +34,9 @@
  *   - a new span is created with its FIRST tween step slot (empty): step
  *     slots belong to a span, and the tween attempt that targets a slot is
  *     the only writer that could know its parent — so the span seeds the
- *     chain's starting slot and landed tween attempts attach to it.
+ *     chain's starting slot and landed tween attempts attach to it. Every
+ *     subsequent slot appends through appendStepSlot (the chain's
+ *     advancement command — the foundation contract review's F1).
  */
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
@@ -661,6 +663,22 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
           stale: false,
           staleReasons: [],
         })
+      })
+    },
+
+    /** The tween chain's advancement surface (the foundation contract
+     *  review's F1): appends one EMPTY step slot to the span — insertSpan
+     *  seeds the chain's first slot, this command grows every subsequent
+     *  one. Span-level by ruling: the slot's position is its order within
+     *  the span, so the command carries no client-chosen data beyond the
+     *  span it grows; the minted slot id (the only new fact) rides the
+     *  returned row. Nothing is marked stale — an empty slot consumes no
+     *  reference state (§6.4). */
+    appendStepSlot: (documentId: string, spanId: string, expectedRevision: number) => {
+      if (!isUuid(spanId)) throw new AnimationRuleError('The span id must be a UUID.', 400)
+      return authorCommand(documentId, expectedRevision, (body) => {
+        const span = body.spans[requireSpan(body, spanId)]
+        span.stepSlots.push({ id: randomUUID(), attempts: [], selectedRollingReference: null })
       })
     },
 
