@@ -266,17 +266,24 @@ export function deriveExportPlan(
     outputStart += outputFrames
   }
 
-  // The document-level verdicts (task 15a, the shared strings): the empty
-  // list and the odd-dimension pair keep their historical place at the HEAD
-  // of the refusal list, the ceiling at its tail — unshifting the shared
-  // block preserves both. The ceiling's old `segments.length > 0` guard is
-  // unchanged in effect: outputStart only grows when a segment assembles,
-  // so a total beyond the ceiling implies segments exist.
-  refusals.unshift(...assemblyDocumentProblems(
+  // The document-level verdicts (task 15a, the shared strings), placed
+  // SPLIT (T15a review Important-1): the empty list and the odd-dimension
+  // pair keep the HEAD (they were checked before the entry loop); the
+  // ceiling refusal returns to the TAIL, pushed after the entry loop — its
+  // historical position, so an entry refusal still precedes it when both
+  // fire. The ceiling's old `segments.length > 0` guard is unchanged in
+  // effect: outputStart only grows when a segment assembles, so a total
+  // beyond the ceiling implies segments exist.
+  const documentProblems = assemblyDocumentProblems(
     { outputWidth: document.body.settings.outputWidth, outputHeight: document.body.settings.outputHeight },
     outputStart,
     document.body.editorial.length === 0,
-  ))
+  )
+  // The shared block orders [empty?, oddDims?, ceiling?], so the ceiling is
+  // its last element exactly when the total is past the ceiling.
+  const pastCeiling = outputStart > MAX_EXPORT_FRAMES
+  refusals.unshift(...(pastCeiling ? documentProblems.slice(0, -1) : documentProblems))
+  if (pastCeiling) refusals.push(documentProblems[documentProblems.length - 1])
 
   return { fps: EXPORT_FPS, totalFrames: outputStart, segments, stale, refusals }
 }
