@@ -100,6 +100,11 @@
 //       that moves between submit and dispatch/recovery changes nothing
 //       (the fresh-dispatch AND the restart-reconcile redispatch legs);
 //       the same-key retry stays idempotent
+//   (n) queue-then-fail (the live review's #1/#6) — an OFFLINE submit
+//       persists (queue semantics), the engine returns with an enumeration
+//       lacking a slot, and the deferred dispatch FAILS with the durable
+//       named reason; once the enumeration changes, the re-roll (a NEW key)
+//       re-resolves and RENDERS
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -675,6 +680,10 @@ test('(e) engine error ⇒ failed with prior candidates preserved; engine valida
   const failedRow = await waitAttemptState(failed.attemptId, ['failed'], 'the engine-error attempt failing')
   assert.equal(failedRow.result, null)
   assert.ok(failedRow.engineJobId, 'the failed dispatch is still recorded')
+  // Wave 1 (the live review's #6): the failure carries a DURABLE named
+  // reason — sanitized, composed at the failure site, surfaced on the view.
+  assert.match(failedRow.execution.failureReason, /execution error/, 'the engine-error attempt names what happened')
+  assert.equal(service.getState(failed.attemptId).failureReason, failedRow.execution.failureReason, 'the view surfaces the durable reason verbatim')
 
   // failMode validation: /prompt itself is refused (400 node_errors) — a
   // DEFINITIVE refusal, not an uncertain dispatch.
@@ -687,6 +696,13 @@ test('(e) engine error ⇒ failed with prior candidates preserved; engine valida
   const refusedRow = await waitAttemptState(refused.attemptId, ['failed'], 'the validation-refused attempt marked failed')
   assert.equal(refusedRow.engineJobId, null, 'nothing was enqueued')
   assert.equal(refusedRow.result, null)
+  // The refusal's reason is the composed SANITIZED detail — the failing node
+  // class, the rejected input, and the value — never the raw engine body.
+  assert.match(refusedRow.execution.failureReason, /MiniMaxH3ImageToVideo/, 'the reason names the failing node class')
+  assert.match(refusedRow.execution.failureReason, /length/, 'the reason names the rejected input')
+  assert.match(refusedRow.execution.failureReason, /value 1/, 'the reason names the rejected value')
+  assert.ok(!refusedRow.execution.failureReason.includes('node_errors'), 'never the raw engine JSON')
+  assert.equal(service.getState(refused.attemptId).failureReason, refusedRow.execution.failureReason)
   await engineControl({ failMode: null })
 
   const body = anim.getDocument(docE.id).body
@@ -729,6 +745,7 @@ test('(f) cancel mid-render ⇒ cancelled; cancel after engine completion ⇒ th
   await service.cancel(racing.attemptId)
   const cancelledRow = await waitAttemptState(racing.attemptId, ['cancelled'], 'the mid-render cancel taking effect')
   assert.equal(cancelledRow.result, null, 'no candidate landed for the cancelled render')
+  assert.equal(cancelledRow.execution.failureReason, undefined, 'a cancellation is not a failure — no reason rides it')
   await sleep(250) // negative window: the cancelled attempt stays cancelled
   assert.equal(anim.getAttempt(racing.attemptId).execution.state, 'cancelled')
   const body1 = anim.getDocument(docF.id).body
@@ -1486,4 +1503,58 @@ test('(o) the dispatched graph carries the FROZEN config — document moves betw
   const retry = await service.submit({ documentId: doc2.id, tool: 'tween', targetId: step2, snapshot: snapshot2 }, 'idem-o-restart')
   assert.deepEqual(retry, { attemptId: offline.attemptId, created: false }, 'the same-key retry answers the idempotent return')
   assert.equal(await engineRecordCount(), countAfterRedispatch, 'the retry spent no engine work')
+})
+
+// ---------------------------------------------------------------------------
+// (n) queue-then-fail (wave 1): an OFFLINE submit persists (queue
+//     semantics), the engine returns with an enumeration LACKING a slot,
+//     and the dispatch resolves → the attempt FAILS with the durable named
+//     reason; once the enumeration changes, the re-roll (a NEW key)
+//     resolves and RENDERS — the repair path the reason text itself names
+// ---------------------------------------------------------------------------
+
+test('(n) an offline submit fails at dispatch with the durable named reason when the enumeration lacks a slot; the re-roll renders after the enumeration changes', async () => {
+  const doc = anim.createDocument({ projectId, name: 'November', binding: makeBinding() })
+  const keyFrom = uuid()
+  const keyTo = uuid()
+  let row = anim.addKeyCandidate(doc.id, keyFrom, { id: uuid(), assetReference: registerRefImage('n-from'), origin: 'import', provenance: { assetId: 'stable-n1' }, poseDescription: null, facing: null }, 0)
+  row = anim.addKeyCandidate(doc.id, keyTo, { id: uuid(), assetReference: registerRefImage('n-to'), origin: 'import', provenance: { assetId: 'stable-n2' }, poseDescription: null, facing: null }, row.revision)
+  row = anim.insertSpan(doc.id, { fromKeyId: keyFrom, toKeyId: keyTo, intent: { movement: 'the weight shifts forward', preservation: 'silhouette intact' } }, row.revision)
+  const stepId = row.body.spans[0].stepSlots[0].id
+
+  // The engine goes DOWN; the submit is accepted anyway (queue semantics —
+  // submits never block on engine reachability) and stays pending.
+  await killEngine()
+  const offline = await service.submit({ documentId: doc.id, tool: 'tween', targetId: stepId, snapshot: makeTweenSnapshot(stepId, row.revision) }, 'idem-n-1')
+  assert.equal(offline.created, true)
+  assert.equal(anim.getAttempt(offline.attemptId).execution.state, 'reconciling', 'the offline dispatch stays pending')
+
+  // The engine returns enumerating NOTHING for the clip slot: the deferred
+  // dispatch resolves → the attempt FAILS with the durable named reason.
+  await restartEngine()
+  await engineControl({ loaderEnumerations: { unet: ['minimax_h3_ref2va_pruned_int8_convrot.safetensors'], clip: [], vae: ['minimax_h3_video_vae_fp16.safetensors'], lora: ['h3_tween_step12000.safetensors'] } })
+  try {
+    await owner.reconcile()
+    const failedRow = await waitAttemptState(offline.attemptId, ['failed'], 'the deferred dispatch failing against the lacking enumeration')
+    assert.equal(failedRow.result, null)
+    assert.match(failedRow.execution.failureReason, /textEncoder/, 'the durable reason names the slot')
+    assert.match(failedRow.execution.failureReason, /CLIPLoader/, 'the durable reason names the node class')
+    assert.ok(failedRow.execution.failureReason.includes(ANIMATION_MODEL_DEFAULTS.textEncoder), 'the durable reason names the tried pinned default')
+    assert.match(failedRow.execution.failureReason, /qwen3vl_32b_int8_convrot\.safetensors/, 'the durable reason names the tried documented preference')
+    assert.equal(service.getState(offline.attemptId).failureReason, failedRow.execution.failureReason, 'the view surfaces the durable reason')
+
+    // The enumeration CHANGES (the knob restores the profile's servable
+    // names) — the re-roll is a NEW key, its preflight re-resolves, and the
+    // take RENDERS: the repair path the reason text itself names.
+    await engineControl({ loaderEnumerations: null })
+    const repair = await service.submit({ documentId: doc.id, tool: 'tween', targetId: stepId, snapshot: makeTweenSnapshot(stepId, anim.getDocument(doc.id).revision) }, 'idem-n-2')
+    assert.equal(repair.created, true)
+    const landed = await waitAttemptState(repair.attemptId, ['ready'], 'the re-roll rendering after the enumeration changed')
+    assert.ok(landed.result, 'the repaired take landed its candidate')
+    const graph = (await engineRecord(landed.engineJobId)).prompt[2]
+    assert.equal(Object.values(graph).find((node) => node.class_type === 'UNETLoader').inputs.unet_name, 'minimax_h3_ref2va_pruned_int8_convrot.safetensors', 'the re-roll resolved the FLAT unet the engine serves')
+    assert.equal(Object.values(graph).find((node) => node.class_type === 'CLIPLoader').inputs.clip_name, 'qwen3vl_32b_int8_convrot.safetensors', 'the re-roll resolved the documented clip preference')
+  } finally {
+    await engineControl({ loaderEnumerations: null })
+  }
 })

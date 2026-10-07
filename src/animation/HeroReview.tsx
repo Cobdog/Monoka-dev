@@ -96,6 +96,14 @@ export function HeroReview({ attempt, keyEntity, takes, busy, onSelectTake, onAc
         )}
       </header>
       <p className="anim-review-meaning" data-anim-review-meaning>{status.meaning}</p>
+      {/* The durable failure reason (the live review's #6) — the tween
+          panel's contract: a FAILED attempt names its reason; a cancelled or
+          interrupted one never does. */}
+      {attempt.execution === 'failed' && attempt.failureReason !== undefined && (
+        <p className="anim-note anim-review-failure" role="alert" data-anim-review-failure-reason>
+          {attempt.failureReason}
+        </p>
+      )}
       {attempt.movementArc !== undefined && (
         <p className="anim-note" data-anim-hero-review-arc>Movement arc: {attempt.movementArc}</p>
       )}
@@ -186,7 +194,7 @@ export function HeroReview({ attempt, keyEntity, takes, busy, onSelectTake, onAc
       {attempt.preparation.state === 'failed' && (
         <Refusal
           title="The proposed frame could not be prepared"
-          reason="The engine's record of this clip was unreadable past the bounded retries, so the proposed frame is not prepared. The clip itself is safe and landed — retrying preparation never re-renders."
+          reason={`The engine's record of this clip was unreadable past the bounded retries, so the proposed frame is not prepared. The clip itself is safe and landed — retrying preparation never re-renders.${attempt.preparation.error !== undefined ? ` Last error: ${attempt.preparation.error}` : ''}`}
           satisfy={{ label: 'Retry frame preparation', action: onRetryPreparation }}
         />
       )}
