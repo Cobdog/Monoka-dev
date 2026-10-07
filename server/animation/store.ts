@@ -683,7 +683,20 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
         if (!isNonNegativeInt(value)) throw new AnimationRuleError(`${name} must be a non-negative integer.`, 400)
       }
       return authorCommand(documentId, expectedRevision, (body) => {
-        requireSpan(body, spanId)
+        const span = body.spans[requireSpan(body, spanId)]
+        // The referenced clip must be REAL, belong to THIS document, and be
+        // attached to THIS span — the same refusal class as
+        // selectRollingReference (review Important-1): a fabricated or foreign
+        // attemptId would leave an editorial entry whose row never rides this
+        // project's archive export — a dangling reference, not an assembly
+        // decision.
+        const attemptRow = statements.attempt.get(attemptId) as Record<string, unknown> | undefined
+        if (!attemptRow || str(attemptRow.document_id) !== documentId) {
+          throw new AnimationRuleError(`Attempt ${attemptId} is not an attempt of this document.`, 404)
+        }
+        if (!span.stepSlots.some((step) => step.attempts.includes(attemptId))) {
+          throw new AnimationRuleError(`Attempt ${attemptId} is not attached to span ${spanId}.`, 404)
+        }
         // One contribution per (span, attempt): re-choosing a portion UPDATES
         // (id stable), a different clip contributes a second entry. Editorial
         // timing is an assembly decision (§9) — it marks nothing stale.
