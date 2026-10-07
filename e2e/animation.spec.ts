@@ -2243,6 +2243,71 @@ test('the §9 editorial slice — contribute a window take, hold, reorder, the w
   expect(engineExited).toBe(true)
 })
 
+// Task 15a — THE PREVIEW FORESHADOWS THE GATE: a contribution whose
+// degenerate range points past the clip's end shows its problem row in the
+// editorial panel BEFORE any export attempt (the user-visible contract the
+// shared assembly-edge derivation exists for — the panel names the same
+// refusal the export gate would, and the export surface blocks on it).
+test('the editorial preview names the gate refusal before any export — a degenerate range pointing past the clip (editorial, task 15a)', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedEditorialDocument(request, projectId, 'The foreshadow slice')
+    const [startKey, endKey] = seeded.keyIds
+
+    // A landed tween take through the API (the review flows are pinned by
+    // their own slices; this slice needs the landed truth only).
+    let revision = seeded.revision
+    const inserted = await (await request.post('/api/lan/animation/spans', {
+      data: { op: 'insert', documentId: seeded.documentId, expectedRevision: revision, fromKeyId: startKey, toKeyId: endKey, intent: { movement: 'she pushes through into a stride', preservation: 'silhouette intact' } },
+    })).json() as { spanId: string; document: { revision: number; body: { spans: Array<{ id: string; stepSlots: Array<{ id: string }> }> } } }
+    expect(inserted.spanId, 'the span inserts').toBeTruthy()
+    revision = inserted.document.revision
+    const stepSlotId = inserted.document.body.spans.find((span) => span.id === inserted.spanId)!.stepSlots[0]!.id
+    const submitted = await (await request.post('/api/lan/animation/attempts', {
+      data: {
+        documentId: seeded.documentId, tool: 'tween', targetId: stepSlotId, idempotencyKey: `anim-e2e-foreshadow-${Date.now()}`,
+        draft: { tool: 'tween', targetStepSlotId: stepSlotId, movementStep: 'she shifts her weight onto the heel, hips following', overrides: { medium: 'clean line on white' } },
+      },
+    })).json() as { attemptId: string }
+    await expect.poll(async () => (await readAttemptView(request, submitted.attemptId)).attempt.execution, { timeout: 30_000 }).toBe('ready')
+
+    // Contribute a degenerate range pointing PAST the clip's end: the store
+    // accepts it (length semantics are the GATE's, task 13's narrowing) —
+    // and the PREVIEW must name the problem before any export attempt.
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    const panel = page.locator('[data-anim-editorial]')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    const clipRow = panel.locator(`[data-anim-editorial-clip="${submitted.attemptId}"]`)
+    await expect(clipRow).toBeVisible()
+    await clipRow.locator('[data-anim-editorial-in]').fill('999')
+    await clipRow.locator('[data-anim-editorial-out]').fill('999')
+    await clipRow.locator('[data-anim-editorial-hold]').fill('6')
+    await clipRow.locator('[data-anim-editorial-add]').click()
+    const rows = panel.locator('[data-anim-editorial-row]')
+    await expect(rows).toHaveCount(1)
+
+    // The problem row — the gate's own shared text (label + the degenerate
+    // class), no export click having happened.
+    const rowProblem = rows.first().locator('[data-anim-editorial-row-problem]')
+    await expect(rowProblem).toContainText('a degenerate range must name an existing frame')
+    await expect(panel.locator('[data-anim-editorial-problem]')).toHaveCount(1)
+    // The export surface blocks on the same truth — the gate never gets the
+    // chance to surprise the user at click time.
+    await expect(page.locator('[data-anim-export-blocked]')).toBeVisible()
+    await expect(page.locator('[data-anim-export-submit]')).toBeDisabled()
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
 test('the inspector follows external intent writes, parks its persist behind busy, and names the inert camera reason (inspector, task 13)', async ({ page, request }) => {
   const problems = await trackErrors(page)
   const projectId = `anim-e2e-${Date.now()}`
