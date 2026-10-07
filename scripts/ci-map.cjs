@@ -54,6 +54,7 @@ const REPO = path.resolve(__dirname, '..')
  */
 const SUITES = {
   'animation-compiler': { build: null, windows: false, python: false, ffmpeg: false },
+  'animation-rendering': { build: 'server', windows: false, python: false, ffmpeg: false },
   'animation-store': { build: 'server', windows: false, python: false, ffmpeg: false },
   'animation-types': { build: null, windows: false, python: false, ffmpeg: false },
   benchmarks: { build: 'server', windows: true, python: true, ffmpeg: false },
@@ -103,7 +104,7 @@ const SUITES = {
 const BOOTING = ['datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 
 /** Every suite drawing scratch ports through tests/lib/ports.cjs. */
-const PORT_USERS = ['datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const PORT_USERS = ['animation-rendering', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 /** Every kit suite reading src/styles.css through the shared sheet reader
  *  (tests/lib/styleSheet.cjs — the near-term-A parser consolidation). */
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
@@ -256,8 +257,13 @@ const RULES = [
   },
   {
     match: ['shared/animation/compiler.ts'],
-    suites: ['animation-compiler'],
-    reason: 'the caption compiler — its suite compiles every tool template through the vocabularies; the animation-rendering suite joins when it lands (task 4; it compiles authoritative captions through this module — ci-map hygiene forbids naming uncatalogued suites).',
+    suites: ['animation-compiler', 'animation-rendering'],
+    reason: 'the caption compiler — its suite compiles every tool template through the vocabularies; the rendering suite freezes compiler-produced captions into every submitted snapshot (task 4).',
+  },
+  {
+    match: ['shared/animation/graphs.ts'],
+    suites: ['animation-rendering', 'engine-contract'],
+    reason: 'the three tool graph builders — the rendering suite submits them through the real fake engine, and every emission is validated against the REAL captured object_info (the contract-truth walk, testing.md\'s truth ladder).',
   },
 
   // ---------- server (behavioral map from each suite's imports) --------
@@ -272,7 +278,8 @@ const RULES = [
     reason: 'shared server utilities in the index/core import closure — every booting suite loads them.',
   },
   { match: ['server/db.ts'], suites: ['datasets', 'documents', 'storage', 'animation-store'], reason: 'the sqlite layer: migrations (documents + animation-store via 006), dataset tables (datasets), jobs/library (storage).' },
-  { match: ['server/animation/store.ts'], suites: ['animation-store'], reason: 'the animation document store — its suite drives it directly off dist-server (the animation-rendering + animation-routes suites join this rule when they land, tasks 4/5; ci-map hygiene forbids naming uncatalogued suites).' },
+  { match: ['server/animation/store.ts'], suites: ['animation-store', 'animation-rendering'], reason: 'the animation document store — its suite drives it directly off dist-server; the rendering suite composes the same store under the real fake engine (the animation-routes suite joins at task 5; ci-map hygiene forbids naming uncatalogued suites).' },
+  { match: ['server/animation/rendering.ts', 'server/animation/completion-owner.ts'], suites: ['animation-rendering'], reason: 'the rendering service + the shared completion owner — the suite runs their dispatch/observation/landing/reconciliation paths for real against the fake engine (the animation-routes suite joins at task 5; ci-map hygiene forbids naming uncatalogued suites).' },
   { match: ['server/documents.ts', 'server/documentArchive.ts'], suites: ['documents', 'animation-store'], reason: 'document store + zip archive — the animation round-trip (spec §11.3) rides the same archive, exercised by the animation-store suite.' },
   { match: ['server/realtime.ts'], suites: ['realtime', 'manager-install'], reason: 'WS realtime framing/delivery; the Manager cm-queue event normalizer (0pktw5h) is exercised by the manager-install suite too.' },
   { match: ['server/llm/**'], suites: ['llm'], reason: 'LLM family registry + providers.' },
