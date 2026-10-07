@@ -14,9 +14,12 @@
 //     a placed one stacks above it;
 //   - step slots ride THEIR span in document order, derivation is stable, and
 //     step-slot growth never moves a lane (steps nest INSIDE the bar);
-//   - the review position resolves the newest attempt's target onto the
-//     timeline (hero/sequence → the key, tween → the span owning the step
-//     slot), null when nothing targets the timeline.
+//   - the review position (§7.4, finalized task 10): the newest READY
+//     attempt whose review decision is still OPEN (a tween step slot with no
+//     rolling-reference selection; a hero key slot with no candidate
+//     selection) — hero/sequence → the key, tween → the span owning the step
+//     slot; else the newest attempt still in flight; else null. Terminal
+//     attempts and resolved decisions never mark the timeline.
 
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
@@ -188,19 +191,65 @@ test('step-slot growth never moves a lane — steps nest inside the bar, not bes
   assert.deepEqual(strip(after), strip(before), 'four step slots change nothing about lanes or keys — nesting is a span-interval fact')
 })
 
-test('deriveReviewPosition resolves the newest attempt onto the timeline', () => {
+test('deriveReviewPosition resolves an open ready attempt onto the timeline (§7.4 return-and-highlight)', () => {
   const keyA = keySlot(0)
   const keyB = keySlot(1)
   const tweenStep = stepSlot()
   const theSpan = spanOf(keyA.id, keyB.id, { stepSlots: [tweenStep] })
   const body = bodyOf([keyA, keyB], [theSpan])
   assert.equal(deriveReviewPosition(body, []), null, 'no attempts — no review position (the marker is absent, not zero)')
-  const heroAttempt = { attemptId: uuid(), tool: 'hero', targetId: keyB.id }
-  assert.deepEqual(deriveReviewPosition(body, [heroAttempt]), { kind: 'key', id: keyB.id }, 'a hero attempt targets a key slot')
-  const sequenceAttempt = { attemptId: uuid(), tool: 'sequence', targetId: keyA.id }
+  const heroAttempt = { attemptId: uuid(), tool: 'hero', targetId: keyB.id, execution: 'ready' }
+  assert.deepEqual(deriveReviewPosition(body, [heroAttempt]), { kind: 'key', id: keyB.id }, 'a ready hero attempt targets a key slot with no selection — open')
+  const sequenceAttempt = { attemptId: uuid(), tool: 'sequence', targetId: keyA.id, execution: 'ready' }
   assert.deepEqual(deriveReviewPosition(body, [sequenceAttempt]), { kind: 'key', id: keyA.id }, 'a sequence attempt targets its window-start key')
-  const tweenAttempt = { attemptId: uuid(), tool: 'tween', targetId: tweenStep.id }
-  assert.deepEqual(deriveReviewPosition(body, [tweenAttempt]), { kind: 'span', id: theSpan.id }, 'a tween attempt targets a step slot — the review position is the OWNING span')
-  assert.deepEqual(deriveReviewPosition(body, [heroAttempt, tweenAttempt]), { kind: 'span', id: theSpan.id }, 'the NEWEST attempt wins (attempts arrive oldest-first)')
-  assert.equal(deriveReviewPosition(body, [{ attemptId: uuid(), tool: 'tween', targetId: uuid() }]), null, 'a dangling target resolves to no position, never a guess')
+  const tweenAttempt = { attemptId: uuid(), tool: 'tween', targetId: tweenStep.id, execution: 'ready' }
+  assert.deepEqual(deriveReviewPosition(body, [tweenAttempt]), { kind: 'span', id: theSpan.id }, 'a ready tween attempt targets a step slot — the review position is the OWNING span')
+  assert.deepEqual(deriveReviewPosition(body, [heroAttempt, tweenAttempt]), { kind: 'span', id: theSpan.id }, 'the NEWEST open attempt wins (attempts arrive oldest-first)')
+  assert.equal(deriveReviewPosition(body, [{ attemptId: uuid(), tool: 'tween', targetId: uuid(), execution: 'ready' }]), null, 'a dangling target resolves to no position, never a guess')
+})
+
+test('deriveReviewPosition: the running attempt marks the timeline; terminal attempts never do', () => {
+  const keyA = keySlot(0)
+  const keyB = keySlot(1)
+  const tweenStep = stepSlot()
+  const theSpan = spanOf(keyA.id, keyB.id, { stepSlots: [tweenStep] })
+  const body = bodyOf([keyA, keyB], [theSpan])
+  // In flight (§7.4's during-the-wait attachment): the running attempt
+  // attaches to its span even though nothing is reviewable yet.
+  const running = { attemptId: uuid(), tool: 'tween', targetId: tweenStep.id, execution: 'rendering' }
+  assert.deepEqual(deriveReviewPosition(body, [running]), { kind: 'span', id: theSpan.id })
+  const queued = { attemptId: uuid(), tool: 'tween', targetId: tweenStep.id, execution: 'queued' }
+  assert.deepEqual(deriveReviewPosition(body, [queued]), { kind: 'span', id: theSpan.id })
+  // Terminal states carry no position — nothing awaits the user there.
+  for (const execution of ['failed', 'cancelled', 'interrupted']) {
+    assert.equal(deriveReviewPosition(body, [{ attemptId: uuid(), tool: 'tween', targetId: tweenStep.id, execution }]), null, `${execution} never marks the timeline`)
+  }
+})
+
+test('deriveReviewPosition: a ready attempt whose decision is made steps aside (task 10 finalization)', () => {
+  const keyA = keySlot(0)
+  const keyB = keySlot(1)
+  const stepOne = stepSlot()
+  const otherStep = stepSlot()
+  const theSpan = spanOf(keyA.id, keyB.id, { stepSlots: [stepOne] })
+  const otherSpan = spanOf(keyB.id, keyA.id, { stepSlots: [otherStep] })
+  const body = bodyOf([keyA, keyB], [theSpan, otherSpan])
+  // A tween whose slot HAS a rolling-reference selection is resolved — the
+  // chain can continue from it; a later re-roll landing beside it is an
+  // alternative, not a blocker. Here nothing else marks the timeline.
+  const resolvedTween = { attemptId: uuid(), tool: 'tween', targetId: stepOne.id, execution: 'ready' }
+  stepOne.selectedRollingReference = { attemptId: resolvedTween.attemptId, frameIndex: 4 }
+  assert.equal(deriveReviewPosition(body, [resolvedTween]), null, 'a resolved ready tween is not the review position')
+  // A ready-OPEN attempt beats a NEWER in-flight one: what awaits the user
+  // outranks what is merely running (§7.4's highlight-on-return).
+  const runningElsewhere = { attemptId: uuid(), tool: 'tween', targetId: otherStep.id, execution: 'rendering' }
+  const openTween = { attemptId: uuid(), tool: 'tween', targetId: otherStep.id, execution: 'ready' }
+  // otherStep: open first, then running — both target otherSpan.
+  assert.deepEqual(deriveReviewPosition(body, [resolvedTween, { ...openTween }]), { kind: 'span', id: otherSpan.id }, 'the open ready attempt on another span still wins')
+  assert.deepEqual(deriveReviewPosition(body, [resolvedTween, runningElsewhere]), { kind: 'span', id: otherSpan.id }, 'with no open decision, the running attempt attaches')
+  // A ready hero whose key slot already has a selection is equally resolved.
+  const heroResolved = { attemptId: uuid(), tool: 'hero', targetId: keyA.id, execution: 'ready' }
+  keyA.candidates = [candidate('hero')]
+  keyA.selectedCandidateId = keyA.candidates[0].id
+  assert.equal(deriveReviewPosition(bodyOf([keyA, keyB], [theSpan]), [heroResolved]), null, 'a hero landing into an already-selected slot is resolved')
 })

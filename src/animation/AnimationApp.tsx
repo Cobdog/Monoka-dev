@@ -21,11 +21,18 @@
  *     playhead, the seed-initial-key affordance for an empty timeline), and
  *     since task 9 SELECTING A SPAN opens the SPAN INSPECTOR beneath it (§6.1
  *     — the hybrid authoring form with the client-compiled caption preview);
+ *     since task 10 a span holding tween attempts opens the REVIEW PANEL
+ *     beside it (§7.3's status vocabulary, the candidate clip, the proposed
+ *     frame, EXPLICIT frame selection, the continue / re-roll actions) — and
+ *     with NOTHING explicitly selected, the timeline's review position IS
+ *     the selection (§7.4's restored session: returning to a landed attempt
+ *     focuses the span awaiting review; completion never steals an explicit
+ *     selection, it only fills the empty one);
  *   - the conflict rebase notice (a 409 is never silent) and the failed
  *     silent-refresh notice, both role=status; the selection state carries
  *     the "new animation document" creation arm (task 7's Minor-2).
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Clapperboard, FilePlus2, LoaderCircle } from 'lucide-react'
 import { SurfaceSwitcher } from '../surfaces/SurfaceSwitcher'
 import { Button } from '../ui/Button'
@@ -33,6 +40,7 @@ import { animationHref } from './client'
 import { BindingPanel } from './BindingPanel'
 import { Timeline } from './Timeline'
 import { SpanInspector } from './SpanInspector'
+import { ReviewPanel } from './ReviewPanel'
 import { deriveReviewPosition, deriveTimeline } from './timelineModel'
 import { deriveTweenPreview, useAnimationDocument } from './state'
 import './animation.css'
@@ -44,12 +52,16 @@ export function AnimationApp() {
     const search = new URLSearchParams(window.location.search)
     return { documentId: search.get('document') ?? '', projectId: search.get('project') ?? '' }
   })
-  // The timeline's selection (§6.1's inspector input): ONE id — a key or a
-  // span. Ephemeral view state, so the shell owns it (P07's stores rule is
-  // about connections, not local state — the binding panel's draft is the
-  // same precedent); the shell remounts per navigation, so it never leaks
-  // across documents.
+  // The timeline's EXPLICIT selection (§6.1's inspector input): ONE id — a
+  // key or a span. Ephemeral view state, so the shell owns it (P07's stores
+  // rule is about connections, not local state — the binding panel's draft
+  // is the same precedent); the shell remounts per navigation, so it never
+  // leaks across documents.
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // The review panel's SUBJECT override — a take the reviewer explicitly
+  // switched to (null = the newest attempt of the selected span wins). The
+  // span id keys it so switching spans forgets the stale take.
+  const [reviewTake, setReviewTake] = useState<{ spanId: string; attemptId: string } | null>(null)
   const session = useAnimationDocument(params.documentId, params.projectId)
   const { phase, errorDetail, document, projectDocuments, assets, assetsFailed, conflict, busy, commandError, refreshFailed } = session
 
@@ -61,6 +73,16 @@ export function AnimationApp() {
     () => (document === null ? null : deriveReviewPosition(document.body, document.attempts)),
     [document],
   )
+  // §7.4's restored session (task 10): with nothing explicitly selected, the
+  // review position IS the selection — returning to a document with a
+  // "Ready to review" (or running) attempt focuses exactly the span or key
+  // awaiting the user. The fill PROMOTES to the explicit selection (one
+  // setState), so it is sticky: the reviewer's surface never dissolves under
+  // them when the decision that dissolved the playhead is their own click,
+  // and a later explicit click still simply wins.
+  useEffect(() => {
+    if (selectedId === null && playhead !== null) setSelectedId(playhead.id)
+  }, [selectedId, playhead])
   // The selected SPAN's inspector inputs (task 9): the timeline model's span
   // + endpoint keys, plus the live preview selector's resolution — all
   // re-derived from every fresh document read, so a rolling-reference change
@@ -78,6 +100,42 @@ export function AnimationApp() {
       toKey: timeline.keys.find((key) => key.id === selectedSpan.toKeyId) ?? null,
     }
   }, [document, selectedSpan, timeline])
+  // The selected span's continuation truth (task 10): what the NEXT
+  // submission's near reference will resolve to — the server's own backward
+  // walk over the slots before the target (the first slot WITH a selection
+  // decides). The next step's target is APPENDED after every current slot,
+  // so the walk here covers them ALL. When it resolves to a landed clip,
+  // the near reference is a PROMOTED FRAME and this build's honest dispatch
+  // limit applies — the review panel names it (the slot still advances; the
+  // engine leg's real frame extraction is what flips the rule).
+  const nextNearIsPromotedFrame = useMemo(() => {
+    if (document === null || selectedSpan === null) return false
+    for (let index = selectedSpan.stepSlots.length - 1; index >= 0; index -= 1) {
+      const selected = selectedSpan.stepSlots[index]?.selectedRollingReference
+      if (!selected) continue
+      const attempt = document.attempts.find((entry) => entry.attemptId === selected.attemptId) ?? null
+      return attempt !== null && attempt.candidate !== null
+    }
+    return false
+  }, [document, selectedSpan])
+  const reviewPanel = useMemo(() => {
+    if (document === null || selectedSpan === null) return null
+    // The span's tween attempts in landing order — the panel's subject is
+    // the reviewer's explicit take, else the NEWEST (the freshest truth).
+    const spanAttempts = document.attempts.filter((entry) => entry.tool === 'tween' && selectedSpan.stepSlots.some((slot) => slot.id === entry.targetId))
+    if (spanAttempts.length === 0) return null
+    const chosen = reviewTake !== null && reviewTake.spanId === selectedSpan.id
+      ? spanAttempts.find((entry) => entry.attemptId === reviewTake.attemptId) ?? null
+      : null
+    const subject = chosen ?? spanAttempts[spanAttempts.length - 1]!
+    const slotIndex = selectedSpan.stepSlots.findIndex((slot) => slot.id === subject.targetId)
+    if (slotIndex < 0) return null
+    const slot = selectedSpan.stepSlots[slotIndex]!
+    const limit = nextNearIsPromotedFrame
+      ? 'Honest limit of this build: the chosen frame rides the clip artifact itself, and the tween adapters consume image references — generating the next step appends the step slot and submits, but the submission is refused until real frame extraction lands on the engine leg.'
+      : null
+    return { subject, stepIndex: slotIndex + 1, slotSelection: slot.selectedRollingReference, takes: slot.attempts.map((attemptId) => ({ attemptId })), limit }
+  }, [document, selectedSpan, reviewTake, nextNearIsPromotedFrame])
 
   if (phase === 'loading') {
     return (
@@ -192,7 +250,9 @@ export function AnimationApp() {
             </section>
             {/* The timeline (task 8): keys, spans, nested step slots, the
                 playhead — the shell owns only the document + event plumbing;
-                every connection rides the adapter's command bag. */}
+                every connection rides the adapter's command bag. The
+                selection the timeline renders is the EFFECTIVE one (an
+                explicit click, else §7.4's restored review position). */}
             <section className="anim-stage" data-anim-stage>
               <Timeline
                 timeline={timeline!}
@@ -220,6 +280,26 @@ export function AnimationApp() {
                   onIntentChange={session.commands.updateSpanIntent}
                   onFacingChange={session.commands.setKeyFacing}
                   onSubmit={session.commands.submitTweenStep}
+                />
+              )}
+              {/* The review panel (task 10, §7.3): the selected span's tween
+                  attempts — the newest (or the reviewer's explicit take) under
+                  review: status vocabulary, the clip, the proposed frame,
+                  explicit selection, the continue / re-roll actions. */}
+              {reviewPanel !== null && selectedSpan !== null && (
+                <ReviewPanel
+                  attempt={reviewPanel.subject}
+                  span={selectedSpan}
+                  stepIndex={reviewPanel.stepIndex}
+                  slotSelection={reviewPanel.slotSelection}
+                  takes={reviewPanel.takes}
+                  busy={busy}
+                  limit={reviewPanel.limit}
+                  onSelectTake={(attemptId) => setReviewTake({ spanId: selectedSpan.id, attemptId })}
+                  onSelectFrame={(frameIndex) => void session.commands.selectReferenceFrame(selectedSpan.id, reviewPanel.subject.attemptId, frameIndex)}
+                  onContinue={() => void session.commands.continueChain(selectedSpan.id)}
+                  onReroll={() => void session.commands.rerollStep(selectedSpan.id)}
+                  onRetryPreparation={() => void session.commands.retryPreparation(reviewPanel.subject.attemptId)}
                 />
               )}
             </section>

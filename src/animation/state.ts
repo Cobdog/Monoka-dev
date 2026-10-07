@@ -40,13 +40,28 @@
  * idiom; no update-candidate route exists), and `submitTweenStep` (flushes
  * the intent, resolves the target step slot from the live document, submits
  * the tween draft with a fresh idempotency key per deliberate click).
+ *
+ * What task 10 adds: the REVIEW surface — `subscribeAnimationEvents` now
+ * drives the §7.3 status vocabulary LIVE (an attempt-state envelope patches
+ * the view's own attempt row in place — execution + progress — instead of
+ * waiting for the next full read; an envelope naming an attempt the view has
+ * never seen triggers the durable re-read, never a synthesized partial row),
+ * `submitTweenStep` refreshes on success so the new attempt row reaches the
+ * view, and the commands the review panel wires: `selectReferenceFrame`
+ * (§7.2.1 command 2 — non-proposed frames ride on-demand extraction first,
+ * §7.2.2's path 2), `continueChain` (the §7.1 continuation: appends the next
+ * step slot — the F1 command — then submits the next step against it),
+ * `rerollStep` (a fresh take for the SAME step — an alternative, never a
+ * replacement), and `retryPreparation` (F3's recovery action; the outcome
+ * rides the next read — preparation detail events stay server-internal by
+ * design, so the command's own durable read IS the recovery surface).
  */
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { animationApi, animationHref, AnimationConflict, AnimationHttpError, type AnimationDocumentView } from './client'
 import { subscribeAnimationEvents } from './fabric'
 import { documentsApi } from '../canvas/api'
-import type { AssetReference, AttemptExecutionState, BindingInput, FacingTerm } from '../../shared/animation/types'
+import { ANIMATION_MEDIA, type AssetReference, type AttemptExecutionState, type BindingInput, type FacingTerm, type MediumString, type Span } from '../../shared/animation/types'
 import type { PoseRef, SessionOverrideInput } from '../../shared/animation/compiler'
 
 /** The states whose engine-side truth is not settled — the seeded attribute
@@ -125,6 +140,27 @@ type AnimationSessionState = {
    *  slot from the live document, submits the draft (a fresh idempotency key
    *  per deliberate click). Null = the failure surface already names it. */
   submitTweenStep(spanId: string, draft: { movement: string; preservation: string; overrides: SessionOverrideInput }): Promise<{ attemptId: string } | null>
+  /** Task 10 — the review panel's commands. */
+  /** The EXPLICIT reference-frame selection (§7.2.1 command 2). A frame
+   *  other than the prepared proposal rides §7.2.2's on-demand extraction
+   *  first; an extraction failure names itself and stops — the selection is
+   *  never written against a frame that could not be resolved. */
+  selectReferenceFrame(spanId: string, attemptId: string, frameIndex: number): Promise<boolean>
+  /** The §7.1 continuation — ONE step, always a user action: appends the
+   *  next step slot (the F1 command), then submits the next step against it
+   *  from the span's durable intent. The appended slot survives a refused
+   *  submission (it consumes no reference state) — the failure surface
+   *  names whatever the submit answered. */
+  continueChain(spanId: string): Promise<{ attemptId: string } | null>
+  /** The re-roll — a fresh take for the SAME last step slot (a new
+   *  idempotency key: a deliberate roll, never §7.2.2's retry key). Lands
+   *  as an alternative beside the previous takes; the selection never
+   *  moves (§8.2). */
+  rerollStep(spanId: string): Promise<{ attemptId: string } | null>
+  /** F3's recovery action: re-prepares the proposed frame of a LANDED clip
+   *  without re-rendering. The outcome rides the command's own durable
+   *  read (preparation detail events stay server-internal). */
+  retryPreparation(attemptId: string): Promise<boolean>
   /** The selection state's creation arm (task 7's Minor-2): creates the
    *  pre-binding document in the named project and navigates to it. */
   createEmptyDocument(projectId: string): Promise<boolean>
@@ -244,6 +280,19 @@ export function deriveTweenPreview(document: AnimationDocumentView, spanId: stri
   if (!farReference.ok) problems.push(farReference.problem)
   const lastSlot = span.stepSlots[span.stepSlots.length - 1] ?? null
   return { spanId, stepCount: span.stepSlots.length, targetStepSlotId: lastSlot === null ? null : lastSlot.id, rollingReference, farReference, problems }
+}
+
+/** The continuation / re-roll draft (task 10), resolved from DURABLE truth:
+ *  the span's persisted intent — the inspector's live typing is the
+ *  authoring surface, the chain's actions submit what stands — and the
+ *  effective medium (the span's own override when it has one, else the
+ *  active binding's). `spanHint` lets a caller reuse an already-found span
+ *  from the same document read. */
+function reviewDraftOf(document: AnimationDocumentView, spanId: string, spanHint?: Span): { movement: string; preservation: string; overrides: SessionOverrideInput } {
+  const span = spanHint ?? document.body.spans.find((entry) => entry.id === spanId) ?? null
+  const binding = document.body.bindingHistory.find((entry) => entry.version === document.body.activeBindingVersion) ?? null
+  const medium: MediumString = span?.overrides.medium ?? binding?.medium ?? ANIMATION_MEDIA[0]!
+  return { movement: span?.intent.movement ?? '', preservation: span?.intent.preservation ?? '', overrides: { medium } }
 }
 
 export const useAnimationSessionStore = create<AnimationSessionState>()((set, get) => {
@@ -525,12 +574,98 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
       if (ticket !== openTicket) return null
       // The attempt's state arrives through the fabric (attempt-state
       // envelopes); the document itself did not move (attempt rows carry
-      // their own revision, §11.2).
+      // their own revision, §11.2) — but its VIEW must gain the attempt row
+      // for the review panel to mount, so the durable read follows the
+      // submit (the recovery-read contract, not a callback chain).
       set({ busy: false })
+      void get().refresh()
       return { attemptId: submitted.attemptId }
     } catch (error) {
       await failCommand(error, ticket)
       return null
+    }
+  },
+
+  selectReferenceFrame: async (spanId, attemptId, frameIndex) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const attempt = current.attempts.find((entry) => entry.attemptId === attemptId) ?? null
+    if (attempt === null) {
+      set({ commandError: 'That attempt is no longer part of this document — reload picked up a change.' })
+      return false
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // §7.2.2's two frame paths: the PROPOSED frame is already prepared;
+      // any other frame rides ON-DEMAND EXTRACTION first. A failed
+      // extraction names itself and stops here — the durable selection is
+      // never written against a frame that could not be resolved.
+      if (attempt.preparation.proposedFrameIndex !== frameIndex) {
+        await animationApi.extractFrame(attemptId, frameIndex)
+      }
+      const view = await animationApi.selectRollingReference(current.id, spanId, attemptId, frameIndex, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  continueChain: async (spanId) => {
+    const current = get().document
+    if (!current || get().busy) return null
+    const span = current.body.spans.find((entry) => entry.id === spanId) ?? null
+    if (span === null) {
+      set({ commandError: 'That span no longer exists in the document.' })
+      return null
+    }
+    const lastSlot = span.stepSlots[span.stepSlots.length - 1] ?? null
+    if (lastSlot === null || lastSlot.selectedRollingReference === null) {
+      // §7.1's gate at the command too (the panel disables the action —
+      // this guard keeps a stale click honest, never a silent no-op).
+      set({ commandError: 'Choose a reference frame from the latest step before continuing — the next step needs its near reference (§7.1).' })
+      return null
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    let appended: Awaited<ReturnType<typeof animationApi.appendStepSlot>>
+    try {
+      appended = await animationApi.appendStepSlot(current.id, spanId, get().document?.revision ?? 0)
+    } catch (error) {
+      await failCommand(error, ticket)
+      return null
+    }
+    if (ticket !== openTicket) return null
+    // The append is a completed authoring command (busy clears; the submit
+    // that follows owns its own busy window) — and the minted slot is now
+    // the span's LAST, exactly what submitTweenStep targets.
+    set({ document: appended.document, conflict: null, busy: false, attemptState: seedAttemptState(appended.document.attempts) })
+    return get().submitTweenStep(spanId, reviewDraftOf(appended.document, spanId, span))
+  },
+
+  rerollStep: async (spanId) => {
+    const current = get().document
+    if (!current) return null
+    return get().submitTweenStep(spanId, reviewDraftOf(current, spanId))
+  },
+
+  retryPreparation: async (attemptId) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      await animationApi.retryPreparation(attemptId)
+      // The fabric does not carry preparation detail events (server-internal
+      // by design) — the command's own durable read IS the recovery surface.
+      const view = await animationApi.getDocument(current.id)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
     }
   },
 
@@ -573,7 +708,29 @@ export function useAnimationDocument(documentId: string, projectId = '') {
     return subscribeAnimationEvents((event) => {
       const store = useAnimationSessionStore.getState()
       if (event.type === 'attempt-state') {
-        if (store.document?.id === event.documentId) useAnimationSessionStore.setState({ attemptState: event.execution })
+        if (store.document?.id === event.documentId) {
+          useAnimationSessionStore.setState({ attemptState: event.execution })
+          // Task 10 — the status vocabulary drives LIVE: the envelope
+          // patches the view's own attempt row in place (execution +
+          // progress). An envelope naming an attempt the view has never
+          // seen (a submit from another surface) triggers the durable
+          // re-read instead — a partial synthesized row would lie about
+          // everything but the state.
+          const document = store.document
+          const known = document.attempts.some((entry) => entry.attemptId === event.attemptId)
+          if (known) {
+            useAnimationSessionStore.setState({
+              document: {
+                ...document,
+                attempts: document.attempts.map((entry) => entry.attemptId === event.attemptId
+                  ? { ...entry, execution: event.execution, ...(event.progress !== undefined ? { progress: event.progress } : {}) }
+                  : entry),
+              },
+            })
+          } else {
+            void store.refresh()
+          }
+        }
         return
       }
       if (event.type === 'resync') {
@@ -599,6 +756,10 @@ export function useAnimationDocument(documentId: string, projectId = '') {
       updateSpanIntent: session.updateSpanIntent,
       setKeyFacing: session.setKeyFacing,
       submitTweenStep: session.submitTweenStep,
+      selectReferenceFrame: session.selectReferenceFrame,
+      continueChain: session.continueChain,
+      rerollStep: session.rerollStep,
+      retryPreparation: session.retryPreparation,
       createEmptyDocument: session.createEmptyDocument,
       retry: session.retry,
       clearCommandError: session.clearCommandError,
