@@ -529,11 +529,16 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
     appVersion,
 
     // documents --------------------------------------------------------------
-    createDocument: (input: { projectId: string; name: string; binding: BindingInput }) => {
+    /** `binding` optional since task 7 (spec §4.1): an omitted binding
+     *  creates the EMPTY SESSION — the pre-binding document (empty history,
+     *  activeBindingVersion 0, the schema's explicitly supported state) the
+     *  session panel fills through updateBinding. A PRESENT binding must
+     *  still validate whole (the prepared-handoff path). */
+    createDocument: (input: { projectId: string; name: string; binding?: BindingInput }) => {
       if (!isNonEmptyString(input?.projectId)) throw new AnimationRuleError('A document needs a project id.', 400)
       if (!isNonEmptyString(input?.name)) throw new AnimationRuleError('A document needs a name.', 400)
-      const binding = validateBindingInput(input.binding)
-      if (!binding) throw new AnimationRuleError('The binding needs a character description, non-empty reference asset ids, a supported medium, and an initial key asset id.', 400)
+      const binding = input.binding === undefined ? null : validateBindingInput(input.binding)
+      if (input.binding !== undefined && !binding) throw new AnimationRuleError('The binding needs a character description, non-empty reference asset ids, a supported medium, and an initial key asset id.', 400)
       // The measured H3 keyframe operating point (docs/research/
       // h3-keyframe-animation-assessment.md §3 + Set K): 1344×768, 30 steps,
       // 24 fps — the schema's constant. Per-attempt frozen settings override
@@ -541,8 +546,8 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       const body: AnimationDocumentBody = {
         keys: [],
         spans: [],
-        bindingHistory: [bindingVersionFromInput(binding, 1)],
-        activeBindingVersion: 1,
+        bindingHistory: binding ? [bindingVersionFromInput(binding, 1)] : [],
+        activeBindingVersion: binding ? 1 : 0,
         editorial: [],
         settings: { outputWidth: 1344, outputHeight: 768, fps: 24, steps: 30 },
       }

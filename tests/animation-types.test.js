@@ -14,6 +14,8 @@ import {
   isUuid,
   isFacingTerm,
   isMediumString,
+  mediumChipId,
+  mediumFromChipId,
   parseKeyCandidate,
   parseAnimationDocumentBody,
   animationInputHash,
@@ -176,6 +178,20 @@ test('the closed vocabularies are the spec-fixed byte-identical strings', () => 
   assert.equal(isFacingTerm('screen-left'), true)
   assert.equal(isFacingTerm('left'), false)
   assert.equal(isFacingTerm(null), false)
+})
+
+// The medium chip keys (task 7): deterministic slugs, no spaces, and the
+// round-trip covers the whole vocabulary — both medium pickers derive
+// through this one mapping.
+test('mediumChipId derives space-free slugs that round-trip the vocabulary', () => {
+  for (const medium of ANIMATION_MEDIA) {
+    const chipId = mediumChipId(medium)
+    assert.match(chipId, /^anim-medium-[a-z-]+$/, `${medium} derives a lowercase slug`)
+    assert.ok(!/\s/.test(chipId), `${medium}'s slug carries no spaces`)
+    assert.equal(mediumFromChipId(chipId), medium, `${medium} round-trips`)
+  }
+  assert.equal(mediumFromChipId('anim-medium-oil-on-canvas'), null, 'an unknown slug maps to null, never a guess')
+  assert.equal(mediumFromChipId(''), null)
 })
 
 test('isUuid accepts canonical UUIDv4 and rejects non-UUIDs', () => {

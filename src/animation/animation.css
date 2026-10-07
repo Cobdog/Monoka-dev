@@ -25,3 +25,37 @@
 
 /* Phase B's stage — the timeline's mount point while the shell stands in. */
 .anim-stage { display: grid; gap: 8px; max-width: 72ch; padding: 16px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: var(--text-md); line-height: 1.55; }
+
+/* The session binding panel (task 7, §4.1) — the .anim-select card shape:
+   one compact panel in the workspace, not a wizard. Geometry only; the
+   Refusal/Button/Chip/Field recipes carry tones. */
+.anim-binding { display: grid; gap: 12px; max-width: 72ch; justify-self: start; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-binding h3 { margin: 0; font-size: var(--text-lg); }
+.anim-binding-lede { margin: 0; color: var(--muted); font-size: var(--text-md); line-height: 1.55; }
+.anim-binding-fields { display: grid; gap: 14px; }
+.anim-binding-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: var(--text-sm); letter-spacing: .04em; text-transform: uppercase; }
+.anim-binding-assets { display: grid; gap: 6px; justify-items: start; }
+.anim-asset-pick { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); font-size: var(--text-md); cursor: pointer; }
+.anim-binding-picker { display: grid; gap: 8px; }
+.anim-binding-add { display: flex; gap: 8px; align-items: center; }
+.anim-file-input { display: none; }
+.anim-binding-error { margin: 0; color: var(--danger); font-size: var(--text-md); line-height: 1.5; }
+.anim-pool { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.anim-pool-image { display: grid; gap: 6px; justify-items: start; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.anim-pool-image[data-anim-pool-initial='true'] { border-color: var(--accent); }
+.anim-pool-image img { width: 96px; height: 96px; object-fit: contain; border-radius: 6px; background: var(--surface); }
+.anim-pool-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.anim-pool-actions button { padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); font-size: var(--text-sm); cursor: pointer; }
+.anim-pool-actions button[aria-pressed='true'] { color: var(--text); border-color: var(--accent); }
+.anim-binding-description { width: 100%; min-height: 72px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: var(--text-md); line-height: 1.5; resize: vertical; }
+.anim-mediums { display: flex; flex-wrap: wrap; gap: 8px; }
+.anim-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-sm); cursor: pointer; }
+.anim-binding-submit { display: flex; gap: 10px; align-items: center; }
+
+/* The versioned binding summary (§4.2) above the timeline stage. */
+.anim-bound { display: grid; gap: 6px; max-width: 72ch; justify-self: start; padding: 12px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-bound header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; font-size: var(--text-md); }
+.anim-bound header strong { font-size: var(--text-md); }
+.anim-bound header span { color: var(--muted); font-size: var(--text-sm); }
+.anim-bound p { margin: 0; color: var(--text); font-size: var(--text-md); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.anim-conflict { border-left: 3px solid var(--accent); padding-left: 10px; }

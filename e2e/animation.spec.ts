@@ -22,6 +22,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 const environmental = (entry: string) =>
   entry.includes('Failed to load resource')
   || /WebSocket connection to .* failed/.test(entry)
+  || /Connecting to 'blob:.*' violates the following Content Security Policy directive/.test(entry)
   || /net::ERR_CONNECTION_REFUSED/.test(entry)
 
 async function trackErrors(page: Page) {
@@ -207,5 +208,256 @@ test('an animation envelope flips the shell attempt state (the fabric adapter)',
       stub.closeAllConnections()
       stub.close(() => resolve())
     })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Task 7 — the session binding panel (§4.1 the binding step, §4.2 the
+// versioned binding): the empty session's missing inputs INLINE in the same
+// workspace (Refusal — never a blocked shell), the four fields + submit
+// creating the versioned binding, the prepared handoff opening DIRECTLY into
+// the timeline placeholder, the medium chips as the kit's exclusive
+// radiogroup, the Workbench exit's "Open animation" arm, and the 409 rebase
+// notice (never a silent lost update).
+// ---------------------------------------------------------------------------
+
+/** The pre-binding document (§4.1's empty session): created WITHOUT a
+ *  binding — `bindingHistory: []`, `activeBindingVersion: 0` — the state the
+ *  binding panel fills. */
+async function createEmptySession(request: APIRequestContext, projectId: string, name: string) {
+  const created = await request.post('/api/lan/animation/documents', { data: { projectId, name } })
+  expect(created.ok(), `the pre-binding document creates over HTTP (${await created.text()})`).toBe(true)
+  return (await created.json()).document as { id: string; revision: number }
+}
+
+async function openPanel(page: Page, projectId: string, documentId: string) {
+  await page.goto(`/?images=1&view=animation&project=${projectId}&document=${documentId}`)
+  const panel = page.locator('[data-anim-binding]')
+  await expect(panel).toBeVisible({ timeout: 15_000 })
+  return panel
+}
+
+test('an empty session exposes the missing binding inputs inline without blocking the shell (binding)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const document = await createEmptySession(request, projectId, 'Unbound one')
+  await openPanel(page, projectId, document.id)
+  // The rest of the shell stands beside the panel — never blocked.
+  await expect(page.locator('[data-anim-document-name]')).toHaveText('Unbound one')
+  await expect(page.locator('[data-anim-revision]')).toHaveText('rev 0')
+  await expect(page.locator('[data-anim-root]')).toHaveAttribute('data-anim-document', document.id)
+  // The panel owns the stage in place of the timeline placeholder.
+  await expect(page.locator('[data-anim-stage]')).toHaveCount(0)
+  // The missing inputs are exposed INLINE — the Refusal names all four.
+  const refusal = page.locator('[data-anim-binding] [data-refusal]')
+  await expect(refusal).toBeVisible()
+  for (const missing of ['reference images', 'character description', 'medium', 'initial key']) {
+    await expect(refusal).toContainText(missing)
+  }
+  // The four controls stand in the same workspace, and submit stays gated.
+  await expect(page.locator('[data-anim-binding-description]')).toBeVisible()
+  await expect(page.locator('[data-anim-binding-medium]')).toBeVisible()
+  // The file half of the picker: the visible affordance (the input itself
+  // is the workbench's display:none idiom behind it).
+  await expect(page.getByRole('button', { name: 'Add image files' })).toBeVisible()
+  await expect(page.locator('[data-anim-binding-submit]')).toBeDisabled()
+  // The prepared-character rows load through the real asset store.
+  await expect(page.locator('[data-anim-binding-assets]')).toBeVisible()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('filling the four binding fields and submitting creates the versioned binding (binding)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const document = await createEmptySession(request, projectId, 'Fill me')
+  await openPanel(page, projectId, document.id)
+  // Field 1 — the locked description (typed; the session stores this exact
+  // version, §4.2).
+  const DESCRIPTION = 'a lanky courier in a long coat, ink-ready silhouette'
+  await page.locator('[data-anim-binding-description]').fill(DESCRIPTION)
+  // Field 2 — reference images from FILES through the existing ingest route.
+  await page.locator('[data-anim-binding-files]').setInputFiles({ name: 'courier-ref.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') })
+  const pool = page.locator('[data-anim-binding-pool] [data-anim-pool-image]')
+  await expect(pool).toHaveCount(1)
+  // An imported file lands IN the reference set (the pick is the explicit act).
+  await expect(pool.first()).toHaveAttribute('data-anim-pool-reference', 'true')
+  // Field 3 — the medium, from the adapter's fixed vocabulary.
+  await page.locator('[data-anim-binding-medium]').getByRole('radio', { name: 'flat cel colour on white' }).click()
+  // The Refusal re-derives: only the initial key is still missing.
+  await expect(page.locator('[data-anim-binding] [data-refusal]')).toContainText('initial key')
+  await expect(page.locator('[data-anim-binding] [data-refusal]')).not.toContainText('medium')
+  // Field 4 — the initial key as an EXPLICIT image selection.
+  await page.locator('[data-anim-pool-initial-key]').click()
+  await expect(pool.first()).toHaveAttribute('data-anim-pool-initial', 'true')
+  await expect(page.locator('[data-anim-binding] [data-refusal]')).toHaveCount(0)
+  await expect(page.locator('[data-anim-binding-submit]')).toBeEnabled()
+  await page.locator('[data-anim-binding-submit]').click()
+  // The bound version renders: v1, the description VERBATIM, the medium.
+  const bound = page.locator('[data-anim-bound-version]')
+  await expect(bound).toBeVisible()
+  await expect(bound).toHaveAttribute('data-anim-bound-version-n', '1')
+  await expect(page.locator('[data-anim-bound-description]')).toHaveText(DESCRIPTION)
+  await expect(bound).toContainText('flat cel colour on white')
+  await expect(bound).toContainText('1 reference')
+  // The panel is replaced by the timeline placeholder (Task 8's landmark).
+  await expect(page.locator('[data-anim-binding]')).toHaveCount(0)
+  await expect(page.locator('[data-anim-stage]')).toBeVisible()
+  // The write is durable — the revision the shell shows moved.
+  await expect(page.locator('[data-anim-revision]')).toHaveText('rev 1')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('a prepared binding handoff opens directly into the timeline placeholder (binding)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const document = await createDocument(request, projectId, 'Handoff ready')
+  await page.goto(`/?images=1&view=animation&project=${projectId}&document=${document.id}`)
+  await expect(page.locator('[data-anim-root]')).toBeVisible({ timeout: 15_000 })
+  // DIRECTLY into the timeline: the bound summary + the placeholder stand,
+  // and the binding panel never mounted.
+  const bound = page.locator('[data-anim-bound-version]')
+  await expect(bound).toBeVisible()
+  await expect(bound).toHaveAttribute('data-anim-bound-version-n', '1')
+  await expect(page.locator('[data-anim-bound-description]')).toHaveText('a lanky courier in a long coat')
+  await expect(page.locator('[data-anim-stage]')).toBeVisible()
+  await expect(page.locator('[data-anim-binding]')).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('the binding medium chips are an exclusive radiogroup — arrows move selection (binding)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const document = await createEmptySession(request, projectId, 'Medium chips')
+  await openPanel(page, projectId, document.id)
+  const group = page.locator('[data-anim-binding-medium]')
+  await expect(group).toHaveAttribute('role', 'radiogroup')
+  const media = ['clean line on white', 'flat black-and-white animatic', 'flat cel colour on white']
+  const chip = (name: string) => group.getByRole('radio', { name })
+  // Nothing selected yet: no chip lies about being checked.
+  await expect(group.locator('[aria-checked="true"]')).toHaveCount(0)
+  // Click selects + focuses (the single tab stop).
+  await chip(media[0]).click()
+  await expect(chip(media[0])).toBeFocused()
+  await expect(chip(media[0])).toHaveAttribute('aria-checked', 'true')
+  // ArrowRight moves SELECTION AND FOCUS together over the members,
+  // wrapping at the ends (the kit contract) — and stays exclusive.
+  for (const next of [1, 2, 0]) {
+    await page.keyboard.press('ArrowRight')
+    await expect(chip(media[next])).toHaveAttribute('aria-checked', 'true')
+    await expect(chip(media[next])).toBeFocused()
+    await expect(group.locator('[aria-checked="true"]')).toHaveCount(1)
+  }
+  // ArrowLeft walks back the other way (from index 0 → wraps to 2).
+  await page.keyboard.press('ArrowLeft')
+  await expect(chip(media[2])).toHaveAttribute('aria-checked', 'true')
+  await expect(chip(media[2])).toBeFocused()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('a stale binding write surfaces the conflict and re-reads — never silent (binding)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const document = await createEmptySession(request, projectId, 'Contested')
+  await openPanel(page, projectId, document.id)
+  // Fill the four fields.
+  await page.locator('[data-anim-binding-description]').fill('a contested binding')
+  await page.locator('[data-anim-binding-files]').setInputFiles({ name: 'contested.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') })
+  await expect(page.locator('[data-anim-binding-pool] [data-anim-pool-image]')).toHaveCount(1)
+  await page.locator('[data-anim-binding-medium]').getByRole('radio', { name: 'clean line on white' }).click()
+  await page.locator('[data-anim-pool-initial-key]').click()
+  await expect(page.locator('[data-anim-binding-submit]')).toBeEnabled()
+  // Hold the submit at the wire; WHILE IT IS HELD, move the document behind
+  // the page's back (a key-candidate write bumps the revision without
+  // touching the binding, so the panel stays the honest surface). The
+  // submit then answers 409 — the store must set the conflict, re-read,
+  // and SHOW the notice.
+  let held = true
+  await page.route('**/api/lan/animation/binding', async (route) => {
+    if (!held) { await route.continue(); return }
+    held = false
+    const bumped = await request.post('/api/lan/animation/keys', {
+      data: {
+        op: 'add-candidate', documentId: document.id, keyId: uuid(), expectedRevision: 0,
+        candidate: { id: uuid(), assetReference: { assetId: `animref-${uuid().slice(0, 8)}`, relPath: null, kind: 'image' }, origin: 'import', provenance: { assetId: 'animref-race' }, poseDescription: null, facing: null },
+      },
+    })
+    expect(bumped.ok(), `the concurrent write lands (${await bumped.text()})`).toBe(true)
+    await route.continue()
+  })
+  await page.locator('[data-anim-binding-submit]').click()
+  // The 409 is NEVER silent: the reload notice names the conflict.
+  const notice = page.locator('[data-anim-conflict]')
+  await expect(notice).toBeVisible()
+  await expect(notice).toContainText('changed')
+  // The rebase re-read landed: the fresh revision shows, the panel still
+  // stands (the concurrent write did not bind), and the retry — now on the
+  // fresh revision — succeeds.
+  await expect(page.locator('[data-anim-revision]')).toHaveText('rev 1')
+  await expect(page.locator('[data-anim-binding]')).toBeVisible()
+  await expect(page.locator('[data-anim-binding-submit]')).toBeEnabled()
+  await page.locator('[data-anim-binding-submit]').click()
+  const bound = page.locator('[data-anim-bound-version]')
+  await expect(bound).toBeVisible()
+  await expect(bound).toHaveAttribute('data-anim-bound-version-n', '1')
+  await expect(page.locator('[data-anim-bound-description]')).toHaveText('a contested binding')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// The Workbench exit's "Open animation" arm (task 6 deferred it here — the
+// binding UX prerequisite): the prepared session (contract + strip + picked
+// frame) plus the one input the workbench cannot infer (the medium) become a
+// BOUND document through animationApi.createDocument, and the browser lands
+// in the animation module with the timeline already open.
+test('the workbench exit opens animation with a bound handoff (binding)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  // The images suite's seeding shape: one h3img chain whose landed take
+  // carries 3 frame artifacts (the picked frame = the scorer's canonical),
+  // one FILE reference on the strip, the session naming the project.
+  const project = await (await request.post('/api/lan/documents/projects', { data: { name: 'Animation exit e2e' } })).json()
+  const ingested = await (await request.post('/api/lan/documents/blobs/ingest', { data: { data: KEY_PNG, name: 'identity.png', kind: 'image' } })).json()
+  try {
+    const chain = await (await request.post('/api/lan/documents/chains', {
+      data: {
+        projectId: project.project.id,
+        kind: 'h3img',
+        settings: { family: 'h3img.generate.packet', intent: 'a ceramic bowl of lemons on an oak table', tier: 5, keepDial: 0.55, seed: 4242, resolution: '1344x768', loras: [], refs: [{ id: 'ref-1', role: 'subject', transport: null, keepOverride: null, note: 'identity', source: { kind: 'file', path: ingested.path, name: 'identity.png' } }], semanticOverflow: false, framePicks: {}, refineEngine: '', poserigInbox: null },
+      },
+    })).json()
+    const output = await (await request.post('/api/lan/documents/outputs', { data: { chainId: chain.chain.id, substrates: ['decoded'] } })).json()
+    const take = await (await request.post('/api/lan/documents/takes', {
+      data: {
+        outputId: output.output.id, jobId: null, artifacts: [ingested.path],
+        metrics: { kind: 'image', duration: 0, width: 1344, height: 768, sourcePath: ingested.path, h3img: { family: 'h3img.generate.packet', profile: 'packet', tier: 5, frames: 1, prompt: 'the generated contract text', refs: [], loras: [], seed: 4242, resolution: '1344x768', hybrid: true, scorer: { bestIndex: 0, reason: 'sharpest', metricBasis: 'pixel metrics only' }, canonicalFrameIndex: 0 } },
+      },
+    })).json()
+    expect(take.take.id, 'the seeded take lands').toBeTruthy()
+    await request.post('/api/lan/documents/session', { data: { openProjects: [project.project.id], activeProject: project.project.id } })
+    await page.goto('/?images=1')
+    await expect(page.locator('[data-iw-mode-rail]')).toBeVisible({ timeout: 20_000 })
+    // The arm: consent-shaped like the start-frame exit — a dialog, the
+    // prepared inputs named, the medium REQUIRED (the workbench cannot
+    // infer it), confirm gated until chosen.
+    await page.locator('[data-iw-open-animation]').click()
+    const dialog = page.getByRole('dialog', { name: 'Open animation' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText('bowl of lemons')
+    await expect(page.locator('[data-iw-open-animation-confirm]')).toBeDisabled()
+    await dialog.getByRole('radio', { name: 'clean line on white' }).click()
+    await expect(page.locator('[data-iw-open-animation-confirm]')).toBeEnabled()
+    await page.locator('[data-iw-open-animation-confirm]').click()
+    // The navigation lands in the animation module, DIRECTLY bound — the
+    // timeline placeholder stands and the binding panel never mounted.
+    await expect(page.locator('[data-anim-root]')).toBeVisible({ timeout: 15_000 })
+    await expect(page).toHaveURL(/view=animation/)
+    const bound = page.locator('[data-anim-bound-version]')
+    await expect(bound).toBeVisible()
+    await expect(page.locator('[data-anim-bound-description]')).toContainText('bowl of lemons')
+    await expect(page.locator('[data-anim-stage]')).toBeVisible()
+    await expect(page.locator('[data-anim-binding]')).toHaveCount(0)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    // (testing.md's shared-home discipline) the session and the project go.
+    await request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } }).catch(() => undefined)
+    await request.post('/api/lan/documents/projects/delete', { data: { id: project.project.id } }).catch(() => undefined)
   }
 })

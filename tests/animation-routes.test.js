@@ -241,6 +241,7 @@ let fabric = null
 let projectId = ''
 // (a)
 let docA = null
+let docEmpty = null
 // (b)
 let docB = null
 let keyB1 = null
@@ -343,6 +344,27 @@ test('(a) bootstrap serves the vocabularies; document create/list/read round-tri
   const missing = await api.get(`/api/lan/animation/document?id=${uuid()}`)
   assert.equal(missing.status, 404)
   assert.match(missing.body.error, /No animation document/)
+
+  // The EMPTY SESSION (task 7, spec §4.1): create WITHOUT a binding — the
+  // pre-binding document the binding panel fills (empty history,
+  // activeBindingVersion 0 — the schema's explicitly supported state), then
+  // the binding route lands version 1 on it (§4.2).
+  const emptyCreated = await api.post('/api/lan/animation/documents', { projectId, name: 'Alpha-empty' })
+  assert.equal(emptyCreated.status, 200, `the pre-binding document creates (${emptyCreated.body.error ?? ''})`)
+  docEmpty = emptyCreated.body.document
+  assert.equal(docEmpty.body.activeBindingVersion, 0)
+  assert.deepEqual(docEmpty.body.bindingHistory, [])
+  assert.equal(docEmpty.revision, 0)
+  const emptyRead = await api.get(`/api/lan/animation/document?id=${docEmpty.id}`)
+  assert.equal(emptyRead.status, 200)
+  assert.deepEqual(emptyRead.body.document.body, docEmpty.body, 'the pre-binding body round-trips')
+
+  const emptyBound = await api.post('/api/lan/animation/binding', { documentId: docEmpty.id, binding: makeBinding(), expectedRevision: 0 })
+  assert.equal(emptyBound.status, 200, `the binding lands on the empty session (${emptyBound.body.error ?? ''})`)
+  assert.equal(emptyBound.body.document.body.activeBindingVersion, 1)
+  assert.equal(emptyBound.body.document.body.bindingHistory.length, 1)
+  assert.equal(emptyBound.body.document.body.bindingHistory[0].version, 1)
+  assert.equal(emptyBound.body.document.revision, 1)
 })
 
 // ---------------------------------------------------------------------------
