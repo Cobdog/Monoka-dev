@@ -49,10 +49,19 @@ export type SequenceReviewProps = {
   endKey: TimelineKey | null
   /** This window's landed takes in landing order (re-rolls append). */
   takes: Array<{ attemptId: string }>
+  /** Task 12's Important-1 (fixed in task 13): the start key's DISTINCT
+   *  windows — the chip group that reaches an OLDER window's takes (before,
+   *  only the newest window's strip was reachable). Empty = one window. */
+  windows: Array<{ windowEndKeyId: string; label: string }>
+  /** The chips mark the SUBJECT's window's end key. */
+  activeWindowEndKeyId: string | null
   busy: boolean
   /** Switches the review SUBJECT to another take (view state, never a
    *  document write). */
   onSelectTake(attemptId: string): void
+  /** Switches the review to another WINDOW of this start key (view state —
+   *  the subject becomes that window's newest take). */
+  onSelectWindow(windowEndKeyId: string): void
   /** The re-roll action — a fresh take for this same window. */
   onReroll(): void
   /** §11.4's explicit preparation retry — re-prepares the proposed frame
@@ -60,7 +69,7 @@ export type SequenceReviewProps = {
   onRetryPreparation(): void
 }
 
-export function SequenceReview({ attempt, keyEntity, endKey, takes, busy, onSelectTake, onReroll, onRetryPreparation }: SequenceReviewProps) {
+export function SequenceReview({ attempt, keyEntity, endKey, takes, windows, activeWindowEndKeyId, busy, onSelectTake, onSelectWindow, onReroll, onRetryPreparation }: SequenceReviewProps) {
   const status = REVIEW_STATUS[attempt.execution]
   const candidate = attempt.candidate
   const inFlight = IN_FLIGHT.has(attempt.execution)
@@ -117,6 +126,29 @@ export function SequenceReview({ attempt, keyEntity, endKey, takes, busy, onSele
         <p className="anim-note" role="status" data-anim-review-settling>The landed candidate is arriving — the completion event is being read back.</p>
       ) : (
         !inFlight && <p className="anim-note" data-anim-review-no-candidate>No candidate landed for this attempt — a re-roll starts a fresh take; nothing else moved.</p>
+      )}
+
+      {/* Task 12's Important-1 (fixed in task 13): the start key's DISTINCT
+          windows as chips — an older window's takes stay reachable from the
+          review surface (before, only the newest window ever showed). A view
+          act; the subject becomes the picked window's newest take. */}
+      {windows.length > 1 && (
+        <div className="anim-review-takes" data-anim-seq-windows role="group" aria-label="Windows from this key">
+          {windows.map((window) => (
+            <button
+              key={window.windowEndKeyId}
+              type="button"
+              className="anim-review-take"
+              data-anim-seq-window={window.windowEndKeyId}
+              data-anim-seq-window-active={window.windowEndKeyId === activeWindowEndKeyId ? 'true' : 'false'}
+              disabled={busy}
+              title={window.windowEndKeyId === activeWindowEndKeyId ? 'The window under review' : 'Review this window (its own takes)'}
+              onClick={() => { if (window.windowEndKeyId !== activeWindowEndKeyId) onSelectWindow(window.windowEndKeyId) }}
+            >
+              {window.label}
+            </button>
+          ))}
+        </div>
       )}
 
       {/* The takes (re-roll alternatives, §8.2): switching the SUBJECT is a

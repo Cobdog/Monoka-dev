@@ -34,9 +34,13 @@
  *     authoring panel that sources the NEXT generation from its selection;
  *     since task 12 the SEQUENCE surfaces join them (§5.2/§11.2) — the
  *     selected key is a WINDOW START: its window takes' review (§7.3
- *     vocabulary, the retained takes, the re-roll resubmitting the frozen
- *     window) above the authoring panel whose explicit END-KEY pick bounds
- *     the window (alignment + ordered action + preservation caption);
+ *     vocabulary, the retained takes, the WINDOW CHIPS reaching older
+ *     windows, the re-roll resubmitting the frozen window) above the
+ *     authoring panel whose explicit END-KEY pick bounds the window
+ *     (alignment + ordered action + preservation caption); since task 13
+ *     the EDITORIAL surface (§9) stands under them all — the assembly
+ *     layer: the landed clips that can contribute, the ordered contribution
+ *     list (portion + hold + order), and the assembled-sequence preview;
  *   - the conflict rebase notice (a 409 is never silent) and the failed
  *     silent-refresh notice, both role=status; the selection state carries
  *     the "new animation document" creation arm (task 7's Minor-2).
@@ -54,8 +58,9 @@ import { HeroPanel } from './HeroPanel'
 import { HeroReview } from './HeroReview'
 import { SequencePanel } from './SequencePanel'
 import { SequenceReview } from './SequenceReview'
+import { EditorialPanel } from './EditorialPanel'
 import { IN_FLIGHT } from './reviewStatus'
-import { deriveReviewPosition, deriveTimeline } from './timelineModel'
+import { deriveAssembledSequence, deriveContributableClips, deriveReviewPosition, deriveTimeline } from './timelineModel'
 import { deriveHeroPreview, deriveTweenPreview, useAnimationDocument } from './state'
 import './animation.css'
 
@@ -82,6 +87,11 @@ export function AnimationApp() {
   // The sequence review's SUBJECT override — same doctrine, keyed by the
   // window-start key slot (task 12).
   const [sequenceTake, setSequenceTake] = useState<{ keyId: string; attemptId: string } | null>(null)
+  // The sequence review's WINDOW override (task 12's Important-1, fixed in
+  // task 13): which of the start key's DISTINCT windows is under review —
+  // null follows the newest take. Switching windows clears the take override
+  // so the picked window's newest take becomes the subject.
+  const [sequenceWindow, setSequenceWindow] = useState<{ keyId: string; windowEndKeyId: string } | null>(null)
   const session = useAnimationDocument(params.documentId, params.projectId)
   const { phase, errorDetail, document, projectDocuments, assets, assetsFailed, conflict, busy, commandError, refreshFailed } = session
 
@@ -192,20 +202,55 @@ export function AnimationApp() {
     if (document === null || selectedKey === null || timeline === null) return null
     const windowTakes = document.attempts.filter((entry) => entry.tool === 'sequence' && entry.targetId === selectedKey.id)
     if (windowTakes.length === 0) return null
+    // The window under review (task 12's Important-1, fixed in task 13): the
+    // reviewer's explicit window pick, else the newest take's own window.
     const chosen = sequenceTake !== null && sequenceTake.keyId === selectedKey.id
       ? windowTakes.find((entry) => entry.attemptId === sequenceTake.attemptId) ?? null
       : null
-    const subject = chosen ?? windowTakes[windowTakes.length - 1]!
-    const takes = windowTakes.filter((entry) => entry.windowEndKeyId === subject.windowEndKeyId)
-    const endKey = subject.windowEndKeyId === undefined
+    const activeEnd = sequenceWindow !== null && sequenceWindow.keyId === selectedKey.id
+      ? sequenceWindow.windowEndKeyId
+      : chosen?.windowEndKeyId ?? windowTakes[windowTakes.length - 1]!.windowEndKeyId
+    // The subject: the reviewer's explicit take when it belongs to the active
+    // window, else that window's NEWEST take — an older window's takes stay
+    // reachable (the chips switch windows; the strip never mixes them).
+    const ofWindow = windowTakes.filter((entry) => entry.windowEndKeyId === activeEnd)
+    const subject = chosen !== null && chosen.windowEndKeyId === activeEnd
+      ? chosen
+      : ofWindow[ofWindow.length - 1] ?? windowTakes[windowTakes.length - 1]!
+    const endKey = activeEnd === undefined
       ? null
-      : timeline.keys.find((key) => key.id === subject.windowEndKeyId) ?? null
-    return { subject, takes: takes.map((entry) => ({ attemptId: entry.attemptId })), endKey }
-  }, [document, selectedKey, sequenceTake, timeline])
+      : timeline.keys.find((key) => key.id === activeEnd) ?? null
+    return { subject, takes: ofWindow.map((entry) => ({ attemptId: entry.attemptId })), endKey, windowEndKeyId: activeEnd ?? null }
+  }, [document, selectedKey, sequenceTake, sequenceWindow, timeline])
+  // The start key's DISTINCT windows, newest first — the review's chip group
+  // (rendered only when more than one exists).
+  const sequenceWindows = useMemo(() => {
+    if (document === null || selectedKey === null || timeline === null) return []
+    const windows: Array<{ windowEndKeyId: string; label: string }> = []
+    for (let index = document.attempts.length - 1; index >= 0; index -= 1) {
+      const entry = document.attempts[index]!
+      if (entry.tool !== 'sequence' || entry.targetId !== selectedKey.id || entry.windowEndKeyId === undefined) continue
+      if (windows.some((existing) => existing.windowEndKeyId === entry.windowEndKeyId)) continue
+      const order = timeline.keys.find((key) => key.id === entry.windowEndKeyId)?.order
+      windows.push({ windowEndKeyId: entry.windowEndKeyId, label: order === undefined ? 'window → vanished key' : `window → key #${order}` })
+    }
+    return windows
+  }, [document, selectedKey, timeline])
   const inFlightSequenceFromKey = useMemo(() => {
     if (document === null || selectedKey === null) return []
     return document.attempts.filter((entry) => entry.tool === 'sequence' && entry.targetId === selectedKey.id && IN_FLIGHT.has(entry.execution))
   }, [document, selectedKey])
+  // The editorial surface (task 13, §9): the landed clips that can contribute
+  // and what the ordered contribution list assembles to — both pure
+  // derivations over the live document (timelineModel).
+  const editorialClips = useMemo(
+    () => (document === null ? [] : deriveContributableClips(document.body, document.attempts)),
+    [document],
+  )
+  const assembledSequence = useMemo(
+    () => (document === null ? null : deriveAssembledSequence(document.body, document.attempts)),
+    [document],
+  )
 
   if (phase === 'loading') {
     return (
@@ -421,9 +466,15 @@ export function AnimationApp() {
                   keyEntity={selectedKey}
                   endKey={sequenceReview.endKey}
                   takes={sequenceReview.takes}
+                  windows={sequenceWindows}
+                  activeWindowEndKeyId={sequenceReview.windowEndKeyId}
                   busy={busy}
                   onSelectTake={(attemptId) => setSequenceTake({ keyId: selectedKey.id, attemptId })}
-                  onReroll={() => void session.commands.rerollSequence(selectedKey.id)}
+                  onSelectWindow={(windowEndKeyId) => {
+                    setSequenceWindow({ keyId: selectedKey.id, windowEndKeyId })
+                    setSequenceTake(null)
+                  }}
+                  onReroll={() => void session.commands.rerollSequence(selectedKey.id, sequenceReview.subject.windowEndKeyId)}
                   onRetryPreparation={() => void session.commands.retryPreparation(sequenceReview.subject.attemptId)}
                 />
               )}
@@ -437,6 +488,22 @@ export function AnimationApp() {
                   busy={busy}
                   onFacingChange={session.commands.setKeyFacing}
                   onSubmit={session.commands.submitSequence}
+                />
+              )}
+              {/* The editorial surface (task 13, §9): the assembly layer —
+                  which portions of the landed clips contribute, the holds,
+                  the order, and the assembled-sequence preview. Always
+                  mounted for a bound document (the empty state names the way
+                  in). */}
+              {assembledSequence !== null && (
+                <EditorialPanel
+                  clips={editorialClips}
+                  assembled={assembledSequence}
+                  busy={busy}
+                  onContribute={(spanId, attemptId, inFrame, outFrame, holdDuration) =>
+                    void session.commands.contributeClip(spanId, attemptId, inFrame, outFrame, holdDuration)}
+                  onReorder={(orderedIds) => void session.commands.reorderContributions(orderedIds)}
+                  onRemove={(contributionId) => void session.commands.removeContribution(contributionId)}
                 />
               )}
             </section>

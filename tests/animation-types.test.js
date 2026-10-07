@@ -161,6 +161,14 @@ test('parseAnimationDocumentBody enforces the internal pointer integrity', () =>
     body.bindingHistory.push({ ...body.bindingHistory[0], boundAt: 1759800001000 })
   })
   rejects('two key slots sharing an id', (body) => { body.keys[1].id = body.keys[0].id })
+  // Task 13 — the spanless editorial lane (§11.2: a sequence attempt owns no
+  // span, so its contribution carries spanId null — a whole-scene render);
+  // a NON-null spanId still must name an existing span.
+  const spanless = makeBody()
+  spanless.editorial.push({ id: uuid(), spanId: null, attemptId: uuid(), inFrame: 0, outFrame: 0, holdDuration: 12 })
+  assert.notEqual(parseAnimationDocumentBody(spanless), null, 'a spanless contribution parses (the whole-scene lane)')
+  rejects('an editorial contribution naming a span that does not exist', (body) => { body.editorial[0].spanId = uuid() })
+  rejects('an editorial spanId that is neither null nor a UUID', (body) => { body.editorial[0].spanId = 'not-a-uuid' })
   // The pre-binding shape is the one allowed divergence: empty history with
   // activeBindingVersion 0 (a document created before its first binding).
   const preBinding = makeBody()

@@ -434,8 +434,8 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
     if (windowEndKeyId === targetId) {
       throw new AnimationRuleError('A sequence window spans two distinct keys — its first drawing and its own natural end (§5.2); the window end must differ from the start.', 400)
     }
-    if (!Array.isArray(draft.orderedActions) || draft.orderedActions.length > 64 || !draft.orderedActions.every((action) => isNonEmptyString(action) && action.length <= TEXT_LIMIT)) {
-      throw new AnimationRuleError('orderedActions must be an array of at most 64 non-empty text beats.', 400)
+    if (!Array.isArray(draft.orderedActions) || draft.orderedActions.length < 1 || draft.orderedActions.length > 64 || !draft.orderedActions.every((action) => isNonEmptyString(action) && action.length <= TEXT_LIMIT)) {
+      throw new AnimationRuleError('orderedActions must be an array of 1 to 64 non-empty text beats.', 400)
     }
     const start = poseContextOf(selectedCandidate(body, targetId))
     const end = poseContextOf(selectedCandidate(body, windowEndKeyId))
@@ -683,8 +683,38 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
         if (!isNonNegativeInt(inFrame) || !isNonNegativeInt(outFrame) || !isNonNegativeInt(holdDuration)) {
           throw new AnimationRuleError('inFrame, outFrame, and holdDuration must be non-negative integers.', 400)
         }
-        return store.selectClipContribution(documentIdFrom(body), uuidField(body, 'spanId'), uuidField(body, 'attemptId'), inFrame, outFrame, holdDuration, expectedRevision)
+        // The spanless lane (task 13): a sequence window's clip contributes
+        // with NO span — `spanId: null` on the wire; anything non-null must
+        // still be a UUID naming the tween lane's owning span.
+        const spanId = body.spanId === null ? null : uuidField(body, 'spanId')
+        return store.selectClipContribution(documentIdFrom(body), spanId, uuidField(body, 'attemptId'), inFrame, outFrame, holdDuration, expectedRevision)
       })
+    }
+
+    if (pathname === '/api/lan/animation/editorial' && request.method === 'POST') {
+      const body = await readJson(request, 500_000)
+      const expectedRevision = expectedRevisionFrom(body)
+      const op = body.op
+      try {
+        const documentId = documentIdFrom(body)
+        let row: AnimationDocumentRow
+        if (op === 'reorder') {
+          // The wire-shape gate (the store owns the permutation rule itself).
+          if (!Array.isArray(body.orderedIds) || !body.orderedIds.every((id) => isUuid(id))) {
+            return sendJson(response, 400, { error: 'The reorder needs orderedIds — an array of the contribution ids (UUIDs) in their new order.' })
+          }
+          row = store.reorderEditorial(documentId, body.orderedIds as string[], expectedRevision)
+        } else if (op === 'remove') {
+          row = store.removeContribution(documentId, uuidField(body, 'contributionId'), expectedRevision)
+        } else {
+          return sendJson(response, 400, { error: 'The editorial route needs op: reorder or remove.' })
+        }
+        emitDocumentChanged(documentId, row.revision, `editorial.${String(op)}`)
+        return sendJson(response, 200, { document: documentView(row) })
+      } catch (error) {
+        if (animationFailure(response, error)) return
+        throw error
+      }
     }
 
     if (pathname === '/api/lan/animation/attempts' && request.method === 'POST') {

@@ -734,26 +734,41 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       })
     },
 
-    selectClipContribution: (documentId: string, spanId: string, attemptId: string, inFrame: number, outFrame: number, holdDuration: number, expectedRevision: number) => {
-      if (!isUuid(spanId)) throw new AnimationRuleError('The span id must be a UUID.', 400)
+    /** The editorial list's lane rules (task 13, §9/§11.2): a spanId names
+     *  the TWEEN lane (the attempt must be attached to that span's step
+     *  slots); spanId NULL names the SPANLESS lane — a whole-scene render
+     *  whose clip IS the contribution (a sequence window take; §11.2: a
+     *  sequence attempt owns no span, the task-2 widening the ledger named).
+     *  Hero clips ride neither: their product is a KEY DRAWING (§5.2), not a
+     *  sequence contribution. */
+    selectClipContribution: (documentId: string, spanId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number, expectedRevision: number) => {
+      if (spanId !== null && !isUuid(spanId)) throw new AnimationRuleError('The span id must be a UUID (or null for a whole-scene clip).', 400)
       if (!isUuid(attemptId)) throw new AnimationRuleError('The attempt id must be a UUID.', 400)
       for (const [name, value] of [['inFrame', inFrame], ['outFrame', outFrame], ['holdDuration', holdDuration]] as const) {
         if (!isNonNegativeInt(value)) throw new AnimationRuleError(`${name} must be a non-negative integer.`, 400)
       }
       return authorCommand(documentId, expectedRevision, (body) => {
-        const span = body.spans[requireSpan(body, spanId)]
-        // The referenced clip must be REAL, belong to THIS document, and be
-        // attached to THIS span — the same refusal class as
-        // selectRollingReference (review Important-1): a fabricated or foreign
-        // attemptId would leave an editorial entry whose row never rides this
-        // project's archive export — a dangling reference, not an assembly
-        // decision.
+        // The referenced clip must be REAL and belong to THIS document — the
+        // same refusal class as selectRollingReference (review Important-1):
+        // a fabricated or foreign attemptId would leave an editorial entry
+        // whose row never rides this project's archive export.
         const attemptRow = statements.attempt.get(attemptId) as Record<string, unknown> | undefined
         if (!attemptRow || str(attemptRow.document_id) !== documentId) {
           throw new AnimationRuleError(`Attempt ${attemptId} is not an attempt of this document.`, 404)
         }
-        if (!span.stepSlots.some((step) => step.attempts.includes(attemptId))) {
-          throw new AnimationRuleError(`Attempt ${attemptId} is not attached to span ${spanId}.`, 404)
+        if (spanId !== null) {
+          const span = body.spans[requireSpan(body, spanId)]
+          if (!span.stepSlots.some((step) => step.attempts.includes(attemptId))) {
+            throw new AnimationRuleError(`Attempt ${attemptId} is not attached to span ${spanId}.`, 404)
+          }
+        } else {
+          const tool = str(attemptRow.tool)
+          if (tool === 'tween') {
+            throw new AnimationRuleError('A tween clip contributes through its span — name the span that owns its step slot.', 400)
+          }
+          if (tool !== 'sequence') {
+            throw new AnimationRuleError(`A ${tool} render does not contribute to the assembled sequence — the hero lane's product is a key drawing (§5.2).`, 400)
+          }
         }
         // One contribution per (span, attempt): re-choosing a portion UPDATES
         // (id stable), a different clip contributes a second entry. Editorial
@@ -765,6 +780,48 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
           existing.holdDuration = holdDuration
         } else {
           body.editorial.push({ id: randomUUID(), spanId, attemptId, inFrame, outFrame, holdDuration })
+        }
+      })
+    },
+
+    /** The editorial-list reorder (task 13, §9: the ordered list IS the
+     *  assembled sequence's order): `orderedIds` must be a PERMUTATION of the
+     *  current list — every contribution exactly once, nothing foreign.
+     *  Rows move; nothing is rewritten. An assembly decision: no staleness. */
+    reorderEditorial: (documentId: string, orderedIds: string[], expectedRevision: number) => {
+      if (!Array.isArray(orderedIds) || !orderedIds.every((id) => isUuid(id))) {
+        throw new AnimationRuleError('orderedIds must be an array of contribution ids (UUIDs).', 400)
+      }
+      return authorCommand(documentId, expectedRevision, (body) => {
+        if (orderedIds.length !== body.editorial.length) {
+          throw new AnimationRuleError(`The ordered id list must name every contribution exactly once — got ${orderedIds.length} of ${body.editorial.length}.`, 400)
+        }
+        const byId = new Map(body.editorial.map((entry) => [entry.id, entry]))
+        const next: AnimationDocumentBody['editorial'] = []
+        const seen = new Set<string>()
+        for (const id of orderedIds) {
+          const entry = byId.get(id)
+          if (!entry || seen.has(id)) {
+            throw new AnimationRuleError(`The ordered id list must name every contribution exactly once — ${id} is missing or repeated.`, 400)
+          }
+          seen.add(id)
+          next.push(entry)
+        }
+        body.editorial = next
+      })
+    },
+
+    /** The editorial-list removal (task 13): a mistaken contribution is
+     *  deletable — the list is an authored document, never an append-only
+     *  ledger. (A SPAN's removal still drops its own entries wholesale.)
+     *  An assembly decision: no staleness. */
+    removeContribution: (documentId: string, contributionId: string, expectedRevision: number) => {
+      if (!isUuid(contributionId)) throw new AnimationRuleError('The contribution id must be a UUID.', 400)
+      return authorCommand(documentId, expectedRevision, (body) => {
+        const before = body.editorial.length
+        body.editorial = body.editorial.filter((entry) => entry.id !== contributionId)
+        if (body.editorial.length === before) {
+          throw new AnimationRuleError(`No editorial contribution with id ${contributionId} in this document.`, 404)
         }
       })
     },

@@ -24,7 +24,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { deriveTimeline, deriveReviewPosition } from '../src/animation/timelineModel'
+import { deriveAssembledSequence, deriveContributableClips, deriveReviewPosition, deriveTimeline } from '../src/animation/timelineModel'
 
 const uuid = () => randomUUID()
 
@@ -295,4 +295,120 @@ test('deriveReviewPosition: an in-flight hero marks its SOURCE key until the pro
   const accepted = openBody.keys.find((entry) => entry.id === open.targetId)
   accepted.selectedCandidateId = accepted.candidates[0].id
   assert.deepEqual(deriveReviewPosition(openBody, [openOlder, open, rerolling]), { kind: 'key', id: openOlder.targetId }, 'a resolved decision steps aside for the next open one')
+})
+
+// Task 13 — the sequence lane's reviewed marker is the EDITORIAL
+// CONTRIBUTION (§9): a landed window take whose start key already holds a
+// selection never fired rule 1 under task 12 (nothing about the body was
+// open); its review decision is whether it CONTRIBUTES. An uncontributed
+// ready take is the open decision — the playhead marks the window start; a
+// contribution naming the attempt resolves it.
+test('deriveReviewPosition: a ready sequence take stays open until it contributes (task 13)', () => {
+  const startCandidate = candidate('import')
+  const keyStart = keySlot(0, { candidates: [startCandidate], selectedCandidateId: startCandidate.id })
+  const keyEnd = keySlot(1)
+  const body = bodyOf([keyStart, keyEnd], [])
+  const take = { attemptId: uuid(), tool: 'sequence', targetId: keyStart.id, execution: 'ready' }
+  assert.deepEqual(
+    deriveReviewPosition(body, [take]),
+    { kind: 'key', id: keyStart.id },
+    'an uncontributed window take is the open decision — the playhead marks its start key (the start holds a selection; the missing decision is the contribution)',
+  )
+  body.editorial.push({ id: uuid(), spanId: null, attemptId: take.attemptId, inFrame: 0, outFrame: 18, holdDuration: 2 })
+  assert.equal(deriveReviewPosition(body, [take]), null, 'a contribution names the take — the decision is made, the marker dissolves')
+  // Only a contribution naming THIS attempt resolves it — a span-named entry
+  // for another clip leaves the window's decision open.
+  body.editorial = [{ id: uuid(), spanId: null, attemptId: uuid(), inFrame: 0, outFrame: 4, holdDuration: 0 }]
+  assert.deepEqual(deriveReviewPosition(body, [take]), { kind: 'key', id: keyStart.id }, 'a foreign contribution resolves nothing')
+})
+
+// Task 13 — the editorial derivations behind the EditorialPanel (§9/§11.3):
+// which landed clips can contribute (and through which lane), and what the
+// ordered contribution list assembles to (integer frames, start-inclusive
+// end-exclusive ranges, holds measured in output frames).
+test('deriveContributableClips lists the landed tween and sequence clips with their lanes (task 13)', () => {
+  const startCandidate = candidate('import')
+  const endCandidate = candidate('import')
+  const keyA = keySlot(0, { candidates: [startCandidate], selectedCandidateId: startCandidate.id })
+  const keyB = keySlot(1, { candidates: [endCandidate], selectedCandidateId: endCandidate.id })
+  const step = stepSlot()
+  const theSpan = spanOf(keyA.id, keyB.id, { stepSlots: [step], intent: { movement: 'she shifts her weight onto the heel', preservation: 'coat hem consistent' } })
+  const tweenTake = { attemptId: uuid(), tool: 'tween', targetId: step.id, candidate: { frameCount: 22 } }
+  step.attempts.push(tweenTake.attemptId)
+  const seqTake = { attemptId: uuid(), tool: 'sequence', targetId: keyA.id, windowEndKeyId: keyB.id, candidate: { frameCount: 30 } }
+  const heroTake = { attemptId: uuid(), tool: 'hero', targetId: uuid(), candidate: { frameCount: 22 } }
+  const unlanded = { attemptId: uuid(), tool: 'sequence', targetId: keyA.id, windowEndKeyId: keyB.id, candidate: null }
+  const body = bodyOf([keyA, keyB], [theSpan])
+
+  let clips = deriveContributableClips(body, [tweenTake, seqTake, heroTake, unlanded])
+  assert.deepEqual(clips.map((clip) => clip.attemptId), [tweenTake.attemptId, seqTake.attemptId], 'hero clips and unlanded attempts never contribute')
+  assert.equal(clips[0].spanId, theSpan.id, 'the tween lane names its owning span')
+  assert.equal(clips[0].stepIndex, 1, 'the tween label names its 1-based step')
+  assert.ok(clips[0].label.includes('key #0 → key #1'), `the label carries the endpoint orders (${clips[0].label})`)
+  assert.ok(clips[0].detail.includes('shifts her weight'), 'the tween detail carries the span movement')
+  assert.equal(clips[0].frameCount, 22)
+  assert.equal(clips[1].spanId, null, 'the sequence lane is spanless')
+  assert.ok(clips[1].label.includes('key #0 → key #1'), `the window label carries its endpoint orders (${clips[1].label})`)
+  assert.equal(clips[1].frameCount, 30)
+  assert.equal(clips[0].contributionId, null)
+  assert.equal(clips[1].contributionId, null)
+
+  // An orphaned tween (its span removed) is NOT offered — the store's attach
+  // rule would refuse it; the picker never shows a doomed command.
+  clips = deriveContributableClips(bodyOf([keyA, keyB], []), [tweenTake, seqTake])
+  assert.deepEqual(clips.map((clip) => clip.attemptId), [seqTake.attemptId])
+
+  // An existing contribution flags its clip (the picker says "already in the
+  // list"; the row below owns the edit).
+  body.editorial.push({ id: uuid(), spanId: null, attemptId: seqTake.attemptId, inFrame: 0, outFrame: 12, holdDuration: 0 })
+  clips = deriveContributableClips(body, [tweenTake, seqTake])
+  assert.equal(clips.find((clip) => clip.attemptId === seqTake.attemptId).contributionId, body.editorial[0].id)
+  assert.equal(clips.find((clip) => clip.attemptId === tweenTake.attemptId).contributionId, null)
+})
+
+test('deriveAssembledSequence concatenates the ordered list with holds in output frames (task 13, §11.3)', () => {
+  const startCandidate = candidate('import')
+  const endCandidate = candidate('import')
+  const keyA = keySlot(0, { candidates: [startCandidate], selectedCandidateId: startCandidate.id })
+  const keyB = keySlot(1, { candidates: [endCandidate], selectedCandidateId: endCandidate.id })
+  const step = stepSlot()
+  const theSpan = spanOf(keyA.id, keyB.id, { stepSlots: [step] })
+  const tweenTake = { attemptId: uuid(), tool: 'tween', targetId: step.id, candidate: { frameCount: 22 } }
+  step.attempts.push(tweenTake.attemptId)
+  const seqTake = { attemptId: uuid(), tool: 'sequence', targetId: keyA.id, windowEndKeyId: keyB.id, candidate: { frameCount: 30 } }
+  const seqTake2 = { attemptId: uuid(), tool: 'sequence', targetId: keyB.id, windowEndKeyId: keyA.id, candidate: { frameCount: 18 } }
+  const body = bodyOf([keyA, keyB], [theSpan])
+  body.editorial = [
+    { id: uuid(), spanId: theSpan.id, attemptId: tweenTake.attemptId, inFrame: 4, outFrame: 16, holdDuration: 8 },
+    { id: uuid(), spanId: null, attemptId: seqTake.attemptId, inFrame: 0, outFrame: 30, holdDuration: 0 },
+    { id: uuid(), spanId: null, attemptId: seqTake2.attemptId, inFrame: 5, outFrame: 5, holdDuration: 12 },
+  ]
+  const assembled = deriveAssembledSequence(body, [tweenTake, seqTake, seqTake2])
+  assert.equal(assembled.fps, 24, 'the document\'s constant frame rate')
+  // [4,16) = 12 clip frames + an 8-frame hold = 20; the window contributes
+  // its whole 30; the degenerate [5,5) range contributes NO clip frames — a
+  // held drawing, 12 output frames (§11.3's drawing holds).
+  assert.deepEqual(
+    assembled.contributions.map((entry) => [entry.outputStart, entry.clipFrames, entry.outputFrames]),
+    [[0, 12, 20], [20, 30, 30], [50, 0, 12]],
+    'start-inclusive/end-exclusive ranges, holds in output frames, cumulative starts',
+  )
+  assert.equal(assembled.totalFrames, 62)
+  assert.deepEqual(assembled.problems, [], 'in-range selections carry no problems')
+  assert.equal(assembled.contributions[2].frameCount, 18)
+
+  // An out-of-range range is a NAMED problem — never a silent clamp (the
+  // export compiler owns length semantics; the preview names the excess).
+  body.editorial[1].outFrame = 44
+  const flagged = deriveAssembledSequence(body, [tweenTake, seqTake, seqTake2])
+  assert.equal(flagged.problems.length, 1)
+  assert.ok(flagged.problems[0].includes('44') && flagged.problems[0].includes('30'), `the problem names the range and the clip (${flagged.problems[0]})`)
+
+  // An entry whose attempt never landed (or left the view) names itself — a
+  // missing clip is never silently skipped (§11.3's reject-don't-drop rule,
+  // previewed).
+  body.editorial.push({ id: uuid(), spanId: null, attemptId: uuid(), inFrame: 0, outFrame: 4, holdDuration: 0 })
+  const unlandedView = deriveAssembledSequence(body, [tweenTake, seqTake, seqTake2])
+  assert.ok(unlandedView.problems.some((problem) => problem.includes('has not landed')), 'the unlanded entry is named')
+  assert.equal(unlandedView.contributions.length, 4, 'the entry still renders — named, not dropped')
 })

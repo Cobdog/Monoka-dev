@@ -223,6 +223,13 @@ export function HeroPanel({ keyEntity, preview, binding, inFlightAttempt, onFaci
             <input id="anim-hero-camera-reason" className="anim-inspector-input" data-anim-hero-camera-reason type="text" value={cameraReason} onChange={(event) => setCameraReason(event.target.value)} />
           </Field>
         </div>
+        {/* Task 9's Minor-4 (fixed in task 13): the reason compiles ONLY with
+            its description — the coupling is named, never a silent drop. */}
+        {cameraReason.trim() !== '' && cameraDescription.trim() === '' && (
+          <p className="anim-note" role="status" data-anim-hero-camera-reason-inert>
+            The camera reason rides the caption only with its description — describe the move for the reason to compile (§6.3 pairs them).
+          </p>
+        )}
       </div>
 
       <details className="anim-caption" data-anim-hero-caption-preview>

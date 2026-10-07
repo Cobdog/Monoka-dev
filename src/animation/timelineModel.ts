@@ -116,7 +116,9 @@ export function deriveTimeline(body: AnimationDocumentBody): TimelineModel {
  *  not merely what happened last —
  *    rule 1 — the newest READY attempt whose review decision is still OPEN
  *    (a tween whose step slot has no rolling-reference selection; a hero
- *    whose key slot has no candidate selection): "On return, the editor
+ *    whose key slot has no candidate selection; a sequence window take with
+ *    NO editorial contribution naming it — task 13, the lane's reviewed
+ *    marker): "On return, the editor
  *    restores the session and highlights 'Ready to review'." A slot that
  *    HAS a selection is resolved — the chain can continue from it, and a
  *    later re-roll landing beside it is an alternative, not a blocker;
@@ -137,13 +139,20 @@ export function deriveReviewPosition(body: AnimationDocumentBody, attempts: Read
       if (span) return { kind: 'span', id: span.id }
       continue
     }
+    if (attempt.tool === 'sequence') {
+      // Task 13: the sequence lane's review decision IS the editorial
+      // contribution (§9 — task 12's named gap: the window-start key holds a
+      // selection by construction, so nothing about the BODY was open). A
+      // landed window take with NO contribution naming it is an OPEN decision
+      // — the playhead marks the window start; contributing resolves it.
+      if (!body.editorial.some((entry) => entry.attemptId === attempt.attemptId)
+        && body.keys.some((entry) => entry.id === attempt.targetId)) {
+        return { kind: 'key', id: attempt.targetId }
+      }
+      continue
+    }
     // Hero targets a key slot (the PROPOSED slot the landing mints a
-    // candidate into — open until the explicit selection exists); sequence
-    // targets its window-start key (§11.2), which must ALREADY hold a
-    // selection to submit — its landing mints nothing (the clip surfaces
-    // through editorial selection), so this arm fires for sequence only in
-    // the degenerate case of a cleared selection, and the in-flight rule
-    // below is the sequence lane's live playhead path.
+    // candidate into — open until the explicit selection exists).
     const key = body.keys.find((entry) => entry.id === attempt.targetId)
     if (key && key.selectedCandidateId === null) return { kind: 'key', id: key.id }
   }
@@ -165,4 +174,154 @@ export function deriveReviewPosition(body: AnimationDocumentBody, attempts: Read
     }
   }
   return null
+}
+
+// ---------------------------------------------------------------------------
+// Task 13 — the editorial derivations (§9 editorial timing, §11.3 the export
+// conventions): which landed clips can contribute to the assembled sequence
+// (and through which lane), and what the ordered contribution list assembles
+// to. Pure like the rest of this module; the EditorialPanel renders them,
+// e2e/animation.spec.ts pins the rendered behavior.
+// ---------------------------------------------------------------------------
+
+/** The attempt facts the editorial derivations read — the recovery read's
+ *  AttemptStateView satisfies this structurally (oldest-first, like every
+ *  attempt list the store serves). */
+export type EditorialAttemptSummary = {
+  attemptId: string
+  tool: AnimationTool
+  targetId: string
+  /** SEQUENCE rows: the frozen window's end key (the label's second half). */
+  windowEndKeyId?: string
+  /** The landed clip's frame count — null until the take has landed. */
+  candidate: { frameCount: number } | null
+}
+
+/** One landed clip the picker offers: a TWEEN take rides its owning span
+ *  (spanId names it, stepIndex is the 1-based slot position), a SEQUENCE
+ *  window take is spanless (spanId null, §11.2). `contributionId` names the
+ *  existing contribution when this clip is already in the list. Hero takes
+ *  never appear — their product is a key drawing (§5.2), and the store
+ *  refuses the lane; the picker never offers a doomed command. */
+export type ContributableClip = {
+  attemptId: string
+  spanId: string | null
+  stepIndex: number | null
+  label: string
+  detail: string
+  frameCount: number
+  contributionId: string | null
+}
+
+/** The landed, contributable clips of a document in attempt order (oldest
+ *  first — the arrival order the review surfaces share). */
+export function deriveContributableClips(body: AnimationDocumentBody, attempts: ReadonlyArray<EditorialAttemptSummary>): ContributableClip[] {
+  const orderOf = (keyId: string): number | null => body.keys.find((entry) => entry.id === keyId)?.order ?? null
+  const clips: ContributableClip[] = []
+  for (const attempt of attempts) {
+    if (attempt.candidate === null) continue
+    if (attempt.tool === 'tween') {
+      const span = body.spans.find((entry) => entry.stepSlots.some((slot) => slot.id === attempt.targetId))
+      if (!span) continue // orphaned (its span left) — the store would refuse
+      const stepIndex = span.stepSlots.findIndex((slot) => slot.id === attempt.targetId) + 1
+      clips.push({
+        attemptId: attempt.attemptId,
+        spanId: span.id,
+        stepIndex,
+        label: `Tween step ${stepIndex} — key #${orderOf(span.fromKeyId) ?? '?'} → key #${orderOf(span.toKeyId) ?? '?'}`,
+        detail: span.intent.movement,
+        frameCount: attempt.candidate.frameCount,
+        contributionId: body.editorial.find((entry) => entry.spanId === span.id && entry.attemptId === attempt.attemptId)?.id ?? null,
+      })
+      continue
+    }
+    if (attempt.tool === 'sequence') {
+      clips.push({
+        attemptId: attempt.attemptId,
+        spanId: null,
+        stepIndex: null,
+        label: `Sequence window — key #${orderOf(attempt.targetId) ?? '?'} → key #${attempt.windowEndKeyId === undefined ? '?' : orderOf(attempt.windowEndKeyId) ?? '?'}`,
+        detail: '',
+        frameCount: attempt.candidate.frameCount,
+        contributionId: body.editorial.find((entry) => entry.spanId === null && entry.attemptId === attempt.attemptId)?.id ?? null,
+      })
+    }
+  }
+  return clips
+}
+
+/** One contribution as the assembled sequence reads it: the portion
+ *  ([inFrame, outFrame), start-inclusive/end-exclusive integer frames), the
+ *  hold in OUTPUT frames (§11.3), and where the entry sits in the assembled
+ *  whole. A degenerate range (outFrame ≤ inFrame) contributes no clip frames
+ *  — a held drawing; length semantics beyond that belong to the export
+ *  compiler, so this derivation computes and NAMES, never clamps. */
+export type AssembledContribution = {
+  contributionId: string
+  attemptId: string
+  spanId: string | null
+  label: string
+  detail: string
+  inFrame: number
+  outFrame: number
+  holdDuration: number
+  clipFrames: number
+  outputFrames: number
+  outputStart: number
+  /** The landed clip's frame count when resolvable (null names itself in
+   *  `problem`). */
+  frameCount: number | null
+  problem: string | null
+}
+
+export type AssembledSequence = {
+  fps: number
+  totalFrames: number
+  contributions: AssembledContribution[]
+  /** Every named problem, in list order — empty when the assembly is clean. */
+  problems: string[]
+}
+
+/** What the ordered editorial list assembles to (§9): the contributions in
+ *  document order — the list order IS the assembled order — each with its
+ *  computed output span, plus the whole sequence's frame total at the
+ *  document's constant frame rate. A missing clip or an out-of-range
+ *  selection is a NAMED problem (§11.3's reject-don't-drop rule, previewed);
+ *  the entry still renders, never silently skipped. */
+export function deriveAssembledSequence(body: AnimationDocumentBody, attempts: ReadonlyArray<EditorialAttemptSummary>): AssembledSequence {
+  const clipOf = new Map<string, ContributableClip>()
+  for (const clip of deriveContributableClips(body, attempts)) clipOf.set(clip.attemptId, clip)
+
+  const problems: string[] = []
+  const contributions: AssembledContribution[] = []
+  let outputStart = 0
+  for (const entry of body.editorial) {
+    const clip = clipOf.get(entry.attemptId) ?? null
+    const clipFrames = Math.max(0, entry.outFrame - entry.inFrame)
+    const outputFrames = clipFrames + entry.holdDuration
+    let problem: string | null = null
+    if (clip === null) {
+      problem = `The clip for this contribution has not landed (attempt ${entry.attemptId}) — it contributes nothing until its take lands.`
+    } else if (entry.outFrame > clip.frameCount || entry.inFrame > clip.frameCount) {
+      problem = `The selection [${entry.inFrame}, ${entry.outFrame}) exceeds the clip's ${clip.frameCount} frames — narrow it before export.`
+    }
+    if (problem !== null) problems.push(problem)
+    contributions.push({
+      contributionId: entry.id,
+      attemptId: entry.attemptId,
+      spanId: entry.spanId,
+      label: clip?.label ?? `Unlanded clip (${entry.attemptId.slice(0, 8)})`,
+      detail: clip?.detail ?? '',
+      inFrame: entry.inFrame,
+      outFrame: entry.outFrame,
+      holdDuration: entry.holdDuration,
+      clipFrames,
+      outputFrames,
+      outputStart,
+      frameCount: clip?.frameCount ?? null,
+      problem,
+    })
+    outputStart += outputFrames
+  }
+  return { fps: body.settings.fps, totalFrames: outputStart, contributions, problems }
 }
