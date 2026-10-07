@@ -55,6 +55,7 @@ const REPO = path.resolve(__dirname, '..')
 const SUITES = {
   'animation-compiler': { build: null, windows: false, python: false, ffmpeg: false },
   'animation-rendering': { build: 'server', windows: false, python: false, ffmpeg: false },
+  'animation-routes': { build: 'full', windows: false, python: false, ffmpeg: false },
   'animation-store': { build: 'server', windows: false, python: false, ffmpeg: false },
   'animation-types': { build: null, windows: false, python: false, ffmpeg: false },
   benchmarks: { build: 'server', windows: true, python: true, ffmpeg: false },
@@ -101,10 +102,10 @@ const SUITES = {
 
 /** Every suite that boots dist-server/server/index.js directly (route-level
  *  integration): the honest fan-out for the server seams. */
-const BOOTING = ['datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const BOOTING = ['animation-routes', 'datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 
 /** Every suite drawing scratch ports through tests/lib/ports.cjs. */
-const PORT_USERS = ['animation-rendering', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const PORT_USERS = ['animation-rendering', 'animation-routes', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 /** Every kit suite reading src/styles.css through the shared sheet reader
  *  (tests/lib/styleSheet.cjs — the near-term-A parser consolidation). */
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
@@ -278,10 +279,11 @@ const RULES = [
     reason: 'shared server utilities in the index/core import closure — every booting suite loads them.',
   },
   { match: ['server/db.ts'], suites: ['datasets', 'documents', 'storage', 'animation-store'], reason: 'the sqlite layer: migrations (documents + animation-store via 006), dataset tables (datasets), jobs/library (storage).' },
-  { match: ['server/animation/store.ts'], suites: ['animation-store', 'animation-rendering'], reason: 'the animation document store — its suite drives it directly off dist-server; the rendering suite composes the same store under the real fake engine (the animation-routes suite joins at task 5; ci-map hygiene forbids naming uncatalogued suites).' },
-  { match: ['server/animation/rendering.ts', 'server/animation/completion-owner.ts'], suites: ['animation-rendering'], reason: 'the rendering service + the shared completion owner — the suite runs their dispatch/observation/landing/reconciliation paths for real against the fake engine (the animation-routes suite joins at task 5; ci-map hygiene forbids naming uncatalogued suites).' },
+  { match: ['server/animation/store.ts'], suites: ['animation-store', 'animation-rendering', 'animation-routes'], reason: 'the animation document store — its suite drives it directly off dist-server; the rendering suite composes the same store under the real fake engine; the routes suite drives every authoring command + landing through the mounted HTTP block (task 5 landed removeSpan + attemptsForDocument there).' },
+  { match: ['server/animation/rendering.ts', 'server/animation/completion-owner.ts'], suites: ['animation-rendering', 'animation-routes'], reason: 'the rendering service + the shared completion owner — the rendering suite runs their dispatch/observation/landing/reconciliation paths for real against the fake engine; the routes suite reaches them through the real server process (submit/getState/cancel/extract-frame + boot reconcile).' },
+  { match: ['server/animation/routes.ts'], suites: ['animation-routes'], reason: 'the animation HTTP block — a pure handler mounted by core.ts; its suite boots the real server against the fake engine.' },
   { match: ['server/documents.ts', 'server/documentArchive.ts'], suites: ['documents', 'animation-store'], reason: 'document store + zip archive — the animation round-trip (spec §11.3) rides the same archive, exercised by the animation-store suite.' },
-  { match: ['server/realtime.ts'], suites: ['realtime', 'manager-install'], reason: 'WS realtime framing/delivery; the Manager cm-queue event normalizer (0pktw5h) is exercised by the manager-install suite too.' },
+  { match: ['server/realtime.ts'], suites: ['realtime', 'manager-install', 'animation-routes'], reason: 'the fabric — WS realtime framing/delivery; the Manager cm-queue event normalizer (0pktw5h) is exercised by the manager-install suite too, and the animation channel + emitAnimation + the engine-event tap (animation module task 5) are driven end-to-end by the animation-routes suite.' },
   { match: ['server/llm/**'], suites: ['llm'], reason: 'LLM family registry + providers.' },
   { match: ['server/datasets/**'], suites: ['datasets'], reason: 'dataset manager domain.' },
   { match: ['server/engineProcess.ts'], suites: ['engine-process', 'runtime'], reason: 'process supervision — its own suite + the runtime manager.' },
@@ -342,8 +344,13 @@ const RULES = [
   { match: ['src/lib/h3imageContract.ts', 'src/lib/h3imageOps.ts', 'src/lib/h3imageScorer.ts', 'src/lib/h3imageStaging.ts'], suites: ['h3img'], reason: 'H3 image contract/ops/scorer/staging.' },
   {
     match: ['src/lib/engineWatch.ts', 'src/lib/fabricWatch.ts', 'src/lib/dbg.ts', 'src/lib/preflight.ts'],
-    suites: ['enginewatch', 'engine-contract', 'resync'],
-    reason: 'Wave-1 pure decision modules (jpc96dp: re-check cadence, WS re-probe/resync, the A-DBG tagged logger, submit preflight) — the enginewatch suite drives them through the VM harness; preflight\'s STOCK_GRAPH_CLASSES is coverage-lockstep-checked by the engine-contract fixture; engineWatch\'s resync decisions also execute against the real mirror in resync.',
+    suites: ['enginewatch', 'engine-contract', 'resync', 'animation-routes'],
+    reason: 'Wave-1 pure decision modules (jpc96dp: re-check cadence, WS re-probe/resync, the A-DBG tagged logger, submit preflight) — the enginewatch suite drives them through the VM harness; preflight\'s STOCK_GRAPH_CLASSES is coverage-lockstep-checked by the engine-contract fixture; engineWatch\'s resync decisions also execute against the real mirror in resync. fabricWatch\'s reopen-resync contract gained the animation channel (animation module task 5), pinned by the animation-routes suite\'s fabric leg.',
+  },
+  {
+    match: ['src/types.ts'],
+    suites: ['animation-routes'],
+    reason: 'the shared type surface: the RealtimeJsonChannel union gained the animation channel (animation module task 5) — the wire behavior (channel subscribe + envelope delivery) is what a suite can pin, and animation-routes drives it through the real fabric.',
   },
   {
     match: ['src/lib/engineRecovery.ts'],

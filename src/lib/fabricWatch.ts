@@ -27,8 +27,12 @@ export function wsReprobeDue(demoted: boolean, lastProbeAt: number | null, now: 
 
 /** The channels to resynchronize after a transport reopen (R-08): every
  *  subscribed JSON channel (preview frames are fire-and-forget bytes with
- *  no authoritative state to re-fetch). The seq map is cleared on reopen,
- *  so these resyncs are the ONLY signal covering the disconnect window. */
+ *  no authoritative state to re-fetch). The set is caller-owned — animation
+ *  joined the channel union (animation module task 5), so an animation
+ *  subscriber re-fetches its documents and attempts after a reopen exactly
+ *  like every other JSON-channel consumer: the durable read, not a missed
+ *  envelope, is the truth. The seq map is cleared on reopen, so these
+ *  resyncs are the ONLY signal covering the disconnect window. */
 export function channelsToResyncOnReopen(subscribedChannels: ReadonlySet<string>): string[] {
   return Array.from(subscribedChannels)
 }

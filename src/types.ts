@@ -684,7 +684,7 @@ export type GpuTelemetry = {
 // poll). Preview frames ride BINARY WebSocket frames instead (see
 // server/realtime.ts for the compact header) — never base64 on the WS path.
 
-export type RealtimeJsonChannel = 'job' | 'telemetry' | 'llm' | 'engine' | 'system'
+export type RealtimeJsonChannel = 'job' | 'telemetry' | 'llm' | 'engine' | 'system' | 'animation'
 export type RealtimeChannel = RealtimeJsonChannel | 'preview'
 export type RealtimeEnvelope<T = unknown> = { ch: RealtimeChannel; type: string; seq: number; ts: number; payload: T }
 
