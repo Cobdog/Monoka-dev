@@ -296,9 +296,15 @@ export function createCompletionOwner(deps: {
    *  engine truth — re-attached (running), landed idempotently (done),
    *  interrupted (confirmed lost) — and an attempt whose dispatch
    *  acknowledgment was lost resolves by ATTEMPT-IDENTIFIER SEARCH through
-   *  the engine's own records (the engine request carries the id). NEVER a
-   *  resubmit: if the engine never saw the attempt, that is interrupted +
-   *  explicit-retry territory, not new GPU work. */
+   *  the engine's own records (the engine request carries the id). The
+   *  search walks BOTH sources: history records carry the request graph
+   *  (the attempt marker), and while the queue is NON-empty the outcome is
+   *  UNCERTAIN — bare queue ids cannot be correlated, so the attempt stays
+   *  reconciliation-pending until the job completes into history (the next
+   *  sweep lands it) or the engine quiets. NEVER a resubmit: only an
+   *  reachable engine with an EMPTY queue and no history trace proves the
+   *  dispatch never landed — interrupted + explicit-retry territory, not new
+   *  GPU work. */
   async function reconcile(): Promise<void> {
     for (const attempt of store.attemptsInFlight()) {
       let engineJobId = attempt.engineJobId
@@ -309,25 +315,40 @@ export function createCompletionOwner(deps: {
         } catch {
           found = null // unreachable: leave the attempt pending for the next sweep
         }
-        if (!found) {
+        if (found) {
+          engineJobId = found
+          setExecution(attempt, 'reconciling', { engineJobId: found })
+        } else {
           const fresh = store.getAttempt(attempt.id)
-          if (fresh && IN_FLIGHT_STATES.has(fresh.execution.state)) {
-            // The engine was asked and has no trace: the dispatch never
-            // landed engine-side. Interrupted + explicit retry (a user action
-            // creates a new linked attempt) — never an automatic resubmit.
-            // (An unreachable engine throws above, so this miss is real.)
-            const unreachable = !(await engineIsReachable())
-            if (unreachable) {
-              setExecution(fresh, 'reconciling')
-            } else {
-              setExecution(fresh, 'interrupted')
-              emit('animation.attempt.lost', { attemptId: fresh.id, documentId: fresh.documentId, reason: 'dispatch-never-landed' })
-            }
+          if (!fresh || !IN_FLIGHT_STATES.has(fresh.execution.state)) continue
+          // The queue decides the miss (§11.4's "search queue/history"): the
+          // queue fetch doubles as the reachability probe — a throw below is
+          // an unreachable engine, which stays reconciliation-pending.
+          let queue: string[] | null = null
+          try {
+            queue = await engine.queuedJobIds()
+          } catch {
+            queue = null
           }
+          if (queue === null) {
+            setExecution(fresh, 'reconciling') // unreachable — pending, preserved
+            continue
+          }
+          if (queue.length > 0) {
+            // Work is in flight that may be ours (bare ids cannot correlate):
+            // UNCERTAIN, never 'dispatch-never-landed'. The next sweep
+            // re-searches history, where the completed record carries the
+            // attempt marker, and lands it — the orphan Important-1 closed.
+            setExecution(fresh, 'reconciling')
+            continue
+          }
+          // Reachable engine, empty queue, no history trace: the dispatch
+          // never landed engine-side. Interrupted + explicit retry (a user
+          // action creates a new linked attempt) — never a resubmit.
+          setExecution(fresh, 'interrupted')
+          emit('animation.attempt.lost', { attemptId: fresh.id, documentId: fresh.documentId, reason: 'dispatch-never-landed' })
           continue
         }
-        engineJobId = found
-        setExecution(attempt, 'reconciling', { engineJobId: found })
       }
       try {
         const observed = await resolveFromEngine(attempt.id)
@@ -336,18 +357,6 @@ export function createCompletionOwner(deps: {
         const fresh = store.getAttempt(attempt.id)
         if (fresh && IN_FLIGHT_STATES.has(fresh.execution.state)) setExecution(fresh, 'reconciling')
       }
-    }
-  }
-
-  /** Best-effort reachability probe used ONLY to keep an unreachable engine
-   *  from being misread as "the dispatch never landed" (§11.4's two rows:
-   *  unreachable → pending; asked-and-absent → interrupted). */
-  async function engineIsReachable(): Promise<boolean> {
-    try {
-      await engine.history('0') // any job id — an answer (even 'lost') means reachable
-      return true
-    } catch {
-      return false
     }
   }
 
