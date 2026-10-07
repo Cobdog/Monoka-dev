@@ -217,6 +217,43 @@ test('the document-level verdicts agree: empty, odd dimensions, the ceiling — 
   assert.deepEqual(bothAssembled.problems, [oddProblem(1345, 769), ceilingProblem(MAX_EXPORT_FRAMES + 1)], 'the preview order agrees')
 })
 
+test('the refusal-order pin: an entry refusal precedes the ceiling refusal, gate and preview positionally agree', () => {
+  // T15a review Important-1 (carried to task 16): the 15a refactor
+  // unshifted the WHOLE shared document block, which dragged the ceiling
+  // refusal from its historical tail to the head whenever an entry refusal
+  // and a past-ceiling total coexist. The placement is split — empty/
+  // odd-dims stay at the head, the ceiling is PUSHED after the entry loop —
+  // so the historical [entryRefusals…, ceiling] order holds and the preview
+  // (which appends its document problems) agrees positionally.
+  const seed = fixture('orderpin')
+  seed.attempt.result = { candidate: { id: null, assetReference: { assetId: 'clip', relPath: 'canvas-blobs/aa/clip', kind: 'video' }, frameCount: CLIP_FRAMES, earlierRevision: false } }
+  // Entry 1 assembles clean and drives the total past the ceiling; entry 2
+  // is a degenerate range pointing past the clip's end with no hold — a
+  // refusal that contributes ZERO frames on both sides (the gate skips the
+  // entry, the preview's own arithmetic emits none), so the totals agree
+  // and the ceiling string is identical on both sides.
+  seed.body.editorial = [
+    { id: 'contrib-clean', spanId: null, attemptId: seed.attemptId, inFrame: 0, outFrame: CLIP_FRAMES, holdDuration: MAX_EXPORT_FRAMES - CLIP_FRAMES + 1 },
+    { id: 'contrib-degen', spanId: null, attemptId: seed.attemptId, inFrame: 999, outFrame: 999, holdDuration: 0 },
+  ]
+  const plan = deriveExportPlan(seed.document, [seed.attempt], resolveEverything)
+  const assembled = deriveAssembledSequence(seed.body, [{
+    attemptId: seed.attemptId,
+    tool: 'sequence',
+    targetId: seed.keyStart,
+    windowEndKeyId: seed.keyEnd,
+    candidate: { frameCount: CLIP_FRAMES },
+  }])
+
+  assert.equal(plan.totalFrames, MAX_EXPORT_FRAMES + 1, 'the clean entry drives the total past the ceiling')
+  assert.equal(assembled.totalFrames, plan.totalFrames, 'the totals agree (the refused entry contributes none on either side)')
+  assert.equal(plan.refusals.length, 2, 'the gate names BOTH: the refused entry and the past-ceiling total')
+  assert.equal(stripLabel(plan.refusals[0]), DEGEN_CORE(999, CLIP_FRAMES), 'the ENTRY refusal comes first — the ceiling does not jump the queue')
+  assert.equal(plan.refusals[1], ceilingProblem(MAX_EXPORT_FRAMES + 1), 'the ceiling refusal is the TAIL (the document strings are label-free)')
+  assert.equal(stripLabel(assembled.problems[0]), DEGEN_CORE(999, CLIP_FRAMES), 'the preview names the entry first too')
+  assert.equal(assembled.problems[1], ceilingProblem(MAX_EXPORT_FRAMES + 1), 'the preview agrees positionally — the ceiling second')
+})
+
 test('the export constants live in the shared module; the gate re-exports them unchanged', () => {
   assert.equal(EXPORT_FPS, 24)
   assert.equal(GATE_EXPORT_FPS, EXPORT_FPS, 'the gate re-exports the shared EXPORT_FPS')
