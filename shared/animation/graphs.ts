@@ -60,15 +60,18 @@ export const ANIMATION_OPERATING_POINT = {
   loraStrength: 1.0,
 } as const
 
-/** The engine-side model identifiers the animation lane loads (§11.2: frozen
- *  snapshots carry adapter/base identifiers — snapshot.settings.baseModel /
- *  .adapterLora / .textEncoder / .videoVae override these defaults). The
- *  ref2va int8 convrot base + the three staged keyframe adapters
- *  (/home/agent/models/loras/h3_*.safetensors) are Set K's measured combo;
- *  the text encoder + VAE are the stock H3 registry's files. File-listing
- *  combos are environment-enumerated — the engine confirms availability at
- *  validation time, these names are the lane's pinned defaults, not a claim
- *  every install serves them (Task 15's real-engine leg verifies). */
+/** The engine-side model identifiers the animation lane PREFERS (wave 1 of
+ *  the post-review program: the live review's #1 — the release blocker).
+ *  These are the documented PREFERENCE SEED for the server-side resolver
+ *  (server/animation/models.ts), never a welded value: the builders take
+ *  RESOLVED names as explicit parameters and never read this table, and an
+ *  installation that enumerates different filenames still renders through
+ *  the resolver's documented ladder (§11.2: frozen snapshots carry the
+ *  RESOLVED adapter/base identifiers in snapshot.settings.baseModel /
+ *  .adapterLora / .textEncoder / .videoVae). The ref2va int8 convrot base +
+ *  the three staged keyframe adapters (/home/agent/models/loras/h3_*.safetensors)
+ *  are Set K's measured combo; the text encoder + VAE are the stock H3
+ *  registry's files. */
 export const ANIMATION_MODEL_DEFAULTS = {
   /** The ref-conditioning base every tool rides (Set K ran hero/tween/sequence on ref2va). */
   refBase: 'H3/ssd/minimax_h3_ref2va_pruned_int8_convrot.safetensors',
@@ -95,11 +98,27 @@ export function engineInputName(asset: AssetReference): string {
   return `anim-${safe || 'ref'}.${extension}`
 }
 
-/** The graph settings the builders accept: the document's output dimensions
- *  plus the attempt's step count (already resolved + clamped by the caller —
- *  the builders clamp again defensively; pure functions defend their own
- *  contracts). */
-export type GraphBuildSettings = { width: number; height: number; steps: number }
+/** The graph settings the builders accept: the RESOLVED execution config —
+ *  the output dimensions, the attempt's step count, and the four model
+ *  names the server-side resolver (server/animation/models.ts) picked from
+ *  the engine's own enumeration. Wave 1's contract: the builders take the
+ *  resolved names as EXPLICIT parameters and never read
+ *  ANIMATION_MODEL_DEFAULTS — no builder holds a welded filename. Steps are
+ *  already resolved + clamped by the caller (the builders clamp again
+ *  defensively; pure functions defend their own contracts). */
+export type GraphBuildSettings = {
+  width: number
+  height: number
+  steps: number
+  /** The resolved base (ref-conditioning) UNET the engine enumerated. */
+  baseModel: string
+  /** The resolved per-tool keyframe adapter LoRA. */
+  adapterLora: string
+  /** The resolved text encoder (clip) the engine enumerated. */
+  textEncoder: string
+  /** The resolved video VAE the engine enumerated. */
+  videoVae: string
+}
 
 // ---------------------------------------------------------------------------
 // input narrowing (module-local, the types.ts idiom — a builder never reads
@@ -192,19 +211,31 @@ function buildSkeleton(input: SkeletonInputs): AnimationGraph {
   const settings = isRecord(input.settings) ? input.settings : {}
   const steps = clampSteps(settings.steps, input.build.steps)
   const seed = nonNegativeInt(settings.seed, 0)
-  const baseModel = stringIn(settings.baseModel, ANIMATION_MODEL_DEFAULTS.refBase)
-  const adapterLora = stringIn(settings.adapterLora, ANIMATION_MODEL_DEFAULTS.adapters[input.tool])
-  const textEncoder = stringIn(settings.textEncoder, ANIMATION_MODEL_DEFAULTS.textEncoder)
-  const videoVae = stringIn(settings.videoVae, ANIMATION_MODEL_DEFAULTS.videoVae)
+  // Wave 1: the resolved model names arrive as EXPLICIT parameters — a
+  // builder never falls back to a pinned filename. An empty one is a caller
+  // bug and becomes a loud error here, never a silently defaulted graph.
+  for (const [name, value] of Object.entries({ baseModel: input.build.baseModel, adapterLora: input.build.adapterLora, textEncoder: input.build.textEncoder, videoVae: input.build.videoVae })) {
+    if (typeof value !== 'string' || value.length === 0) throw new Error(`The graph build settings need a resolved ${name} — the server-side resolver must pick one from the engine's enumeration before building.`)
+  }
+  // The frozen snapshot's sampler/scheduler/shift/fps (Fix B stamps the
+  // complete resolved config) win; the operating point is the fallback for
+  // pre-freeze shapes. Same values by construction unless a snapshot froze
+  // an override — building exclusively from the frozen config is what makes
+  // replay independent of mutable state.
+  const sampler = stringIn(settings.sampler, ANIMATION_OPERATING_POINT.sampler)
+  const scheduler = stringIn(settings.scheduler, ANIMATION_OPERATING_POINT.scheduler)
+  const shiftVideo = nonNegativeInt(settings.shiftVideo, ANIMATION_OPERATING_POINT.shiftVideo)
+  const shiftAudio = nonNegativeInt(settings.shiftAudio, ANIMATION_OPERATING_POINT.shiftAudio)
+  const fps = positiveInt(settings.fps, ANIMATION_OPERATING_POINT.fps)
 
   const graph: AnimationGraph = {
-    '1': { class_type: 'UNETLoader', inputs: { unet_name: baseModel, weight_dtype: 'default' } },
-    '2': { class_type: 'CLIPLoader', inputs: { clip_name: textEncoder, type: 'minimax', device: 'default' } },
-    '3': { class_type: 'VAELoader', inputs: { vae_name: videoVae } },
+    '1': { class_type: 'UNETLoader', inputs: { unet_name: input.build.baseModel, weight_dtype: 'default' } },
+    '2': { class_type: 'CLIPLoader', inputs: { clip_name: input.build.textEncoder, type: 'minimax', device: 'default' } },
+    '3': { class_type: 'VAELoader', inputs: { vae_name: input.build.videoVae } },
     // The per-tool keyframe adapter at trained strength — model-only (the
     // adapters are LoRAs over the DiT, never over the text encoder).
-    '5': { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: adapterLora, strength_model: ANIMATION_OPERATING_POINT.loraStrength } },
-    '6': { class_type: 'MiniMaxH3SigmaShift', inputs: { model: ['5', 0], shift_video: ANIMATION_OPERATING_POINT.shiftVideo, shift_audio: ANIMATION_OPERATING_POINT.shiftAudio } },
+    '5': { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: input.build.adapterLora, strength_model: ANIMATION_OPERATING_POINT.loraStrength } },
+    '6': { class_type: 'MiniMaxH3SigmaShift', inputs: { model: ['5', 0], shift_video: shiftVideo, shift_audio: shiftAudio } },
   }
   for (const reference of input.referenceLinks) reference.node(graph)
 
@@ -213,10 +244,10 @@ function buildSkeleton(input: SkeletonInputs): AnimationGraph {
 
   graph['11'] = { class_type: 'RandomNoise', inputs: { noise_seed: seed } }
   graph['12'] = { class_type: 'BasicGuider', inputs: { model: ['6', 0], conditioning: [conditioningId, 0] } }
-  graph['13'] = { class_type: 'KSamplerSelect', inputs: { sampler_name: ANIMATION_OPERATING_POINT.sampler } }
+  graph['13'] = { class_type: 'KSamplerSelect', inputs: { sampler_name: sampler } }
   graph['14'] = {
     class_type: 'BasicScheduler',
-    inputs: { model: ['6', 0], scheduler: ANIMATION_OPERATING_POINT.scheduler, steps, denoise: ANIMATION_OPERATING_POINT.denoise },
+    inputs: { model: ['6', 0], scheduler, steps, denoise: ANIMATION_OPERATING_POINT.denoise },
   }
   graph['15'] = {
     class_type: 'SamplerCustomAdvanced',
@@ -225,7 +256,7 @@ function buildSkeleton(input: SkeletonInputs): AnimationGraph {
   graph['16'] = { class_type: 'VAEDecode', inputs: { samples: ['15', 0], vae: ['3', 0] } }
   // Silent H.264 at the schema's constant 24 fps (§11.3) — no audio lane:
   // the keyframe clips are silent drawings, and the export owns the track.
-  graph['18'] = { class_type: 'CreateVideo', inputs: { images: ['16', 0], fps: ANIMATION_OPERATING_POINT.fps, bit_depth: 8, color_space: 'sRGB' } }
+  graph['18'] = { class_type: 'CreateVideo', inputs: { images: ['16', 0], fps, bit_depth: 8, color_space: 'sRGB' } }
   graph['19'] = {
     class_type: 'SaveVideo',
     inputs: { video: ['18', 0], filename_prefix: 'animation/clip', format: 'auto', codec: 'auto' },

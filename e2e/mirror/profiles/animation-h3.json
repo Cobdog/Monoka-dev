@@ -1,28 +1,50 @@
 {
   "id": "animation-h3",
   "label": "The animation lane's H3 stack",
-  "description": "The keyframe-animation rendering lane's engine (task 4 of the animation-authoring module): the stock H3 base the three tools ride (ref2va pruned int8 convrot — Set K's measured operating point) plus the three staged keyframe adapter LoRAs (h3_hero/h3_tween/h3_seq_step12000, /home/agent/models/loras/). Built from stock-h3.json; objectInfoExtras stays EMPTY — every node class the builders emit (UNETLoader/CLIPLoader/VAELoader/LoraLoaderModelOnly/MiniMaxH3SigmaShift/MiniMaxH3ImageToVideo/MiniMaxH3ReferenceToVideo/LoadImage/RandomNoise/BasicGuider/KSamplerSelect/BasicScheduler/SamplerCustomAdvanced/VAEDecode/CreateVideo/SaveVideo) is already in the REAL captured fixture the mirror serves, verified against scripts/fixtures/engine-object-info.json rather than assumed. Render knobs are tuned for the rendering suite: 3 fast steps per render (the operating point's 30–50 steps is engine-side truth the fake never executes).",
+  "description": "The keyframe-animation rendering lane's engine (task 4 of the animation-authoring module; loader enumerations amended in wave 1 of the post-review program). The stock H3 base the three tools ride (ref2va pruned int8 convrot — Set K's measured operating point) plus the three staged keyframe adapter LoRAs (h3_hero/h3_tween/h3_seq_step12000, /home/agent/models/loras/). objectInfoExtras stays EMPTY — every node class the builders emit is in the REAL captured fixture the mirror serves, verified against scripts/fixtures/engine-object-info.json rather than assumed. loaderEnumerations (wave 1, the live review's #1): the mirror deliberately serves the shape the CANONICAL 8189 install enumerates — the unet slot serves the FLAT ref2va filename the install actually lists (NOT the lane's pinned 'H3/ssd/'-prefixed default, which that install does not serve) beside an fl2va distractor the ladder must not pick; the clip slot serves qwen3vl_32b_int8_convrot.safetensors (the file the live review's real renders used, the maintainer's documented preference) beside its minimax_h3 alias — neither is the pinned nvfp4_awq default, so every animation submission exercises REAL resolution, never an echo of the constants; the vae + lora slots serve the pinned names exactly (the install serves those) beside distractors, exercising the exact-default rung. Render knobs are tuned for the rendering suite: 3 fast steps per render (the operating point's 30-50 steps is engine-side truth the fake never executes).",
   "systemStats": {
     "system": { "comfyui_version": "v0.34.0", "python_version": "3.12.3", "os": "linux" },
     "devices": [{ "name": "NVIDIA GeForce RTX 4090", "type": "cuda", "index": 0, "vram_total": 25757220864, "vram_free": 24000000000, "torch_version": "2.8.0+cu128" }]
   },
   "objectInfoExtras": {},
-  "modelListings": {
-    "diffusion_models": [
-      "H3/ssd/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
-      "H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+  "loaderEnumerations": {
+    "unet": [
+      "H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
     ],
-    "text_encoders": [
-      "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+    "clip": [
+      "qwen3vl_32b_int8_convrot.safetensors",
+      "qwen3vl_32b_minimax_h3_int8_convrot.safetensors"
     ],
     "vae": [
-      "minimax_h3_video_vae_fp16.safetensors",
-      "minimax_h3_audio_vae_fp32.safetensors"
+      "minimax_h3_audio_vae_fp32.safetensors",
+      "minimax_h3_video_vae_fp16.safetensors"
+    ],
+    "lora": [
+      "h3_hero_step9000.safetensors",
+      "h3_hero_step12000.safetensors",
+      "h3_seq_step12000.safetensors",
+      "h3_tween_step12000.safetensors"
+    ]
+  },
+  "modelListings": {
+    "diffusion_models": [
+      "H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+    ],
+    "text_encoders": [
+      "qwen3vl_32b_int8_convrot.safetensors",
+      "qwen3vl_32b_minimax_h3_int8_convrot.safetensors"
+    ],
+    "vae": [
+      "minimax_h3_audio_vae_fp32.safetensors",
+      "minimax_h3_video_vae_fp16.safetensors"
     ],
     "loras": [
+      "h3_hero_step9000.safetensors",
       "h3_hero_step12000.safetensors",
-      "h3_tween_step12000.safetensors",
-      "h3_seq_step12000.safetensors"
+      "h3_seq_step12000.safetensors",
+      "h3_tween_step12000.safetensors"
     ]
   },
   "customNodeDirs": [],

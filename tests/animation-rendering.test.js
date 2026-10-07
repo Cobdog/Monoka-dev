@@ -47,7 +47,9 @@
 //       Important-1/2/3): reattach-while-running (a restart mid-render
 //       re-attaches observation and lands once); confirmed-lost with a KNOWN
 //       job id (a wiped engine ⇒ interrupted, prior work preserved);
-//       dispatch-never-landed (lost ack + empty engine ⇒ interrupted); lost
+//       dispatch-never-landed (lost ack + empty engine ⇒ wave 1's queue
+//       semantics: the PROVEN-never-landed dispatch REDISPATCHES from the
+//       frozen snapshot exactly once and lands); lost
 //       ack while the job still RENDERS ⇒ reconcile stays pending — the
 //       queue is non-empty and bare ids cannot correlate — and the NEXT
 //       sweep lands the completed record without any resubmission; and the
@@ -82,6 +84,22 @@
 //       an in-clip-range but beyond-listing index refuses BY NAME, never
 //       clamps to the last image; the boundary frame inside the listing
 //       still resolves
+//   (l) the resolver (wave 1, the live review's #1) — pure ladder truth:
+//       exact-default enumerations resolve to the pinned names;
+//       DIFFERING enumerations resolve through the documented pattern
+//       ladder deterministically (adversarial distractors included); an
+//       enumerated override wins and an unenumerated one is a dead slot;
+//       a dead slot throws the named refusal listing the slot, node class,
+//       tried names, and the enumeration
+//   (m) the submit-time preflight — a dead model slot answers the named
+//       400 with NOTHING spent (no row, no upload, no submission); the
+//       defaults-verbatim enumeration (the runtime knob) resolves to the
+//       pinned names end to end
+//   (o) the frozen execution config (the live review's #2) — the
+//       dispatched graph carries the values FROZEN at persist; a document
+//       that moves between submit and dispatch/recovery changes nothing
+//       (the fresh-dispatch AND the restart-reconcile redispatch legs);
+//       the same-key retry stays idempotent
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -138,6 +156,10 @@ const {
   makeFramePreparer,
 } = require(path.join(REPO, 'dist-server/server/animation/rendering.js'))
 const { createCompletionOwner } = require(path.join(REPO, 'dist-server/server/animation/completion-owner.js'))
+const {
+  AnimationModelResolutionError,
+  resolveAnimationModels,
+} = require(path.join(REPO, 'dist-server/server/animation/models.js'))
 
 const freePort = makePortAllocator('animation-rendering')
 const uuid = () => randomUUID()
@@ -325,6 +347,31 @@ async function engineRecord(jobId) {
   return all[jobId] ?? null
 }
 
+/** Kills and respawns the fake engine on the SAME port — the restart shape
+ *  (a fresh process, empty history, the profile's boot state) used by the
+ *  wave-1 queue/frozen-config legs. */
+async function killEngine() {
+  if (!engine || engine.exitCode !== null) return
+  engine.kill('SIGINT')
+  await new Promise((resolve) => {
+    const timer = setTimeout(resolve, 10_000)
+    engine.once('exit', () => { clearTimeout(timer); resolve() })
+  })
+}
+
+async function restartEngine() {
+  await killEngine()
+  engine = spawn(process.execPath, [
+    path.join(REPO, 'e2e', 'mirror', 'fakeEngineServer.mjs'),
+    '--port', String(enginePort),
+    '--profile', path.join('e2e/mirror/profiles/animation-h3.json'),
+  ], { cwd: REPO, stdio: ['ignore', 'ignore', 'pipe'] })
+  engine.stderr.on('data', (chunk) => { process.stderr.write(`[fake-engine] ${chunk}`) })
+  await waitUntil(async () => {
+    try { return (await engineFetch('/system_stats')).ok } catch { return false }
+  }, 15_000, 'the fake engine restarting on its port')
+}
+
 async function waitAttemptState(attemptId, states, label, timeoutMs = 10_000) {
   const wanted = new Set(states)
   await waitUntil(() => {
@@ -381,6 +428,10 @@ beforeAll(async () => {
   // preparation runs through the real preparer.
   prepOverrides = new Map()
   productionPreparer = makeFramePreparer({ engine: engineClient, store: anim, blobs: sink, ffmpegPath: () => 'ffmpeg' })
+  // Wave 1's queue-semantic redispatch, wired the way core.ts wires it (the
+  // service takes the owner, so the sweep's redispatch arm calls through a
+  // forward-declared thunk assigned once the service exists).
+  let serviceRedispatch = async () => null
   owner = createCompletionOwner({
     store: anim,
     engine: engineClient,
@@ -389,6 +440,7 @@ beforeAll(async () => {
       const override = prepOverrides.has(attemptId) ? prepOverrides.get(attemptId) : prepOverrides.get('*')
       return override ? override(attemptId, frameIndex) : productionPreparer(attemptId, frameIndex)
     },
+    redispatch: (attemptId) => serviceRedispatch(attemptId),
     maxAutoPrepRetries: 2,
     pollMs: 60,
   })
@@ -401,6 +453,7 @@ beforeAll(async () => {
     compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
     emit,
   })
+  serviceRedispatch = (attemptId) => service.redispatchAttempt(attemptId)
 }, 120_000)
 
 afterAll(async () => {
@@ -765,6 +818,12 @@ test('(g) reconcile resolves a lost dispatch by attempt-identifier search — ne
   assert.equal(anim.getAttempt(attemptG2.attemptId).execution.state, 'reconciling', 'an unreachable engine leaves the dispatch outcome pending')
   await deadOwner.reconcile()
   assert.equal(anim.getAttempt(attemptG2.attemptId).execution.state, 'reconciling', 'reconcile against a dead engine stays pending — the attempt is preserved, never dropped')
+  // Wave-1 hygiene: the dead-engine row is CANCELLED once its leg is pinned
+  // — a perpetually-pending row would be REDISPATCHED by any later sweep
+  // against the LIVE engine (the queue semantics), overlapping other legs'
+  // renders in the single-slot fake engine and destabilizing them.
+  await deadService.cancel(attemptG2.attemptId)
+  assert.equal(anim.getAttempt(attemptG2.attemptId).execution.state, 'cancelled')
 })
 
 // ---------------------------------------------------------------------------
@@ -807,7 +866,11 @@ test('(g2) reattach-while-running lands; wiped engines interrupt; a lost-ack ren
   assert.equal(anim.getDocument(docG2.id).body.keys.length, candidatesBefore + 1, 'prior landed work is preserved (only the reattached leg A candidate was added)')
 
   // ---- Leg C — dispatch-never-landed: the acknowledgment was lost AND the
-  // engine (reachable, quiet) holds no trace ⇒ interrupted, never resubmitted.
+  // engine (reachable, quiet) holds no trace. Wave 1's queue semantics: the
+  // PROVEN-never-landed dispatch REDISPATCHES from the frozen snapshot
+  // (this is not a resubmit — no engine job ever existed for the attempt;
+  // the pre-wave-1 interrupted verdict is the redispatch-less fallback),
+  // exactly once, and lands.
   const neverLanded = await submitHero(docG2, uuid(), 'idem-g2-never')
   owner.stopObserving()
   await sleep(250)
@@ -815,10 +878,11 @@ test('(g2) reattach-while-running lands; wiped engines interrupt; a lost-ack ren
   await engineControl({ wipe: true }) // the engine restarts QUIET: the dispatched job dies unrecorded
   const countBeforeC = await engineRecordCount()
   await owner.reconcile()
-  const neverRow = await waitAttemptState(neverLanded.attemptId, ['interrupted'], 'the never-landed dispatch resolving interrupted')
-  assert.equal(neverRow.result, null)
-  assert.equal(neverRow.engineJobId, null)
-  assert.equal(await engineRecordCount(), countBeforeC, 'the never-landed dispatch was never retried as new GPU work')
+  const neverRow = await waitAttemptState(neverLanded.attemptId, ['ready'], 'the never-landed dispatch redispatching from the frozen snapshot')
+  assert.ok(neverRow.result, 'the redispatched render landed its candidate')
+  assert.ok(neverRow.engineJobId, 'the redispatch recorded its engine job id')
+  assert.equal(await engineRecordCount(), countBeforeC + 1, 'exactly ONE redispatched engine job — never a second')
+  assert.equal(Object.values(await engineHistoryAll()).filter((record) => record.prompt?.[3]?.attempt_id === neverLanded.attemptId).length, 1, 'exactly one record carries the attempt id after the redispatch')
 
   // ---- Leg D — the Important-1 core: the acknowledgment was lost while the
   // job still RENDERS. The queue is non-empty and bare ids cannot correlate,
@@ -934,11 +998,25 @@ test('(i) every builder emission validates CLEAN against the REAL captured schem
     tween: makeTweenSnapshot(uuid(), 0),
     sequence: makeSequenceSnapshot(uuid(), 0),
   }
-  const settings = { width: 1344, height: 768, steps: 30 }
+  // Wave 1: the builders take the RESOLVED names as EXPLICIT parameters —
+  // these mirror the resolver's documented picks against the amended
+  // animation-h3 profile (the enumeration that deliberately DIFFERS from
+  // the pinned constants for unet/clip), so the contract-truth leg proves
+  // the builders carry RESOLVED names, never welded ones.
+  const resolvedSettings = (tool) => ({
+    width: 1344,
+    height: 768,
+    steps: 30,
+    baseModel: 'minimax_h3_ref2va_pruned_int8_convrot.safetensors',
+    adapterLora: ANIMATION_MODEL_DEFAULTS.adapters[tool],
+    textEncoder: 'qwen3vl_32b_int8_convrot.safetensors',
+    videoVae: 'minimax_h3_video_vae_fp16.safetensors',
+  })
+  const settings = resolvedSettings('hero')
   const graphs = {
-    hero: buildHeroGraph(snapshots.hero, settings),
-    tween: buildTweenGraph(snapshots.tween, settings),
-    sequence: buildSequenceGraph(snapshots.sequence, settings),
+    hero: buildHeroGraph(snapshots.hero, resolvedSettings('hero')),
+    tween: buildTweenGraph(snapshots.tween, resolvedSettings('tween')),
+    sequence: buildSequenceGraph(snapshots.sequence, resolvedSettings('sequence')),
   }
   for (const [tool, graph] of Object.entries(graphs)) {
     const violations = validateGraphAgainstSchemas(graph, REAL_INFO)
@@ -964,7 +1042,7 @@ test('(i) every builder emission validates CLEAN against the REAL captured schem
     assert.deepEqual({ video: shift.inputs.shift_video, audio: shift.inputs.shift_audio }, { video: 12, audio: 3 })
     const lora = of('LoraLoaderModelOnly')[0]
     assert.equal(lora.inputs.strength_model, 1.0, 'the adapters ride at trained strength (alpha==rank ⇒ scale exactly 1.0)')
-    assert.equal(of('UNETLoader')[0].inputs.unet_name, ANIMATION_MODEL_DEFAULTS.refBase)
+    assert.equal(of('UNETLoader')[0].inputs.unet_name, resolvedSettings('hero').baseModel, 'the builders carry the RESOLVED base, never a welded constant')
     assert.equal(of('CreateVideo')[0].inputs.fps, 24)
     const conditioning = of('MiniMaxH3ImageToVideo')[0] ?? of('MiniMaxH3ReferenceToVideo')[0]
     assert.equal(conditioning.inputs.length, 22)
@@ -980,9 +1058,9 @@ test('(i) every builder emission validates CLEAN against the REAL captured schem
   const seqNode = Object.values(graphs.sequence).find((node) => node.class_type === 'MiniMaxH3ReferenceToVideo')
   assert.ok('ref_images.ref_image_0' in seqNode.inputs && 'ref_images.ref_image_1' in seqNode.inputs)
   const loraOf = (graph) => Object.values(graph).find((node) => node.class_type === 'LoraLoaderModelOnly').inputs.lora_name
-  assert.equal(loraOf(graphs.hero), ANIMATION_MODEL_DEFAULTS.adapters.hero)
-  assert.equal(loraOf(graphs.tween), ANIMATION_MODEL_DEFAULTS.adapters.tween)
-  assert.equal(loraOf(graphs.sequence), ANIMATION_MODEL_DEFAULTS.adapters.sequence)
+  assert.equal(loraOf(graphs.hero), resolvedSettings('hero').adapterLora)
+  assert.equal(loraOf(graphs.tween), resolvedSettings('tween').adapterLora)
+  assert.equal(loraOf(graphs.sequence), resolvedSettings('sequence').adapterLora)
   // The caption reaches the engine VERBATIM (the compiler's frozen output).
   assert.equal(tweenNode.inputs.prompt, snapshots.tween.caption)
 
@@ -990,10 +1068,10 @@ test('(i) every builder emission validates CLEAN against the REAL captured schem
   // (the snapshot's own settings are the override — the caller's build
   // settings are the fallback the service resolves from the document).
   const highSnap = { ...snapshots.tween, settings: { ...snapshots.tween.settings, steps: 99 } }
-  const high = buildTweenGraph(highSnap, { width: 1344, height: 768, steps: 30 })
+  const high = buildTweenGraph(highSnap, resolvedSettings('tween'))
   assert.equal(Object.values(high).find((node) => node.class_type === 'BasicScheduler').inputs.steps, 50, "steps clamp to the operating point's ceiling")
   const lowSnap = { ...snapshots.hero, settings: { ...snapshots.hero.settings, steps: 5 } }
-  const low = buildHeroGraph(lowSnap, { width: 1344, height: 768, steps: 30 })
+  const low = buildHeroGraph(lowSnap, resolvedSettings('hero'))
   assert.equal(Object.values(low).find((node) => node.class_type === 'BasicScheduler').inputs.steps, 30, 'steps clamp to the floor')
 
   // And the graph the DIST build actually submitted (read back from the
@@ -1167,3 +1245,245 @@ test('(k2) an under-delivered image listing refuses a beyond-listing frame BY NA
   }
 })
 
+
+// ---------------------------------------------------------------------------
+// (l) the resolver (wave 1, the live review's #1) — pure ladder truth:
+//     exact-default enumeration, DIFFERING enumeration (the canonical
+//     install's shape with adversarial distractors), overrides, dead slots
+// ---------------------------------------------------------------------------
+
+test('(l) the resolver picks by the documented ladder — exact defaults, differing enumerations, overrides, dead slots (pure)', () => {
+  // The exact-match rung: an engine that enumerates the pinned names
+  // verbatim resolves to the pinned names.
+  const exact = resolveAnimationModels({
+    tool: 'tween',
+    enumerations: {
+      unet: ['some_other_unet.safetensors', ANIMATION_MODEL_DEFAULTS.refBase],
+      clip: [ANIMATION_MODEL_DEFAULTS.textEncoder],
+      vae: [ANIMATION_MODEL_DEFAULTS.videoVae],
+      lora: ['unrelated_lora.safetensors', ANIMATION_MODEL_DEFAULTS.adapters.tween],
+    },
+  })
+  assert.deepEqual(exact, {
+    baseModel: ANIMATION_MODEL_DEFAULTS.refBase,
+    adapterLora: ANIMATION_MODEL_DEFAULTS.adapters.tween,
+    textEncoder: ANIMATION_MODEL_DEFAULTS.textEncoder,
+    videoVae: ANIMATION_MODEL_DEFAULTS.videoVae,
+  }, 'the pinned defaults win when the engine enumerates them')
+
+  // The DIFFERING enumeration (the canonical 8189 install's shape, plus
+  // distractors that sort EARLIER than every documented preference): the
+  // ladder resolves, deterministically, to the documented candidates.
+  const differing = resolveAnimationModels({
+    tool: 'hero',
+    enumerations: {
+      unet: ['H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'minimax_h3_ref2va_pruned_int8_convrot.safetensors'],
+      clip: ['aaa_qwen3vl_32b_placeholder.safetensors', 'qwen3vl_32b_int8_convrot.safetensors', 'qwen3vl_32b_minimax_h3_int8_convrot.safetensors'],
+      vae: ['minimax_h3_audio_vae_fp32.safetensors', 'minimax_h3_video_vae_fp16.safetensors'],
+      lora: ['h3_hero_step9000.safetensors', 'h3_hero_step12000.safetensors'],
+    },
+  })
+  assert.equal(differing.baseModel, 'minimax_h3_ref2va_pruned_int8_convrot.safetensors', 'the ref2va pattern picks the FLAT name the install serves — never the fl2va distractor')
+  assert.equal(differing.textEncoder, 'qwen3vl_32b_int8_convrot.safetensors', "the maintainer's documented second preference — NOT the alphabetically-earlier 32B distractor (an explicit preference, not sort luck)")
+  assert.equal(differing.videoVae, 'minimax_h3_video_vae_fp16.safetensors', 'the video-VAE pattern — never the audio VAE')
+  assert.equal(differing.adapterLora, 'h3_hero_step12000.safetensors', 'the exact pinned adapter beats the step9000 distractor')
+
+  // Determinism within one pattern: multiple ref2va candidates sort, and
+  // the first wins — same enumeration, same answer, every call.
+  const sorted = resolveAnimationModels({
+    tool: 'sequence',
+    enumerations: {
+      unet: ['zzz_minimax_h3_ref2va_late_convrot.safetensors', 'aaa_minimax_h3_ref2va_early_convrot.safetensors'],
+      clip: ['qwen3vl_32b_int8_convrot.safetensors'],
+      vae: ['minimax_h3_video_vae_fp16.safetensors'],
+      lora: ['h3_seq_step12000.safetensors'],
+    },
+  })
+  assert.equal(sorted.baseModel, 'aaa_minimax_h3_ref2va_early_convrot.safetensors', 'the sorted-first candidate — deterministic')
+  assert.equal(resolveAnimationModels({ tool: 'sequence', enumerations: { unet: ['zzz_minimax_h3_ref2va_late_convrot.safetensors', 'aaa_minimax_h3_ref2va_early_convrot.safetensors'], clip: ['qwen3vl_32b_int8_convrot.safetensors'], vae: ['minimax_h3_video_vae_fp16.safetensors'], lora: ['h3_seq_step12000.safetensors'] } }).baseModel, sorted.baseModel)
+
+  // An explicit override wins — and must itself be enumerated.
+  const overridden = resolveAnimationModels({
+    tool: 'tween',
+    enumerations: {
+      unet: ['minimax_h3_ref2va_pruned_int8_convrot.safetensors'],
+      clip: ['qwen3vl_32b_int8_convrot.safetensors'],
+      vae: ['minimax_h3_video_vae_fp16.safetensors', 'operator_vae_fp16.safetensors'],
+      lora: ['h3_tween_step12000.safetensors'],
+    },
+    overrides: { videoVae: 'operator_vae_fp16.safetensors' },
+  })
+  assert.equal(overridden.videoVae, 'operator_vae_fp16.safetensors', 'the explicit override wins when the engine enumerates it')
+  assert.throws(
+    () => resolveAnimationModels({
+      tool: 'tween',
+      enumerations: { unet: ['minimax_h3_ref2va_pruned_int8_convrot.safetensors'], clip: ['qwen3vl_32b_int8_convrot.safetensors'], vae: ['minimax_h3_video_vae_fp16.safetensors'], lora: ['h3_tween_step12000.safetensors'] },
+      overrides: { videoVae: 'not_enumerated_vae.safetensors' },
+    }),
+    (err) => err instanceof AnimationModelResolutionError && /videoVae/.test(err.message) && /not_enumerated_vae\.safetensors \(the explicit override\)/.test(err.message),
+    'an override the engine does not enumerate is a dead slot naming the override',
+  )
+
+  // A dead slot: the named refusal lists the slot, the node class, the
+  // tried names, and what the engine enumerates.
+  assert.throws(
+    () => resolveAnimationModels({
+      tool: 'tween',
+      enumerations: { unet: ['minimax_h3_fl2va_only.safetensors'], clip: [], vae: ['minimax_h3_audio_vae_fp32.safetensors'], lora: [] },
+    }),
+    (err) => err instanceof AnimationModelResolutionError
+      && /baseModel/.test(err.message)
+      && /UNETLoader/.test(err.message) && /unet_name/.test(err.message)
+      && /minimax_h3_fl2va_only\.safetensors/.test(err.message)
+      && err.message.includes(ANIMATION_MODEL_DEFAULTS.refBase),
+    'a dead unet slot names the slot, the node class, the tried pinned default, and the enumeration',
+  )
+})
+
+// ---------------------------------------------------------------------------
+// (m) the submit-time preflight (the live review's #1): validate the
+//     effective set BEFORE spending work — a dead slot is a structured 400
+//     with nothing persisted; a defaults-verbatim enumeration resolves to
+//     the pinned names end to end
+// ---------------------------------------------------------------------------
+
+test('(m) a dead model slot at submit answers the named 400 with NOTHING spent; a defaults-verbatim enumeration renders the pinned names', async () => {
+  const doc = anim.createDocument({ projectId, name: 'Mike', binding: makeBinding() })
+  const attemptsBefore = anim.attemptsForDocument(doc.id).length
+  const before = await engineRecordCount()
+
+  // The engine enumerates NOTHING for the clip slot — the ladder has no
+  // rung to stand on.
+  await engineControl({ loaderEnumerations: { unet: ['minimax_h3_ref2va_pruned_int8_convrot.safetensors'], clip: [], vae: ['minimax_h3_video_vae_fp16.safetensors'], lora: ['h3_hero_step12000.safetensors'] } })
+  try {
+    await assert.rejects(
+      () => submitHero(doc, uuid(), 'idem-m-dead'),
+      (err) => err instanceof AnimationRuleError && err.status === 400
+        && /textEncoder/.test(err.message)
+        && /CLIPLoader/.test(err.message) && /clip_name/.test(err.message)
+        && err.message.includes(ANIMATION_MODEL_DEFAULTS.textEncoder)
+        && /qwen3vl_32b_int8_convrot\.safetensors/.test(err.message)
+        && /enumerates/.test(err.message),
+      'the dead clip slot is the structured 400 naming the slot, the tried names, and the enumeration',
+    )
+    assert.equal(anim.attemptsForDocument(doc.id).length, attemptsBefore, 'no attempt row was persisted')
+    assert.equal(anim.attemptByIdempotencyKey('idem-m-dead'), null, 'the idempotency key holds no row')
+    assert.equal(await engineRecordCount(), before, 'the engine received nothing — no upload, no submission')
+  } finally {
+    await engineControl({ loaderEnumerations: null })
+  }
+
+  // The exact-match preference leg, end to end: an engine serving the
+  // DEFAULT names VERBATIM (the runtime knob — the standing profile
+  // deliberately serves different names) resolves to the pinned constants,
+  // and the graph the engine receives carries them.
+  await engineControl({ loaderEnumerations: {
+    unet: [ANIMATION_MODEL_DEFAULTS.refBase],
+    clip: [ANIMATION_MODEL_DEFAULTS.textEncoder],
+    vae: [ANIMATION_MODEL_DEFAULTS.videoVae],
+    lora: [ANIMATION_MODEL_DEFAULTS.adapters.hero],
+  } })
+  try {
+    const submitted = await submitHero(doc, uuid(), 'idem-m-exact')
+    const landed = await waitAttemptState(submitted.attemptId, ['ready'], 'the defaults-verbatim attempt landing')
+    const graph = (await engineRecord(landed.engineJobId)).prompt[2]
+    assert.equal(Object.values(graph).find((node) => node.class_type === 'UNETLoader').inputs.unet_name, ANIMATION_MODEL_DEFAULTS.refBase, 'the exact pinned default when the engine enumerates it verbatim')
+    assert.equal(Object.values(graph).find((node) => node.class_type === 'CLIPLoader').inputs.clip_name, ANIMATION_MODEL_DEFAULTS.textEncoder)
+    // The frozen snapshot records the resolved set (Fix B's stamp).
+    const frozen = anim.getAttempt(submitted.attemptId).snapshot.settings
+    assert.equal(frozen.baseModel, ANIMATION_MODEL_DEFAULTS.refBase)
+    assert.equal(frozen.textEncoder, ANIMATION_MODEL_DEFAULTS.textEncoder)
+    assert.equal(frozen.adapterLora, ANIMATION_MODEL_DEFAULTS.adapters.hero)
+    assert.equal(frozen.videoVae, ANIMATION_MODEL_DEFAULTS.videoVae)
+  } finally {
+    await engineControl({ loaderEnumerations: null })
+  }
+})
+
+// ---------------------------------------------------------------------------
+// (o) the frozen execution config (the live review's #2): the dispatched
+//     graph carries the values FROZEN at persist — a document that moves
+//     between submit and dispatch/recovery changes nothing, on both the
+//     fresh-dispatch and the restart-reconcile (redispatch) legs
+// ---------------------------------------------------------------------------
+
+test('(o) the dispatched graph carries the FROZEN config — document moves between persist and dispatch change nothing (fresh + restart legs)', async () => {
+  // ---- the fresh leg: submit with the engine up; the engine's own record
+  // carries the frozen values + the RESOLVED model names.
+  const doc = anim.createDocument({ projectId, name: 'Oscar', binding: makeBinding() })
+  const keyFrom = uuid()
+  const keyTo = uuid()
+  let row = anim.addKeyCandidate(doc.id, keyFrom, { id: uuid(), assetReference: registerRefImage('o-from'), origin: 'import', provenance: { assetId: 'stable-o1' }, poseDescription: null, facing: null }, 0)
+  row = anim.addKeyCandidate(doc.id, keyTo, { id: uuid(), assetReference: registerRefImage('o-to'), origin: 'import', provenance: { assetId: 'stable-o2' }, poseDescription: null, facing: null }, row.revision)
+  row = anim.insertSpan(doc.id, { fromKeyId: keyFrom, toKeyId: keyTo, intent: { movement: 'walks two steps', preservation: 'silhouette intact' } }, row.revision)
+  const stepId = row.body.spans[0].stepSlots[0].id
+  // NO dimension/step overrides in the snapshot — the document's settings
+  // (1344×768, steps 30) are exactly what must freeze.
+  const snapshot = makeTweenSnapshot(stepId, row.revision)
+  snapshot.settings = { seed: 99001 }
+  const submitted = await service.submit({ documentId: doc.id, tool: 'tween', targetId: stepId, snapshot }, 'idem-o-fresh')
+  const landed = await waitAttemptState(submitted.attemptId, ['ready'], 'the fresh-dispatch leg landing')
+  const graphOf = (record) => {
+    const g = record.prompt[2]
+    return {
+      conditioning: Object.values(g).find((node) => node.class_type === 'MiniMaxH3ReferenceToVideo'),
+      scheduler: Object.values(g).find((node) => node.class_type === 'BasicScheduler'),
+      unet: Object.values(g).find((node) => node.class_type === 'UNETLoader').inputs.unet_name,
+      clip: Object.values(g).find((node) => node.class_type === 'CLIPLoader').inputs.clip_name,
+    }
+  }
+  const fresh = graphOf(await engineRecord(landed.engineJobId))
+  assert.equal(fresh.conditioning.inputs.width, 1344, 'the frozen width')
+  assert.equal(fresh.conditioning.inputs.height, 768, 'the frozen height')
+  assert.equal(fresh.scheduler.inputs.steps, 30, 'the frozen steps')
+  assert.equal(fresh.unet, 'minimax_h3_ref2va_pruned_int8_convrot.safetensors', 'the RESOLVED unet — the standing profile enumerates the FLAT name, not the pinned constant: resolution exercised, not echoed')
+  assert.equal(fresh.clip, 'qwen3vl_32b_int8_convrot.safetensors', 'the RESOLVED clip (the documented preference)')
+  const frozen = anim.getAttempt(submitted.attemptId).snapshot.settings
+  assert.deepEqual(
+    { width: frozen.width, height: frozen.height, steps: frozen.steps, sampler: frozen.sampler, scheduler: frozen.scheduler, shiftVideo: frozen.shiftVideo, shiftAudio: frozen.shiftAudio, fps: frozen.fps, bindingVersion: frozen.bindingVersion },
+    { width: 1344, height: 768, steps: 30, sampler: 'euler', scheduler: 'simple', shiftVideo: 12, shiftAudio: 3, fps: 24, bindingVersion: doc.body.activeBindingVersion },
+    'the frozen snapshot carries the COMPLETE resolved execution config',
+  )
+
+  // ---- the restart leg: the engine is DOWN at submit (queue semantics —
+  // the row persists, resolution defers), the document MOVES, the engine
+  // returns, and the sweep REDISPATCHES from the FROZEN config: the moved
+  // document's settings never reach the graph.
+  const doc2 = anim.createDocument({ projectId, name: 'Oscar-two', binding: makeBinding() })
+  const from2 = uuid()
+  const to2 = uuid()
+  let row2 = anim.addKeyCandidate(doc2.id, from2, { id: uuid(), assetReference: registerRefImage('o2-from'), origin: 'import', provenance: { assetId: 'stable-o3' }, poseDescription: null, facing: null }, 0)
+  row2 = anim.addKeyCandidate(doc2.id, to2, { id: uuid(), assetReference: registerRefImage('o2-to'), origin: 'import', provenance: { assetId: 'stable-o4' }, poseDescription: null, facing: null }, row2.revision)
+  row2 = anim.insertSpan(doc2.id, { fromKeyId: from2, toKeyId: to2, intent: { movement: 'the weight settles', preservation: 'silhouette intact' } }, row2.revision)
+  const step2 = row2.body.spans[0].stepSlots[0].id
+  const snapshot2 = makeTweenSnapshot(step2, row2.revision)
+  snapshot2.settings = { seed: 99002 }
+
+  await killEngine()
+  const offline = await service.submit({ documentId: doc2.id, tool: 'tween', targetId: step2, snapshot: snapshot2 }, 'idem-o-restart')
+  assert.equal(offline.created, true, 'the submit is accepted while the engine is unreachable (queue semantics)')
+  assert.equal(anim.getAttempt(offline.attemptId).execution.state, 'reconciling', 'the offline dispatch stays pending — nothing was spent')
+
+  // The document MOVES between persistence and dispatch.
+  anim.updateDocumentSettings(doc2.id, { steps: 44, outputWidth: 672 }, anim.getDocument(doc2.id).revision)
+  assert.equal(anim.getDocument(doc2.id).body.settings.steps, 44, 'the document moved')
+
+  await restartEngine()
+  await owner.reconcile()
+  const redispatched = await waitAttemptState(offline.attemptId, ['ready'], 'the sweep redispatching the frozen attempt after the engine returns')
+  const moved = graphOf(await engineRecord(redispatched.engineJobId))
+  assert.equal(moved.conditioning.inputs.width, 1344, 'the FROZEN width — not the moved document\'s 672')
+  assert.equal(moved.conditioning.inputs.height, 768, 'the FROZEN height')
+  assert.equal(moved.scheduler.inputs.steps, 30, 'the FROZEN steps — not the moved document\'s 44')
+  assert.equal(moved.unet, 'minimax_h3_ref2va_pruned_int8_convrot.safetensors', 'the models resolved at dispatch against the returned engine\'s enumeration')
+  const frozen2 = anim.getAttempt(offline.attemptId).snapshot.settings
+  assert.equal(frozen2.width, 1344, 'the row\'s frozen config was never rewritten by the document move')
+
+  // The same-key retry is unchanged by all of it: the received-snapshot
+  // hash still matches, the row answers { created: false }, and the engine
+  // holds exactly the one dispatched job.
+  const countAfterRedispatch = await engineRecordCount()
+  const retry = await service.submit({ documentId: doc2.id, tool: 'tween', targetId: step2, snapshot: snapshot2 }, 'idem-o-restart')
+  assert.deepEqual(retry, { attemptId: offline.attemptId, created: false }, 'the same-key retry answers the idempotent return')
+  assert.equal(await engineRecordCount(), countAfterRedispatch, 'the retry spent no engine work')
+})

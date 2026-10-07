@@ -50,6 +50,11 @@ export function createCompletionOwner(deps: {
   engine: EnginePort
   emit: (type: string, payload: unknown) => void
   prepareFrame: (attemptId: string, frameIndex: number) => Promise<AssetReference>
+  /** The rendering service's queue-semantic redispatch (wave 1): the sweep's
+   *  PROVEN-never-landed arm dispatches the frozen attempt through it instead
+   *  of stranding the user's submission as interrupted. Absent (older
+   *  constructions) the arm keeps the pre-wave-1 interrupted verdict. */
+  redispatch?: (attemptId: string) => Promise<'submitted' | 'failed' | 'uncertain' | null>
   /** Bounded auto-retries AFTER the first preparation try (default 2 — a
    *  rejecting preparer gets 3 chances before preparation is marked failed). */
   maxAutoPrepRetries?: number
@@ -60,6 +65,7 @@ export function createCompletionOwner(deps: {
   maxPollErrors?: number
 }) {
   const { store, engine, emit, prepareFrame } = deps
+  const redispatch = deps.redispatch
   const maxAutoPrepRetries = deps.maxAutoPrepRetries ?? 2
   const pollMs = deps.pollMs ?? 500
   const maxPollErrors = deps.maxPollErrors ?? 3
@@ -347,8 +353,19 @@ export function createCompletionOwner(deps: {
             continue
           }
           // Reachable engine, empty queue, no history trace: the dispatch
-          // never landed engine-side. Interrupted + explicit retry (a user
-          // action creates a new linked attempt) — never a resubmit.
+          // never landed engine-side — PROOF, the §11.4 epistemics. Wave
+          // 1's queue semantics: the user's submission dispatches NOW from
+          // its FROZEN snapshot (the redispatch is not a resubmit — no
+          // engine job ever existed, and the graph is the frozen config,
+          // not a re-derivation). A dead model slot fails the attempt with
+          // the NAMED reason there; an uncertain redispatch leaves the row
+          // reconciliation-pending for the next sweep. Without the
+          // redispatch dep the pre-wave-1 verdict stands: interrupted +
+          // explicit retry only.
+          if (redispatch) {
+            const outcome = await redispatch(fresh.id)
+            if (outcome !== null) continue // submitted, failed (named), or left pending
+          }
           setExecution(fresh, 'interrupted')
           emit('animation.attempt.lost', { attemptId: fresh.id, documentId: fresh.documentId, reason: 'dispatch-never-landed' })
           continue

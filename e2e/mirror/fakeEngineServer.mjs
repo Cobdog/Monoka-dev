@@ -26,8 +26,16 @@
  *                    "steps":n,"stepDelayMs":n,
  *                    "hideHistoryFor":"<promptId>"|null,
  *                    "videoOnly":true|false,
- *                    "underdeliverFrames":n}
+ *                    "underdeliverFrames":n,
+ *                    "loaderEnumerations":{unet,clip,vae,lora}|null}
  *   GET  /__control — current state
+ *
+ * "loaderEnumerations" (wave 1) overrides the profile's loader combo lists
+ * at runtime — the enumeration the studio resolves animation model slots
+ * against. Tests use it for the dead-slot refusals (a list lacking a slot),
+ * the defaults-verbatim leg (the pinned names served exactly), and the
+ * enumeration-change repair leg (flip it and re-roll) without an engine
+ * restart; null restores the profile's boot value.
  *
  * "hideHistoryFor" masks ONE job's history record from every /history answer
  * while set (a transient engine-side truth gap — an engine mid-restart whose
@@ -79,6 +87,37 @@ const profile = JSON.parse(fs.readFileSync(path.resolve(repoRoot, profilePath), 
 const fixture = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts/fixtures/engine-object-info.json'), 'utf8'))
 const objectInfo = { ...(fixture.nodes ?? {}) }
 for (const [className, schema] of Object.entries(profile.objectInfoExtras ?? {})) objectInfo[className] = schema
+
+/** The loader-class enumeration surface (wave 1 of the animation module's
+ *  post-review program): the profile's `loaderEnumerations`
+ *  ({ unet, clip, vae, lora }) patch the loader nodes' combo lists — the
+ *  exact surface a real ComfyUI serves through /object_info and the studio
+ *  resolves its animation model slots against. Runtime-overridable through
+ *  POST /__control (tests flip the enumeration without an engine restart —
+ *  the dead-slot, defaults-verbatim, and enumeration-change legs). null
+ *  serves the captured fixture as-is (the stock empty combos). */
+const LOADER_COMBO_FIELDS = [
+  ['UNETLoader', 'unet_name', 'unet'],
+  ['CLIPLoader', 'clip_name', 'clip'],
+  ['VAELoader', 'vae_name', 'vae'],
+  ['LoraLoaderModelOnly', 'lora_name', 'lora'],
+  ['LoraLoader', 'lora_name', 'lora'],
+]
+function patchLoaderCombos(enums) {
+  const patched = { ...objectInfo }
+  for (const [className, fieldName, key] of LOADER_COMBO_FIELDS) {
+    const schema = patched[className]
+    if (!schema || !Array.isArray(enums[key])) continue
+    patched[className] = {
+      ...schema,
+      input: {
+        ...schema.input,
+        required: { ...schema.input.required, [fieldName]: [enums[key], {}] },
+      },
+    }
+  }
+  return patched
+}
 
 // ---------------------------------------------------------------- synthetic PNG (tiny, tinted per job)
 const crcTable = []
@@ -157,6 +196,12 @@ const state = {
   // refuse a beyond-listing frame index BY NAME, never clamp to the last
   // image).
   underdeliverFrames: 0,
+  // The loader-class enumerations served through /object_info (wave 1 of the
+  // animation module's post-review program): the profile's boot value,
+  // runtime-overridable via POST /__control
+  // { "loaderEnumerations": { unet, clip, vae, lora } | null }. null serves
+  // the captured fixture as-is (the stock empty combos).
+  loaderEnumerations: profile.loaderEnumerations ?? null,
 }
 const control = (req, res, url) => {
   if (url.pathname === '/__control' && req.method === 'GET') {
@@ -178,6 +223,11 @@ const control = (req, res, url) => {
           histories.clear()
         }
         for (const key of Object.keys(state)) if (key in patch) state[key] = patch[key]
+        // null restores the profile's boot enumerations (the captured
+        // fixture only when the profile itself carries none).
+        if ('loaderEnumerations' in patch && patch.loaderEnumerations === null) {
+          state.loaderEnumerations = profile.loaderEnumerations ?? null
+        }
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ profile: profile.id, ...state }))
       } catch {
@@ -350,11 +400,12 @@ async function handle(req, res) {
       })
     }
 
-    if (url.pathname === '/object_info') return json(res, 200, objectInfo)
+    if (url.pathname === '/object_info') return json(res, 200, state.loaderEnumerations ? patchLoaderCombos(state.loaderEnumerations) : objectInfo)
     const targeted = /^\/object_info\/(.+)$/.exec(url.pathname)
     if (targeted) {
       const className = decodeURIComponent(targeted[1])
-      return json(res, 200, className in objectInfo ? { [className]: objectInfo[className] } : {})
+      const source = state.loaderEnumerations ? patchLoaderCombos(state.loaderEnumerations) : objectInfo
+      return json(res, 200, className in source ? { [className]: source[className] } : {})
     }
 
     if (url.pathname === '/models') return json(res, 200, Object.keys(profile.modelListings ?? {}))
