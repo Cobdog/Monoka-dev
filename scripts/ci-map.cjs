@@ -53,6 +53,7 @@ const REPO = path.resolve(__dirname, '..')
  * The ci-map self-test enforces this stays in lockstep with tests/.
  */
 const SUITES = {
+  'animation-compiler': { build: null, windows: false, python: false, ffmpeg: false },
   'animation-store': { build: 'server', windows: false, python: false, ffmpeg: false },
   'animation-types': { build: null, windows: false, python: false, ffmpeg: false },
   benchmarks: { build: 'server', windows: true, python: true, ffmpeg: false },
@@ -250,8 +251,13 @@ const RULES = [
   // ---------- shared (server + client + compiler contracts) -------------
   {
     match: ['shared/animation/types.ts'],
-    suites: ['animation-types', 'animation-store'],
-    reason: 'the animation domain types + guards — the store suite drives parseAnimationDocumentBody + the candidate parser through every authoring command and landing.',
+    suites: ['animation-types', 'animation-store', 'animation-compiler'],
+    reason: 'the animation domain types + guards — the store suite drives parseAnimationDocumentBody + the candidate parser through every authoring command and landing; the compiler suite compiles through the closed vocabularies.',
+  },
+  {
+    match: ['shared/animation/compiler.ts'],
+    suites: ['animation-compiler'],
+    reason: 'the caption compiler — its suite compiles every tool template through the vocabularies; the animation-rendering suite joins when it lands (task 4; it compiles authoritative captions through this module — ci-map hygiene forbids naming uncatalogued suites).',
   },
 
   // ---------- server (behavioral map from each suite's imports) --------
