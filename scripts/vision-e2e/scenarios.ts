@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import { join, resolve } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import zlib from 'node:zlib'
 import Database from 'better-sqlite3'
 import type { Page } from '@playwright/test'
 import { expect } from '@playwright/test'
@@ -40,6 +42,88 @@ function frameJpeg(): Buffer {
  * Adding a scenario: append here, then `pnpm test:vision` (capture) → judge
  * → `pnpm vision:report`. Nothing else to wire.
  */
+
+/** A structured 448x336 key-frame PNG, drawn in pure Node (zlib deflate +
+ *  crc32 — no image dependency): a dark studio ground with a horizon band
+ *  and warm floor, and a stick figure whose lean and limb swing follow the
+ *  phase — two distinguishable walk-cycle poses for the animation scenario's
+ *  key cards. Deliberately oversized relative to the 112x84 key card: a
+ *  1x1-class fixture reads as "a key card with no image" to a judge (a
+ *  defect the animation rubric names) — the same lesson frameJpeg's header
+ *  records for the sampler preview. */
+function keyFramePng(phase: 0 | 1): Buffer {
+  const W = 448
+  const H = 336
+  const px = new Uint8Array(W * H * 3)
+  const put = (x: number, y: number, r: number, g: number, b: number) => {
+    const at = (y * W + x) * 3
+    px[at] = r
+    px[at + 1] = g
+    px[at + 2] = b
+  }
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      if (y > 268) put(x, y, 232, 176, 75)
+      else if (y > 244) put(x, y, 70, 90, 130)
+      else put(x, y, 28, 36, 52)
+    }
+  }
+  const pale: [number, number, number] = [238, 240, 244]
+  const stroke = (x0: number, y0: number, x1: number, y1: number) => {
+    const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0), 1) * 2
+    for (let i = 0; i <= steps; i += 1) {
+      const x = Math.round(x0 + ((x1 - x0) * i) / steps)
+      const y = Math.round(y0 + ((y1 - y0) * i) / steps)
+      for (let dy = -2; dy <= 2; dy += 1) {
+        for (let dx = -2; dx <= 2; dx += 1) {
+          const sx = x + dx
+          const sy = y + dy
+          if (sx >= 0 && sx < W && sy >= 0 && sy < H) put(sx, sy, pale[0], pale[1], pale[2])
+        }
+      }
+    }
+  }
+  const lean = phase === 0 ? -18 : 14
+  const swing = phase === 0 ? 46 : -34
+  const hipX = 224
+  const hipY = 196
+  const shoulderX = hipX + lean
+  const shoulderY = 128
+  stroke(hipX, hipY, shoulderX, shoulderY)
+  for (let dy = -22; dy <= 22; dy += 1) {
+    for (let dx = -22; dx <= 22; dx += 1) {
+      if (dx * dx + dy * dy <= 22 * 22) put(shoulderX + dx, shoulderY - 34 + dy, pale[0], pale[1], pale[2])
+    }
+  }
+  stroke(hipX, hipY, hipX + swing, 270)
+  stroke(hipX, hipY, hipX - swing, 270)
+  stroke(shoulderX, shoulderY + 12, shoulderX + swing, shoulderY + 74)
+  stroke(shoulderX, shoulderY + 12, shoulderX - swing, shoulderY + 74)
+  const raw = Buffer.alloc(H * (1 + W * 3))
+  for (let y = 0; y < H; y += 1) {
+    raw[y * (1 + W * 3)] = 0
+    Buffer.from(px.buffer, y * W * 3, W * 3).copy(raw, y * (1 + W * 3) + 1)
+  }
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4)
+    len.writeUInt32BE(data.length)
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(zlib.crc32(body) >>> 0)
+    return Buffer.concat([len, body, crc])
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(W, 0)
+  ihdr.writeUInt32BE(H, 4)
+  ihdr[8] = 8 // bit depth
+  ihdr[9] = 2 // truecolor
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
 
 export type VisionCheckpoint = {
   /** Stable identifier — used in filenames, verdicts.json keys, and reports. */
@@ -1988,6 +2072,127 @@ export const SCENARIOS: VisionScenario[] = [
           'The HandoffResult grid: small rows reading "Seed the video chain" plus state text — a spinner-only row (pending), quiet "landed" rows, a "landed" row with an amber "view stale — …" marker, a row with an amber "not refreshed — …" marker plus an underlined "refresh" link, and a RED-toned "failed — 500 Internal Server Error — …" row with an underlined "retry" link. SIX dashed italic N/A cards sit among them ("the refresh is the write\'s companion fact…") — the impossible half of the 3×4 matrix, exhibited as data.',
           'Blessings: the red "failed" row is the ONLY red text in frame (a failed refresh renders amber markers, never red — that is the write ≠ refresh contract); italic dashed cards are intended exhibits; the underlined retry/refresh links are real affordances; dense 11px prose is the design language.',
           'Defects to flag: a dashed N/A card with NO reason text, the failed row reading amber instead of red, two announcer-looking blocks stacked in one card, overlapping rows, text clipped mid-glyph by a card edge, fewer than twelve cells in frame.',
+        ].join(' '),
+      },
+    ],
+  },
+
+  {
+    // The animation-authoring module (k2q0n9s round, task 16): the timeline +
+    // span inspector at the Workbench SUBVIEW route ?images=1&view=animation
+    // — the AUTHORING state only. The vision project boots NO engine, so no
+    // takes land and no playhead exists; a queued chip would take a stub
+    // engine — out of the honest scope here (the rubric blesses the
+    // no-attempts state instead). Seeded through the HTTP API in the e2e
+    // animation suite's shapes (bound document → two selected imported keys
+    // → one authored span, whose insert creates the single tween step slot),
+    // with fixture key frames drawn by keyFramePng — then DOM-TRUTH asserts
+    // BEFORE the capture (the pin doctrine: the seeded numbers are the
+    // asserted numbers, and the images are proven to render before the
+    // shutter — the rubric's "key card with no image" defect class is
+    // pre-empted, not hoped away). One checkpoint; the judge step is
+    // elsewhere (JUDGE.md).
+    id: 'animation-timeline',
+    label: 'Animation authoring — timeline + span inspector (bound session) at 1080p',
+    run: async (page) => {
+      const projectId = `anim-vision-${Date.now()}`
+      const ingest = async (name: string, data: string) => {
+        const landed = await (await page.request.post('/api/lan/documents/blobs/ingest', { data: { kind: 'image', name, data } })).json() as { blob?: { relPath?: string } }
+        if (!landed.blob?.relPath) throw new Error(`animation-timeline: the key frame did not ingest (${JSON.stringify(landed)})`)
+        return landed.blob.relPath
+      }
+      const relPathA = await ingest('anim-vision-key-a.png', keyFramePng(0).toString('base64'))
+      const relPathB = await ingest('anim-vision-key-b.png', keyFramePng(1).toString('base64'))
+      const created = await (await page.request.post('/api/lan/animation/documents', {
+        data: {
+          projectId,
+          name: 'Walk cycle — courier',
+          binding: {
+            characterDescription: 'a lanky courier in a long coat',
+            referenceAssetIds: [randomUUID()],
+            medium: 'clean line on white',
+            initialKeyAssetId: relPathA,
+          },
+        },
+      })).json() as { document?: { id?: string; revision?: number } }
+      if (!created.document?.id) throw new Error(`animation-timeline: the document did not create (${JSON.stringify(created)})`)
+      const documentId = created.document.id
+      let revision = created.document.revision ?? 0
+
+      const addSelectedKey = async (pose: string, facing: string, relPath: string) => {
+        const keyId = randomUUID()
+        const candidateId = randomUUID()
+        const added = await (await page.request.post('/api/lan/animation/keys', {
+          data: {
+            op: 'add-candidate', documentId, keyId, expectedRevision: revision,
+            candidate: { id: candidateId, assetReference: { assetId: `animref-${randomUUID().slice(0, 8)}`, relPath, kind: 'image' }, origin: 'import', provenance: { assetId: `animref-${randomUUID().slice(0, 8)}` }, poseDescription: pose, facing },
+          },
+        })).json() as { document?: { revision?: number } }
+        revision = added.document?.revision ?? revision
+        const selected = await (await page.request.post('/api/lan/animation/select/key-candidate', { data: { documentId, keyId, candidateId, expectedRevision: revision } })).json() as { document?: { revision?: number } }
+        revision = selected.document?.revision ?? revision
+        return keyId
+      }
+      const keyA = await addSelectedKey('mid-stride, arms pumping', 'screen-left', relPathA)
+      const keyB = await addSelectedKey('turned farther than the start, head past the shoulder line', 'toward camera', relPathB)
+
+      const spanLanded = await (await page.request.post('/api/lan/animation/spans', {
+        data: {
+          op: 'insert', documentId, fromKeyId: keyA, toKeyId: keyB, expectedRevision: revision,
+          intent: { movement: 'she pushes off the back foot into a full stride', preservation: 'coat hem and scarf stay consistent' },
+        },
+      })).json() as { document?: { revision?: number }; spanId?: string }
+      revision = spanLanded.document?.revision ?? revision
+      if (!spanLanded.spanId) throw new Error(`animation-timeline: the span did not insert (${JSON.stringify(spanLanded)})`)
+      const spanId = spanLanded.spanId
+
+      await page.goto(`/?images=1&view=animation&project=${projectId}&document=${documentId}`)
+      const root = page.locator('[data-anim-root]')
+      await expect(root).toBeVisible({ timeout: 15_000 })
+      await expect(page.locator('[data-anim-document-name]')).toHaveText('Walk cycle — courier')
+      // DOM truth at capture: the timeline, two IMAGE-BACKED key cards (the
+      // blob route proven, not assumed), the span bar carrying the authored
+      // movement and its one tween step slot.
+      const timeline = page.locator('[data-anim-timeline]')
+      await expect(timeline).toBeVisible()
+      const cards = timeline.locator('[data-anim-key]')
+      await expect(cards).toHaveCount(2)
+      for (let index = 0; index < 2; index += 1) {
+        const image = cards.nth(index).locator('img')
+        await expect(image).toBeVisible()
+        expect((await image.getAttribute('src')) ?? '', `key card ${index} renders through the blob route`).toContain('/api/lan/documents/blobs/file')
+      }
+      await expect(timeline.locator('[data-anim-key-badge]')).toHaveCount(2)
+      await expect(timeline.locator('[data-anim-key-lock]')).toHaveCount(2)
+      const span = timeline.locator('[data-anim-span]')
+      await expect(span).toHaveCount(1)
+      await expect(span).toContainText('she pushes off the back foot into a full stride')
+      await expect(timeline.locator('[data-anim-step-slot]')).toHaveCount(1)
+      await expect(timeline.locator('[data-anim-step-slot]')).toContainText('step 1')
+      // Select the span — the inspector opens on it (§6.1): the two endpoint
+      // frames image-backed, both facing pickers mounted, the movement draft
+      // seeded from the span's intent, the View-caption disclosure COLLAPSED.
+      await span.click()
+      const inspector = page.locator('[data-anim-inspector]')
+      await expect(inspector).toBeVisible()
+      await expect(inspector).toHaveAttribute('data-anim-inspector-span', spanId)
+      await expect(inspector.locator('[data-anim-frame="first"] img')).toBeVisible()
+      await expect(inspector.locator('[data-anim-frame="target"] img')).toBeVisible()
+      await expect(inspector.locator('[data-anim-facing]')).toHaveCount(2)
+      await expect(inspector.locator('[data-anim-inspector-movement]')).toHaveValue('she pushes off the back foot into a full stride')
+      await expect(inspector.locator('[data-anim-caption-preview] summary')).toBeVisible()
+      await expect(inspector.locator('[data-anim-caption-text]')).toBeHidden()
+      await page.waitForTimeout(400)
+    },
+    checkpoints: [
+      {
+        id: 'animation-timeline-1080p',
+        label: 'Animation authoring — timeline + span inspector (bound session)',
+        rubric: [
+          'Context: a dark-theme desktop studio app at 1920x1080 on the route /?images=1&view=animation — the ANIMATION AUTHORING surface, a full-screen Workbench SUBVIEW (it rides the images registry entry, so the shared surface-switcher highlights "images" — that is the design, not a wrong highlight). It is NOT the canvas (no dotted-grid infinite canvas) and NOT the image editor (no mode rail). The slim titlebar reads: the surface-switcher pill group (canvas / datasets / images / gallery, images highlighted), then a small clapperboard icon + "Animation" brand, the document name "Walk cycle — courier", a muted "rev N" chip, and a small "workbench" back link at the right.',
+          'Below the titlebar, one authored COLUMN anchored to the LEFT edge (it ends around x=810); the right two-thirds of the frame is intentionally empty — a dense workbench column, not a broken center. From the top: (1) a bound-session card reading "Bound — version 1", the medium "clean line on white", a reference count, and the verbatim character description "a lanky courier in a long coat"; (2) the TIMELINE: two image-backed key cards side by side — bordered cards each holding a small structured key drawing (a stick figure over a horizon band — the seeded fixture), a small pill lock chip reading "unlocked", a tiny muted "import" origin badge, and "#0" / "#1" order marks; a rounded SPAN BAR (a pill) spans the two cards reading the authored movement "she pushes off the back foot into a full stride" with a small nested "step 1" slot chip — only two keys are authored, so empty track to the right of the second card is correct, not missing content; (3) the SPAN INSPECTOR (the span is selected): a bordered panel whose lede states the caption contract, then TWO endpoint frame cards side by side — the first-frame card (labeled as key #0\'s selected image) and the target-end-frame card — each with the fixture image, its pose text, and a FACING chip row; then the MOVEMENT textarea (the movement text verbatim) and the PRESERVATION textarea, both fully in frame; below them the override fields (a medium chip row, then scene and camera inputs) run past the 1080px fold — only their tops show, and the collapsed "View caption" disclosure plus the "Submit step 1" button sit just below the fold: their absence from this capture is correct (the DOM asserts prove they exist); judge only what is in frame.',
+          'Blessings: dense 9-11px labels and small muted sub-labels are the design language, not contrast defects; the caption preview is COLLAPSED by default — only its summary row would show, and that closed state is correct; the fixture key art is deliberately simple structured geometry (not photographic stills); NO playhead, take chips, or queued-attempt status appear anywhere — the session holds no landed or in-flight attempts, and their absence is the honest authoring state, never missing chrome.',
+          'Defects to flag: a key card or endpoint frame with NO image (an empty dashed placeholder or a raw asset-id string where the drawing should be), overlapping panels, text clipped mid-glyph by a card edge, a color that reads as outside the studio\'s token palette (off-brand neon, pure white panels), the span bar missing its "step 1" slot, the span bar or movement field disagreeing with the movement text quoted above.',
         ].join(' '),
       },
     ],
