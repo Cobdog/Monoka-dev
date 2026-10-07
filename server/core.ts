@@ -33,6 +33,7 @@ import { exportProjectArchive, importProjectArchive } from './documentArchive'
 import { createRealtimeHub, type RealtimeHub } from './realtime'
 import { createAnimationStore } from './animation/store'
 import { createAnimationRenderingService, createComfyEnginePort, makeDocumentStoreBlobSink, makeFramePreparer, type EnginePort } from './animation/rendering'
+import { createAnimationExportService } from './animation/export'
 import { createCompletionOwner } from './animation/completion-owner'
 import { animationFabricEmitter, createAnimationRoutes, makeEngineEventTap } from './animation/routes'
 import { compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../shared/animation/compiler'
@@ -605,6 +606,15 @@ export function createStudioServer(paths: StudioServerPaths) {
       compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
       emit,
     })
+    // The export pipeline (task 14, §11.3): the document store's synchronous
+    // blob resolution for source media, ffmpeg re-resolved per export from
+    // the configured settings (settings changes apply without a restart).
+    const exporter = createAnimationExportService({
+      store,
+      resolveMedia: (relPath) => documents.resolveBlobFile(relPath)?.absPath ?? null,
+      ffmpegPath: () => loadSettingsCached().ffmpegPath || 'ffmpeg',
+      logFailure,
+    })
     realtimeHub.tapEngineEvent(makeEngineEventTap(store, owner))
     // The submission gate: resolved when the boot reconcile sweep finishes
     // (whatever it found) — submissions serialize behind the sweep.
@@ -612,6 +622,7 @@ export function createStudioServer(paths: StudioServerPaths) {
     const handle = createAnimationRoutes({
       store,
       service,
+      exporter,
       emitAnimation: (type, payload) => realtimeHub.emitAnimation(type, payload),
       ready: () => animationReadyPromise,
       engineAllowed: () => {

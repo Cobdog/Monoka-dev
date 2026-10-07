@@ -88,10 +88,18 @@
  * of dropping (task 9's Minor-2), and `rerollSequence` gains the
  * one-render-per-window guard `submitSequence` already had (task 12's
  * Minor-1).
+ *
+ * What task 14 adds: the EXPORT surface (§11.3) — `exportSequence`
+ * (assembles and downloads the review ZIP: sequence.mp4 + manifest.json).
+ * It owns its own phase, deliberately not `busy`: the server FREEZES the
+ * document truth before assembly, so authoring during an export is safe by
+ * design. A stale-but-usable sequence answers with the acknowledgment
+ * prompt (`exportStale` — each stale selection named); retrying with the
+ * acknowledgment exports and records the staleness in the manifest.
  */
 import { useEffect } from 'react'
 import { create } from 'zustand'
-import { animationApi, animationHref, AnimationConflict, AnimationHttpError, type AnimationDocumentView } from './client'
+import { animationApi, animationHref, AnimationConflict, AnimationHttpError, type AnimationDocumentView, type AnimationExportStalePrompt } from './client'
 import { subscribeAnimationEvents } from './fabric'
 import { documentsApi } from '../canvas/api'
 import { ANIMATION_MEDIA, type AssetReference, type AttemptExecutionState, type BindingInput, type FacingTerm, type KeyCandidate, type MediumString, type Span } from '../../shared/animation/types'
@@ -144,6 +152,14 @@ type AnimationSessionState = {
   conflict: AnimationConflictNotice | null
   busy: boolean
   commandError: string | null
+  /** Task 14 — the export surface's own phase (never `busy`: the frozen
+   *  snapshot makes concurrent authoring safe by design, §11.3). */
+  exportPhase: 'idle' | 'running' | 'done'
+  exportError: string | null
+  /** The stale acknowledgment prompt (§11.3): the export's 428 answer — the
+   *  stale-but-usable selections, each named; cleared by the next attempt. */
+  exportStale: AnimationExportStalePrompt[] | null
+  lastExportName: string | null
   projectDocuments: AnimationDocumentList
   assets: AnimationAssetPick[]
   assetsFailed: boolean
@@ -235,6 +251,12 @@ type AnimationSessionState = {
    *  the spanless lane (spanId null). One contribution per (span, attempt) —
    *  re-choosing updates in place. */
   contributeClip(spanId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number): Promise<boolean>
+  /** Task 14 — the export surface (§11.3): assembles and downloads the
+   *  review ZIP (sequence.mp4 + manifest.json). Deliberately NOT
+   *  busy-gated: the server FREEZES the document truth before assembly, so
+   *  authoring during an export is safe by design — the export tracks its
+   *  own phase instead. True = the package downloaded. */
+  exportSequence(acknowledgeStale: boolean): Promise<boolean>
   /** The assembled sequence's order (§9): the FULL new order, a permutation
    *  of the current contribution ids. */
   reorderContributions(orderedIds: string[]): Promise<boolean>
@@ -496,13 +518,17 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
   conflict: null,
   busy: false,
   commandError: null,
+  exportPhase: 'idle',
+  exportError: null,
+  exportStale: null,
+  lastExportName: null,
   projectDocuments: null,
   assets: [],
   assetsFailed: false,
 
   open: async (documentId, projectId) => {
     const ticket = ++openTicket
-    set({ phase: 'loading', errorDetail: '', document: null, attemptState: null, refreshFailed: false, conflict: null, busy: false, commandError: null, projectDocuments: null, assets: [], assetsFailed: false })
+    set({ phase: 'loading', errorDetail: '', document: null, attemptState: null, refreshFailed: false, conflict: null, busy: false, commandError: null, projectDocuments: null, assets: [], assetsFailed: false, exportPhase: 'idle', exportError: null, exportStale: null, lastExportName: null })
     if (documentId) {
       try {
         const view = await animationApi.getDocument(documentId)
@@ -1195,6 +1221,40 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     }
   },
 
+  exportSequence: async (acknowledgeStale) => {
+    const current = get().document
+    if (!current) return false
+    if (get().exportPhase === 'running') return false
+    set({ exportPhase: 'running', exportError: null, exportStale: null })
+    try {
+      const result = await animationApi.exportSequence(current.id, acknowledgeStale)
+      if (result.ok) {
+        // The delivery: the archive lands in the browser's download stream
+        // (a programmatic anchor click — the only sanctioned way to hand a
+        // fetched blob to the user's disk).
+        const url = URL.createObjectURL(result.archive)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = result.fileName
+        document.body.append(anchor)
+        anchor.click()
+        anchor.remove()
+        URL.revokeObjectURL(url)
+        set({ exportPhase: 'done', lastExportName: result.fileName, exportStale: null, exportError: null })
+        return true
+      }
+      set({
+        exportPhase: 'idle',
+        exportError: result.error,
+        exportStale: result.stale !== null && result.stale.length > 0 ? result.stale : null,
+      })
+      return false
+    } catch (error) {
+      set({ exportPhase: 'idle', exportError: error instanceof Error ? error.message : String(error), exportStale: null })
+      return false
+    }
+  },
+
   createEmptyDocument: async (projectId) => {
     if (get().busy) return false
     set({ busy: true, commandError: null })
@@ -1312,6 +1372,7 @@ export function useAnimationDocument(documentId: string, projectId = '') {
       contributeClip: session.contributeClip,
       reorderContributions: session.reorderContributions,
       removeContribution: session.removeContribution,
+      exportSequence: session.exportSequence,
       createEmptyDocument: session.createEmptyDocument,
       retry: session.retry,
       clearCommandError: session.clearCommandError,

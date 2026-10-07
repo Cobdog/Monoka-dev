@@ -176,3 +176,12 @@
 .anim-editorial-clip { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
 .anim-editorial-clip-source { display: grid; gap: 2px; }
 .anim-editorial-clip[data-anim-clip-contributed='true'] { border-style: dashed; }
+
+/* Task 14 (k2q0n9s, spec §11.3) — the delivery surface: the review-package
+   export under the assembly layer, geometry only. */
+.anim-export { display: grid; gap: 12px; max-width: 88ch; justify-self: start; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-export h3 { margin: 0; font-size: var(--text-lg); }
+.anim-export-stale { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--danger); border-radius: 8px; background: var(--surface-2); }
+.anim-export-stale p { margin: 0; }
+.anim-export-ack { display: flex; gap: 8px; align-items: start; color: var(--muted); font-size: var(--text-sm); }
+.anim-export-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }

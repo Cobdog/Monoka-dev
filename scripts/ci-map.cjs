@@ -55,6 +55,7 @@ const REPO = path.resolve(__dirname, '..')
 const SUITES = {
   'animation-compiler': { build: null, windows: false, python: false, ffmpeg: false },
   'animation-rendering': { build: 'server', windows: false, python: false, ffmpeg: false },
+  'animation-export': { build: 'full', windows: false, python: false, ffmpeg: true },
   'animation-routes': { build: 'full', windows: false, python: false, ffmpeg: false },
   'animation-store': { build: 'server', windows: false, python: false, ffmpeg: false },
   'animation-timeline-model': { build: null, windows: false, python: false, ffmpeg: false },
@@ -103,10 +104,10 @@ const SUITES = {
 
 /** Every suite that boots dist-server/server/index.js directly (route-level
  *  integration): the honest fan-out for the server seams. */
-const BOOTING = ['animation-routes', 'datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const BOOTING = ['animation-export', 'animation-routes', 'datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 
 /** Every suite drawing scratch ports through tests/lib/ports.cjs. */
-const PORT_USERS = ['animation-rendering', 'animation-routes', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 /** Every kit suite reading src/styles.css through the shared sheet reader
  *  (tests/lib/styleSheet.cjs — the near-term-A parser consolidation). */
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
@@ -282,6 +283,7 @@ const RULES = [
   { match: ['server/db.ts'], suites: ['datasets', 'documents', 'storage', 'animation-store'], reason: 'the sqlite layer: migrations (documents + animation-store via 006), dataset tables (datasets), jobs/library (storage).' },
   { match: ['server/animation/store.ts'], suites: ['animation-store', 'animation-rendering', 'animation-routes'], reason: 'the animation document store — its suite drives it directly off dist-server; the rendering suite composes the same store under the real fake engine; the routes suite drives every authoring command + landing through the mounted HTTP block (task 5 landed removeSpan + attemptsForDocument there).' },
   { match: ['server/animation/rendering.ts', 'server/animation/completion-owner.ts'], suites: ['animation-rendering', 'animation-routes'], reason: 'the rendering service + the shared completion owner — the rendering suite runs their dispatch/observation/landing/reconciliation paths for real against the fake engine; the routes suite reaches them through the real server process (submit/getState/cancel/extract-frame + boot reconcile).' },
+  { match: ['server/animation/export.ts'], suites: ['animation-export'], reason: 'the export pipeline (task 14, spec §11.3) — its own suite owns it end to end: the pure gate + manifest derivations and the real assembly (server + fake engine + ffmpeg) over HTTP.' },
   { match: ['server/animation/routes.ts'], suites: ['animation-routes'], reason: 'the animation HTTP block — a pure handler mounted by core.ts; its suite boots the real server against the fake engine.' },
   { match: ['server/documents.ts', 'server/documentArchive.ts'], suites: ['documents', 'animation-store'], reason: 'document store + zip archive — the animation round-trip (spec §11.3) rides the same archive, exercised by the animation-store suite.' },
   { match: ['server/realtime.ts'], suites: ['realtime', 'manager-install', 'animation-routes'], reason: 'the fabric — WS realtime framing/delivery; the Manager cm-queue event normalizer (0pktw5h) is exercised by the manager-install suite too, and the animation channel + emitAnimation + the engine-event tap (animation module task 5) are driven end-to-end by the animation-routes suite.' },

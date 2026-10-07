@@ -126,6 +126,17 @@ export class AnimationConflict extends AnimationHttpError {
   }
 }
 
+/** One stale-but-usable selection the export acknowledgment prompt names
+ *  (§11.3 — the 428 body's list, mirrored from server/animation/export.ts). */
+export type AnimationExportStalePrompt = { contributionId: string; attemptId: string; label: string; reasons: string[] }
+
+/** The export command's answer: the archive bytes + download name, or the
+ *  named failure — with the stale prompt when the export waits on the
+ *  explicit acknowledgment. */
+export type AnimationExportResult =
+  | { ok: true; fileName: string; archive: Blob; manifestVersion: number }
+  | { ok: false; stale: AnimationExportStalePrompt[] | null; error: string }
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -292,5 +303,37 @@ export const animationApi = {
    *  carries the outcome; an attempt that never landed answers 400). */
   retryPreparation: async (attemptId: string): Promise<void> => {
     await post('/api/lan/animation/attempt/retry-preparation', { attemptId })
+  },
+
+  /** The export pipeline (task 14, §11.3): freezes the document truth,
+   *  gates it, assembles the review package, and answers the ZIP bytes.
+   *  NOT the JSON `call` path — the success body is the archive itself.
+   *  A stale-but-usable sequence without `acknowledgeStale` answers 428
+   *  with the stale list (the explicit-acknowledgment prompt, §11.3); the
+   *  gate's named refusals answer 400/404 with their reasons. */
+  exportSequence: async (documentId: string, acknowledgeStale: boolean): Promise<AnimationExportResult> => {
+    const headers = new Headers({ 'content-type': 'application/json' })
+    headers.set('x-minimax-token', new URLSearchParams(window.location.search).get('token') ?? '')
+    const response = await fetch('/api/lan/animation/export', { method: 'POST', headers, body: JSON.stringify({ documentId, acknowledgeStale }) })
+    if (response.ok) {
+      const disposition = response.headers.get('content-disposition') ?? ''
+      const named = /filename="([^"]+)"/.exec(disposition)
+      return {
+        ok: true,
+        fileName: named?.[1] ?? 'animation-export.zip',
+        archive: await response.blob(),
+        manifestVersion: Number(response.headers.get('x-animation-manifest-version') ?? '0'),
+      }
+    }
+    const body = await response.json().catch(() => ({})) as Record<string, unknown>
+    const stale = Array.isArray(body.staleSelections)
+      ? body.staleSelections.filter((entry): entry is AnimationExportStalePrompt =>
+        typeof entry === 'object' && entry !== null && typeof (entry as AnimationExportStalePrompt).label === 'string')
+      : null
+    return {
+      ok: false,
+      stale,
+      error: typeof body.error === 'string' ? body.error : `the export failed (${response.status})`,
+    }
   },
 }
