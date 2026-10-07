@@ -1,4 +1,5 @@
 import http from 'node:http'
+import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { spawn, type ChildProcess } from 'node:child_process'
@@ -2237,4 +2238,181 @@ test('the inspector follows external intent writes, parks its persist behind bus
     await page.unroute('**/api/lan/animation/spans')
   }
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// Task 14 — the export surface (§9 export in scope + §11.3 the export
+// packaging decision): the delivery layer. One review package — a ZIP with
+// sequence.mp4 (silent H.264, constant 24 fps, the document's output
+// dimensions) + manifest.json (the versioned assembly recipe) — assembled
+// from a FROZEN snapshot, with stale-but-usable selections exporting only
+// past an explicit acknowledgment. Plus task 13's carried M1: the sequence
+// re-roll's per-window in-flight guard, pinned (a named refusal when a take
+// of the SAME window is still rendering — never a second render).
+// ---------------------------------------------------------------------------
+
+test('the §11.3 export slice — the review package downloads, and stale selections demand the explicit acknowledgment (export)', async ({ page, request }) => {
+  test.setTimeout(150_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedEditorialDocument(request, projectId, 'The export slice')
+    const [startKey, endKey] = seeded.keyIds
+
+    // The tween lane's take, landed through the API (the review flows are
+    // pinned by their own slices; the export slice needs the landed truth).
+    let revision = seeded.revision
+    const inserted = await (await request.post('/api/lan/animation/spans', {
+      data: { op: 'insert', documentId: seeded.documentId, expectedRevision: revision, fromKeyId: startKey, toKeyId: endKey, intent: { movement: 'she pushes through into a stride', preservation: 'silhouette intact' } },
+    })).json() as { spanId: string; document: { revision: number; body: { spans: Array<{ id: string; stepSlots: Array<{ id: string }> }> } } }
+    expect(inserted.spanId, 'the span inserts').toBeTruthy()
+    revision = inserted.document.revision
+    const stepSlotId = inserted.document.body.spans.find((span) => span.id === inserted.spanId)!.stepSlots[0]!.id
+    const submitted = await (await request.post('/api/lan/animation/attempts', {
+      data: {
+        documentId: seeded.documentId, tool: 'tween', targetId: stepSlotId, idempotencyKey: `anim-e2e-export-${Date.now()}`,
+        draft: { tool: 'tween', targetStepSlotId: stepSlotId, movementStep: 'she shifts her weight onto the heel, hips following', overrides: { medium: 'clean line on white' } },
+      },
+    })).json() as { attemptId: string }
+    await expect.poll(async () => (await readAttemptView(request, submitted.attemptId)).attempt.execution, { timeout: 30_000 }).toBe('ready')
+
+    // The panel contributes the landed take, then exports.
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    const panel = page.locator('[data-anim-editorial]')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    const clipRow = panel.locator(`[data-anim-editorial-clip="${submitted.attemptId}"]`)
+    await expect(clipRow).toBeVisible()
+    await clipRow.locator('[data-anim-editorial-in]').fill('2')
+    await clipRow.locator('[data-anim-editorial-out]').fill('10')
+    await clipRow.locator('[data-anim-editorial-hold]').fill('6')
+    await clipRow.locator('[data-anim-editorial-add]').click()
+    await expect(panel.locator('[data-anim-editorial-total]')).toHaveText('14 frames — 0.6 s at 24 fps')
+
+    const exportPanel = page.locator('[data-anim-export]')
+    await expect(exportPanel).toBeVisible()
+    await expect(exportPanel.locator('[data-anim-export-summary]')).toHaveText('14 frames — 0.6 s at 24 fps')
+    await expect(exportPanel.locator('[data-anim-export-blocked]')).toHaveCount(0)
+
+    // The download: one ZIP whose name carries the document, revision, and
+    // frame total (the content truth is the unit suite's — this pins the
+    // DELIVERY, the surface's whole job).
+    const [firstDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      exportPanel.locator('[data-anim-export-submit]').click(),
+    ])
+    expect(firstDownload.suggestedFilename()).toMatch(/^The_export_slice-rev\d+-14f\.zip$/)
+    const firstPath = await firstDownload.path()
+    const archive = firstPath ? fs.readFileSync(firstPath) : Buffer.alloc(0)
+    expect(archive.length).toBeGreaterThan(10_000, 'the downloaded ZIP is a real package')
+    expect(archive.subarray(0, 2).toString('latin1')).toBe('PK', 'the payload is a ZIP')
+    await expect(exportPanel.locator('[data-anim-export-done]')).toBeVisible()
+    await expect(exportPanel.locator('[data-anim-export-error]')).toHaveCount(0)
+    await expect(exportPanel.locator('[data-anim-export-stale]')).toHaveCount(0)
+
+    // STALE-BUT-USABLE (§11.3): the span's intent changes after the landing —
+    // the export now answers the acknowledgment prompt naming the selection,
+    // never a silent package and never a refused download without a reason.
+    const current = await readAnimationDocument(request, seeded.documentId)
+    const staled = await request.post('/api/lan/animation/spans', {
+      data: { op: 'update-intent', documentId: seeded.documentId, spanId: inserted.spanId, intent: { movement: 'she turns to leave', preservation: 'silhouette intact' }, expectedRevision: current.document.revision },
+    })
+    expect(staled.ok(), `the intent change marks the span stale (${await staled.text()})`).toBe(true)
+
+    // A bounded NEGATIVE observation window (testing.md's sanctioned class):
+    // no download may fire for an unacknowledged stale sequence. The wait's
+    // timeout resolving EMPTY is the assertion.
+    const noDownload = page.waitForEvent('download', { timeout: 6_000 })
+    await exportPanel.locator('[data-anim-export-submit]').click()
+    expect(await noDownload.then(() => true, () => false)).toBe(false)
+    await expect(exportPanel.locator('[data-anim-export-stale]')).toBeVisible({ timeout: 10_000 })
+    await expect(exportPanel.locator('[data-anim-export-stale]')).toContainText('stale: intent')
+    await expect(exportPanel.locator('[data-anim-export-error]')).toContainText('stale-but-usable')
+    // The acknowledged export: the checkbox, the second button, the package.
+    await exportPanel.locator('[data-anim-export-ack-check]').check()
+    const [secondDownload] = await Promise.all([
+      page.waitForEvent('download'),
+      exportPanel.locator('[data-anim-export-submit-ack]').click(),
+    ])
+    expect(secondDownload.suggestedFilename()).toMatch(/-14f\.zip$/)
+    await expect(exportPanel.locator('[data-anim-export-done]')).toBeVisible({ timeout: 10_000 })
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('the sequence re-roll refuses while the same window renders — the per-window guard (sequence, task 12 M1)', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  // A DEAD engine port (reserved then released — nothing listens): a take
+  // dispatched at it fails to connect, the outcome is UNCERTAIN, and the
+  // attempt settles 'reconciling' — in flight forever, the honest racing
+  // shape whose own submission still answers promptly.
+  const deadHolder = http.createServer(() => undefined)
+  const deadPort = await new Promise<number>((resolve) => deadHolder.listen(0, '127.0.0.1', () => resolve((deadHolder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => deadHolder.close(() => resolve()))
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const document = await createDocument(request, projectId, 'The re-roll guard')
+    const revisionOf = async () => ((await readAnimationDocument(request, document.id)).document.revision)
+    const keyOne = await makeSelectedKey(request, document.id, await revisionOf())
+    const keyTwo = await makeSelectedKey(request, document.id, await revisionOf())
+
+    // TAKE ONE lands through the fake engine (its frozen window is the
+    // re-roll's durable input).
+    const first = await (await request.post('/api/lan/animation/attempts', {
+      data: {
+        documentId: document.id, tool: 'sequence', targetId: keyOne, idempotencyKey: `anim-e2e-m1-first-${Date.now()}`,
+        draft: { tool: 'sequence', windowStartKeyId: keyOne, windowEndKeyId: keyTwo, orderedActions: SEQUENCE_BEATS, preservation: SEQUENCE_PRESERVATION, overrides: { medium: 'clean line on white' } },
+      },
+    })).json() as { attemptId: string }
+    await expect.poll(async () => (await readAttemptView(request, first.attemptId)).attempt.execution, { timeout: 30_000 }).toBe('ready')
+
+    // The server's engine now points at the STUB: take two — the same frozen
+    // window, a fresh idempotency key — dispatches and never resolves, so the
+    // window holds one landed take and one IN FLIGHT.
+    await request.post('/api/lan/settings', { data: { settings: { ...originalSettings, comfyUrl: `http://127.0.0.1:${deadPort}` } } })
+    const second = await (await request.post('/api/lan/animation/attempts', {
+      data: {
+        documentId: document.id, tool: 'sequence', targetId: keyOne, idempotencyKey: `anim-e2e-m1-second-${Date.now()}`,
+        draft: { tool: 'sequence', windowStartKeyId: keyOne, windowEndKeyId: keyTwo, orderedActions: SEQUENCE_BEATS, preservation: SEQUENCE_PRESERVATION, overrides: { medium: 'clean line on white' } },
+      },
+    })).json() as { attemptId: string }
+    await expect.poll(async () => (await readAttemptView(request, second.attemptId)).attempt.execution, { timeout: 15_000 }).toMatch(/reconciling|queued/)
+
+    // The review: the window's takes strip shows both; the reviewer picks the
+    // LANDED take (the newest is the in-flight one, whose button is disabled)
+    // and re-rolls it — the command guard keys off the FROZEN window pair,
+    // finds the in-flight take, and refuses BY NAME. No third render exists.
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${document.id}`)
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    await timeline.locator(`[data-anim-key="${keyOne}"]`).click()
+    const review = page.locator('[data-anim-seq-review]')
+    await expect(review).toBeVisible({ timeout: 10_000 })
+    const takes = review.locator('[data-anim-review-take]')
+    await expect(takes).toHaveCount(2, { timeout: 10_000 })
+    await review.locator(`[data-anim-review-take="${first.attemptId}"]`).click()
+    await expect(review).toHaveAttribute('data-anim-review-attempt', first.attemptId)
+    await review.locator('[data-anim-review-reroll]').click()
+    await expect(page.locator('[data-anim-command-error]')).toContainText('already in flight', { timeout: 10_000 })
+    // And the refusal was the WHOLE effect: still exactly two takes.
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, document.id)
+      return view.document.attempts.filter((entry) => entry.tool === 'sequence').length
+    }, { timeout: 10_000 }).toBe(2)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
 })

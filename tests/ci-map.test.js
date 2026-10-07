@@ -134,7 +134,7 @@ test('(5e) shared test infra fans out honestly', () => {
   eq(resolve(['tests/lib/ports.cjs']).suites, PORT_USERS, 'the port allocator maps to every suite that draws ranges')
   eq(resolve(['tests/lib/styleSheet.cjs']).suites, SHEET_USERS, 'the shared sheet reader maps to every kit suite that parses styles.css')
   eq(resolve(['scripts/lib/ts-vm.cjs']).suites, VM_SUITES, 'the VM harness maps to every client suite')
-  ok(PORT_USERS.length === 15, 'the port-suite inventory is the declared fifteen (manager-install joined, 0pktw5h; resync joined, 68e9k17; animation-rendering joined, k2q0n9s task 4; animation-routes joined, k2q0n9s task 5)')
+  ok(PORT_USERS.length === 16, 'the port-suite inventory is the declared sixteen (manager-install joined, 0pktw5h; resync joined, 68e9k17; animation-rendering joined, k2q0n9s task 4; animation-routes joined, k2q0n9s task 5; animation-export joined, k2q0n9s task 14)')
   ok(SHEET_USERS.length === 10, 'the sheet-reader inventory is the declared ten (statusToken + the nine *-classes kits, near-term A)')
 })
 

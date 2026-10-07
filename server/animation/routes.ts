@@ -45,6 +45,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CanvasSchemaVersionError } from '../documents'
 import { AnimationConflictError, AnimationRuleError, type AnimationDocumentRow, type AnimationStore } from './store'
 import type { AnimationRenderingService } from './rendering'
+import type { AnimationExportService } from './export'
+import { AnimationExportStaleError } from './export'
 import type { CompletionOwner } from './completion-owner'
 import type { JobLifecycleEvent } from '../../src/types'
 import {
@@ -218,6 +220,10 @@ export function makeEngineEventTap(store: AnimationStore, owner: CompletionOwner
 export type AnimationRouteDeps = {
   store: AnimationStore
   service: AnimationRenderingService
+  /** The export pipeline (task 14, §11.3) — freezes, gates, assembles, and
+   *  answers the review ZIP; wired by core.ts with the document store's
+   *  blob resolution and the configured ffmpeg. */
+  exporter: AnimationExportService
   emitAnimation: (type: string, payload: unknown) => void
   /** Resolves when the boot reconcile sweep finished — submissions serialize
    *  behind it (the ready flag; §11.4 never blindly resubmits). */
@@ -231,7 +237,7 @@ export type AnimationRouteDeps = {
 }
 
 export function createAnimationRoutes(deps: AnimationRouteDeps): (request: IncomingMessage, response: ServerResponse, url: URL) => Promise<void> {
-  const { store, service, emitAnimation, ready, engineAllowed, sendJson, readJson } = deps
+  const { store, service, exporter, emitAnimation, ready, engineAllowed, sendJson, readJson } = deps
 
   // ---- shared plumbing ------------------------------------------------------
 
@@ -768,6 +774,37 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       } catch (error) {
         if (animationFailure(response, error)) return
         throw error
+      }
+    }
+
+    if (pathname === '/api/lan/animation/export' && request.method === 'POST') {
+      // The delivery layer (task 14, §11.3): freeze → gate → assemble → the
+      // review ZIP. The stale acknowledgment rides the request
+      // (`acknowledgeStale: true`, the datasets acceptWarnings idiom); a
+      // stale-but-usable sequence WITHOUT it answers 428 Precondition
+      // Required carrying the stale list — a code deliberately distinct
+      // from the module's 409 revision-conflict rebase surface. The gate's
+      // named refusals (missing media, out-of-range selections, unlanded
+      // takes) answer 400 through the shared mapping; a tool failure
+      // answers a LOUD 500 naming the stage, never a structural whisper.
+      const body = await readJson(request, 10_000)
+      const documentId = typeof body.documentId === 'string' ? body.documentId : ''
+      try {
+        const exported = await exporter.export(documentId, body.acknowledgeStale === true)
+        response.writeHead(200, {
+          'content-type': 'application/zip',
+          'content-disposition': `attachment; filename="${exported.fileName}"`,
+          'content-length': String(exported.archive.length),
+          'x-animation-manifest-version': String(exported.manifest.manifestVersion),
+          'cache-control': 'no-store',
+        })
+        return void response.end(exported.archive)
+      } catch (error) {
+        if (error instanceof AnimationExportStaleError) {
+          return sendJson(response, 428, { error: error.message, staleSelections: error.staleSelections })
+        }
+        if (animationFailure(response, error)) return
+        return sendJson(response, 500, { error: error instanceof Error ? error.message : 'The export failed.' })
       }
     }
 

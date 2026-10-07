@@ -59,6 +59,7 @@ import { HeroReview } from './HeroReview'
 import { SequencePanel } from './SequencePanel'
 import { SequenceReview } from './SequenceReview'
 import { EditorialPanel } from './EditorialPanel'
+import { ExportPanel } from './ExportPanel'
 import { IN_FLIGHT } from './reviewStatus'
 import { deriveAssembledSequence, deriveContributableClips, deriveReviewPosition, deriveTimeline } from './timelineModel'
 import { deriveHeroPreview, deriveTweenPreview, useAnimationDocument } from './state'
@@ -504,6 +505,20 @@ export function AnimationApp() {
                     void session.commands.contributeClip(spanId, attemptId, inFrame, outFrame, holdDuration)}
                   onReorder={(orderedIds) => void session.commands.reorderContributions(orderedIds)}
                   onRemove={(contributionId) => void session.commands.removeContribution(contributionId)}
+                />
+              )}
+              {/* The delivery surface (task 14, §11.3): the review package —
+                  sequence.mp4 + manifest.json in one ZIP, assembled from a
+                  FROZEN snapshot (edits during export are safe by design),
+                  stale selections acknowledged explicitly. */}
+              {assembledSequence !== null && (
+                <ExportPanel
+                  assembled={assembledSequence}
+                  exportPhase={session.exportPhase}
+                  exportError={session.exportError}
+                  exportStale={session.exportStale}
+                  lastExportName={session.lastExportName}
+                  onExport={(acknowledgeStale) => void session.commands.exportSequence(acknowledgeStale)}
                 />
               )}
             </section>
