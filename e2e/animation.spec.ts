@@ -735,3 +735,218 @@ test('the selection state creates a new empty animation document (timeline)', as
   await expect(page.locator('[data-anim-revision]')).toHaveText('rev 0')
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
+
+// ---------------------------------------------------------------------------
+// Task 9 — the span inspector (§6.1 the hybrid inspector, §6.2 the tween
+// template, §6.3 the compiler's enforcement boundary, §6.4 the
+// rolling-reference problem): selecting a span opens the authoring form under
+// the timeline — the two endpoint frames with poses bound to the SELECTED
+// candidates, facing pickers over the closed vocabulary, the debounced
+// movement draft (preview recompute + durable intent persist on one settle),
+// the inherited medium, the collapsed CLIENT-COMPILED "View caption" preview
+// (the shared module's first browser import), advisory hints that never
+// rewrite, and the explicit step submission whose frozen caption is the
+// previewed text verbatim.
+// ---------------------------------------------------------------------------
+
+/** The span inspector's seed: a bound document with TWO selected keys (real
+ *  blob images; the from key also carries an UNSELECTED alternative candidate
+ *  with a different pose + facing) and ONE tween span (the insert's single
+ *  seeded step slot). The far pose deliberately reads as a COMPARATIVE
+ *  destination ("farther than…") so the advisory hint is seeded truth, and
+ *  the facings differ per frame so the caption's facing text disambiguates
+ *  them. */
+async function seedInspectorDocument(request: APIRequestContext, projectId: string, name: string) {
+  const relPathFrom = await ingestKeyImage(request, 'anim-insp-from.png')
+  const relPathTo = await ingestKeyImage(request, 'anim-insp-to.png')
+  const created = await (await request.post('/api/lan/animation/documents', {
+    data: { projectId, name, binding: { characterDescription: 'a lanky courier in a long coat', referenceAssetIds: [uuid()], medium: 'clean line on white', initialKeyAssetId: relPathFrom } },
+  })).json() as { document: { id: string; revision: number } }
+  const documentId = created.document.id
+  let revision = created.document.revision
+
+  const keyCommand = async (payload: Record<string, unknown>) => {
+    const landed = await (await request.post('/api/lan/animation/keys', { data: { documentId, expectedRevision: revision, ...payload } })).json() as { document: { revision: number } }
+    revision = landed.document.revision
+  }
+  const select = async (keyId: string, candidateId: string) => {
+    const landed = await (await request.post('/api/lan/animation/select/key-candidate', { data: { documentId, keyId, candidateId, expectedRevision: revision } })).json() as { document: { revision: number } }
+    revision = landed.document.revision
+  }
+
+  const fromKeyId = uuid()
+  const fromSelected = uuid()
+  const fromAlternative = uuid()
+  await keyCommand({
+    op: 'add-candidate', keyId: fromKeyId,
+    candidate: { id: fromSelected, assetReference: { assetId: `animref-${uuid().slice(0, 8)}`, relPath: relPathFrom, kind: 'image' }, origin: 'import', provenance: { assetId: 'animref-from' }, poseDescription: 'mid-stride, arms pumping', facing: 'screen-left' },
+  })
+  await keyCommand({
+    op: 'add-candidate', keyId: fromKeyId,
+    candidate: { id: fromAlternative, assetReference: { assetId: `animref-${uuid().slice(0, 8)}`, relPath: relPathFrom, kind: 'image' }, origin: 'import', provenance: { assetId: 'animref-from-alt' }, poseDescription: 'planted flat, weight settled on the back foot', facing: 'screen-right' },
+  })
+  await select(fromKeyId, fromSelected)
+
+  const toKeyId = uuid()
+  const toSelected = uuid()
+  await keyCommand({
+    op: 'add-candidate', keyId: toKeyId,
+    candidate: { id: toSelected, assetReference: { assetId: `animref-${uuid().slice(0, 8)}`, relPath: relPathTo, kind: 'image' }, origin: 'import', provenance: { assetId: 'animref-to' }, poseDescription: 'turned farther than the start, head past the shoulder line', facing: 'toward camera' },
+  })
+  await select(toKeyId, toSelected)
+
+  const span = await (await request.post('/api/lan/animation/spans', {
+    data: { op: 'insert', documentId, fromKeyId, toKeyId, intent: { movement: 'she pushes off the back foot into a full stride', preservation: 'coat hem and scarf stay consistent' }, expectedRevision: revision },
+  })).json() as { document: { revision: number; body: { spans: Array<{ id: string; stepSlots: Array<{ id: string }> }> } }; spanId: string }
+  revision = span.document.revision
+  const stepSlotId = span.document.body.spans.find((entry) => entry.id === span.spanId)!.stepSlots[0]!.id
+
+  return { documentId, revision, fromKeyId, fromSelected, fromAlternative, toKeyId, spanId: span.spanId, stepSlotId }
+}
+
+/** Opens the seeded document, selects the span, and returns the opened
+ *  caption-text locator (the preview's disclosure starts collapsed and is
+ *  opened explicitly — the §6.3 affordance). */
+async function openInspectorCaption(page: Page, projectId: string, seeded: Awaited<ReturnType<typeof seedInspectorDocument>>) {
+  const timeline = await openTimeline(page, projectId, seeded.documentId)
+  await timeline.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+  const inspector = page.locator('[data-anim-inspector]')
+  await expect(inspector).toBeVisible()
+  await expect(inspector).toHaveAttribute('data-anim-inspector-span', seeded.spanId)
+  await page.locator('[data-anim-caption-preview] summary').click()
+  const caption = page.locator('[data-anim-caption-text]')
+  await expect(caption).toBeVisible()
+  return { inspector, caption }
+}
+
+test('editing the movement text recompiles the caption preview and persists the span intent (inspector)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await seedInspectorDocument(request, projectId, 'Inspector movement')
+  await openTimeline(page, projectId, seeded.documentId)
+  // Nothing selected — no inspector yet; selecting the span opens it.
+  await expect(page.locator('[data-anim-inspector]')).toHaveCount(0)
+  await page.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+  const inspector = page.locator('[data-anim-inspector]')
+  await expect(inspector).toBeVisible()
+  await expect(inspector).toHaveAttribute('data-anim-inspector-span', seeded.spanId)
+  // The caption preview starts COLLAPSED (§6.3's collapsed "View caption").
+  await expect(page.locator('[data-anim-caption-text]')).toBeHidden()
+  await page.locator('[data-anim-caption-preview] summary').click()
+  const caption = page.locator('[data-anim-caption-text]')
+  await expect(caption).toBeVisible()
+  // The seeded compile — FIRST FRAME carries the ROLLING reference's pose
+  // (the from key's selected candidate: the chain has landed nothing), the
+  // far frame its own, MOVEMENT the intent VERBATIM, and the badge names the
+  // compiler the submission will freeze with.
+  await expect(caption).toContainText('FIRST FRAME (Reference 1): mid-stride, arms pumping, facing screen-left')
+  await expect(caption).toContainText('TARGET END FRAME (Reference 2): turned farther than the start, head past the shoulder line, facing toward camera')
+  await expect(caption).toContainText('MOVEMENT: she pushes off the back foot into a full stride')
+  await expect(caption).toContainText('SCENE: clean line on white.')
+  await expect(page.locator('[data-anim-caption-compiler]')).toHaveText('v1')
+  // Edit the movement: the preview recomputes on the settle (the bounded
+  // named-condition wait — the debounce's commit IS the condition).
+  const MOVEMENT = 'the lead foot plants and the weight transfers through the hip'
+  await page.locator('[data-anim-inspector-movement]').fill(MOVEMENT)
+  await expect(caption).toContainText(`MOVEMENT: ${MOVEMENT}`, { timeout: 5_000 })
+  // The same settle persisted the durable intent — the revision moved by
+  // exactly the one debounced update-intent, and the span bar's label shows
+  // the authored text.
+  await expect(page.locator('[data-anim-revision]')).toHaveText(`rev ${seeded.revision + 1}`, { timeout: 5_000 })
+  await expect(page.locator(`[data-anim-span="${seeded.spanId}"]`)).toContainText(MOVEMENT)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('the first frame follows the rolling reference — a new selected image changes the pose (inspector)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await seedInspectorDocument(request, projectId, 'Inspector rolling')
+  const { caption } = await openInspectorCaption(page, projectId, seeded)
+  await expect(caption).toContainText('FIRST FRAME (Reference 1): mid-stride, arms pumping, facing screen-left')
+  // The §6.4 label names the source: the start key's SELECTED image — the
+  // chain has landed no step — never a frozen endpoint copy.
+  await expect(page.locator('[data-anim-frame-source="start-key"]')).toBeVisible()
+  // Select the from key's OTHER candidate behind the page's back (§5.3's
+  // explicit selection through the real route): the fabric's
+  // document-changed envelope refreshes the document, and the rolling
+  // reference — resolved to the start key's selected image — now carries the
+  // NEW candidate's pose and facing. The old pose is gone, not appended.
+  const current = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { revision: number } }
+  const landed = await request.post('/api/lan/animation/select/key-candidate', {
+    data: { documentId: seeded.documentId, keyId: seeded.fromKeyId, candidateId: seeded.fromAlternative, expectedRevision: current.document.revision },
+  })
+  expect(landed.ok(), `the rolling-reference selection lands (${await landed.text()})`).toBe(true)
+  await expect(caption).toContainText('FIRST FRAME (Reference 1): planted flat, weight settled on the back foot, facing screen-right', { timeout: 10_000 })
+  await expect(caption).not.toContainText('mid-stride, arms pumping')
+  // The destination frame is untouched by the start-side change.
+  await expect(caption).toContainText('TARGET END FRAME (Reference 2): turned farther than the start')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('comparative destination and negation surface as advisory hints, never rewrites (inspector)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await seedInspectorDocument(request, projectId, 'Inspector hints')
+  const { caption } = await openInspectorCaption(page, projectId, seeded)
+  // The seeded far pose is comparative ("farther than") — exactly the seeded
+  // hint, and the ONLY one (both frames carry facings; the movement carries
+  // no negation and names no facing).
+  await expect(page.locator('[data-anim-caption-hint]')).toHaveCount(1)
+  const comparative = page.locator('[data-anim-caption-hint="comparative-destination"]')
+  await expect(comparative).toBeVisible()
+  await expect(comparative).toContainText('describe the destination directly')
+  // Advisory means VERBATIM: the comparative phrasing stays in the caption.
+  await expect(caption).toContainText('turned farther than the start, head past the shoulder line')
+  // Negation in the movement is the second advisory row — the text still
+  // rides the caption unchanged (the checkpoints want positive phrasing; the
+  // compiler flags, the author decides).
+  await page.locator('[data-anim-inspector-movement]').fill('she leans forward without shifting the hips')
+  await expect(page.locator('[data-anim-caption-hint="negation"]')).toBeVisible({ timeout: 5_000 })
+  await expect(page.locator('[data-anim-caption-hint]')).toHaveCount(2)
+  await expect(caption).toContainText('MOVEMENT: she leans forward without shifting the hips')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('submitting freezes the previewed caption verbatim (inspector)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  // The stub engine (test (d)'s posture): accepts, never answers — the
+  // submitted tween persists queued while its dispatch hangs, and the frozen
+  // caption rides the persisted row. Engine ports stay off-limits; the stub
+  // owns an ephemeral loopback port.
+  const stub = http.createServer(() => { /* no response */ })
+  const stubPort = await new Promise<number>((resolve) => stub.listen(0, '127.0.0.1', () => resolve((stub.address() as { port: number }).port)))
+  const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    await request.post('/api/lan/settings', { data: { settings: { ...originalSettings, comfyUrl: `http://127.0.0.1:${stubPort}` } } })
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Inspector submit')
+    const { caption } = await openInspectorCaption(page, projectId, seeded)
+    await expect(caption).toContainText('MOVEMENT: she pushes off the back foot into a full stride')
+    const previewed = await caption.textContent()
+    expect(previewed, 'the previewed caption is the real compiled text').toContain('FIRST FRAME')
+    // The explicit step submission (§7.1): one click. The route hangs at the
+    // stub's dispatch while the ATTEMPT persists FIRST — the durable read is
+    // the settle point, not the POST's response.
+    await page.locator('[data-anim-inspector-submit]').click()
+    await expect.poll(async () => {
+      const view = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document?: { attempts?: Array<{ tool: string; targetId: string }> } }
+      return view.document?.attempts?.filter((entry) => entry.tool === 'tween' && entry.targetId === seeded.stepSlotId).length ?? 0
+    }, { timeout: 15_000 }).toBeGreaterThan(0)
+    // The frozen caption is the previewed one VERBATIM (byte-equal, not
+    // substring), the row names the compiler the preview badge showed, and
+    // the span's own intent was already durable (the flush found nothing to
+    // write — the debounce had persisted it).
+    const settled = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { revision: number; attempts: Array<{ tool: string; targetId: string; caption: string; compilerVersion: string }> } }
+    const attempt = settled.document.attempts.find((entry) => entry.tool === 'tween' && entry.targetId === seeded.stepSlotId)!
+    expect(attempt.caption).toBe(previewed)
+    expect(attempt.compilerVersion).toBe('1')
+    expect(settled.document.revision).toBe(seeded.revision)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    await new Promise<void>((resolve) => {
+      stub.closeAllConnections()
+      stub.close(() => resolve())
+    })
+  }
+})

@@ -99,3 +99,35 @@
 .anim-bound header span { color: var(--muted); font-size: var(--text-sm); }
 .anim-bound p { margin: 0; color: var(--text); font-size: var(--text-md); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .anim-conflict { border-left: 3px solid var(--accent); padding-left: 10px; }
+
+/* The span inspector (task 9, §6.1) — the .anim-select card shape again:
+   one authoring panel under the timeline, geometry only (tokens, the kit's
+   Field/Chip/Button recipes carry the rest). */
+.anim-inspector { display: grid; gap: 14px; max-width: 88ch; justify-self: start; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-inspector h3 { margin: 0; font-size: var(--text-lg); }
+.anim-inspector-lede { margin: 0; color: var(--muted); font-size: var(--text-md); line-height: 1.55; }
+.anim-inspector-frames { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.anim-frame-card { display: grid; gap: 8px; align-content: start; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.anim-frame-card header { display: grid; gap: 2px; }
+.anim-frame-card header strong { font-size: var(--text-md); }
+.anim-frame-source { color: var(--muted); font-size: var(--text-sm); line-height: 1.4; }
+.anim-frame-img { width: 160px; height: 120px; object-fit: contain; border-radius: 6px; background: var(--surface); }
+.anim-frame-placeholder { display: grid; place-items: center; width: 160px; height: 120px; padding: 6px; border: 1px dashed var(--line); border-radius: 6px; color: var(--muted); font-size: var(--text-sm); overflow-wrap: anywhere; text-align: center; }
+.anim-frame-pose { margin: 0; color: var(--text); font-size: var(--text-md); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.anim-frame-pose-empty { color: var(--muted); }
+.anim-facings { display: flex; flex-wrap: wrap; gap: 6px; }
+.anim-inspector-fields { display: grid; gap: 14px; }
+.anim-inspector-text { width: 100%; min-height: 64px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: var(--text-md); line-height: 1.5; resize: vertical; }
+.anim-inspector-input { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: var(--text-md); }
+.anim-inspector-overrides { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.anim-inspector-error { margin: 0; color: var(--danger); font-size: var(--text-md); line-height: 1.5; }
+.anim-inspector-submit { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; max-width: 72ch; }
+
+/* The caption preview (§6.3): a collapsed disclosure holding exactly what
+   submission freezes plus the compiler's advisory hint rows. */
+.anim-caption { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.anim-caption summary { cursor: pointer; color: var(--text); font-size: var(--text-md); }
+.anim-caption-body { display: grid; gap: 8px; }
+.anim-caption-text { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text); font-size: var(--text-sm); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.anim-caption-hints { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.anim-caption-hint { padding: 6px 10px; border-left: 3px solid var(--accent); color: var(--muted); font-size: var(--text-sm); line-height: 1.5; overflow-wrap: anywhere; }

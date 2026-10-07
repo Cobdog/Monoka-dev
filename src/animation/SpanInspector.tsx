@@ -1,0 +1,401 @@
+/**
+ * SpanInspector — the animation module's span inspector (task 9, k2q0n9s,
+ * spec 2026-10-06-animation-authoring-module-design.md §6 span authoring):
+ * the hybrid motion-authoring form for ONE tween span, the module's core
+ * creative interface. Layout per §6.1 — the two endpoint frames with their
+ * pose descriptions and facing pickers, then the movement centered:
+ *
+ *   FIRST FRAME card — the ACTUAL current rolling reference (§6.4: the last
+ *   landed step's promoted frame once the chain rolls, else the start key's
+ *   selected image; never a frozen copy of the span's original endpoint).
+ *   The source is LABELED, because the distinction is the point.
+ *   TARGET END FRAME card — the destination key's selected image, pose
+ *   verbatim (§5.1: the description follows the image candidate).
+ *
+ *   MOVEMENT + PRESERVATION — free text; the movement is the tween caption's
+ *   MOVEMENT line verbatim, debounced into the durable span intent (§7.4's
+ *   future-motion drafts) and recompiled into the preview after the same
+ *   debounce. Authored preservation persists with the span; the tween
+ *   template's STATIC line is the dialect's fixed hold (the compiler embeds
+ *   no authored hold text in a tween context) — the field says so.
+ *
+ *   OVERRIDES — medium/scene/camera: the medium inherits from the bound
+ *   session by default, a different chip is this span's override; scene and
+ *   camera (with its reason clause, §6.3) are span-scoped. All three ride
+ *   the submission's draft — the frozen attempt is their durable record.
+ *
+ *   "View caption" — a collapsed native disclosure holding the caption
+ *   compiled CLIENT-SIDE through compileTweenCaption (the shared module's
+ *   first browser import, the same code the server freezes the snapshot
+ *   with) plus the compiler's HINTS as advisory rows — flagged, never
+ *   rewrites (§6.3). Raw caption editing is out by design.
+ *
+ * NOT here (§6.5, deliberately): no step-size dial, no progress lever, no
+ * easing or intensity control — Set K measured the timing vocabulary dead;
+ * no control implies validated generation-time timing. One explicit
+ * "Submit step N" button, one step at a time (§7.1).
+ *
+ * Props-only (P07): every connection lives in ./state.ts — this component
+ * holds its authoring draft and hands commands up. The draft seeds from the
+ * span once per span id (the shell keys the mount); later external writes to
+ * the same span never clobber live typing — the user's edit wins until they
+ * leave the span, the same draft doctrine as the binding panel.
+ */
+import { useEffect, useMemo, useState } from 'react'
+import { Button } from '../ui/Button'
+import { Chip, ChipGroup } from '../ui/Chip'
+import { Field } from '../ui/Field'
+import { Refusal } from '../ui/Refusal'
+import { documentsApi } from '../canvas/api'
+import { compileTweenCaption, type CompiledCaption, type SessionOverrideInput } from '../../shared/animation/compiler'
+import {
+  ANIMATION_MEDIA,
+  FACING_TERMS,
+  mediumChipId,
+  mediumFromChipId,
+  type BindingVersion,
+  type FacingTerm,
+  type MediumString,
+  type Span,
+} from '../../shared/animation/types'
+import type { TimelineKey } from './timelineModel'
+import type { TweenPreview } from './state'
+
+/** The debounced recompute window: typing settles, then the preview
+ *  recompiles AND the durable intent persists — one settle, two effects of
+ *  the same draft. */
+const DRAFT_SETTLE_MS = 400
+
+/** Facing chip keys — the FACING_TERMS strings carry spaces, and the kit's
+ *  exclusive ChipGroup keys a member by its id AND renders it as the DOM id
+ *  (the mediumChipId rule; this pair is view-local until a second facing
+ *  surface exists). */
+function facingChipId(term: FacingTerm): string {
+  return `anim-facing-${term.replace(/[^a-z]+/g, '-')}`
+}
+
+function facingFromChipId(chipId: string): FacingTerm | null {
+  for (const term of FACING_TERMS) {
+    if (facingChipId(term) === chipId) return term
+  }
+  return null
+}
+
+export type SpanInspectorSubmitDraft = { movement: string; preservation: string; overrides: SessionOverrideInput }
+
+export type SpanInspectorProps = {
+  span: Span
+  fromKey: TimelineKey | null
+  toKey: TimelineKey | null
+  /** The live preview selector's resolution (state.ts' deriveTweenPreview —
+   *  the server's tween draft resolution mirrored client-side). */
+  preview: TweenPreview
+  /** The active binding — the inherited medium's source. */
+  binding: BindingVersion
+  onIntentChange(spanId: string, intent: { movement: string; preservation: string }): Promise<boolean>
+  /** A facing correction for a key's selected image — the adapter's
+   *  clone-and-select command (§5.1: facing follows the candidate). */
+  onFacingChange(keyId: string, facing: FacingTerm | null): Promise<boolean>
+  onSubmit(spanId: string, draft: SpanInspectorSubmitDraft): Promise<{ attemptId: string } | null>
+  busy: boolean
+}
+
+/** One endpoint frame's image, or the honest placeholder (the KeyImage
+ *  idiom): no previewable relPath, or a preview that failed to load. */
+function FrameImage({ relPath, assetId, alt }: { relPath: string | null; assetId: string; alt: string }) {
+  const [failed, setFailed] = useState(false)
+  if (relPath === null || failed) {
+    return <div className="anim-frame-placeholder" data-anim-frame-placeholder title={assetId}>{assetId}</div>
+  }
+  return <img className="anim-frame-img" src={documentsApi.blobFileUrl(relPath)} alt={alt} onError={() => setFailed(true)} />
+}
+
+/** The closed-vocabulary facing picker. Clicking the checked chip CLEARS the
+ *  facing (null is legal and hint-noted as missing); a locked key disables
+ *  the group — the server would refuse the selection change (§7.2.1). */
+function FacingPicker({ keyEntity, busy, onChange, id }: { keyEntity: TimelineKey; busy: boolean; onChange(facing: FacingTerm | null): void; id: string }) {
+  const candidate = keyEntity.candidate
+  const value = candidate !== null && candidate.facing !== null ? facingChipId(candidate.facing) : null
+  return (
+    <Field
+      label="Facing"
+      htmlFor={id}
+      hint={keyEntity.lock ? 'This key is locked — unlock it on the timeline before changing its facing.' : 'The closed dialect vocabulary; click the checked chip to clear it (a frame with no facing is hint-noted, never refused).'}
+    >
+      <ChipGroup
+        id={id}
+        className="anim-facings"
+        data-anim-facing={keyEntity.id}
+        exclusive
+        aria-label={`Facing for key ${keyEntity.order}`}
+        value={value}
+        onChange={(next) => {
+          const picked = next as string
+          if (value !== null && picked === value) {
+            onChange(null)
+            return
+          }
+          onChange(facingFromChipId(picked))
+        }}
+      >
+        {FACING_TERMS.map((term) => (
+          <Chip key={term} id={facingChipId(term)} variant="radio" className="anim-chip" disabled={busy || keyEntity.lock || candidate === null}>{term}</Chip>
+        ))}
+      </ChipGroup>
+    </Field>
+  )
+}
+
+export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntentChange, onFacingChange, onSubmit, busy }: SpanInspectorProps) {
+  // The authoring draft — seeded once per span (the shell keys the mount by
+  // span id); `committed` is the debounced projection the preview compiles.
+  const [draft, setDraft] = useState(() => ({ movement: span.intent.movement, preservation: span.intent.preservation }))
+  const [committed, setCommitted] = useState(() => ({ movement: span.intent.movement, preservation: span.intent.preservation }))
+  // Span-scoped overrides: a null medium inherits the bound session's.
+  const [mediumOverride, setMediumOverride] = useState<MediumString | null>(span.overrides.medium ?? null)
+  const [scene, setScene] = useState(span.overrides.scene ?? '')
+  const [cameraDescription, setCameraDescription] = useState(span.overrides.camera?.description ?? '')
+  const [cameraReason, setCameraReason] = useState(span.overrides.camera?.reason ?? '')
+
+  // The settle: 400ms after the last keystroke the preview recompiles AND
+  // the durable intent persists (when the draft actually moved). The guard
+  // keeps a mount-time no-op command impossible; a failed persist surfaces
+  // through the shell's command-error arm and never re-fires on its own.
+  useEffect(() => {
+    if (draft.movement === span.intent.movement && draft.preservation === span.intent.preservation) return
+    const timer = window.setTimeout(() => {
+      setCommitted({ movement: draft.movement, preservation: draft.preservation })
+      void onIntentChange(span.id, { movement: draft.movement, preservation: draft.preservation })
+    }, DRAFT_SETTLE_MS)
+    return () => window.clearTimeout(timer)
+  }, [draft.movement, draft.preservation, span.id, span.intent.movement, span.intent.preservation, onIntentChange])
+
+  /** The compile overrides the preview AND the submission share — one object,
+   *  so the frozen caption is byte-identical to the previewed one. Empty
+   *  scene/camera text means "not set" (the caption omits the clause). */
+  const overrides: SessionOverrideInput = useMemo(() => {
+    const resolved: SessionOverrideInput = { medium: mediumOverride ?? binding.medium }
+    if (scene.trim() !== '') resolved.scene = scene
+    if (cameraDescription.trim() !== '') resolved.camera = { description: cameraDescription, reason: cameraReason }
+    return resolved
+  }, [mediumOverride, binding.medium, scene, cameraDescription, cameraReason])
+
+  /** The live compile — the shared compiler in the browser, over the resolved
+   *  references and the COMMITTED draft. Total: a compiler refusal (impossible
+   *  from typed vocabularies, guarded anyway) lands as a named error, never a
+   *  silent blank. */
+  const compiled = useMemo<{ ok: true; result: CompiledCaption } | { ok: false; error: string } | null>(() => {
+    if (!preview.rollingReference.ok || !preview.farReference.ok || toKey === null) return null
+    try {
+      return {
+        ok: true,
+        result: compileTweenCaption({
+          rollingReference: { assetReference: preview.rollingReference.assetReference, pose: preview.rollingReference.pose },
+          farReference: { assetReference: preview.farReference.assetReference, pose: preview.farReference.pose },
+          movementStep: committed.movement,
+          overrides,
+        }),
+      }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
+  }, [preview.rollingReference, preview.farReference, toKey, committed.movement, overrides])
+
+  const canSubmit = !busy
+    && committed.movement.trim() !== ''
+    && draft.movement.trim() !== ''
+    && preview.targetStepSlotId !== null
+    && preview.rollingReference.ok
+    && preview.farReference.ok
+    && compiled !== null && compiled.ok
+
+  const submit = async () => {
+    if (!canSubmit) return
+    // Converge the preview on the live text BEFORE the frozen snapshot takes
+    // it — the byte-identity pin: what was previewed is what froze.
+    setCommitted({ movement: draft.movement, preservation: draft.preservation })
+    await onSubmit(span.id, { movement: draft.movement, preservation: draft.preservation, overrides })
+  }
+
+  const near = preview.rollingReference
+  const far = preview.farReference
+  const effectiveMedium = mediumOverride ?? binding.medium
+  const mediumChipValue = mediumChipId(effectiveMedium)
+
+  return (
+    <section className="anim-inspector" data-anim-inspector data-anim-inspector-span={span.id} aria-labelledby="anim-inspector-title">
+      <h3 id="anim-inspector-title">Tween span — from key #{fromKey?.order ?? '?'} to key #{toKey?.order ?? '?'}</h3>
+      {span.stale && <p className="anim-note" role="status" data-anim-inspector-stale>This span is stale ({span.staleReasons.join(', ')}) — previous takes remain available; a new submission freezes fresh references.</p>}
+      <p className="anim-inspector-lede">
+        The caption states the rolling first frame, the fixed destination, and one movement step (§6.2). The chain holds {preview.stepCount} {preview.stepCount === 1 ? 'step slot' : 'step slots'} — submission targets step {preview.stepCount}, the last slot; each render is one step, reviewed before the chain continues (§7.1).
+      </p>
+
+      {preview.problems.length > 0 && (
+        <Refusal title="The tween references are not resolvable" reason={`${preview.problems.join(' ')} The caption preview and submission stay gated until the references resolve.`} />
+      )}
+
+      <div className="anim-inspector-frames">
+        {/* FIRST FRAME — the ACTUAL current rolling reference (§6.4). */}
+        <article className="anim-frame-card" data-anim-frame="first">
+          <header>
+            <strong>First frame — the rolling reference</strong>
+            {near.ok && near.source.kind === 'start-key' && <span className="anim-frame-source" data-anim-frame-source="start-key">key #{near.source.keyOrder}&apos;s selected image — the chain has landed no step yet</span>}
+            {near.ok && near.source.kind === 'promoted-frame' && <span className="anim-frame-source" data-anim-frame-source="promoted-frame">the frame promoted from step {near.source.stepIndex + 1}&apos;s landed clip</span>}
+          </header>
+          {near.ok ? (
+            <>
+              <FrameImage
+                relPath={near.source.kind === 'start-key' ? near.assetReference.relPath : null}
+                assetId={near.assetReference.assetId}
+                alt="The rolling reference image"
+              />
+              {near.pose.poseDescription !== null ? (
+                <p className="anim-frame-pose" data-anim-frame-pose>{near.pose.poseDescription}</p>
+              ) : (
+                <p className="anim-frame-pose anim-frame-pose-empty" data-anim-frame-pose-empty>
+                  {near.source.kind === 'promoted-frame'
+                    ? 'The promoted frame carries no pose description in this build — the caption states its reference only, and flags the missing facing.'
+                    : 'This image carries no pose description yet.'}
+                </p>
+              )}
+              {near.source.kind === 'start-key' && fromKey !== null ? (
+                <FacingPicker keyEntity={fromKey} busy={busy} id="anim-inspector-facing-first" onChange={(facing) => { void onFacingChange(fromKey.id, facing) }} />
+              ) : (
+                <p className="anim-frame-source">Facing: none — a promoted frame carries none in this build; the caption hint notes it.</p>
+              )}
+            </>
+          ) : (
+            <p className="anim-frame-pose anim-frame-pose-empty">{near.problem}</p>
+          )}
+        </article>
+
+        {/* TARGET END FRAME — the destination key's selected image (§5.1). */}
+        <article className="anim-frame-card" data-anim-frame="target">
+          <header>
+            <strong>Target end frame — the fixed destination</strong>
+            <span className="anim-frame-source">key #{toKey?.order ?? '?'}&apos;s selected image — absolute, not comparative</span>
+          </header>
+          {far.ok ? (
+            <>
+              <FrameImage relPath={far.assetReference.relPath} assetId={far.assetReference.assetId} alt="The destination key image" />
+              {far.pose.poseDescription !== null ? (
+                <p className="anim-frame-pose" data-anim-frame-pose>{far.pose.poseDescription}</p>
+              ) : (
+                <p className="anim-frame-pose anim-frame-pose-empty" data-anim-frame-pose-empty>This image carries no pose description yet.</p>
+              )}
+              {toKey !== null && <FacingPicker keyEntity={toKey} busy={busy} id="anim-inspector-facing-target" onChange={(facing) => { void onFacingChange(toKey.id, facing) }} />}
+            </>
+          ) : (
+            <p className="anim-frame-pose anim-frame-pose-empty">{far.problem}</p>
+          )}
+        </article>
+      </div>
+
+      <div className="anim-inspector-fields">
+        <Field
+          label="Movement"
+          htmlFor="anim-inspector-movement"
+          hint="The action and path of this span's step — the caption's MOVEMENT line carries it VERBATIM; the preview recompiles and the document persists it as you settle."
+        >
+          <textarea
+            id="anim-inspector-movement"
+            className="anim-inspector-text"
+            data-anim-inspector-movement
+            rows={3}
+            value={draft.movement}
+            onChange={(event) => setDraft((current) => ({ ...current, movement: event.target.value }))}
+          />
+        </Field>
+        <Field
+          label="What stays fixed"
+          htmlFor="anim-inspector-preservation"
+          hint="Persisted with the span as the authored hold intent. The tween caption's STATIC line is the dialect's fixed hold — authored preservation rides the session's identity constraints, not the tween template."
+        >
+          <textarea
+            id="anim-inspector-preservation"
+            className="anim-inspector-text"
+            data-anim-inspector-preservation
+            rows={2}
+            value={draft.preservation}
+            onChange={(event) => setDraft((current) => ({ ...current, preservation: event.target.value }))}
+          />
+        </Field>
+
+        <Field
+          label="Medium"
+          htmlFor="anim-inspector-medium"
+          hint={mediumOverride === null
+            ? `Inherited from the bound session (version ${binding.version}) — picking another chip overrides it for this span's submissions.`
+            : 'A span override — it compiles into this span\'s captions and freezes with each submitted attempt.'}
+        >
+          <ChipGroup
+            id="anim-inspector-medium"
+            className="anim-mediums"
+            data-anim-inspector-medium
+            exclusive
+            aria-label="Medium"
+            value={mediumChipValue}
+            onChange={(next) => {
+              const picked = mediumFromChipId(next as string)
+              // Picking the session's own medium chip CLEARS the override —
+              // the compile result is identical, the label stays honest.
+              setMediumOverride(picked === null || picked === binding.medium ? null : picked)
+            }}
+          >
+            {ANIMATION_MEDIA.map((entry) => (
+              <Chip key={entry} id={mediumChipId(entry)} variant="radio" className="anim-chip" disabled={busy}>{entry}</Chip>
+            ))}
+          </ChipGroup>
+        </Field>
+
+        <div className="anim-inspector-overrides">
+          <Field label="Scene override" htmlFor="anim-inspector-scene" hint="Optional framing/context — empty inherits nothing (the caption omits the clause); this build's bindings carry no scene default.">
+            <input id="anim-inspector-scene" className="anim-inspector-input" data-anim-inspector-scene type="text" value={scene} onChange={(event) => setScene(event.target.value)} />
+          </Field>
+          <Field label="Camera description" htmlFor="anim-inspector-camera" hint="The camera move, phrased as part of the shot.">
+            <input id="anim-inspector-camera" className="anim-inspector-input" data-anim-inspector-camera type="text" value={cameraDescription} onChange={(event) => setCameraDescription(event.target.value)} />
+          </Field>
+          <Field label="Camera reason" htmlFor="anim-inspector-camera-reason" hint="Why the camera does this (§6.3 — the dialect's reason clause rides every camera statement).">
+            <input id="anim-inspector-camera-reason" className="anim-inspector-input" data-anim-inspector-camera-reason type="text" value={cameraReason} onChange={(event) => setCameraReason(event.target.value)} />
+          </Field>
+        </div>
+      </div>
+
+      <details className="anim-caption" data-anim-caption-preview>
+        <summary>
+          View caption{compiled !== null && compiled.ok && compiled.result.hints.length > 0
+            ? ` — ${compiled.result.hints.length} advisory note${compiled.result.hints.length === 1 ? '' : 's'}`
+            : ''}
+        </summary>
+        <div className="anim-caption-body">
+          {compiled === null && <p className="anim-note">The caption compiles once both references resolve.</p>}
+          {compiled !== null && !compiled.ok && <p className="anim-inspector-error" role="alert">The compiler refused this context: {compiled.error}</p>}
+          {compiled !== null && compiled.ok && (
+            <>
+              <pre className="anim-caption-text" data-anim-caption-text>{compiled.result.caption}</pre>
+              {compiled.result.hints.length > 0 ? (
+                <ul className="anim-caption-hints" data-anim-caption-hints aria-label="Advisory caption hints">
+                  {compiled.result.hints.map((hint, index) => (
+                    <li key={index} className="anim-caption-hint" data-anim-caption-hint={hint.kind}>{hint.message}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="anim-note" data-anim-caption-nohints>No advisory hints — the compiler flags comparative destination language, missing facings, contradictions, and negation; it never rewrites.</p>
+              )}
+              <p className="anim-note">
+                Compiled in this browser with the shared caption compiler <span data-anim-caption-compiler>v{compiled.result.compilerVersion}</span> — submission freezes exactly this text from the document&apos;s current truth (the server recompiles authoritatively; a change between preview and submit is the server&apos;s word that wins).
+              </p>
+            </>
+          )}
+        </div>
+      </details>
+
+      <div className="anim-inspector-submit">
+        <Button variant="primary" busy={busy} disabled={!canSubmit} onClick={() => void submit()} data-anim-inspector-submit>
+          Submit step {preview.stepCount}
+        </Button>
+        <span className="anim-note">One step at a time — explicit review before the chain continues (§7.1). No timing dials: the step-size vocabulary measured dead (§6.5).</span>
+      </div>
+    </section>
+  )
+}

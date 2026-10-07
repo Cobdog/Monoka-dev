@@ -18,7 +18,9 @@
  *   - a BOUND document renders the versioned binding summary (§4.2, the
  *     description VERBATIM) above the TIMELINE (task 8: keys as image cards
  *     with lock chips + origin badges, span bars with nested step slots, the
- *     playhead, the seed-initial-key affordance for an empty timeline);
+ *     playhead, the seed-initial-key affordance for an empty timeline), and
+ *     since task 9 SELECTING A SPAN opens the SPAN INSPECTOR beneath it (§6.1
+ *     — the hybrid authoring form with the client-compiled caption preview);
  *   - the conflict rebase notice (a 409 is never silent) and the failed
  *     silent-refresh notice, both role=status; the selection state carries
  *     the "new animation document" creation arm (task 7's Minor-2).
@@ -30,8 +32,9 @@ import { Button } from '../ui/Button'
 import { animationHref } from './client'
 import { BindingPanel } from './BindingPanel'
 import { Timeline } from './Timeline'
+import { SpanInspector } from './SpanInspector'
 import { deriveReviewPosition, deriveTimeline } from './timelineModel'
-import { useAnimationDocument } from './state'
+import { deriveTweenPreview, useAnimationDocument } from './state'
 import './animation.css'
 
 export function AnimationApp() {
@@ -58,6 +61,23 @@ export function AnimationApp() {
     () => (document === null ? null : deriveReviewPosition(document.body, document.attempts)),
     [document],
   )
+  // The selected SPAN's inspector inputs (task 9): the timeline model's span
+  // + endpoint keys, plus the live preview selector's resolution — all
+  // re-derived from every fresh document read, so a rolling-reference change
+  // elsewhere lands in the inspector through the fabric's refresh.
+  const selectedSpan = useMemo(
+    () => (timeline === null || selectedId === null ? null : timeline.spans.find((span) => span.id === selectedId) ?? null),
+    [timeline, selectedId],
+  )
+  const spanInspector = useMemo(() => {
+    if (document === null || selectedSpan === null || timeline === null) return null
+    return {
+      span: selectedSpan,
+      preview: deriveTweenPreview(document, selectedSpan.id),
+      fromKey: timeline.keys.find((key) => key.id === selectedSpan.fromKeyId) ?? null,
+      toKey: timeline.keys.find((key) => key.id === selectedSpan.toKeyId) ?? null,
+    }
+  }, [document, selectedSpan, timeline])
 
   if (phase === 'loading') {
     return (
@@ -185,6 +205,23 @@ export function AnimationApp() {
                 onToggleLock={(keyId, locked) => void session.commands.toggleKeyLock(keyId, locked)}
                 onSeedInitialKey={() => void session.commands.seedInitialKey()}
               />
+              {/* The span inspector (task 9, §6.1): keyed by span id — the
+                  authoring draft seeds per span and survives document
+                  refreshes; selecting a different span is a fresh mount. */}
+              {spanInspector !== null && (
+                <SpanInspector
+                  key={spanInspector.span.id}
+                  span={spanInspector.span}
+                  fromKey={spanInspector.fromKey}
+                  toKey={spanInspector.toKey}
+                  preview={spanInspector.preview}
+                  binding={activeBinding}
+                  busy={busy}
+                  onIntentChange={session.commands.updateSpanIntent}
+                  onFacingChange={session.commands.setKeyFacing}
+                  onSubmit={session.commands.submitTweenStep}
+                />
+              )}
             </section>
           </>
         ) : (
