@@ -48,11 +48,18 @@ export type AnimationDocumentView = {
  *  `compilerVersion` surface the persisted row + frozen snapshot read-only
  *  (contract review F2): the timeline re-attaches attempts to spans after a
  *  reload (a tween's target IS its step slot), the review panel shows the
- *  frozen caption and the compiler that built it. */
+ *  frozen caption and the compiler that built it. HERO rows add
+ *  `sourceKeyId` (§5.2: targetId is the PROPOSED slot; this is the key the
+ *  arc describes FROM) + `movementArc` (the authored arc, frozen verbatim). */
 export type AttemptStateView = {
   attemptId: string
   tool: AnimationTool
   targetId: string
+  sourceKeyId?: string
+  movementArc?: string
+  /** The resolved overrides the frozen caption compiled with — the re-roll's
+   *  byte-identical resubmission input. */
+  heroOverrides?: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
   caption: string
   compilerVersion: string
   execution: AttemptExecutionState
@@ -73,9 +80,12 @@ export type AnimationBootstrap = {
 
 /** The EDITABLE draft (span intent + resolved references + overrides) — the
  *  SERVER compiles + freezes it into a FrozenAttemptSnapshot (§7.2.2); a
- *  draft never rewrites a running attempt (§8.1). */
+ *  draft never rewrites a running attempt (§8.1). A HERO draft names its
+ *  SOURCE key (the current key the movement arc describes FROM, §5.2); the
+ *  submission's targetId separately carries the proposed slot the clip
+ *  lands into — hero generates the NEXT key, never a re-roll of the source. */
 export type DraftInput =
-  | { tool: 'hero'; targetKeyId: string; movementArc: string; overrides: SessionOverrideInput }
+  | { tool: 'hero'; sourceKeyId: string; movementArc: string; overrides: SessionOverrideInput }
   | { tool: 'tween'; targetStepSlotId: string; movementStep: string; overrides: SessionOverrideInput }
   | { tool: 'sequence'; windowStartKeyId: string; windowEndKeyId: string; orderedActions: string[]; preservation: string; overrides: SessionOverrideInput }
 

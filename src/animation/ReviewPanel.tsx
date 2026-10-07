@@ -14,11 +14,9 @@
  *
  * The invariants this panel renders, never breaks:
  *   - §7.3's FIVE-WORD status vocabulary, mapped from the attempt's
- *     execution state. `reconciling` maps onto Queued (the honest user-
- *     facing truth is "waiting for the engine" — the server is re-checking);
- *     `interrupted` onto Failed or canceled (§11.4's confirmed-lost outcome).
- *     The mapping is one table, so every surface that renders a status
- *     renders the same word.
+ *     execution state through ./reviewStatus.ts's ONE table (task 11 moved
+ *     it beside the panel when the hero review became the second consumer —
+ *     every surface that renders a status renders the same word).
  *   - The system PROPOSES a frame; only the user SELECTS (§7.2.2). The
  *     proposal is marked in the strip; the durable slot selection is the
  *     only "selected" truth, and the panel reads it back from the document —
@@ -35,28 +33,9 @@
 import { Button } from '../ui/Button'
 import { Refusal } from '../ui/Refusal'
 import { documentsApi } from '../canvas/api'
-import type { AttemptExecutionState, Span } from '../../shared/animation/types'
+import type { Span } from '../../shared/animation/types'
+import { IN_FLIGHT, REVIEW_STATUS } from './reviewStatus'
 import type { AttemptStateView } from './client'
-
-/** §7.3's five-word user-facing vocabulary, keyed for the DOM. */
-export type ReviewStatusKey = 'queued' | 'rendering' | 'preparing-review' | 'ready' | 'failed-or-canceled'
-
-/** The one status mapping (execution → §7.3): `reconciling` reads as Queued
- *  with a note (the §11.4 pending outcome), `interrupted` as Failed or
- *  canceled (confirmed lost — explicit retry only). */
-const REVIEW_STATUS: Record<AttemptExecutionState, { key: ReviewStatusKey; label: string; meaning: string }> = {
-  queued: { key: 'queued', label: 'Queued', meaning: 'Waiting for the engine.' },
-  reconciling: { key: 'queued', label: 'Queued', meaning: 'Waiting for the engine — the server is re-checking this attempt against it.' },
-  rendering: { key: 'rendering', label: 'Rendering', meaning: 'Generation in progress.' },
-  preparing: { key: 'preparing-review', label: 'Preparing review', meaning: 'Render finished; the preview and reference assets are being prepared.' },
-  ready: { key: 'ready', label: 'Ready to review', meaning: 'A new candidate is available; selection unchanged.' },
-  failed: { key: 'failed-or-canceled', label: 'Failed or canceled', meaning: 'This attempt stopped; previous selections remain.' },
-  cancelled: { key: 'failed-or-canceled', label: 'Failed or canceled', meaning: 'This attempt stopped; previous selections remain.' },
-  interrupted: { key: 'failed-or-canceled', label: 'Failed or canceled', meaning: 'This attempt stopped; previous selections remain.' },
-}
-
-/** The states whose outcome is not settled — the re-roll waits for them. */
-const IN_FLIGHT: ReadonlySet<AttemptExecutionState> = new Set(['queued', 'rendering', 'preparing', 'reconciling'])
 
 export type ReviewPanelProps = {
   /** The attempt under review (the document view's row — live through the
@@ -144,6 +123,13 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
         <p className="anim-review-meaning" data-anim-review-clip-opaque title={candidate.assetReference.assetId}>
           The landed clip&apos;s handle ({candidate.assetReference.assetId}) carries no readable path in this build.
         </p>
+      ) : attempt.execution === 'ready' ? (
+        // Task 10's Minor-2: the attempt-state envelope flips the row to
+        // 'ready' a beat BEFORE the attempt-ready envelope's durable re-read
+        // lands the candidate — that window is SETTLING, not an absence. A
+        // ready row without its candidate renders the arrival, never the
+        // "no candidate landed" note (ready implies landed: §8.2).
+        <p className="anim-note" role="status" data-anim-review-settling>The landed candidate is arriving — the completion event is being read back.</p>
       ) : (
         !inFlight && <p className="anim-note" data-anim-review-no-candidate>No candidate landed for this attempt — a re-roll starts a fresh take; nothing else moved.</p>
       )}

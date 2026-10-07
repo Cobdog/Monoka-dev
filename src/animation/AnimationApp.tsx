@@ -27,7 +27,11 @@
  *     with NOTHING explicitly selected, the timeline's review position IS
  *     the selection (§7.4's restored session: returning to a landed attempt
  *     focuses the span awaiting review; completion never steals an explicit
- *     selection, it only fills the empty one);
+ *     selection, it only fills the empty one); since task 11 SELECTING A KEY
+ *     opens the HERO surfaces (§5.2) — the review of the hero takes that
+ *     targeted it (the clip, the frame strip, the EXPLICIT acceptance that
+ *     establishes the key, the far-reference span action) above the hero
+ *     authoring panel that sources the NEXT generation from its selection;
  *   - the conflict rebase notice (a 409 is never silent) and the failed
  *     silent-refresh notice, both role=status; the selection state carries
  *     the "new animation document" creation arm (task 7's Minor-2).
@@ -41,8 +45,11 @@ import { BindingPanel } from './BindingPanel'
 import { Timeline } from './Timeline'
 import { SpanInspector } from './SpanInspector'
 import { ReviewPanel } from './ReviewPanel'
+import { HeroPanel } from './HeroPanel'
+import { HeroReview } from './HeroReview'
+import { IN_FLIGHT } from './reviewStatus'
 import { deriveReviewPosition, deriveTimeline } from './timelineModel'
-import { deriveTweenPreview, useAnimationDocument } from './state'
+import { deriveHeroPreview, deriveTweenPreview, useAnimationDocument } from './state'
 import './animation.css'
 
 export function AnimationApp() {
@@ -62,6 +69,9 @@ export function AnimationApp() {
   // switched to (null = the newest attempt of the selected span wins). The
   // span id keys it so switching spans forgets the stale take.
   const [reviewTake, setReviewTake] = useState<{ spanId: string; attemptId: string } | null>(null)
+  // The hero review's SUBJECT override — same doctrine, keyed by the target
+  // key slot (task 11): switching keys forgets the stale take.
+  const [heroTake, setHeroTake] = useState<{ keyId: string; attemptId: string } | null>(null)
   const session = useAnimationDocument(params.documentId, params.projectId)
   const { phase, errorDetail, document, projectDocuments, assets, assetsFailed, conflict, busy, commandError, refreshFailed } = session
 
@@ -132,10 +142,37 @@ export function AnimationApp() {
     if (slotIndex < 0) return null
     const slot = selectedSpan.stepSlots[slotIndex]!
     const limit = nextNearIsPromotedFrame
-      ? 'Honest limit of this build: the chosen frame rides the clip artifact itself, and the tween adapters consume image references — generating the next step appends the step slot and submits, but the submission is refused until real frame extraction lands on the engine leg.'
+      ? 'Honest limit of this build: the promoted frame extracts as a real image, but the tween submission still resolves its near reference from the landed clip artifact itself — the submit-time frame resolution is the engine leg\'s work — so generating the next step appends the step slot and submits, but the submission is refused (the clip is a video asset) until then.'
       : null
     return { subject, stepIndex: slotIndex + 1, slotSelection: slot.selectedRollingReference, takes: slot.attempts.map((attemptId) => ({ attemptId })), limit }
   }, [document, selectedSpan, reviewTake, nextNearIsPromotedFrame])
+  // The selected KEY's hero surfaces (task 11, §5.2): the review of the hero
+  // takes that targeted it (the newest, or the reviewer's explicit take) and
+  // the authoring panel sourcing it as the current key of the NEXT
+  // generation. A selection is ONE id, so this arm and the span arm are
+  // mutually exclusive.
+  const selectedKey = useMemo(
+    () => (timeline === null || selectedId === null ? null : timeline.keys.find((key) => key.id === selectedId) ?? null),
+    [timeline, selectedId],
+  )
+  const heroReview = useMemo(() => {
+    if (document === null || selectedKey === null) return null
+    const heroTakes = document.attempts.filter((entry) => entry.tool === 'hero' && entry.targetId === selectedKey.id)
+    if (heroTakes.length === 0) return null
+    const chosen = heroTake !== null && heroTake.keyId === selectedKey.id
+      ? heroTakes.find((entry) => entry.attemptId === heroTake.attemptId) ?? null
+      : null
+    const subject = chosen ?? heroTakes[heroTakes.length - 1]!
+    return { subject, takes: heroTakes.map((entry) => ({ attemptId: entry.attemptId })) }
+  }, [document, selectedKey, heroTake])
+  const inFlightHeroFromKey = useMemo(() => {
+    if (document === null || selectedKey === null) return null
+    return document.attempts.find((entry) => entry.tool === 'hero' && entry.sourceKeyId === selectedKey.id && IN_FLIGHT.has(entry.execution)) ?? null
+  }, [document, selectedKey])
+  const heroPanel = useMemo(() => {
+    if (document === null || selectedKey === null) return null
+    return { keyEntity: selectedKey, preview: deriveHeroPreview(document, selectedKey.id) }
+  }, [document, selectedKey])
 
   if (phase === 'loading') {
     return (
@@ -300,6 +337,46 @@ export function AnimationApp() {
                   onContinue={() => void session.commands.continueChain(selectedSpan.id)}
                   onReroll={() => void session.commands.rerollStep(selectedSpan.id)}
                   onRetryPreparation={() => void session.commands.retryPreparation(reviewPanel.subject.attemptId)}
+                />
+              )}
+              {/* The hero surfaces (task 11, §5.2): a selected KEY reviews the
+                  hero takes that targeted it (the newest, or the reviewer's
+                  explicit take) — the clip, the frame strip, the EXPLICIT
+                  acceptance that establishes the key, the far-reference span
+                  action — and below it, the authoring panel that sources the
+                  NEXT generation from this key's selection. */}
+              {heroReview !== null && selectedKey !== null && (
+                <HeroReview
+                  attempt={heroReview.subject}
+                  keyEntity={selectedKey}
+                  takes={heroReview.takes}
+                  busy={busy}
+                  onSelectTake={(attemptId) => setHeroTake({ keyId: selectedKey.id, attemptId })}
+                  onAcceptFrame={(frameIndex) => void session.commands.acceptHeroFrame(selectedKey.id, heroReview.subject.attemptId, frameIndex)}
+                  onReroll={() => void session.commands.rerollHero(selectedKey.id)}
+                  onOpenSpan={() => {
+                    const subject = heroReview.subject
+                    // §5.2 (c): the span binds this take's SOURCE key → this
+                    // key; the hero arc seeds its movement draft. The shell
+                    // selects the minted span so the inspector opens on it.
+                    if (subject.sourceKeyId === undefined || subject.movementArc === undefined) return
+                    void session.commands.openSpanIntoKey(subject.sourceKeyId, selectedKey.id, subject.movementArc).then((spanId) => {
+                      if (spanId !== null) setSelectedId(spanId)
+                    })
+                  }}
+                  onRetryPreparation={() => void session.commands.retryPreparation(heroReview.subject.attemptId)}
+                />
+              )}
+              {heroPanel !== null && (
+                <HeroPanel
+                  key={heroPanel.keyEntity.id}
+                  keyEntity={heroPanel.keyEntity}
+                  preview={heroPanel.preview}
+                  binding={activeBinding}
+                  inFlightAttempt={inFlightHeroFromKey}
+                  busy={busy}
+                  onFacingChange={session.commands.setKeyFacing}
+                  onSubmit={session.commands.submitHero}
                 />
               )}
             </section>

@@ -253,3 +253,46 @@ test('deriveReviewPosition: a ready attempt whose decision is made steps aside (
   keyA.selectedCandidateId = keyA.candidates[0].id
   assert.equal(deriveReviewPosition(bodyOf([keyA, keyB], [theSpan]), [heroResolved]), null, 'a hero landing into an already-selected slot is resolved')
 })
+
+// Task 11 — the hero lane's review-position facts (§5.2's proposed slot +
+// the ordering matrix T10-M3 left unpinned): an in-flight hero render
+// targets a slot that materializes only at LANDING, so before that the
+// render attaches to its SOURCE key; among multiple running attempts the
+// NEWEST wins; a ready-OPEN decision always outranks a newer running one.
+test('deriveReviewPosition: an in-flight hero marks its SOURCE key until the proposed slot materializes (task 11)', () => {
+  const keyA = keySlot(0)
+  const keyB = keySlot(1)
+  const theSpan = spanOf(keyA.id, keyB.id)
+  const body = bodyOf([keyA, keyB], [theSpan])
+  // The proposed slot does NOT exist yet (it materializes at landing) — the
+  // render attaches to the source key (§5.2: the next key grows out of the
+  // current one).
+  const rendering = { attemptId: uuid(), tool: 'hero', targetId: uuid(), sourceKeyId: keyA.id, execution: 'rendering' }
+  assert.deepEqual(deriveReviewPosition(body, [rendering]), { kind: 'key', id: keyA.id }, 'the in-flight next-key render attaches to its source')
+  // Without a sourceKeyId (a summary that never carried it), a dangling
+  // target resolves to NO position — absent, never a guess.
+  assert.equal(deriveReviewPosition(body, [{ ...rendering, sourceKeyId: undefined }]), null, 'no source, no materialized target — no position')
+  // Once the slot materialized (a re-roll against a landed slot), the
+  // TARGET key is the position.
+  const rerolling = { attemptId: uuid(), tool: 'hero', targetId: keyB.id, sourceKeyId: keyA.id, execution: 'queued' }
+  assert.deepEqual(deriveReviewPosition(body, [rerolling]), { kind: 'key', id: keyB.id }, 'a re-roll against the materialized slot marks the slot')
+  // Rule 2's tie-break: the NEWEST running attempt wins (oldest-first list).
+  assert.deepEqual(deriveReviewPosition(body, [rendering, rerolling]), { kind: 'key', id: keyB.id }, 'the newest in-flight attempt attaches')
+  // Rule 1 outranks rule 2 even when the running one is newer (T10-M3's
+  // unpinned claim, pinned): a ready-OPEN hero decision beats a newer render.
+  const open = { attemptId: uuid(), tool: 'hero', targetId: uuid(), execution: 'ready' }
+  const openBody = bodyOf([keyA, keyB], [theSpan])
+  // The open attempt's target materialized with its landing — a real slot
+  // with no selection (the landed clip candidate, §5.3).
+  openBody.keys.push({ ...keySlot(2), id: open.targetId, candidates: [candidate('hero')] })
+  assert.deepEqual(deriveReviewPosition(openBody, [open, rerolling]), { kind: 'key', id: open.targetId }, 'the open ready decision outranks the newer running render')
+  // And the rules stack in order: the newest OPEN decision wins over an
+  // OLDER open one (both unselected hero slots).
+  const openOlder = { attemptId: uuid(), tool: 'hero', targetId: uuid(), execution: 'ready' }
+  openBody.keys.push({ ...keySlot(3), id: openOlder.targetId, candidates: [candidate('hero')] })
+  assert.deepEqual(deriveReviewPosition(openBody, [openOlder, open]), { kind: 'key', id: open.targetId }, 'the newest open decision wins')
+  // Accepting its frame dissolves the marker — the next open decision takes it.
+  const accepted = openBody.keys.find((entry) => entry.id === open.targetId)
+  accepted.selectedCandidateId = accepted.candidates[0].id
+  assert.deepEqual(deriveReviewPosition(openBody, [openOlder, open, rerolling]), { kind: 'key', id: openOlder.targetId }, 'a resolved decision steps aside for the next open one')
+})

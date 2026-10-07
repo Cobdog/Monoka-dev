@@ -182,17 +182,19 @@ test('an animation envelope flips the shell attempt state (the fabric adapter)',
 
     // Submit from the page (the submit route hangs at the engine dispatch —
     // the ATTEMPT persists first, so the queued envelope is already on the
-    // fabric while the request itself never answers).
-    await page.evaluate(({ documentId, keyId, idempotencyKey }) => {
+    // fabric while the request itself never answers). Task 11's §5.2 shape:
+    // the draft names the SOURCE key, the target is a fresh proposed slot.
+    const proposedKeyId = uuid()
+    await page.evaluate(({ documentId, keyId, idempotencyKey, targetId }) => {
       void fetch('/api/lan/animation/attempts', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          documentId, tool: 'hero', targetId: keyId, idempotencyKey,
-          draft: { tool: 'hero', targetKeyId: keyId, movementArc: 'she plants the forward foot and pushes through into a full stride', overrides: { medium: 'clean line on white' } },
+          documentId, tool: 'hero', targetId, idempotencyKey,
+          draft: { tool: 'hero', sourceKeyId: keyId, movementArc: 'she plants the forward foot and pushes through into a full stride', overrides: { medium: 'clean line on white' } },
         }),
       }).catch(() => undefined)
-    }, { documentId: document.id, keyId, idempotencyKey: `anim-e2e-fabric-${Date.now()}` })
+    }, { documentId: document.id, keyId, targetId: proposedKeyId, idempotencyKey: `anim-e2e-fabric-${Date.now()}` })
 
     // The queued envelope (animation.attempt.persisted → attempt-state
     // queued) reaches the shell through the existing fabric.
@@ -1044,8 +1046,17 @@ type SliceDocument = {
   document: {
     revision: number
     body: {
-      keys: Array<{ id: string; selectedCandidateId: string | null }>
-      spans: Array<{ id: string; stepSlots: Array<{ id: string; attempts: string[]; selectedRollingReference: { attemptId: string; frameIndex: number } | null }> }>
+      keys: Array<{
+        id: string
+        selectedCandidateId: string | null
+        candidates: Array<{
+          id: string
+          origin: string
+          assetReference: { kind: string }
+          provenance: { sourceTake?: string; sourceFrame?: number; generatingOp?: string }
+        }>
+      }>
+      spans: Array<{ id: string; fromKeyId: string; toKeyId: string; intent: { movement: string; preservation: string }; stepSlots: Array<{ id: string; attempts: string[]; selectedRollingReference: { attemptId: string; frameIndex: number } | null }> }>
     }
     attempts: Array<{ attemptId: string; tool: string; targetId: string; execution: string }>
   }
@@ -1055,7 +1066,7 @@ const readAnimationDocument = async (request: APIRequestContext, documentId: str
   (await (await request.get(`/api/lan/animation/document?id=${documentId}`)).json()) as { document: SliceDocument['document'] }
 
 const readAttemptView = async (request: APIRequestContext, attemptId: string) =>
-  (await (await request.get(`/api/lan/animation/attempt?id=${attemptId}`)).json()) as { attempt: { execution: string; preparation: { state: string; proposedFrameIndex?: number }; candidate: unknown } }
+  (await (await request.get(`/api/lan/animation/attempt?id=${attemptId}`)).json()) as { attempt: { execution: string; preparation: { state: string; proposedFrameIndex?: number }; candidate: { id: string | null; earlierRevision: boolean; frameCount: number } | null } }
 
 /** One tween draft body for page-context submissions (a KNOWN idempotency key
  *  so a second tab context can replay the identical request). */
@@ -1436,6 +1447,289 @@ test('a re-roll adds an alternative take without replacing the selection (review
     await expect(panel.locator('[data-anim-review-frame="8"]')).toHaveAttribute('data-anim-frame-selected', 'true')
     const switched = await readAnimationDocument(request, seeded.documentId)
     expect(switched.document.body.spans.find((entry) => entry.id === seeded.spanId)!.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId: takeTwo, frameIndex: 8 })
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+// ---------------------------------------------------------------------------
+// Task 11 — the hero tool (§5.2 the hero sourcing path, §6.2 the hero
+// caption template, §7.2.2 the two frame paths, §8.2 candidate landing):
+// the hero generates the NEXT key from the current one — the submission
+// targets a FRESH PROPOSED key slot (never a re-roll of the source), the
+// clip lands there as an unselected candidate, and the user's EXPLICIT
+// frame acceptance establishes the key (a new candidate + the selection).
+// The accepted key then becomes the incoming tween span's FIXED FAR
+// reference (§5.2) — proven end to end by a tween step that SUBMITS AND
+// RENDERS against it (a video-asset far reference would be refused by the
+// image-only rule; success is the proof the accepted frame resolved as an
+// image). Lock enforcement and outdated-result provenance ride the same
+// flow. The production completion owner runs everything; the fake engine
+// (which lists the clip's decoded frames beside the clip) is the only
+// double.
+// ---------------------------------------------------------------------------
+
+/** The hero flow's seed: a bound document with ONE selected key (a real
+ *  blob image, a pose, a facing) — the hero's SOURCE. */
+async function seedHeroDocument(request: APIRequestContext, projectId: string, name: string) {
+  const relPath = await ingestKeyImage(request, 'anim-hero-source.png')
+  const created = await (await request.post('/api/lan/animation/documents', {
+    data: { projectId, name, binding: { characterDescription: 'a lanky courier in a long coat', referenceAssetIds: [uuid()], medium: 'clean line on white', initialKeyAssetId: relPath } },
+  })).json() as { document: { id: string; revision: number } }
+  const documentId = created.document.id
+  let revision = created.document.revision
+  const keyId = uuid()
+  const candidateId = uuid()
+  let landed = await (await request.post('/api/lan/animation/keys', {
+    data: { op: 'add-candidate', documentId, keyId, expectedRevision: revision, candidate: { id: candidateId, assetReference: { assetId: `animref-${uuid().slice(0, 8)}`, relPath, kind: 'image' }, origin: 'import', provenance: { assetId: 'animref-hero-source' }, poseDescription: 'mid-stride, arms pumping', facing: 'screen-left' } },
+  })).json() as { document: { revision: number } }
+  revision = landed.document.revision
+  landed = await (await request.post('/api/lan/animation/select/key-candidate', { data: { documentId, keyId, candidateId, expectedRevision: revision } })).json() as { document: { revision: number } }
+  revision = landed.document.revision
+  return { documentId, revision, keyId, candidateId }
+}
+
+const HERO_ARC = 'she plants the forward foot, pushes through into a full stride, and settles onto the heel three steps along'
+
+test('the §5.2 hero slice — generate the next key, accept a frame explicitly, bind the far reference (hero)', async ({ page, request }) => {
+  test.setTimeout(150_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedHeroDocument(request, projectId, 'The hero slice')
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+    await page.goto(animationUrl)
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    // Selecting the source key opens the HERO AUTHORING PANEL (§5.2): the
+    // current key's image as the single reference, the movement arc, the
+    // client-compiled caption preview.
+    const sourceCard = timeline.locator(`[data-anim-key="${seeded.keyId}"]`)
+    await sourceCard.click()
+    const panel = page.locator('[data-anim-hero-panel]')
+    await expect(panel).toBeVisible()
+    await expect(panel).toHaveAttribute('data-anim-hero-panel-key', seeded.keyId)
+    await expect(panel.locator('[data-anim-hero-source] img')).toBeVisible()
+    await expect(page.locator('[data-refusal]')).toHaveCount(0)
+    // The arc + the caption preview: §6.2's template — SCENE, ONE numbered
+    // reference line (the current key), MOVEMENT verbatim, the fixed STATIC
+    // hold — and NO destination section.
+    await page.locator('[data-anim-hero-arc]').fill(HERO_ARC)
+    await page.locator('[data-anim-hero-caption-preview] summary').click()
+    const caption = page.locator('[data-anim-hero-caption-text]')
+    await expect(caption).toBeVisible()
+    await expect(caption).toContainText(`MOVEMENT: ${HERO_ARC}`, { timeout: 5_000 })
+    await expect(caption).toContainText('Reference 1: the current key — mid-stride, arms pumping, facing screen-left')
+    await expect(caption).toContainText('SCENE: clean line on white.')
+    expect(await caption.textContent()).not.toContain('TARGET END FRAME')
+    const previewed = await caption.textContent()
+    // GENERATE (§7.1's explicit action): the attempt targets a fresh
+    // PROPOSED key slot; the in-flight render attaches to its SOURCE key
+    // (the playhead's rule 2 — the slot materializes only at landing).
+    await page.locator('[data-anim-hero-submit]').click()
+    await expect(timeline.locator('[data-anim-playhead]')).toHaveAttribute('data-anim-playhead-at', seeded.keyId, { timeout: 15_000 })
+    await expect(timeline.locator('[data-anim-playhead]')).toHaveAttribute('data-anim-playhead-kind', 'key')
+    // The landing (the completion owner's own polling): the proposed slot
+    // materializes with the clip, selection null.
+    let heroAttemptId = ''
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      const hero = view.document.attempts.find((entry) => entry.tool === 'hero')
+      heroAttemptId = hero?.attemptId ?? ''
+      return hero !== undefined && hero.execution === 'ready' && view.document.body.keys.length === 2
+    }, { timeout: 30_000 }).toBe(true)
+    const landedView = await readAnimationDocument(request, seeded.documentId)
+    const sourceSlot = landedView.document.body.keys.find((entry) => entry.id === seeded.keyId)!
+    const proposedSlot = landedView.document.body.keys.find((entry) => entry.id !== seeded.keyId)!
+    // (b) §5.2: the accepted frame establishes a NEW key — the SOURCE key is
+    // untouched (its candidates and selection exactly what they were).
+    expect(sourceSlot.candidates).toHaveLength(1)
+    expect(sourceSlot.selectedCandidateId).toBe(seeded.candidateId)
+    expect(proposedSlot.candidates).toHaveLength(1)
+    expect(proposedSlot.candidates[0]!.origin).toBe('hero')
+    expect(proposedSlot.selectedCandidateId).toBeNull()
+    // The frozen caption is the previewed text VERBATIM (byte-equal), with
+    // the frozen arc + source key riding the row (§8.1).
+    const attemptState = await (await request.get(`/api/lan/animation/attempt?id=${heroAttemptId}`)).json() as { attempt: { caption: string; sourceKeyId: string; movementArc: string } }
+    expect(attemptState.attempt.caption).toBe(previewed)
+    expect(attemptState.attempt.sourceKeyId).toBe(seeded.keyId)
+    expect(attemptState.attempt.movementArc).toBe(HERO_ARC)
+    // The fabric's refresh grew the card (no badge — nothing selected); the
+    // user's explicit selection of the new key opens the HERO REVIEW.
+    const proposedCard = timeline.locator(`[data-anim-key="${proposedSlot.id}"]`)
+    await expect(proposedCard).toBeVisible({ timeout: 15_000 })
+    await expect(proposedCard.locator('[data-anim-key-badge]')).toHaveCount(0)
+    await proposedCard.click()
+    const review = page.locator('[data-anim-hero-review]')
+    await expect(review).toBeVisible()
+    await expect(review).toHaveAttribute('data-anim-review-attempt', heroAttemptId)
+    await expect(review).toHaveAttribute('data-anim-review-state', 'ready')
+    await expect(review.locator('[data-anim-review-status]')).toHaveText('Ready to review')
+    await expect(review.locator('[data-anim-review-clip]')).toBeVisible()
+    // The frame strip (§7.2.2): 22 frames, the PROPOSAL marked, NOTHING
+    // accepted (the system proposes; only the user accepts).
+    const frames = review.locator('[data-anim-hero-frame]')
+    await expect(frames).toHaveCount(22)
+    await expect(review.locator('[data-anim-hero-frame="11"]')).toHaveAttribute('data-anim-frame-proposed', 'true')
+    await expect(review.locator('[data-anim-frame-accepted="true"]')).toHaveCount(0)
+    await expect(review.locator('[data-anim-hero-accepted-frame]')).toContainText('No frame accepted')
+    // ACCEPT frame 5 — explicit, not the proposal: the on-demand extraction
+    // path (§7.2.2 path 2), wire-pinned to exactly one extract-frame POST.
+    let extractCalls = 0
+    page.on('request', (route) => { if (route.url().includes('/api/lan/animation/attempt/extract-frame')) extractCalls += 1 })
+    await review.locator('[data-anim-hero-frame="5"]').click()
+    await expect(review.locator('[data-anim-hero-frame="5"]')).toHaveAttribute('data-anim-frame-accepted', 'true')
+    await expect(review.locator('[data-anim-hero-accepted-frame]')).toContainText('frame 5 of this take')
+    expect(extractCalls, 'the acceptance rides on-demand extraction once').toBe(1)
+    // The acceptance is DOCUMENT truth (§7.2.1's selectKeyCandidate arm): the
+    // proposed slot holds the clip AND the accepted frame, the selection
+    // names the frame (origin hero, provenance take+frame), and the key card
+    // grew its badge. The SOURCE key is still untouched.
+    const acceptedView = await readAnimationDocument(request, seeded.documentId)
+    const acceptedSlot = acceptedView.document.body.keys.find((entry) => entry.id === proposedSlot.id)!
+    expect(acceptedSlot.candidates).toHaveLength(2)
+    expect(acceptedSlot.selectedCandidateId).not.toBeNull()
+    const acceptedCandidate = acceptedSlot.candidates.find((entry) => entry.id === acceptedSlot.selectedCandidateId)!
+    expect(acceptedCandidate.origin).toBe('hero')
+    expect(acceptedCandidate.provenance.sourceTake).toBe(heroAttemptId)
+    expect(acceptedCandidate.provenance.sourceFrame).toBe(5)
+    expect(acceptedCandidate.assetReference.kind).toBe('image', 'the accepted frame resolved as a real image asset')
+    await expect(proposedCard.locator('[data-anim-key-badge]')).toHaveAttribute('data-anim-key-badge', 'hero')
+    // (a) a RE-ROLL lands an alternative without moving the selection: a
+    // fresh take for the SAME proposed slot, the frozen arc resubmitted.
+    // The settle is the second take's LANDING (its clip in the slot), not
+    // the submit — the attempt row exists while still rendering.
+    await review.locator('[data-anim-review-reroll]').click()
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      const takes = view.document.attempts.filter((entry) => entry.tool === 'hero' && entry.targetId === proposedSlot.id)
+      return takes.length === 2 && takes[1]!.execution === 'ready'
+    }, { timeout: 30_000 }).toBe(true)
+    const rolledView = await readAnimationDocument(request, seeded.documentId)
+    const rolledSlot = rolledView.document.body.keys.find((entry) => entry.id === proposedSlot.id)!
+    expect(rolledSlot.selectedCandidateId).toBe(acceptedSlot.selectedCandidateId, 'the re-roll never replaced the acceptance (§8.2)')
+    expect(rolledSlot.candidates.length).toBeGreaterThanOrEqual(3, 'the second clip landed as a retained alternative')
+    await expect(review).toHaveAttribute('data-anim-review-state', 'ready', { timeout: 30_000 })
+    // (d) LOCK enforcement: the locked key refuses the frame acceptance
+    // (§7.2.1 — the server's rule, named here before the doomed command).
+    const lockChip = proposedCard.locator('[data-anim-key-lock]')
+    await lockChip.click()
+    await expect(lockChip).toHaveAttribute('aria-pressed', 'true')
+    await review.locator('[data-anim-hero-frame="8"]').click()
+    const lockedRefusal = page.locator('[data-anim-command-error]')
+    await expect(lockedRefusal).toBeVisible()
+    await expect(lockedRefusal).toContainText('locked')
+    const stillLockedView = await readAnimationDocument(request, seeded.documentId)
+    expect(stillLockedView.document.body.keys.find((entry) => entry.id === proposedSlot.id)!.selectedCandidateId).toBe(acceptedSlot.selectedCandidateId, 'the locked key\'s selection never moved')
+    // The explicit unlock, then the acceptance moves the selection — the
+    // user's act, not the system's.
+    await lockChip.click()
+    await expect(lockChip).toHaveAttribute('aria-pressed', 'false')
+    await review.locator('[data-anim-hero-frame="8"]').click()
+    await expect(review.locator('[data-anim-hero-frame="8"]')).toHaveAttribute('data-anim-frame-accepted', 'true', { timeout: 15_000 })
+    const reAcceptedView = await readAnimationDocument(request, seeded.documentId)
+    const reAcceptedSlot = reAcceptedView.document.body.keys.find((entry) => entry.id === proposedSlot.id)!
+    expect(reAcceptedSlot.selectedCandidateId).not.toBe(acceptedSlot.selectedCandidateId)
+    const reAccepted = reAcceptedSlot.candidates.find((entry) => entry.id === reAcceptedSlot.selectedCandidateId)!
+    expect(reAccepted.provenance.sourceTake).not.toBe(heroAttemptId, 'the new acceptance came from the re-rolled take')
+    expect(reAccepted.provenance.sourceFrame).toBe(8)
+    // (c) the accepted key becomes the incoming tween span's FIXED FAR
+    // reference (§5.2): the span action mints source→this key and opens the
+    // inspector — the TARGET END FRAME card IS the accepted frame's image.
+    await review.locator('[data-anim-hero-open-span]').click()
+    const inspector = page.locator('[data-anim-inspector]')
+    await expect(inspector).toBeVisible({ timeout: 15_000 })
+    await expect(inspector.locator('[data-anim-frame="target"] img')).toBeVisible()
+    const spanView = await readAnimationDocument(request, seeded.documentId)
+    const theSpan = spanView.document.body.spans.find((entry) => entry.fromKeyId === seeded.keyId && entry.toKeyId === proposedSlot.id)
+    expect(theSpan, 'the span source→hero-key minted').toBeTruthy()
+    expect(theSpan!.intent.movement).toBe(HERO_ARC, 'the hero arc seeded the span\'s movement draft')
+    // The end-to-end proof: a tween step SUBMITS AND RENDERS against the
+    // span — the far reference resolved from the hero key's accepted frame
+    // (an image asset; a video far reference would be refused outright by
+    // the image-only rule, so the attempt reaching the engine IS the proof).
+    await page.locator('[data-anim-inspector-submit]').click()
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      return view.document.attempts.filter((entry) => entry.tool === 'tween').length
+    }, { timeout: 30_000 }).toBe(1)
+    const tweenAttemptId = (await readAnimationDocument(request, seeded.documentId)).document.attempts.find((entry) => entry.tool === 'tween')!.attemptId
+    await expect(page.locator('[data-anim-command-error]')).toHaveCount(0)
+    await expect.poll(async () => (await readAttemptView(request, tweenAttemptId)).attempt.execution, { timeout: 30_000 }).toBe('ready')
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('an outdated hero result keeps its provenance and is marked generated from an earlier version (hero)', async ({ page, request }) => {
+  test.setTimeout(150_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  // A render long enough (~14s at 40 steps × 350ms) that the document can
+  // move behind the page's back WELL inside the render window.
+  await engine.control({ steps: 40, stepDelayMs: 350 })
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedHeroDocument(request, projectId, 'Outdated hero')
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+    await page.goto(animationUrl)
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    await timeline.locator(`[data-anim-key="${seeded.keyId}"]`).click()
+    await page.locator('[data-anim-hero-arc]').fill('she rises from the bench and squares her shoulders')
+    await page.locator('[data-anim-hero-submit]').click()
+    // The attempt persists BEFORE the dispatch — settle on the durable row,
+    // then RELOAD: the §7.4 restored-session read shows the in-flight render
+    // attached to its SOURCE key (the proposed slot has not materialized;
+    // the playhead's rule 2, pinned here for hero).
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      return view.document.attempts.some((entry) => entry.tool === 'hero')
+    }, { timeout: 15_000 }).toBe(true)
+    await page.reload()
+    const reloaded = page.locator('[data-anim-timeline]')
+    await expect(reloaded).toBeVisible({ timeout: 15_000 })
+    await expect(reloaded.locator('[data-anim-playhead]')).toHaveAttribute('data-anim-playhead-at', seeded.keyId, { timeout: 15_000 })
+    // The document MOVES while the render runs (§8.2): an authoring command
+    // lands behind the page's back — an alternative candidate on the source
+    // key, its selection untouched.
+    const current = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { revision: number } }
+    const moved = await request.post('/api/lan/animation/keys', {
+      data: {
+        op: 'add-candidate', documentId: seeded.documentId, keyId: seeded.keyId, expectedRevision: current.document.revision,
+        candidate: { id: uuid(), assetReference: { assetId: `animref-${uuid().slice(0, 8)}`, relPath: null, kind: 'image' }, origin: 'import', provenance: { assetId: 'animref-midflight' }, poseDescription: 'a mid-flight alternative', facing: null },
+      },
+    })
+    expect(moved.ok(), `the mid-flight authoring write lands (${await moved.text()})`).toBe(true)
+    // The landing keeps its ORIGINAL provenance: earlierRevision true.
+    let heroAttemptId = ''
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      const hero = view.document.attempts.find((entry) => entry.tool === 'hero')
+      heroAttemptId = hero?.attemptId ?? ''
+      return hero !== undefined && hero.execution === 'ready'
+    }, { timeout: 40_000 }).toBe(true)
+    const state = await readAttemptView(request, heroAttemptId)
+    expect(state.attempt.candidate!.earlierRevision).toBe(true, 'the store marked the result generated from an earlier revision')
+    // The review surfaces it (§8.2's named note) — a reload lands the
+    // restored session with the ready-open hero decision auto-focused.
+    await page.reload()
+    const review = page.locator('[data-anim-hero-review]')
+    await expect(review).toBeVisible({ timeout: 15_000 })
+    await expect(review).toHaveAttribute('data-anim-review-state', 'ready')
+    await expect(review.locator('[data-anim-review-earlier]')).toBeVisible()
+    await expect(review.locator('[data-anim-review-earlier]')).toContainText('earlier version')
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
     await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)

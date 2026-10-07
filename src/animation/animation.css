@@ -147,6 +147,6 @@
 .anim-review-frames, .anim-review-takes { display: flex; flex-wrap: wrap; gap: 6px; }
 .anim-review-frame, .anim-review-take { min-width: 36px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--muted); font-size: var(--text-sm); cursor: pointer; }
 .anim-review-frame[data-anim-frame-proposed='true'] { border-style: dashed; }
-.anim-review-frame[data-anim-frame-selected='true'], .anim-review-take[data-anim-take-selected='true'] { border-color: var(--accent); color: var(--text); }
+.anim-review-frame[data-anim-frame-selected='true'], .anim-review-frame[data-anim-frame-accepted='true'], .anim-review-take[data-anim-take-selected='true'] { border-color: var(--accent); color: var(--text); }
 .anim-review-selected { margin: 0; color: var(--text); font-size: var(--text-md); }
 .anim-review-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }

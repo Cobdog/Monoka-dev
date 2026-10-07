@@ -225,9 +225,12 @@ async function makeSelectedKey(api, documentId, startRevision, label) {
   return { keyId, candidateId, revision: response.body.document.revision }
 }
 
-const heroDraft = (targetKeyId) => ({
+/** A hero draft naming its SOURCE key (task 11's §5.2 semantics: the arc
+ *  describes the movement FROM the current key; the submission's targetId
+ *  separately names the PROPOSED slot the clip lands into). */
+const heroDraft = (sourceKeyId) => ({
   tool: 'hero',
-  targetKeyId,
+  sourceKeyId,
   movementArc: 'she plants the forward foot and pushes through into a full stride, arms swinging down to the hips',
   overrides: { medium: 'clean line on white', scene: 'a rain-slick street at dusk' },
 })
@@ -504,8 +507,12 @@ test('(c) submit emits attempt-state envelopes on the animation channel; the lan
   revision = inserted.body.document.revision
 
   // HERO — the subscribed socket hears the attempt move through the states.
+  // §5.2 (task 11): the attempt targets a FRESH PROPOSED key slot while the
+  // draft names the SOURCE key — the hero generates the NEXT key, never a
+  // re-roll of the current one (the F5 contract-review fix).
+  const heroProposedC = uuid()
   const hero = await api.post('/api/lan/animation/attempts', {
-    documentId: docC.id, tool: 'hero', targetId: keyC1, idempotencyKey: 'idem-c-hero',
+    documentId: docC.id, tool: 'hero', targetId: heroProposedC, idempotencyKey: 'idem-c-hero',
     draft: heroDraft(keyC1),
   })
   assert.equal(hero.status, 200, `the hero attempt submits (${hero.body.error ?? ''})`)
@@ -524,16 +531,31 @@ test('(c) submit emits attempt-state envelopes on the animation channel; the lan
   assert.equal(heroState.body.attempt.execution, 'ready')
   assert.equal(heroState.body.attempt.preparation.state, 'proposed')
   assert.ok(heroState.body.attempt.candidate.assetReference.relPath, 'the landed clip is a registered blob')
-  // The widened view (contract review F2): the persisted row (tool, targetId)
-  // and the frozen snapshot (caption, compilerVersion) ride the state —
-  // read-only surfacing of what was always persisted.
+  assert.equal(heroState.body.attempt.candidate.assetReference.kind, 'video', 'the landed clip is the video artifact')
+  // The widened view (contract review F2 + task 11's hero fields): the
+  // persisted row (tool, targetId, sourceKeyId) and the frozen snapshot
+  // (caption, compilerVersion, movementArc) ride the state — read-only
+  // surfacing of what was always persisted.
   assert.equal(heroState.body.attempt.tool, 'hero')
-  assert.equal(heroState.body.attempt.targetId, keyC1)
+  assert.equal(heroState.body.attempt.targetId, heroProposedC, 'the attempt targets the PROPOSED slot')
+  assert.equal(heroState.body.attempt.sourceKeyId, keyC1, 'the frozen draft names the SOURCE key')
+  assert.equal(heroState.body.attempt.movementArc, heroDraft(keyC1).movementArc, 'the authored arc froze verbatim')
   assert.ok(typeof heroState.body.attempt.caption === 'string' && heroState.body.attempt.caption.length > 0, 'the frozen compiled caption rides the view')
   assert.equal(heroState.body.attempt.compilerVersion, '1', 'the compiler version that built the frozen caption')
-  const heroSlot = (await api.get(`/api/lan/animation/document?id=${docC.id}`)).body.document.body.keys.find((key) => key.id === keyC1)
-  assert.equal(heroSlot.candidates.length, 2, 'the landed hero candidate APPENDED as an alternative')
-  assert.equal(heroSlot.selectedCandidateId, key1.candidateId, 'completion NEVER auto-selects (§8.2)')
+  assert.ok(!heroState.body.attempt.caption.includes('TARGET END FRAME'), 'the hero caption has NO destination section (§6.2)')
+  // The §5.2 document truth: the clip lands into the PROPOSED slot (which
+  // materializes with it, selection null — §5.3), and the SOURCE key is
+  // untouched — its candidate list and selection are exactly what they were.
+  const heroDocumentC = (await api.get(`/api/lan/animation/document?id=${docC.id}`)).body.document
+  const sourceSlot = heroDocumentC.body.keys.find((key) => key.id === keyC1)
+  assert.equal(sourceSlot.candidates.length, 1, 'the SOURCE key gained nothing (§5.2: the next key, not a re-roll)')
+  assert.equal(sourceSlot.selectedCandidateId, key1.candidateId, 'completion NEVER auto-selects (§8.2)')
+  const heroSlot = heroDocumentC.body.keys.find((key) => key.id === heroProposedC)
+  assert.ok(heroSlot, 'the proposed slot materialized with its candidate')
+  assert.equal(heroSlot.candidates.length, 1, 'the landed hero clip is the slot\'s first candidate')
+  assert.equal(heroSlot.candidates[0].origin, 'hero')
+  assert.equal(heroSlot.selectedCandidateId, null, 'the landed clip is NOT auto-selected (§5.3)')
+  assert.equal(heroSlot.candidates[0].provenance.generatingOp, heroAttemptC, 'provenance names the generating attempt')
   // Review Important-1: attempt-ready's candidateId is the MINTED DOCUMENT
   // CANDIDATE id — correlatable against the key slot's candidates — never
   // the engine artifact path.
@@ -544,6 +566,17 @@ test('(c) submit emits attempt-state envelopes on the animation channel; the lan
     'attempt-ready.candidateId matches a candidate id in the document body',
   )
   assert.notEqual(heroReady.payload.candidateId, heroState.body.attempt.candidate.assetReference.assetId, 'the candidateId is not the engine artifact path')
+  // The frame-addressed output listing (task 11): the fake engine lists the
+  // clip's decoded frames beside the clip, so §7.2.2's on-demand extraction
+  // answers a real IMAGE asset — frame 3 differs from frame 4, and both
+  // differ from the clip artifact (the frame-preparer contract).
+  const frameThree = await api.post('/api/lan/animation/attempt/extract-frame', { attemptId: heroAttemptC, frameIndex: 3 })
+  const frameFour = await api.post('/api/lan/animation/attempt/extract-frame', { attemptId: heroAttemptC, frameIndex: 4 })
+  assert.equal(frameThree.status, 200, `frame 3 extracts (${frameThree.body.error ?? ''})`)
+  assert.equal(frameThree.body.assetReference.kind, 'image', 'the extracted frame is an image asset')
+  assert.equal(frameFour.body.assetReference.kind, 'image')
+  assert.notEqual(frameThree.body.assetReference.relPath, frameFour.body.assetReference.relPath, 'frames resolve to distinct artifacts')
+  assert.notEqual(frameThree.body.assetReference.relPath, heroState.body.attempt.candidate.assetReference.relPath, 'a frame is not the clip artifact')
 
   // TWEEN — the first step of a chain: the rolling near reference resolves
   // from the span's start key (nothing has landed on the chain yet), the
@@ -609,7 +642,7 @@ test('(d) same key + same draft ⇒ { created: false } and no second engine job;
   const key = await makeSelectedKey(api, docD.id, docD.revision, 'd1')
 
   const draft = heroDraft(key.keyId)
-  const body = { documentId: docD.id, tool: 'hero', targetId: key.keyId, idempotencyKey: 'idem-d', draft }
+  const body = { documentId: docD.id, tool: 'hero', targetId: uuid(), idempotencyKey: 'idem-d', draft }
   const first = await api.post('/api/lan/animation/attempts', body)
   assert.equal(first.status, 200)
   assert.equal(first.body.created, true)
@@ -634,8 +667,28 @@ test('(d) same key + same draft ⇒ { created: false } and no second engine job;
   // Shape refusals are structured 400s with nothing persisted.
   const badTool = await api.post('/api/lan/animation/attempts', { ...body, idempotencyKey: 'idem-d-bad', tool: 'morph' })
   assert.equal(badTool.status, 400)
-  const mismatchedTarget = await api.post('/api/lan/animation/attempts', { ...body, idempotencyKey: 'idem-d-bad2', targetId: uuid() })
-  assert.equal(mismatchedTarget.status, 400, 'the target id must agree with the draft')
+  // §5.2 (task 11): the hero generates the NEXT key — a target equal to the
+  // source is the re-roll this contract forbids; a non-UUID target can never
+  // materialize as a key slot; a source key with no selected candidate has
+  // no reference to freeze.
+  const selfTarget = await api.post('/api/lan/animation/attempts', { ...body, idempotencyKey: 'idem-d-bad2', targetId: key.keyId })
+  assert.equal(selfTarget.status, 400)
+  assert.match(selfTarget.body.error, /NEXT key/)
+  const notAUuid = await api.post('/api/lan/animation/attempts', { ...body, idempotencyKey: 'idem-d-bad3', targetId: 'not-a-uuid' })
+  assert.equal(notAUuid.status, 400)
+  assert.match(notAUuid.body.error, /UUID target key slot/)
+  const unselected = await api.post('/api/lan/animation/keys', {
+    op: 'add-candidate', documentId: docD.id, keyId: uuid(), expectedRevision: (await api.get(`/api/lan/animation/document?id=${docD.id}`)).body.document.revision,
+    candidate: { id: uuid(), assetReference: { assetId: `animref-${uuid().slice(0, 8)}`, relPath: null, kind: 'image' }, origin: 'import', provenance: { assetId: 'animref-unselected' }, poseDescription: null, facing: null },
+  })
+  assert.equal(unselected.status, 200)
+  const unselectedKey = unselected.body.document.body.keys.find((entry) => entry.candidates.length > 0 && entry.selectedCandidateId === null)
+  assert.ok(unselectedKey, 'the unselected key slot exists')
+  const noSelection = await api.post('/api/lan/animation/attempts', { ...body, idempotencyKey: 'idem-d-bad4', targetId: uuid(), draft: heroDraft(unselectedKey.id) })
+  assert.equal(noSelection.status, 400)
+  assert.match(noSelection.body.error, /no selected candidate/)
+  const missingSource = await api.post('/api/lan/animation/attempts', { ...body, idempotencyKey: 'idem-d-bad5', targetId: uuid(), draft: heroDraft(uuid()) })
+  assert.equal(missingSource.status, 404, 'a source key that does not exist is a 404')
 
   // Deterministic section close: the first submission's engine record EXISTS
   // before (f) snapshots its count (a still-rendering earlier job would
@@ -710,8 +763,9 @@ test('(f) an in-flight attempt from a previous server life resolves on a fresh b
   const key = await makeSelectedKey(api, docF.id, docF.revision, 'f1')
 
   const countBefore = await engineRecordCount()
+  const proposedF = uuid()
   const submitted = await api.post('/api/lan/animation/attempts', {
-    documentId: docF.id, tool: 'hero', targetId: key.keyId, idempotencyKey: 'idem-f',
+    documentId: docF.id, tool: 'hero', targetId: proposedF, idempotencyKey: 'idem-f',
     draft: heroDraft(key.keyId),
   })
   assert.equal(submitted.status, 200)
@@ -746,9 +800,15 @@ test('(f) an in-flight attempt from a previous server life resolves on a fresh b
 
   const document = await apiB.get(`/api/lan/animation/document?id=${docF.id}`)
   assert.equal(document.status, 200)
-  const slot = document.body.document.body.keys.find((entry) => entry.id === key.keyId)
-  assert.equal(slot.candidates.length, 2, 'the reconciled candidate landed on the key slot')
-  assert.equal(slot.selectedCandidateId, key.candidateId, 'the reconciliation changed no selection')
+  // §5.2: the reconciled candidate landed on the PROPOSED slot (materialized
+  // by the landing, selection null); the SOURCE key is untouched.
+  const slot = document.body.document.body.keys.find((entry) => entry.id === proposedF)
+  assert.ok(slot, 'the proposed slot materialized with the reconciled candidate')
+  assert.equal(slot.candidates.length, 1, 'the reconciled candidate landed on the proposed slot')
+  assert.equal(slot.selectedCandidateId, null, 'the reconciliation changed no selection')
+  const sourceKey = document.body.document.body.keys.find((entry) => entry.id === key.keyId)
+  assert.equal(sourceKey.candidates.length, 1, 'the source key gained nothing')
+  assert.equal(sourceKey.selectedCandidateId, key.candidateId, 'the reconciliation changed no selection')
 })
 
 // ---------------------------------------------------------------------------
@@ -763,8 +823,9 @@ test('(g) a failed preparation retries through the endpoint — the clip survive
   const key = await makeSelectedKey(apiB, docG.id, docG.revision, 'g1')
 
   const countBefore = await engineRecordCount()
+  const proposedG = uuid()
   const submitted = await apiB.post('/api/lan/animation/attempts', {
-    documentId: docG.id, tool: 'hero', targetId: key.keyId, idempotencyKey: 'idem-g-prep',
+    documentId: docG.id, tool: 'hero', targetId: proposedG, idempotencyKey: 'idem-g-prep',
     draft: heroDraft(key.keyId),
   })
   assert.equal(submitted.status, 200, `the attempt submits (${submitted.body.error ?? ''})`)
@@ -805,7 +866,7 @@ test('(g) a failed preparation retries through the endpoint — the clip survive
   // retry (400); an unknown attempt is a 404.
   await engineControl({ failMode: 'error' })
   const doomed = await apiB.post('/api/lan/animation/attempts', {
-    documentId: docG.id, tool: 'hero', targetId: key.keyId, idempotencyKey: 'idem-g-prep-doomed',
+    documentId: docG.id, tool: 'hero', targetId: uuid(), idempotencyKey: 'idem-g-prep-doomed',
     draft: heroDraft(key.keyId),
   })
   assert.equal(doomed.status, 200, `the failing attempt submits (${doomed.body.error ?? ''})`)

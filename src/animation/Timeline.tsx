@@ -194,7 +194,7 @@ export function Timeline({ timeline, binding, selectedId, playhead, busy, onSele
               onClick={() => onSelectSpan(span.id)}
               onKeyDown={selectOnKey(() => onSelectSpan(span.id))}
             >
-              <span className="anim-span-label">{span.intent.movement}</span>
+              <span className="anim-span-label">{span.intent.movement !== '' ? span.intent.movement : 'unauthored span'}</span>
               <span className="anim-span-steps">
                 {span.stepSlots.map((slot, stepIndex) => (
                   <span key={slot.id} className="anim-step-slot" data-anim-step-slot={slot.id} data-anim-step-index={stepIndex}>
