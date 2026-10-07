@@ -714,8 +714,36 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       })
     },
 
+    /** Span removal (the spans route's `remove` op — landed with the routes
+     *  because no earlier task needed it): the span leaves the document AND
+     *  its editorial contributions go with it (a contribution row naming a
+     *  missing span would fail parseAnimationDocumentBody's pointer
+     *  integrity — the persist gate refuses it anyway; dropping them here is
+     *  the honest semantics, editorial timing belongs to its span). Nothing
+     *  is marked stale: no OTHER span consumed this span's references (a
+     *  downstream span consumes its own key's selection, §5.3), and the
+     *  attempt rows targeting the removed step slots stay readable — the
+     *  completion owner's landing for them is a 404 refusal, by design. */
+    removeSpan: (documentId: string, spanId: string, expectedRevision: number) => {
+      if (!isUuid(spanId)) throw new AnimationRuleError('The span id must be a UUID.', 400)
+      return authorCommand(documentId, expectedRevision, (body) => {
+        requireSpan(body, spanId)
+        body.spans = body.spans.filter((span) => span.id !== spanId)
+        body.editorial = body.editorial.filter((entry) => entry.spanId !== spanId)
+      })
+    },
+
     // attempts — separate rows, their OWN revision; completion events are
     // not user edits (§11.2) -------------------------------------------------
+    /** The recovery read's attempt half (the route pairs it with the
+     *  document): every attempt of one document, oldest first. Attempt rows
+     *  outlive their span — a tween attempt whose target step slot was later
+     *  removed stays readable here (its landing is the owner's refusal, not
+     *  this read's). */
+    attemptsForDocument: (documentId: string): AnimationAttemptRow[] =>
+      (statements.allAttempts.all() as Array<Record<string, unknown>>)
+        .map(hydrateAttempt)
+        .filter((attempt) => attempt.documentId === documentId),
     recordAttempt: (input: { id: string; documentId: string; tool: AnimationTool; targetId: string; idempotencyKey: string; inputHash: string; snapshot: FrozenAttemptSnapshot }) => {
       // Same key ⇒ the existing attempt, whatever the new inputs carry — the
       // different-inputs CONFLICT is the route's call (it compares the stored

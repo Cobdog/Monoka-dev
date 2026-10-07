@@ -327,8 +327,8 @@ export class ClientOutbox {
   }
 }
 
-type SubscribableChannel = 'job' | 'telemetry' | 'preview' | 'engine' | 'system'
-const SUBSCRIBABLE: readonly SubscribableChannel[] = ['job', 'telemetry', 'preview', 'engine', 'system']
+type SubscribableChannel = 'job' | 'telemetry' | 'preview' | 'engine' | 'system' | 'animation'
+const SUBSCRIBABLE: readonly SubscribableChannel[] = ['job', 'telemetry', 'preview', 'engine', 'system', 'animation']
 
 type ClientLlmStream = { controller: AbortController; inactivity: ReturnType<typeof setTimeout> }
 
@@ -461,6 +461,13 @@ export function createRealtimeHub(options: RealtimeHubOptions) {
     for (const event of normalized.events) {
       if (event.type === 'execution_start') upstream.activePromptId = event.promptId
       else if (event.type === 'executing' && event.node) upstream.activePromptId = event.promptId
+      // The single engine-event tap (animation lane, task k2q0n9s/5): the
+      // completion owner observes through the SAME shared upstream — no
+      // second engine socket (§10.1's no-shadow-client rule). A consumer
+      // failure is contained here: it must not take the fan-out down.
+      if (engineEventTap) {
+        try { engineEventTap(event) } catch (error) { logFailure('realtime/engine-tap', error, undefined, 'debug') }
+      }
       pushChannel('job', event.type, event)
     }
     const frame = normalized.previewFrame
@@ -810,6 +817,11 @@ export function createRealtimeHub(options: RealtimeHubOptions) {
   let drainTicker: ReturnType<typeof setInterval> | null = null
   let pingTimer: ReturnType<typeof setInterval> | null = null
 
+  /** The engine-event tap (animation lane): normalized upstream events handed
+   *  to ONE consumer beside the job-channel fan-out — the animation
+   *  completion owner, which correlates promptId → attemptId itself. */
+  let engineEventTap: ((event: JobLifecycleEvent) => void) | null = null
+
   return {
     attach(server: Server) {
       if (drainTicker || pingTimer) this.close()
@@ -851,6 +863,20 @@ export function createRealtimeHub(options: RealtimeHubOptions) {
      *  `{type:'fetch'}` envelopes for the Settings surface. */
     emitSystem(type: string, payload: unknown) {
       pushChannel('system', type, payload)
+    },
+    /** Animation channel emitter (animation module task 5, k2q0n9s): the
+     *  authoring surface's envelopes — attempt-state / attempt-ready /
+     *  document-changed / reconciliation — fanned out to animation
+     *  subscribers. The events ride the EXISTING fabric (one socket per
+     *  client, the same envelope + resync contract); there is no separate
+     *  animation transport. */
+    emitAnimation(type: string, payload: unknown) {
+      pushChannel('animation', type, payload)
+    },
+    /** Installs the single engine-event tap (see `engineEventTap`): the
+     *  animation completion owner's observation feed. Null uninstalls. */
+    tapEngineEvent(tap: ((event: JobLifecycleEvent) => void) | null) {
+      engineEventTap = tap
     },
     close() {
       if (drainTicker) clearInterval(drainTicker)

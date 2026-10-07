@@ -31,6 +31,11 @@ import { createStudioRepository, type StudioRepository } from './repo'
 import { CANVAS_SCHEMA_VERSION, CanvasSchemaVersionError, DocumentsRuleError, PlanConflictError } from './documents'
 import { exportProjectArchive, importProjectArchive } from './documentArchive'
 import { createRealtimeHub, type RealtimeHub } from './realtime'
+import { createAnimationStore } from './animation/store'
+import { createAnimationRenderingService, createComfyEnginePort, makeDocumentStoreBlobSink, makeFramePreparer, type EnginePort } from './animation/rendering'
+import { createCompletionOwner } from './animation/completion-owner'
+import { animationFabricEmitter, createAnimationRoutes, makeEngineEventTap } from './animation/routes'
+import { compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../shared/animation/compiler'
 import { EngineProcess } from './engineProcess'
 import { RuntimeManager, RuntimeConfigError } from './runtime'
 import { ENGINE_PATCH_IDS, revertEnginePatch, ENGINE_PATCHES } from './enginePatch'
@@ -543,6 +548,95 @@ export function createStudioServer(paths: StudioServerPaths) {
     transport: transportForEnvironment(),
     onProgress: (progress) => realtimeHub.emitSystem('fetch', progress),
   })
+
+  // Animation authoring module (spec 2026-10-06-animation-authoring-module-
+  // design.md; task k2q0n9s/5): the document store, rendering service, and
+  // SHARED completion owner on the same studio database and the same fabric
+  // — routes.ts is a pure handler mounted in handleLanRequest under
+  // /api/lan/animation. No animation surface without the studio database:
+  // its routes answer 503 like the documents block.
+  type AnimationSurface = {
+    handle: (request: IncomingMessage, response: ServerResponse, url: URL) => Promise<void>
+    /** The boot reconcile (§11.4): resolves every in-flight attempt from
+     *  engine truth — never a resubmit — then opens the submission gate. */
+    boot: () => Promise<void>
+  }
+  function createAnimationSurface(documents: StudioRepository['documents']): AnimationSurface {
+    const store = createAnimationStore(documents.db)
+    const blobs = makeDocumentStoreBlobSink(documents, join(dirname(paths.settingsFile), 'animation-staging'))
+    // The engine port follows the CONFIGURED engine address, re-resolved per
+    // call (settings changes apply without a restart; one memoized port per
+    // base URL keeps the port's materialization cache). It always carries
+    // the hub's stable clientId, so the engine's TARGETED events land on the
+    // one socket the fabric owns (F6 Option A) — and the local-only SSRF
+    // rule the rest of the engine surface enforces applies here too: a
+    // disallowed configured address never receives an animation request.
+    let portCache: { baseUrl: string; port: EnginePort } | null = null
+    const enginePortFor = (): EnginePort => {
+      const baseUrl = cleanUrl(loadSettingsCached().comfyUrl)
+      if (!isLocalServiceUrl(baseUrl)) {
+        throw new Error('The configured ComfyUI address is not a local service address — animation engine work is refused. Set a local engine URL in Settings.')
+      }
+      if (!portCache || portCache.baseUrl !== baseUrl) {
+        portCache = { baseUrl, port: createComfyEnginePort({ baseUrl, clientId: realtimeHub.clientId(), blobs }) }
+      }
+      return portCache.port
+    }
+    const engine: EnginePort = {
+      submitGraph: (graph, attemptId) => enginePortFor().submitGraph(graph, attemptId),
+      interrupt: (engineJobId) => enginePortFor().interrupt(engineJobId),
+      history: (engineJobId) => enginePortFor().history(engineJobId),
+      view: (engineJobId, frameIndex) => enginePortFor().view(engineJobId, frameIndex),
+      findJobByAttempt: (attemptId) => enginePortFor().findJobByAttempt(attemptId),
+      queuedJobIds: () => enginePortFor().queuedJobIds(),
+      uploadReference: (assetId, bytes) => enginePortFor().uploadReference(assetId, bytes),
+    }
+    // The fabric seam: internal service/owner events adapt onto the
+    // animation channel, and the hub's normalized upstream engine events
+    // feed the owner's observation through the SAME shared socket (§10.1 —
+    // no shadow engine client).
+    const emit = animationFabricEmitter((type, payload) => realtimeHub.emitAnimation(type, payload))
+    const owner = createCompletionOwner({ store, engine, emit, prepareFrame: makeFramePreparer({ engine, store }) })
+    const service = createAnimationRenderingService({
+      store,
+      engine,
+      owner,
+      blobs,
+      compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
+      emit,
+    })
+    realtimeHub.tapEngineEvent(makeEngineEventTap(store, owner))
+    // The submission gate: resolved when the boot reconcile sweep finishes
+    // (whatever it found) — submissions serialize behind the sweep.
+    animationReadyPromise = new Promise<void>((resolve) => { animationBootResolve = resolve })
+    const handle = createAnimationRoutes({
+      store,
+      service,
+      emitAnimation: (type, payload) => realtimeHub.emitAnimation(type, payload),
+      ready: () => animationReadyPromise,
+      engineAllowed: () => {
+        const configured = loadSettingsCached().comfyUrl
+        return isLocalServiceUrl(configured)
+          ? { ok: true }
+          : { ok: false, error: 'The configured ComfyUI address is not a local service address. Set a local engine URL in Settings.' }
+      },
+      sendJson,
+      readJson,
+    })
+    return {
+      handle,
+      boot: async () => {
+        try {
+          await owner.reconcile()
+        } finally {
+          animationBootResolve?.()
+        }
+      },
+    }
+  }
+  let animationBootResolve: (() => void) | null = null
+  let animationReadyPromise: Promise<void> = Promise.resolve()
+  const animation: AnimationSurface | null = studioRepo ? createAnimationSurface(studioRepo.documents) : null
 
   function defaultSettings(): AppSettings {
     const root = join(paths.documentsDirectory, 'ComfyUI', 'models')
@@ -2306,6 +2400,17 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           }
           return sendJson(response, 404, { error: 'Unknown canvas documents route.' })
         }
+        // /api/lan/animation/* — the animation authoring surface (task 5 of
+        // the animation module): documents, revision-gated authoring
+        // commands, the three selection routes, and the attempt lifecycle —
+        // the pure handler module owns the dispatch; the failure mapping is
+        // the documents block's (409 with the current document / 400-404
+        // rule refusals / loud schema-version refusals). No studio database
+        // ⇒ 503, exactly like the documents block above.
+        if (url.pathname.startsWith('/api/lan/animation')) {
+          if (!animation) return sendJson(response, 503, { error: 'The studio database is unavailable; animation documents cannot be accessed.' })
+          return animation.handle(request, response, url)
+        }
         if (url.pathname === '/api/lan/upload-output' && request.method === 'POST') {
           const body = await readJson(request, 10_000)
           const requested = typeof body.path === 'string' ? body.path : ''
@@ -3698,6 +3803,13 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
         // while a slow engine boots), reconcile the managed runtime — adopt
         // a healthy recorded instance instead of double-spawning.
         void runtime.reconcileOnBoot().catch((error: unknown) => logFailure('engine/reconcile', error, undefined, 'warn'))
+        // Same posture for the animation lane (§11.4): the sweep resolves
+        // in-flight attempts from engine truth — reattach observation, land
+        // completed output, mark confirmed-lost — and its completion opens
+        // the submission gate. NEVER a resubmit.
+        if (animation) {
+          void animation.boot().catch((error: unknown) => logFailure('animation/reconcile', error, undefined, 'warn'))
+        }
         resolvePromise()
       })
     })
