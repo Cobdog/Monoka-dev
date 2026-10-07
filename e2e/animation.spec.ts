@@ -1057,6 +1057,7 @@ type SliceDocument = {
         }>
       }>
       spans: Array<{ id: string; fromKeyId: string; toKeyId: string; intent: { movement: string; preservation: string }; stepSlots: Array<{ id: string; attempts: string[]; selectedRollingReference: { attemptId: string; frameIndex: number } | null }> }>
+      editorial: Array<{ id: string; spanId: string | null; attemptId: string; inFrame: number; outFrame: number; holdDuration: number }>
     }
     attempts: Array<{ attemptId: string; tool: string; targetId: string; execution: string }>
   }
@@ -1066,7 +1067,7 @@ const readAnimationDocument = async (request: APIRequestContext, documentId: str
   (await (await request.get(`/api/lan/animation/document?id=${documentId}`)).json()) as { document: SliceDocument['document'] }
 
 const readAttemptView = async (request: APIRequestContext, attemptId: string) =>
-  (await (await request.get(`/api/lan/animation/attempt?id=${attemptId}`)).json()) as { attempt: { execution: string; preparation: { state: string; proposedFrameIndex?: number }; candidate: { id: string | null; earlierRevision: boolean; frameCount: number } | null } }
+  (await (await request.get(`/api/lan/animation/attempt?id=${attemptId}`)).json()) as { attempt: { execution: string; windowEndKeyId?: string; preparation: { state: string; proposedFrameIndex?: number }; candidate: { id: string | null; earlierRevision: boolean; frameCount: number } | null } }
 
 /** One tween draft body for page-context submissions (a KNOWN idempotency key
  *  so a second tab context can replay the identical request). */
@@ -1977,5 +1978,263 @@ test('the window pick is explicit and bounded — gated submit, the distinct-end
   // Nothing dispatched, nothing persisted — the document holds no attempts.
   const view = await readAnimationDocument(request, seeded.documentId)
   expect(view.document.attempts.length).toBe(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// Task 13 — the editorial timing surface (§9 editorial timing and export,
+// §11.3 the export conventions): the assembly layer. Which portions of landed
+// clips contribute ([inFrame, outFrame) — start-inclusive, end-exclusive,
+// integer frames), how long each hold lasts (output frames), the ORDER the
+// contributions assemble in (the list order IS the assembled sequence's
+// order), and the assembled-sequence preview (the frame-indexed strip + the
+// frame total at the document's constant rate). Sequence window takes
+// contribute through the SPANLESS lane (§11.2 — a window owns no span; the
+// task-2 widening the ledger named); older windows' takes stay reachable
+// (task 12's Important-1) both here (the picker lists every landed take) and
+// in the review (the window chips + the window-scoped re-roll).
+// ---------------------------------------------------------------------------
+
+/** The editorial flow's seed: a bound document with THREE selected keys (the
+ *  window lane needs a start plus two distinct ends). */
+async function seedEditorialDocument(request: APIRequestContext, projectId: string, name: string) {
+  const relPaths = [await ingestKeyImage(request, 'anim-edit-a.png'), await ingestKeyImage(request, 'anim-edit-b.png'), await ingestKeyImage(request, 'anim-edit-c.png')]
+  const created = await (await request.post('/api/lan/animation/documents', {
+    data: { projectId, name, binding: { characterDescription: 'a lanky courier in a long coat', referenceAssetIds: [uuid()], medium: 'clean line on white', initialKeyAssetId: relPaths[0]! } },
+  })).json() as { document: { id: string; revision: number } }
+  const documentId = created.document.id
+  let revision = created.document.revision
+  const keyIds: string[] = []
+  for (let index = 0; index < 3; index += 1) {
+    const keyId = uuid()
+    const candidateId = uuid()
+    let landed = await (await request.post('/api/lan/animation/keys', {
+      data: {
+        op: 'add-candidate', documentId, keyId, expectedRevision: revision,
+        candidate: { id: candidateId, assetReference: { assetId: `animref-${uuid().slice(0, 8)}`, relPath: relPaths[index], kind: 'image' }, origin: 'import', provenance: { assetId: `animref-${uuid().slice(0, 8)}` }, poseDescription: `pose ${index}`, facing: 'toward camera' },
+      },
+    })).json() as { document: { revision: number } }
+    revision = landed.document.revision
+    landed = await (await request.post('/api/lan/animation/select/key-candidate', { data: { documentId, keyId, candidateId, expectedRevision: revision } })).json() as { document: { revision: number } }
+    revision = landed.document.revision
+    keyIds.push(keyId)
+  }
+  return { documentId, revision, keyIds }
+}
+
+test('the §9 editorial slice — contribute a window take, hold, reorder, the window chips, remove (editorial)', async ({ page, request }) => {
+  test.setTimeout(150_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedEditorialDocument(request, projectId, 'The editorial slice')
+    const [startKey, endOne] = seeded.keyIds
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+    await page.goto(animationUrl)
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    const panel = page.locator('[data-anim-editorial]')
+    await expect(panel).toBeVisible()
+    await expect(panel.locator('[data-anim-editorial-empty]')).toBeVisible()
+    await expect(panel.locator('[data-anim-editorial-no-clips]')).toBeVisible()
+
+    // WINDOW ONE (key #0 → key #1) through the real panel.
+    await timeline.locator(`[data-anim-key="${startKey}"]`).click()
+    await page.locator('[data-anim-seq-end]').getByRole('radio', { name: 'key #1' }).click()
+    await page.locator('[data-anim-seq-actions]').fill(SEQUENCE_BEATS.join('\n'))
+    await page.locator('[data-anim-seq-preservation]').fill(SEQUENCE_PRESERVATION)
+    await page.locator('[data-anim-seq-submit]').click()
+    let windowOneAttempt = ''
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      const take = view.document.attempts.find((entry) => entry.tool === 'sequence' && entry.targetId === startKey)
+      windowOneAttempt = take?.attemptId ?? ''
+      return take !== undefined
+    }, { timeout: 15_000 }).toBe(true)
+    await expect.poll(async () => (await readAttemptView(request, windowOneAttempt)).attempt.execution, { timeout: 30_000 }).toBe('ready')
+
+    // The landed window take is the picker's first clip; contribute its
+    // [2, 10) portion with a 6-frame hold — the §11.3 conventions: 8 clip
+    // frames + a hold in OUTPUT frames = 14, opening the assembled sequence
+    // at frame 0.
+    const clipRow = panel.locator(`[data-anim-editorial-clip="${windowOneAttempt}"]`)
+    await expect(clipRow).toBeVisible()
+    await expect(clipRow.locator('.anim-editorial-clip-source')).toContainText('Sequence window — key #0 → key #1')
+    await clipRow.locator('[data-anim-editorial-in]').fill('2')
+    await clipRow.locator('[data-anim-editorial-out]').fill('10')
+    await clipRow.locator('[data-anim-editorial-hold]').fill('6')
+    await clipRow.locator('[data-anim-editorial-add]').click()
+    const rows = panel.locator('[data-anim-editorial-row]')
+    await expect(rows).toHaveCount(1)
+    await expect(panel.locator('[data-anim-editorial-total]')).toHaveText('14 frames — 0.6 s at 24 fps')
+    await expect(rows.first().locator('[data-anim-editorial-span]')).toContainText('assembles frames 0–14 (8 clip + 6 hold)')
+    await expect(panel.locator('[data-anim-editorial-block]')).toHaveCount(1)
+    await expect(panel.locator('[data-anim-editorial-block="0"]')).toHaveAttribute('data-anim-block-frames', '14')
+    // Document truth: the SPANLESS lane (a window take owns no span).
+    let view = await readAnimationDocument(request, seeded.documentId)
+    expect(view.document.body.editorial).toHaveLength(1)
+    expect(view.document.body.editorial[0]!.spanId).toBe(null)
+    expect([view.document.body.editorial[0]!.inFrame, view.document.body.editorial[0]!.outFrame, view.document.body.editorial[0]!.holdDuration]).toEqual([2, 10, 6])
+
+    // WINDOW TWO (key #0 → key #2): the same start key's OTHER window — the
+    // explicit end re-pick, a second independent render.
+    await page.locator('[data-anim-seq-end]').getByRole('radio', { name: 'key #2' }).click()
+    await page.locator('[data-anim-seq-submit]').click()
+    let windowTwoAttempt = ''
+    await expect.poll(async () => {
+      const current = await readAnimationDocument(request, seeded.documentId)
+      const take = current.document.attempts.find((entry) => entry.tool === 'sequence' && entry.attemptId !== windowOneAttempt)
+      windowTwoAttempt = take?.attemptId ?? ''
+      return take !== undefined
+    }, { timeout: 15_000 }).toBe(true)
+    await expect.poll(async () => (await readAttemptView(request, windowTwoAttempt)).attempt.execution, { timeout: 30_000 }).toBe('ready')
+    const windowTwoFrames = (await readAttemptView(request, windowTwoAttempt)).attempt.candidate!.frameCount
+
+    // Contribute window two WHOLE (the picker's defaults: the full clip, no
+    // hold) — two rows now, the total = 14 + windowTwoFrames.
+    const secondClipRow = panel.locator(`[data-anim-editorial-clip="${windowTwoAttempt}"]`)
+    await expect(secondClipRow).toBeVisible()
+    await secondClipRow.locator('[data-anim-editorial-add]').click()
+    await expect(rows).toHaveCount(2)
+    await expect(panel.locator('[data-anim-editorial-total]')).toHaveText(`${14 + windowTwoFrames} frames — ${((14 + windowTwoFrames) / 24).toFixed(1)} s at 24 fps`)
+    view = await readAnimationDocument(request, seeded.documentId)
+    expect(view.document.body.editorial.map((entry) => entry.attemptId)).toEqual([windowOneAttempt, windowTwoAttempt])
+
+    // REORDER — the ordered list IS the assembled sequence's order (§9): the
+    // first row moves down; the strip and the document flip together.
+    await rows.nth(0).locator('[data-anim-editorial-down]').click()
+    await expect(rows.nth(0).locator('.anim-editorial-row-source')).toContainText('Sequence window — key #0 → key #2', { timeout: 10_000 })
+    await expect(panel.locator('[data-anim-editorial-total]')).toHaveText(`${14 + windowTwoFrames} frames — ${((14 + windowTwoFrames) / 24).toFixed(1)} s at 24 fps`, { timeout: 10_000 })
+    await expect.poll(async () => {
+      const current = await readAnimationDocument(request, seeded.documentId)
+      return current.document.body.editorial.map((entry) => entry.attemptId).join('|')
+    }, { timeout: 10_000 }).toBe(`${windowTwoAttempt}|${windowOneAttempt}`)
+
+    // Task 12's Important-1 — the WINDOW CHIPS: the start key's two windows
+    // are both reachable from the review. The ACTIVE chip follows the newest
+    // take's window (key #2); switching to the older window (key #1) swaps
+    // the review subject AND the takes strip to that window's takes.
+    const review = page.locator('[data-anim-seq-review]')
+    await expect(review).toBeVisible()
+    const chips = review.locator('[data-anim-seq-window]')
+    await expect(chips).toHaveCount(2)
+    await expect(review.locator(`[data-anim-seq-window="${endOne}"]`)).toHaveAttribute('data-anim-seq-window-active', 'false')
+    await expect(review).toHaveAttribute('data-anim-review-attempt', windowTwoAttempt)
+    await review.locator(`[data-anim-seq-window="${endOne}"]`).click()
+    await expect(review).toHaveAttribute('data-anim-review-attempt', windowOneAttempt)
+    // The strip mounts only with MULTIPLE takes (§8.2's retained-alternatives
+    // affordance) — the older window holds one take, and it IS the subject.
+    await expect(review.locator('[data-anim-review-take]')).toHaveCount(0)
+    // The re-roll of an OLDER window re-rolls THAT window (the frozen pair),
+    // never the start key's newest take of another window.
+    await review.locator('[data-anim-review-reroll]').click()
+    await expect.poll(async () => {
+      const current = await readAnimationDocument(request, seeded.documentId)
+      const windowOne = current.document.attempts.filter((entry) => entry.attemptId !== windowTwoAttempt)
+      const rerolled = windowOne.find((entry) => entry.attemptId !== windowOneAttempt)
+      return rerolled !== undefined && (await readAttemptView(request, rerolled.attemptId)).attempt.execution === 'ready'
+    }, { timeout: 30_000 }).toBe(true)
+    await expect(review.locator('[data-anim-review-take]')).toHaveCount(2, { timeout: 10_000 })
+    view = await readAnimationDocument(request, seeded.documentId)
+    expect(view.document.attempts.filter((entry) => entry.tool === 'sequence').length).toBe(3, 'two takes of window one + one take of window two')
+
+    // REMOVE — the list is an authored document, never append-only.
+    await rows.nth(0).locator('[data-anim-editorial-remove]').click()
+    await expect(rows).toHaveCount(1)
+    await expect(panel.locator('[data-anim-editorial-total]')).toHaveText('14 frames — 0.6 s at 24 fps', { timeout: 10_000 })
+    await expect.poll(async () => (await readAnimationDocument(request, seeded.documentId)).document.body.editorial.length, { timeout: 10_000 }).toBe(1)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('the inspector follows external intent writes, parks its persist behind busy, and names the inert camera reason (inspector, task 13)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await seedInspectorDocument(request, projectId, 'Inspector minors')
+  const { inspector, caption } = await openInspectorCaption(page, projectId, seeded)
+  const movement = page.locator('[data-anim-inspector-movement]')
+
+  // T9-M4 — the camera reason is INERT without its description: the coupling
+  // is named at the field, never a silent drop. Typing the reason alone
+  // surfaces the note; adding the description releases it and compiles the
+  // paired clause (§6.3).
+  await page.locator('[data-anim-inspector-camera-reason]').fill('establishes the alley')
+  await expect(page.locator('[data-anim-inspector-camera-reason-inert]')).toBeVisible()
+  await expect(caption).not.toContainText('Camera:')
+  await page.locator('[data-anim-inspector-camera]').fill('low wide')
+  await expect(page.locator('[data-anim-inspector-camera-reason-inert]')).toHaveCount(0, { timeout: 5_000 })
+  await expect(caption).toContainText('Camera: low wide — establishes the alley.', { timeout: 5_000 })
+
+  // T9-M3 — an UNEDITED inspector FOLLOWS external writes to the span intent
+  // (task 9 re-armed its debounce over them with the stale seeded text).
+  const currentOne = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { revision: number } }
+  const externalOne = await request.post('/api/lan/animation/spans', {
+    data: { op: 'update-intent', documentId: seeded.documentId, spanId: seeded.spanId, intent: { movement: 'the coat swings as she turns through the doorway', preservation: 'coat hem and scarf stay consistent' }, expectedRevision: currentOne.document.revision },
+  })
+  expect(externalOne.ok(), `the external intent write lands (${await externalOne.text()})`).toBe(true)
+  await expect(movement).toHaveValue('the coat swings as she turns through the doorway', { timeout: 10_000 })
+  await expect(caption).toContainText('MOVEMENT: the coat swings as she turns through the doorway', { timeout: 5_000 })
+
+  // A draft the user HAS typed keeps winning: the external write lands while
+  // the local edit is live, and the debounced persist re-asserts the local
+  // text (the mount doctrine — the user's edit wins until they leave the span).
+  const LOCAL = 'she plants the heel and lets the momentum carry the shoulder line'
+  await movement.fill(LOCAL)
+  await expect(caption).toContainText(`MOVEMENT: ${LOCAL}`, { timeout: 5_000 })
+  const currentTwo = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { revision: number } }
+  const externalTwo = await request.post('/api/lan/animation/spans', {
+    data: { op: 'update-intent', documentId: seeded.documentId, spanId: seeded.spanId, intent: { movement: 'an external overwrite racing the local draft', preservation: 'coat hem and scarf stay consistent' }, expectedRevision: currentTwo.document.revision },
+  })
+  expect(externalTwo.ok(), `the racing external write lands (${await externalTwo.text()})`).toBe(true)
+  await expect(movement).toHaveValue(LOCAL, { timeout: 10_000 })
+  await expect(movement).toHaveValue(LOCAL, { timeout: 1_500 })
+  await expect.poll(async () => {
+    const view = await readAnimationDocument(request, seeded.documentId)
+    return view.document.body.spans.find((entry) => entry.id === seeded.spanId)!.intent.movement
+  }, { timeout: 10_000 }).toBe(LOCAL)
+
+  // T9-M2 — the debounced persist PARKS behind a busy store instead of
+  // dropping: the first update-intent is held at the wire (busy holds), the
+  // second settle fires while it is held, and when the hold releases the
+  // parked persist lands the newest text (the old code dropped it silently).
+  let releaseHeld: (() => void) | undefined
+  const gate = new Promise<void>((resolve) => { releaseHeld = resolve })
+  let heldOne = false
+  await page.route('**/api/lan/animation/spans', async (route) => {
+    const body = route.request().postDataJSON() as { op?: string }
+    if (body?.op === 'update-intent' && !heldOne) {
+      heldOne = true
+      await gate
+    }
+    await route.continue()
+  })
+  try {
+    const FIRST = 'the first settled draft, held at the wire'
+    await movement.fill(FIRST)
+    // The held request holds busy — every command button is disabled by it.
+    await expect(inspector.locator('[data-anim-inspector-submit]')).toBeDisabled({ timeout: 5_000 })
+    const PARKED = 'the second draft, settled while the store was busy'
+    await movement.fill(PARKED)
+    // Inside the race window deliberately: the second settle's persist parks
+    // behind the held first command (600ms > the 400ms debounce).
+    await page.waitForTimeout(600)
+    await expect(movement).toHaveValue(PARKED)
+    releaseHeld!()
+    // The parked persist lands once the store idles — the durable intent is
+    // the NEWEST text, never the silently dropped one.
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      return view.document.body.spans.find((entry) => entry.id === seeded.spanId)!.intent.movement
+    }, { timeout: 10_000 }).toBe(PARKED)
+  } finally {
+    await page.unroute('**/api/lan/animation/spans')
+  }
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })

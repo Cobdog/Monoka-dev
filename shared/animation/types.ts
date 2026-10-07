@@ -15,7 +15,8 @@
  * internal pointer integrity, the same class as the spec's own "a span
  * connects key slots": a selectedCandidateId must live in its own slot, a
  * rolling reference must name one of its slot's attempts, an editorial
- * contribution must name an existing span, an activeBindingVersion must be
+ * contribution must name an existing span (or carry spanId null — the
+ * spanless whole-scene lane, task 13), an activeBindingVersion must be
  * carried by the binding history (empty history allows only version 0 — the
  * pre-binding document), and entity ids are unique within their collection.
  * NOT enforced here (deliberately): editorial inFrame/outFrame ordering —
@@ -78,7 +79,13 @@ export type BindingVersion = {
 
 export type BindingInput = { characterDescription: string; referenceAssetIds: string[]; medium: MediumString; initialKeyAssetId: string }
 
-export type EditorialContribution = { id: string; spanId: string; attemptId: string; inFrame: number; outFrame: number; holdDuration: number }
+/** One contribution in the document's ordered editorial list (§9/§11.2): the
+ *  clip this entry contributes (attemptId), the portion (inFrame..outFrame,
+ *  start-inclusive/end-exclusive integer frames), and the hold
+ *  (holdDuration, in output frames). spanId names the owning span for a
+ *  tween clip's contribution; NULL names a whole-scene render (a sequence
+ *  window take — §11.2: a sequence attempt owns no span, task 13). */
+export type EditorialContribution = { id: string; spanId: string | null; attemptId: string; inFrame: number; outFrame: number; holdDuration: number }
 
 export type AnimationDocumentBody = {
   keys: KeySlot[]
@@ -379,7 +386,9 @@ function parseEditorialContribution(value: unknown, spanIds: ReadonlySet<string>
   if (!isRecord(value)) return null
   const { id, spanId, attemptId, inFrame, outFrame, holdDuration } = value
   if (!isUuid(id)) return null
-  if (!isUuid(spanId) || !spanIds.has(spanId)) return null
+  // spanId null = the spanless lane (a sequence window take, task 13); a
+  // non-null id must name an existing span.
+  if (spanId !== null && (!isUuid(spanId) || !spanIds.has(spanId))) return null
   if (!isUuid(attemptId)) return null
   if (!isNonNegativeInt(inFrame)) return null
   if (!isNonNegativeInt(outFrame)) return null

@@ -78,6 +78,16 @@
  * and the preservation) and `rerollSequence` (a fresh take for the SAME
  * window, resubmitting the frozen window draft — a sequence draft owns no
  * span, so the frozen attempt is its only durable home).
+ *
+ * What task 13 adds: the EDITORIAL surface (§9) — `contributeClip` (the
+ * §7.2.1 third selection: a landed clip's portion [inFrame, outFrame) plus
+ * its hold in output frames; tween clips ride their span, sequence windows
+ * ride the spanless lane), `reorderContributions` (the ordered list IS the
+ * assembled sequence's order), and `removeContribution` — plus two carried
+ * fixes: the debounced intent persist now PARKS behind a busy store instead
+ * of dropping (task 9's Minor-2), and `rerollSequence` gains the
+ * one-render-per-window guard `submitSequence` already had (task 12's
+ * Minor-1).
  */
 import { useEffect } from 'react'
 import { create } from 'zustand'
@@ -213,8 +223,24 @@ type AnimationSessionState = {
   submitSequence(windowStartKeyId: string, windowEndKeyId: string, draft: { orderedActions: string[]; preservation: string; overrides: SessionOverrideInput }): Promise<{ attemptId: string } | null>
   /** A fresh take for the SAME window (a new idempotency key): resubmits
    *  the newest take's frozen window draft — endpoint keys, beats,
-   *  preservation, overrides — byte-identically, so only the seed varies. */
-  rerollSequence(windowStartKeyId: string): Promise<{ attemptId: string } | null>
+   *  preservation, overrides — byte-identically, so only the seed varies.
+   *  `windowEndKeyId` names WHICH window (task 12's Important-1: an older
+   *  window's review re-rolls ITSELF, never the start key's newest take of
+   *  another window); omitted = the start key's newest sequence take. */
+  rerollSequence(windowStartKeyId: string, windowEndKeyId?: string): Promise<{ attemptId: string } | null>
+  /** Task 13 — the editorial surface's commands (§9). */
+  /** The §7.2.1 third selection: a landed clip's PORTION (inFrame..outFrame,
+   *  start-inclusive/end-exclusive integer frames) plus its hold in output
+   *  frames. Tween clips ride their owning span; sequence window takes ride
+   *  the spanless lane (spanId null). One contribution per (span, attempt) —
+   *  re-choosing updates in place. */
+  contributeClip(spanId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number): Promise<boolean>
+  /** The assembled sequence's order (§9): the FULL new order, a permutation
+   *  of the current contribution ids. */
+  reorderContributions(orderedIds: string[]): Promise<boolean>
+  /** Drops one contribution — the list is an authored document, never an
+   *  append-only ledger. */
+  removeContribution(contributionId: string): Promise<boolean>
   /** The selection state's creation arm (task 7's Minor-2): creates the
    *  pre-binding document in the named project and navigates to it. */
   createEmptyDocument(projectId: string): Promise<boolean>
@@ -631,8 +657,16 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
 
   updateSpanIntent: async (spanId, intent) => {
     const current = get().document
-    if (!current || get().busy) return false
+    if (!current) return false
     const ticket = openTicket
+    // Task 9's Minor-2, fixed in task 13: the debounced draft persist PARKS
+    // behind a command already in flight instead of returning false and
+    // silently dropping the settled text. Each loop iteration re-observes
+    // `busy` after waking, so two parked persists serialize (the first holds
+    // busy through its own write; the second re-waits) instead of racing
+    // into each other's revision.
+    while (get().busy && ticket === openTicket) await whenIdle()
+    if (ticket !== openTicket || !get().document) return false
     set({ busy: true, commandError: null })
     try {
       const { document: view } = await animationApi.spanCommand(current.id, 'update-intent', { spanId, intent }, get().document?.revision ?? 0)
@@ -1045,24 +1079,35 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     }
   },
 
-  rerollSequence: async (windowStartKeyId) => {
+  rerollSequence: async (windowStartKeyId, windowEndKeyId) => {
     const current = get().document
     if (!current) return null
     // The durable re-roll truth: the newest sequence take of this window
     // start carries the frozen draft (§8.1) — endpoint keys, beats,
     // preservation, overrides — and the re-roll resubmits them UNCHANGED
-    // against the SAME window, so only the seed varies between takes.
-    const takes = current.attempts.filter((entry) => entry.tool === 'sequence' && entry.targetId === windowStartKeyId)
+    // against the SAME window, so only the seed varies between takes. The
+    // end key names WHICH window (an older window's review re-rolls itself).
+    const takes = current.attempts.filter((entry) => entry.tool === 'sequence' && entry.targetId === windowStartKeyId
+      && (windowEndKeyId === undefined || entry.windowEndKeyId === windowEndKeyId))
     const newest = takes[takes.length - 1] ?? null
     if (newest === null || newest.windowEndKeyId === undefined || newest.sequenceActions === undefined
       || newest.sequencePreservation === undefined || newest.sequenceOverrides === undefined) {
       set({ commandError: 'This key has no sequence take with a frozen window to re-roll from.' })
       return null
     }
-    const windowEndKeyId = newest.windowEndKeyId
-    const preview = deriveSequencePreview(current.body.keys, windowStartKeyId, windowEndKeyId)
+    const preview = deriveSequencePreview(current.body.keys, windowStartKeyId, newest.windowEndKeyId)
     if (preview.problems.length > 0) {
       set({ commandError: preview.problems.join(' ') })
+      return null
+    }
+    // Task 12's Minor-1, fixed in task 13: the same one-render-per-window
+    // guard `submitSequence` carries — keyed off the frozen start+end pair,
+    // never the start key alone (two windows from one start are independent
+    // renders; a re-roll of THIS window waits for its own landing).
+    const inFlight = current.attempts.find((entry) => entry.tool === 'sequence' && entry.targetId === windowStartKeyId
+      && entry.windowEndKeyId === newest.windowEndKeyId && IN_FLIGHT.has(entry.execution))
+    if (inFlight) {
+      set({ commandError: 'A render of this window is already in flight — review its landing before generating another.' })
       return null
     }
     const ticket = openTicket
@@ -1075,7 +1120,7 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
         draft: {
           tool: 'sequence',
           windowStartKeyId,
-          windowEndKeyId,
+          windowEndKeyId: newest.windowEndKeyId,
           orderedActions: newest.sequenceActions,
           preservation: newest.sequencePreservation,
           overrides: newest.sequenceOverrides,
@@ -1088,6 +1133,65 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     } catch (error) {
       await failCommand(error, ticket)
       return null
+    }
+  },
+
+  contributeClip: async (spanId, attemptId, inFrame, outFrame, holdDuration) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    // The shape the store enforces anyway — naming it here keeps the panel's
+    // affordance honest instead of firing a doomed command.
+    for (const [name, value] of [['inFrame', inFrame], ['outFrame', outFrame], ['holdDuration', holdDuration]] as const) {
+      if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+        set({ commandError: `${name} must be a non-negative whole number of frames.` })
+        return false
+      }
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // Editorial timing is an assembly decision (§9) — no staleness, no
+      // generation promises; the upsert lands the portion and the hold.
+      const view = await animationApi.selectClipContribution(current.id, spanId, attemptId, inFrame, outFrame, holdDuration, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  reorderContributions: async (orderedIds) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    if (!Array.isArray(orderedIds) || orderedIds.length !== current.body.editorial.length) {
+      set({ commandError: 'The new order must name every contribution exactly once.' })
+      return false
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      const view = await animationApi.editorialCommand(current.id, 'reorder', { orderedIds }, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  removeContribution: async (contributionId) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      const view = await animationApi.editorialCommand(current.id, 'remove', { contributionId }, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
     }
   },
 
@@ -1115,6 +1219,23 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
   clearCommandError: () => set({ commandError: null }),
   }
 })
+
+/** Resolves once the store stops being busy — task 9's Minor-2 park helper
+ *  (fixed in task 13): the debounced intent persist waits here instead of
+ *  dropping when another command is mid-flight. Every command clears `busy`
+ *  on each outcome path (the shared failCommand arm included), so the wait
+ *  is bounded by one command's round trip. */
+function whenIdle(): Promise<void> {
+  return new Promise((resolve) => {
+    const finish = () => {
+      if (useAnimationSessionStore.getState().busy) return
+      unsubscribe()
+      resolve()
+    }
+    const unsubscribe = useAnimationSessionStore.subscribe(finish)
+    finish()
+  })
+}
 
 /** The shell's store connection (P07): opens the named document, owns the
  *  fabric subscription for as long as the caller is mounted, and hands back
@@ -1188,6 +1309,9 @@ export function useAnimationDocument(documentId: string, projectId = '') {
       openSpanIntoKey: session.openSpanIntoKey,
       submitSequence: session.submitSequence,
       rerollSequence: session.rerollSequence,
+      contributeClip: session.contributeClip,
+      reorderContributions: session.reorderContributions,
+      removeContribution: session.removeContribution,
       createEmptyDocument: session.createEmptyDocument,
       retry: session.retry,
       clearCommandError: session.clearCommandError,

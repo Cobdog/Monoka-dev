@@ -39,7 +39,9 @@
  * holds its authoring draft and hands commands up. The draft seeds from the
  * span once per span id (the shell keys the mount); later external writes to
  * the same span never clobber live typing — the user's edit wins until they
- * leave the span, the same draft doctrine as the binding panel.
+ * leave the span, the same draft doctrine as the binding panel (task 13's
+ * Minor-3 fix: an UNEDITED draft FOLLOWS the external write instead of
+ * re-arming its debounce over it).
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '../ui/Button'
@@ -155,24 +157,50 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
   // span id); `committed` is the debounced projection the preview compiles.
   const [draft, setDraft] = useState(() => ({ movement: span.intent.movement, preservation: span.intent.preservation }))
   const [committed, setCommitted] = useState(() => ({ movement: span.intent.movement, preservation: span.intent.preservation }))
+  // Whether the user has TYPED in this mount (task 9's Minor-3, fixed in
+  // task 13): one-way, cleared only by leaving the span (the remount). An
+  // UNEDITED inspector FOLLOWS external writes to the span intent; once the
+  // user has typed, the draft is theirs — external writes never re-armed the
+  // debounce over the authored text (the old bug clobbered them with the
+  // stale seeded draft; a naive "persisted ⇒ follow again" fix clobbered
+  // them with the user's own persisted words one refresh later).
+  const [userTyped, setUserTyped] = useState(false)
   // Span-scoped overrides: a null medium inherits the bound session's.
   const [mediumOverride, setMediumOverride] = useState<MediumString | null>(span.overrides.medium ?? null)
   const [scene, setScene] = useState(span.overrides.scene ?? '')
   const [cameraDescription, setCameraDescription] = useState(span.overrides.camera?.description ?? '')
   const [cameraReason, setCameraReason] = useState(span.overrides.camera?.reason ?? '')
 
-  // The settle: 400ms after the last keystroke the preview recompiles AND
-  // the durable intent persists (when the draft actually moved). The guard
-  // keeps a mount-time no-op command impossible; a failed persist surfaces
-  // through the shell's command-error arm and never re-fires on its own.
+  const editDraft = (next: { movement: string; preservation: string }) => {
+    setUserTyped(true)
+    setDraft(next)
+  }
+
+  // External writes land here (another surface, a fresh read): with no user
+  // typing behind it, the inspector FOLLOWS the document's truth.
   useEffect(() => {
+    if (userTyped) return
+    if (draft.movement === span.intent.movement && draft.preservation === span.intent.preservation) return
+    setDraft({ movement: span.intent.movement, preservation: span.intent.preservation })
+    setCommitted({ movement: span.intent.movement, preservation: span.intent.preservation })
+  }, [userTyped, draft.movement, draft.preservation, span.intent.movement, span.intent.preservation])
+
+  // The settle: 400ms after the last keystroke the preview recompiles AND
+  // the durable intent persists (when the authored draft actually differs
+  // from the document's truth — the guard keeps a mount-time no-op command
+  // impossible). The adapter PARKS the persist behind a busy store (task 9's
+  // Minor-2, fixed in task 13), so a command in flight delays it — never
+  // drops it; a failed persist surfaces through the shell's command-error
+  // arm and never re-fires on its own.
+  useEffect(() => {
+    if (!userTyped) return
     if (draft.movement === span.intent.movement && draft.preservation === span.intent.preservation) return
     const timer = window.setTimeout(() => {
       setCommitted({ movement: draft.movement, preservation: draft.preservation })
       void onIntentChange(span.id, { movement: draft.movement, preservation: draft.preservation })
     }, DRAFT_SETTLE_MS)
     return () => window.clearTimeout(timer)
-  }, [draft.movement, draft.preservation, span.id, span.intent.movement, span.intent.preservation, onIntentChange])
+  }, [userTyped, draft.movement, draft.preservation, span.id, span.intent.movement, span.intent.preservation, onIntentChange])
 
   /** The compile overrides the preview AND the submission share — one object,
    *  so the frozen caption is byte-identical to the previewed one. Empty
@@ -307,7 +335,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
             data-anim-inspector-movement
             rows={3}
             value={draft.movement}
-            onChange={(event) => setDraft((current) => ({ ...current, movement: event.target.value }))}
+            onChange={(event) => editDraft({ ...draft, movement: event.target.value })}
           />
         </Field>
         <Field
@@ -321,7 +349,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
             data-anim-inspector-preservation
             rows={2}
             value={draft.preservation}
-            onChange={(event) => setDraft((current) => ({ ...current, preservation: event.target.value }))}
+            onChange={(event) => editDraft({ ...draft, preservation: event.target.value })}
           />
         </Field>
 
@@ -363,6 +391,13 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
             <input id="anim-inspector-camera-reason" className="anim-inspector-input" data-anim-inspector-camera-reason type="text" value={cameraReason} onChange={(event) => setCameraReason(event.target.value)} />
           </Field>
         </div>
+        {/* Task 9's Minor-4 (fixed in task 13): the reason compiles ONLY with
+            its description — the coupling is named, never a silent drop. */}
+        {cameraReason.trim() !== '' && cameraDescription.trim() === '' && (
+          <p className="anim-note" role="status" data-anim-inspector-camera-reason-inert>
+            The camera reason rides the caption only with its description — describe the move for the reason to compile (§6.3 pairs them).
+          </p>
+        )}
       </div>
 
       <details className="anim-caption" data-anim-caption-preview>

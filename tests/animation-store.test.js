@@ -652,6 +652,126 @@ test('(g) selectRollingReference sets the step slot pointer and never creates a 
 })
 
 // ---------------------------------------------------------------------------
+// (g2) task 13 — the editorial list's own commands: the SPANLESS lane (a
+//      sequence window's clip contributes with no span, §11.2), the reorder
+//      (the ordered list IS the assembled sequence's order, §9), and remove.
+//      Its OWN document, so the archive counts in (h) never shift.
+// ---------------------------------------------------------------------------
+test('(g2) the spanless sequence lane, reorderEditorial, and removeContribution (task 13)', () => {
+  // Its OWN project too — (h) pins the archive counts of `projectId` below.
+  const docI = anim.createDocument({ projectId: `${projectId}-editorial`, name: 'India', binding: makeBinding() })
+  const keyI1 = uuid()
+  const keyI2 = uuid()
+  let row = anim.addKeyCandidate(docI.id, keyI1, makeCandidate(), 0)
+  row = anim.addKeyCandidate(docI.id, keyI2, makeCandidate(), row.revision)
+  row = anim.selectKeyCandidate(docI.id, keyI1, row.body.keys.find((entry) => entry.id === keyI1).candidates[0].id, row.revision)
+  row = anim.selectKeyCandidate(docI.id, keyI2, row.body.keys.find((entry) => entry.id === keyI2).candidates[0].id, row.revision)
+  row = anim.insertSpan(docI.id, { fromKeyId: keyI1, toKeyId: keyI2, intent: { movement: 'walks two steps', preservation: 'silhouette intact' } }, row.revision)
+  const spanI = row.body.spans[0]
+  const stepI = spanI.stepSlots[0].id
+
+  // A landed tween take on the span (the (g) shape, fresh): the TWEEN lane.
+  const tweenI = recordAttemptSimple(anim, docI.id, 'tween', stepI, 'idem-i-tween', { documentRevision: row.revision })
+  anim.landCandidate(tweenI.attempt.id, {
+    assetReference: { assetId: 'clip-i-tween', relPath: 'takes/clip-i-tween.mp4', kind: 'video' },
+    frameCount: 22,
+    earlierRevision: false,
+  })
+  row = anim.selectClipContribution(docI.id, spanI.id, tweenI.attempt.id, 0, 18, 4, row.revision)
+  assert.equal(row.body.editorial.length, 1, 'the tween lane contributes through its span')
+
+  // A landed SEQUENCE window take (targetId = the window start key): its
+  // clip contributes with NO span — a sequence attempt owns no span and no
+  // step slot ever holds it.
+  const seqI = recordAttemptSimple(anim, docI.id, 'sequence', keyI1, 'idem-i-seq', { documentRevision: row.revision })
+  anim.landCandidate(seqI.attempt.id, {
+    assetReference: { assetId: 'clip-i-seq', relPath: 'takes/clip-i-seq.mp4', kind: 'video' },
+    frameCount: 22,
+    earlierRevision: false,
+  })
+  row = anim.selectClipContribution(docI.id, null, seqI.attempt.id, 0, 16, 8, row.revision)
+  assert.equal(row.body.editorial.length, 2)
+  const spanless = row.body.editorial[1]
+  assert.equal(spanless.spanId, null, 'the whole-scene lane carries spanId null')
+  assert.equal(spanless.attemptId, seqI.attempt.id)
+  assert.deepEqual(
+    { inFrame: spanless.inFrame, outFrame: spanless.outFrame, holdDuration: spanless.holdDuration },
+    { inFrame: 0, outFrame: 16, holdDuration: 8 },
+  )
+  // Re-choosing the portion UPDATES the same row (id stable) — the (span,
+  // attempt) upsert rule with null === null.
+  row = anim.selectClipContribution(docI.id, null, seqI.attempt.id, 2, 10, 4, row.revision)
+  assert.equal(row.body.editorial.length, 2, 'never a duplicate')
+  assert.equal(row.body.editorial[1].id, spanless.id)
+  assert.equal(row.body.editorial[1].inFrame, 2)
+
+  // The lane refusals, each named:
+  // a TWEEN attempt cannot ride the spanless lane — its clip belongs to a span.
+  assert.throws(
+    () => anim.selectClipContribution(docI.id, null, tweenI.attempt.id, 0, 4, 0, row.revision),
+    (err) => err.status === 400 && /through its span/.test(err.message),
+    'a tween clip with no span named is a 400',
+  )
+  // a HERO attempt's product is a key drawing, not a sequence contribution.
+  const heroI = recordAttemptSimple(anim, docI.id, 'hero', uuid(), 'idem-i-hero', { documentRevision: row.revision })
+  anim.landCandidate(heroI.attempt.id, {
+    assetReference: { assetId: 'clip-i-hero', relPath: null, kind: 'video' },
+    frameCount: 22,
+    earlierRevision: false,
+  })
+  assert.throws(
+    () => anim.selectClipContribution(docI.id, null, heroI.attempt.id, 0, 4, 0, row.revision),
+    (err) => err.status === 400 && /hero/i.test(err.message),
+    'a hero clip is a 400 on the spanless lane',
+  )
+  // a SEQUENCE attempt named WITH a span is not attached to any step slot.
+  assert.throws(
+    () => anim.selectClipContribution(docI.id, spanI.id, seqI.attempt.id, 0, 4, 0, row.revision),
+    (err) => err.status === 404,
+    'a sequence attempt pinned to a span is a 404 (not attached)',
+  )
+  // a bogus spanId value is a shape refusal.
+  assert.throws(
+    () => anim.selectClipContribution(docI.id, 'not-a-uuid', seqI.attempt.id, 0, 4, 0, row.revision),
+    (err) => err.status === 400,
+    'a non-UUID, non-null spanId is a 400',
+  )
+  assert.equal(anim.getDocument(docI.id).body.editorial.length, 2, 'every refusal left the list untouched')
+
+  // REORDER — the ordered list is the assembled sequence's order (§9): a
+  // PERMUTATION of the whole list, nothing less.
+  const [tweenEntry, spanlessEntry] = anim.getDocument(docI.id).body.editorial
+  row = anim.reorderEditorial(docI.id, [spanlessEntry.id, tweenEntry.id], anim.getDocument(docI.id).revision)
+  assert.deepEqual(row.body.editorial.map((entry) => entry.id), [spanlessEntry.id, tweenEntry.id], 'the list reorders wholesale')
+  assert.deepEqual(row.body.editorial[0], spanlessEntry, 'reorder moves ROWS, it never rewrites them')
+  assert.deepEqual(row.body.editorial[1], tweenEntry)
+  assert.throws(() => anim.reorderEditorial(docI.id, [tweenEntry.id], row.revision), (err) => err.status === 400, 'a partial list is a 400')
+  assert.throws(
+    () => anim.reorderEditorial(docI.id, [tweenEntry.id, tweenEntry.id, spanlessEntry.id], row.revision),
+    (err) => err.status === 400,
+    'a duplicate in the list is a 400',
+  )
+  assert.throws(
+    () => anim.reorderEditorial(docI.id, [tweenEntry.id, uuid()], row.revision),
+    (err) => err.status === 400,
+    'a foreign id in the list is a 400',
+  )
+  assert.throws(() => anim.reorderEditorial(docI.id, 'nope', row.revision), (err) => err.status === 400, 'a non-array is a 400')
+
+  // Span removal still drops ONLY its own entries — the spanless lane
+  // survives (a window is not a span; editorial timing belongs to its
+  // source, and this entry's source is the window take).
+  row = anim.removeSpan(docI.id, spanI.id, row.revision)
+  assert.equal(row.body.editorial.length, 1, 'the span-named entry left with its span')
+  assert.equal(row.body.editorial[0].id, spanlessEntry.id, 'the spanless entry survived')
+
+  // REMOVE — the list is editable; a missing id is a 404.
+  row = anim.removeContribution(docI.id, spanlessEntry.id, row.revision)
+  assert.equal(row.body.editorial.length, 0)
+  assert.throws(() => anim.removeContribution(docI.id, uuid(), row.revision), (err) => err.status === 404, 'removing a foreign id is a 404')
+})
+
+// ---------------------------------------------------------------------------
 // (h) the project-archive round-trip (spec §11.3 scope: ordinary project
 //     preservation must include the animation records + referenced blobs)
 // ---------------------------------------------------------------------------

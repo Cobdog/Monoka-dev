@@ -701,6 +701,59 @@ test('(c) submit emits attempt-state envelopes on the animation channel; the lan
   assert.equal(seqInView.tool, 'sequence')
   assert.equal(seqInView.targetId, keyC1)
   assert.equal(seqInView.windowEndKeyId, keyC2)
+
+  // Task 13 — the editorial lane over HTTP: the sequence clip contributes
+  // SPANLESS (§11.2 — the window take owns no span), and the list reorders
+  // and removes through the editorial route (§9's ordered list).
+  const seqContribution = await api.post('/api/lan/animation/select/clip-contribution', {
+    documentId: docC.id, spanId: null, attemptId: sequenceAttemptC, inFrame: 0, outFrame: 20, holdDuration: 2, expectedRevision: sequenceDocumentC.revision,
+  })
+  assert.equal(seqContribution.status, 200, `the spanless contribution selects (${seqContribution.body.error ?? ''})`)
+  const editorialC = seqContribution.body.document.body.editorial
+  assert.equal(editorialC.length, 2)
+  assert.equal(editorialC[1].spanId, null, 'the whole-scene lane carries spanId null')
+  // The lane refusals are named 400s: a tween clip rides its span, a hero
+  // clip's product is a key drawing.
+  const tweenSpanless = await api.post('/api/lan/animation/select/clip-contribution', {
+    documentId: docC.id, spanId: null, attemptId: tweenAttemptC, inFrame: 0, outFrame: 4, holdDuration: 0, expectedRevision: seqContribution.body.document.revision,
+  })
+  assert.equal(tweenSpanless.status, 400)
+  assert.match(tweenSpanless.body.error, /through its span/)
+  const heroSpanless = await api.post('/api/lan/animation/select/clip-contribution', {
+    documentId: docC.id, spanId: null, attemptId: heroAttemptC, inFrame: 0, outFrame: 4, holdDuration: 0, expectedRevision: seqContribution.body.document.revision,
+  })
+  assert.equal(heroSpanless.status, 400)
+  assert.match(heroSpanless.body.error, /hero/)
+  // REORDER: the ordered list is the assembled sequence's order.
+  const reordered = await api.post('/api/lan/animation/editorial', {
+    documentId: docC.id, op: 'reorder', orderedIds: [editorialC[1].id, editorialC[0].id], expectedRevision: seqContribution.body.document.revision,
+  })
+  assert.equal(reordered.status, 200, `the reorder lands (${reordered.body.error ?? ''})`)
+  assert.deepEqual(reordered.body.document.body.editorial.map((entry) => entry.id), [editorialC[1].id, editorialC[0].id])
+  const partialReorder = await api.post('/api/lan/animation/editorial', {
+    documentId: docC.id, op: 'reorder', orderedIds: [editorialC[0].id], expectedRevision: reordered.body.document.revision,
+  })
+  assert.equal(partialReorder.status, 400, 'a partial ordered list is refused')
+  // REMOVE: the list is editable through the same route.
+  const removed = await api.post('/api/lan/animation/editorial', {
+    documentId: docC.id, op: 'remove', contributionId: editorialC[0].id, expectedRevision: reordered.body.document.revision,
+  })
+  assert.equal(removed.status, 200)
+  assert.deepEqual(removed.body.document.body.editorial.map((entry) => entry.id), [editorialC[1].id])
+  for (const reason of ['editorial.reorder', 'editorial.remove']) {
+    await fabric.waitFor(
+      (envelopes) => envelopes.some((envelope) => envelope.ch === 'animation' && envelope.type === 'document-changed' && envelope.payload.documentId === docC.id && envelope.payload.reason === reason),
+      `the document-changed envelope for ${reason}`,
+    )
+  }
+  // T12-M2: the sequence arm refuses an EMPTY beat list before anything
+  // dispatches (one length term — the panel gates it, the route is the gate).
+  const emptyBeats = await api.post('/api/lan/animation/attempts', {
+    documentId: docC.id, tool: 'sequence', targetId: keyC1, idempotencyKey: 'idem-c-seq-empty-beats',
+    draft: { ...sequenceDraft(keyC1, keyC2), orderedActions: [] },
+  })
+  assert.equal(emptyBeats.status, 400)
+  assert.match(emptyBeats.body.error, /1 to 64/)
 })
 
 // ---------------------------------------------------------------------------

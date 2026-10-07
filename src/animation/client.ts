@@ -251,8 +251,18 @@ export const animationApi = {
   selectRollingReference: (documentId: string, spanId: string, attemptId: string, frameIndex: number, expectedRevision: number) =>
     post<{ document: unknown }>('/api/lan/animation/select/rolling-reference', { documentId, spanId, attemptId, frameIndex, expectedRevision }).then(documentOf),
 
-  selectClipContribution: (documentId: string, spanId: string, attemptId: string, inFrame: number, outFrame: number, holdDuration: number, expectedRevision: number) =>
+  /** The editorial contribution selection (§7.2.1 command 3, task 13): a
+   *  TWEEN clip contributes through its span; `spanId: null` names the
+   *  SPANLESS lane (a sequence window take, §11.2). One contribution per
+   *  (span, attempt) — re-choosing updates in place. */
+  selectClipContribution: (documentId: string, spanId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number, expectedRevision: number) =>
     post<{ document: unknown }>('/api/lan/animation/select/clip-contribution', { documentId, spanId, attemptId, inFrame, outFrame, holdDuration, expectedRevision }).then(documentOf),
+
+  /** The editorial-list commands (task 13, §9): `reorder` carries the FULL
+   *  new order (a permutation of the contribution ids — the ordered list IS
+   *  the assembled sequence's order); `remove` drops one entry. */
+  editorialCommand: (documentId: string, op: 'reorder' | 'remove', payload: Record<string, unknown>, expectedRevision: number) =>
+    post<{ document: unknown }>('/api/lan/animation/editorial', { documentId, op, ...payload, expectedRevision }).then(documentOf),
 
   /** Submits a DRAFT — the server resolves the tool's references, compiles
    *  the caption, and freezes the snapshot (§7.2.2). `options.seed` rides a
