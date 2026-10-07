@@ -728,3 +728,46 @@ test('(h) project archive round-trips animation documents, attempts, and referen
     'an archive from a studio with newer animation documents refuses loudly',
   )
 })
+
+// ---------------------------------------------------------------------------
+// (i) appendStepSlot — the tween chain's advancement surface (the foundation
+//     contract review's F1: without it the rolling chain is capped at one
+//     step per span)
+// ---------------------------------------------------------------------------
+
+test('(i) appendStepSlot grows a span one empty slot per command; the revision gate and 404s hold', () => {
+  const doc = anim.createDocument({ projectId, name: 'India', binding: makeBinding() })
+  const key1 = uuid()
+  const key2 = uuid()
+  let row = anim.addKeyCandidate(doc.id, key1, makeCandidate(), 0)
+  row = anim.addKeyCandidate(doc.id, key2, makeCandidate(), row.revision)
+  row = anim.selectKeyCandidate(doc.id, key1, row.body.keys[0].candidates[0].id, row.revision)
+  row = anim.selectKeyCandidate(doc.id, key2, row.body.keys[1].candidates[0].id, row.revision)
+  row = anim.insertSpan(doc.id, { fromKeyId: key1, toKeyId: key2, intent: { movement: 'walks two steps', preservation: 'silhouette intact' } }, row.revision)
+  const spanId = row.body.spans[0].id
+  const seeded = row.body.spans[0].stepSlots[0]
+  assert.equal(row.body.spans[0].stepSlots.length, 1, 'insertSpan seeds exactly one slot')
+
+  // One append: a second EMPTY slot, one revision forward.
+  const appended = anim.appendStepSlot(doc.id, spanId, row.revision)
+  assert.equal(appended.revision, row.revision + 1, 'the append is one authoring command')
+  const grown = appended.body.spans.find((entry) => entry.id === spanId)
+  assert.equal(grown.stepSlots.length, 2, 'the span now carries two step slots')
+  const second = grown.stepSlots[1]
+  assert.notEqual(second.id, seeded.id)
+  assert.deepEqual(second, { id: second.id, attempts: [], selectedRollingReference: null }, 'the appended slot is empty — the chain’s next step submits against it')
+  assert.deepEqual(grown.stepSlots[0], seeded, 'the seeded slot is untouched')
+  assert.equal(grown.stale, false, 'an empty slot consumes no reference state — nothing goes stale (§6.4)')
+  assert.deepEqual(grown.staleReasons, [])
+
+  // The chain keeps rolling; every command rides the same gate.
+  const again = anim.appendStepSlot(doc.id, spanId, appended.revision)
+  assert.equal(again.body.spans.find((entry) => entry.id === spanId).stepSlots.length, 3)
+  assert.throws(
+    () => anim.appendStepSlot(doc.id, spanId, appended.revision),
+    (err) => err instanceof AnimationConflictError && err.currentRevision === again.revision,
+    'a stale expectedRevision conflicts carrying the current document',
+  )
+  assert.throws(() => anim.appendStepSlot(doc.id, uuid(), again.revision), (err) => err.status === 404, 'an unknown span is a 404')
+  assert.throws(() => anim.appendStepSlot(doc.id, 'not-a-uuid', again.revision), (err) => err.status === 400, 'a malformed span id is a 400')
+})

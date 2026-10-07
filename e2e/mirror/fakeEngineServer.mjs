@@ -23,8 +23,15 @@
  *
  * Live control (for break-it-on-purpose legs, no restart):
  *   POST /__control {"failMode":"validation"|"error"|"hang"|null,
- *                    "steps":n,"stepDelayMs":n}
+ *                    "steps":n,"stepDelayMs":n,
+ *                    "hideHistoryFor":"<promptId>"|null}
  *   GET  /__control — current state
+ *
+ * "hideHistoryFor" masks ONE job's history record from every /history answer
+ * while set (a transient engine-side truth gap — an engine mid-restart whose
+ * index has not loaded that record yet). The record itself is untouched:
+ * clearing the knob restores it, so a preparation/recovery leg can fail
+ * against the gap, then succeed once it closes.
  *
  * NEVER point this at anything GPU-adjacent: it is a plain node HTTP+ws
  * server, and the studio that talks to it must run with an ISOLATED home.
@@ -122,6 +129,9 @@ const state = {
   // counts engine-side folder re-scan asks so tests can PROVE a client
   // re-pull carried refresh semantics (read it via GET /__control).
   refreshHits: 0,
+  // A prompt id whose history record every /history answer OMITS while set
+  // (see the header: the transient truth-gap knob — reversible, unlike wipe).
+  hideHistoryFor: null,
 }
 const control = (req, res, url) => {
   if (url.pathname === '/__control' && req.method === 'GET') {
@@ -323,10 +333,15 @@ async function handle(req, res) {
       const q = running ? [running.promptId] : []
       return json(res, 200, { queue_running: q, queue_pending: [] })
     }
-    if (url.pathname === '/history') return json(res, 200, Object.fromEntries(histories))
+    if (url.pathname === '/history') {
+      const visible = Object.fromEntries(histories)
+      if (state.hideHistoryFor) delete visible[state.hideHistoryFor]
+      return json(res, 200, visible)
+    }
     const hist = /^\/history\/(.+)$/.exec(url.pathname)
     if (hist) {
       const id = decodeURIComponent(hist[1])
+      if (id === state.hideHistoryFor) return json(res, 200, {})
       return json(res, 200, histories.has(id) ? { [id]: histories.get(id) } : {})
     }
 

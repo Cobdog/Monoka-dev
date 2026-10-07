@@ -44,9 +44,17 @@ export type AnimationDocumentView = {
  *  change them together). `candidate.id` is the MINTED document candidate
  *  id (hero landings — correlate it against the key slot's candidates);
  *  null when the tool mints nothing (tween attaches by attemptId, sequence
- *  surfaces through editorial selection). */
+ *  surfaces through editorial selection). `tool`/`targetId`/`caption`/
+ *  `compilerVersion` surface the persisted row + frozen snapshot read-only
+ *  (contract review F2): the timeline re-attaches attempts to spans after a
+ *  reload (a tween's target IS its step slot), the review panel shows the
+ *  frozen caption and the compiler that built it. */
 export type AttemptStateView = {
   attemptId: string
+  tool: AnimationTool
+  targetId: string
+  caption: string
+  compilerVersion: string
   execution: AttemptExecutionState
   progress?: { value: number; max: number }
   preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number }
@@ -178,6 +186,17 @@ export const animationApi = {
   spanCommand: (documentId: string, op: 'insert' | 'update-intent' | 'remove', payload: Record<string, unknown>, expectedRevision: number) =>
     post<{ document: unknown }>('/api/lan/animation/spans', { documentId, op, ...payload, expectedRevision }).then(documentOf),
 
+  /** The tween chain's advancement (contract review F1): appends one empty
+   *  step slot to the span; the answer carries the MINTED slot id — the
+   *  chain's next tween step submits against it. */
+  appendStepSlot: async (documentId: string, spanId: string, expectedRevision: number): Promise<{ document: AnimationDocumentView; stepSlotId: string }> => {
+    const body = await post<{ document: unknown; stepSlotId?: unknown }>('/api/lan/animation/spans', { documentId, op: 'append-step-slot', spanId, expectedRevision })
+    if (typeof body.stepSlotId !== 'string' || !body.stepSlotId) {
+      throw new AnimationHttpError(500, 'The append-step-slot response was malformed — no minted slot id.')
+    }
+    return { document: await documentOf(body), stepSlotId: body.stepSlotId }
+  },
+
   selectKeyCandidate: (documentId: string, keyId: string, candidateId: string, expectedRevision: number) =>
     post<{ document: unknown }>('/api/lan/animation/select/key-candidate', { documentId, keyId, candidateId, expectedRevision }).then(documentOf),
 
@@ -207,5 +226,13 @@ export const animationApi = {
   extractFrame: async (attemptId: string, frameIndex: number): Promise<AssetReference> => {
     const body = await post<{ assetReference: AssetReference }>('/api/lan/animation/attempt/extract-frame', { attemptId, frameIndex })
     return body.assetReference
+  },
+
+  /** §11.4's explicit preparation retry (contract review F3): re-prepares
+   *  the proposed frame of a LANDED clip WITHOUT re-rendering — the recovery
+   *  action for a failed preparation (the attempt's next attemptState read
+   *  carries the outcome; an attempt that never landed answers 400). */
+  retryPreparation: async (attemptId: string): Promise<void> => {
+    await post('/api/lan/animation/attempt/retry-preparation', { attemptId })
   },
 }

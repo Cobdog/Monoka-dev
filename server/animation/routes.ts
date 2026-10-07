@@ -11,8 +11,9 @@
  *      key and span command routes (discriminated by `op`, every branch
  *      expectedRevision-gated through the store's transactions), the THREE
  *      selection commands as distinct routes (§7.2.1), and the attempt
- *      surface (submit / state / cancel / extract-frame) delegating to the
- *      rendering service. The failure mapping is the documents block's:
+ *      surface (submit / state / cancel / extract-frame / retry-preparation)
+ *      delegating to the rendering service. The failure mapping is the
+ *      documents block's:
  *      AnimationConflictError → 409 WITH the current document (the rebase
  *      surface), AnimationRuleError → 400/404 with the reason,
  *      CanvasSchemaVersionError → 400 loud refusal naming the versions.
@@ -578,6 +579,7 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
         const documentId = documentIdFrom(body)
         let row: AnimationDocumentRow
         let spanId: string | undefined
+        let stepSlotId: string | undefined
         if (op === 'insert') {
           const before = new Set(store.getDocument(documentId)?.body.spans.map((span) => span.id) ?? [])
           const intent = recordField(body, 'intent', 'A span needs movement and preservation text.')
@@ -591,6 +593,16 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
           // client did not already know.
           const added = row.body.spans.filter((span) => !before.has(span.id))
           spanId = added[added.length - 1]?.id
+        } else if (op === 'append-step-slot') {
+          // The tween chain's advancement (contract review F1): the diff
+          // answers the minted slot id the same way insert answers the span
+          // id — the only new fact in the response.
+          const targetSpanId = uuidField(body, 'spanId')
+          const before = new Set(store.getDocument(documentId)?.body.spans.find((span) => span.id === targetSpanId)?.stepSlots.map((slot) => slot.id) ?? [])
+          row = store.appendStepSlot(documentId, targetSpanId, expectedRevision)
+          const grown = row.body.spans.find((span) => span.id === targetSpanId)
+          const added = grown?.stepSlots.filter((slot) => !before.has(slot.id)) ?? []
+          stepSlotId = added[added.length - 1]?.id
         } else if (op === 'update-intent') {
           const targetSpanId = uuidField(body, 'spanId')
           const intent = recordField(body, 'intent', 'A span needs movement and preservation text.')
@@ -598,11 +610,12 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
         } else if (op === 'remove') {
           row = store.removeSpan(documentId, uuidField(body, 'spanId'), expectedRevision)
         } else {
-          return sendJson(response, 400, { error: 'The spans route needs op: insert, update-intent, or remove.' })
+          return sendJson(response, 400, { error: 'The spans route needs op: insert, append-step-slot, update-intent, or remove.' })
         }
         emitDocumentChanged(documentId, row.revision, `spans.${String(op)}`)
         const payload: Record<string, unknown> = { document: documentView(row) }
         if (spanId !== undefined) payload.spanId = spanId
+        if (stepSlotId !== undefined) payload.stepSlotId = stepSlotId
         return sendJson(response, 200, payload)
       } catch (error) {
         if (animationFailure(response, error)) return
@@ -665,6 +678,22 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       if (!isNonNegativeInt(body.frameIndex)) return sendJson(response, 400, { error: 'frameIndex must be a non-negative integer.' })
       try {
         return sendJson(response, 200, { assetReference: await service.extractFrame(body.attemptId, body.frameIndex) })
+      } catch (error) {
+        if (animationFailure(response, error)) return
+        throw error
+      }
+    }
+
+    if (pathname === '/api/lan/animation/attempt/retry-preparation' && request.method === 'POST') {
+      const body = await readJson(request, 10_000)
+      if (!isUuid(body.attemptId)) return sendJson(response, 400, { error: 'An attempt id (UUID) is required.' })
+      try {
+        // §11.4's explicit recovery action (contract review F3): the owner
+        // re-prepares the proposed frame of a LANDED clip — the engine is
+        // never touched, so the answer's truth is the attempt's preparation
+        // state on the next read.
+        await service.retryPreparation(body.attemptId)
+        return sendJson(response, 200, { retried: true })
       } catch (error) {
         if (animationFailure(response, error)) return
         throw error
