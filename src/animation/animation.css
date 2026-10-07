@@ -23,8 +23,48 @@
 .anim-docs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .anim-docs a { display: inline-flex; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); font-size: var(--text-md); }
 
-/* Phase B's stage — the timeline's mount point while the shell stands in. */
-.anim-stage { display: grid; gap: 8px; max-width: 72ch; padding: 16px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: var(--text-md); line-height: 1.55; }
+/* The timeline's stage (task 8): the shell section the Timeline mounts in —
+   no longer a dashed placeholder, the timeline's own classes below carry the
+   geometry (grid placement arrives inline from the component; this sheet owns
+   the shapes). */
+.anim-stage { display: grid; gap: 8px; align-content: start; }
+
+/* The timeline grid: row 1 is the playhead ruler, then one row per nesting
+   lane, then the key cards row. Columns alternate key/gap (inline counts). */
+.anim-timeline { display: grid; gap: 8px; }
+.anim-track { display: grid; gap: 6px 10px; align-items: center; justify-content: start; overflow-x: auto; padding: 6px 2px; }
+
+.anim-key { display: grid; gap: 8px; justify-items: start; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; }
+.anim-key[data-anim-selected='true'] { border-color: var(--accent); }
+.anim-key:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.anim-key-img { width: 112px; height: 84px; object-fit: contain; border-radius: 6px; background: var(--surface-2); }
+.anim-key-placeholder, .anim-key-empty { display: grid; place-items: center; gap: 4px; width: 112px; height: 84px; padding: 6px; border: 1px dashed var(--line); border-radius: 6px; color: var(--muted); font-size: var(--text-sm); overflow-wrap: anywhere; text-align: center; }
+.anim-key-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.anim-key-badge { padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: var(--text-sm); }
+.anim-key-order { color: var(--muted); font-size: var(--text-sm); }
+
+.anim-span { display: grid; gap: 4px; align-content: center; min-width: 140px; min-height: 36px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); cursor: pointer; }
+.anim-span[data-anim-selected='true'] { border-color: var(--accent); background: var(--surface); }
+.anim-span:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.anim-span-label { color: var(--muted); font-size: var(--text-sm); line-height: 1.4; overflow-wrap: anywhere; }
+.anim-span[data-anim-span-stale='true'] .anim-span-label { font-style: italic; }
+.anim-span-steps { display: flex; flex-wrap: wrap; gap: 6px; }
+.anim-step-slot { display: inline-flex; align-items: center; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: var(--text-sm); white-space: nowrap; }
+.anim-span-stale-note { color: var(--muted); font-size: var(--text-sm); }
+
+/* The playhead (§7.4): a marker in the ruler row above the review position's
+   column — present only when an attempt targets the timeline. */
+.anim-playhead { justify-self: center; width: 2px; height: 14px; border-radius: 1px; background: var(--accent); }
+
+/* The seed affordance: a bound, empty timeline's explicit first act. */
+.anim-seed { display: grid; gap: 8px; max-width: 72ch; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-seed-title { margin: 0; font-size: var(--text-md); }
+.anim-seed-lede { margin: 0; color: var(--muted); font-size: var(--text-md); line-height: 1.55; }
+.anim-seed-body { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.anim-seed-actions { display: grid; gap: 6px; justify-items: start; max-width: 48ch; }
+
+/* The selection state's creation arm (task 7's Minor-2). */
+.anim-select-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 
 /* The session binding panel (task 7, §4.1) — the .anim-select card shape:
    one compact panel in the workspace, not a wizard. Geometry only; the

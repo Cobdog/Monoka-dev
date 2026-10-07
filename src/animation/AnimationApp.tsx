@@ -16,15 +16,21 @@
  *   - an UNBOUND document renders the session binding panel (§4.1) in the
  *     workspace — the missing inputs inline, the rest of the shell standing;
  *   - a BOUND document renders the versioned binding summary (§4.2, the
- *     description VERBATIM) above the timeline stage — Task 8's mount point;
+ *     description VERBATIM) above the TIMELINE (task 8: keys as image cards
+ *     with lock chips + origin badges, span bars with nested step slots, the
+ *     playhead, the seed-initial-key affordance for an empty timeline);
  *   - the conflict rebase notice (a 409 is never silent) and the failed
- *     silent-refresh notice, both role=status.
+ *     silent-refresh notice, both role=status; the selection state carries
+ *     the "new animation document" creation arm (task 7's Minor-2).
  */
-import { useState } from 'react'
-import { Clapperboard, LoaderCircle } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Clapperboard, FilePlus2, LoaderCircle } from 'lucide-react'
 import { SurfaceSwitcher } from '../surfaces/SurfaceSwitcher'
+import { Button } from '../ui/Button'
 import { animationHref } from './client'
 import { BindingPanel } from './BindingPanel'
+import { Timeline } from './Timeline'
+import { deriveReviewPosition, deriveTimeline } from './timelineModel'
 import { useAnimationDocument } from './state'
 import './animation.css'
 
@@ -35,12 +41,23 @@ export function AnimationApp() {
     const search = new URLSearchParams(window.location.search)
     return { documentId: search.get('document') ?? '', projectId: search.get('project') ?? '' }
   })
+  // The timeline's selection (§6.1's inspector input): ONE id — a key or a
+  // span. Ephemeral view state, so the shell owns it (P07's stores rule is
+  // about connections, not local state — the binding panel's draft is the
+  // same precedent); the shell remounts per navigation, so it never leaks
+  // across documents.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const session = useAnimationDocument(params.documentId, params.projectId)
   const { phase, errorDetail, document, projectDocuments, assets, assetsFailed, conflict, busy, commandError, refreshFailed } = session
 
   const activeBinding = document
     ? (document.body.bindingHistory.find((entry) => entry.version === document.body.activeBindingVersion) ?? null)
     : null
+  const timeline = useMemo(() => (document === null ? null : deriveTimeline(document.body)), [document])
+  const playhead = useMemo(
+    () => (document === null ? null : deriveReviewPosition(document.body, document.attempts)),
+    [document],
+  )
 
   if (phase === 'loading') {
     return (
@@ -64,6 +81,25 @@ export function AnimationApp() {
                 : 'This address names no animation document.'}
             </p>
             <a className="anim-back" href="/?images=1" data-anim-back>← Back to the image workbench</a>
+            {/* The creation arm (task 7's Minor-2, task 8's scope): the only
+                user-facing path to an EMPTY animation document — the workbench
+                handoff requires a complete binding. One click creates the
+                pre-binding document in this project and opens it. */}
+            <div className="anim-select-actions">
+              <Button
+                variant="primary"
+                busy={busy}
+                disabled={busy || !params.projectId}
+                icon={<FilePlus2 size={12} />}
+                data-anim-new-document
+                title={params.projectId ? 'Create a pre-binding animation document in this project and open it' : 'The address names no project — open animation through a project to create here'}
+                onClick={() => void session.commands.createEmptyDocument(params.projectId)}
+              >
+                New animation document
+              </Button>
+              {!params.projectId && <p className="anim-note">The address names no project — creation needs one.</p>}
+            </div>
+            {commandError && <p className="anim-note anim-conflict" role="alert" data-anim-command-error>Creating the document failed: {commandError}</p>}
             {projectDocuments === 'failed' && <p className="anim-note" role="status">This project's animation documents could not be listed — the heading and the way back stand.</p>}
             {Array.isArray(projectDocuments) && projectDocuments.length === 0 && <p className="anim-note">No animation documents in this project yet.</p>}
             {Array.isArray(projectDocuments) && projectDocuments.length > 0 && (
@@ -128,10 +164,21 @@ export function AnimationApp() {
               </header>
               <p data-anim-bound-description>{activeBinding.characterDescription}</p>
             </section>
-            {/* Phase B's home: the timeline (keys, spans, step slots) mounts in
-                this stage; the shell owns only the document + event plumbing. */}
+            {/* The timeline (task 8): keys, spans, nested step slots, the
+                playhead — the shell owns only the document + event plumbing;
+                every connection rides the adapter's command bag. */}
             <section className="anim-stage" data-anim-stage>
-              <p>The animation workspace for this document loads here — key slots, spans, and attempt review land with the module's next task.</p>
+              <Timeline
+                timeline={timeline!}
+                binding={activeBinding}
+                selectedId={selectedId}
+                playhead={playhead}
+                busy={busy}
+                onSelectKey={setSelectedId}
+                onSelectSpan={setSelectedId}
+                onToggleLock={(keyId, locked) => void session.commands.toggleKeyLock(keyId, locked)}
+                onSeedInitialKey={() => void session.commands.seedInitialKey()}
+              />
             </section>
           </>
         ) : (

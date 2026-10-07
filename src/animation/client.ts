@@ -199,9 +199,17 @@ export const animationApi = {
 
   /** The span commands: payload carries { fromKeyId, toKeyId, intent,
    *  overrides? } for insert, { spanId, intent } for update-intent, and
-   *  { spanId } for remove. */
-  spanCommand: (documentId: string, op: 'insert' | 'update-intent' | 'remove', payload: Record<string, unknown>, expectedRevision: number) =>
-    post<{ document: unknown }>('/api/lan/animation/spans', { documentId, op, ...payload, expectedRevision }).then(documentOf),
+   *  { spanId } for remove. The answer wraps the document and carries the
+   *  MINTED span id when the op mints one (insert — task 6's noted gap,
+   *  widened in task 8: the timeline's span authoring learns the new span's
+   *  id without diffing the spans array). */
+  spanCommand: async (documentId: string, op: 'insert' | 'update-intent' | 'remove', payload: Record<string, unknown>, expectedRevision: number): Promise<{ document: AnimationDocumentView; spanId?: string }> => {
+    const body = await post<{ document: unknown; spanId?: unknown }>('/api/lan/animation/spans', { documentId, op, ...payload, expectedRevision })
+    if (op === 'insert' && (typeof body.spanId !== 'string' || !body.spanId)) {
+      throw new AnimationHttpError(500, 'The span insert response was malformed — no minted span id.')
+    }
+    return { document: await documentOf(body), ...(op === 'insert' ? { spanId: body.spanId as string } : {}) }
+  },
 
   /** The tween chain's advancement (contract review F1): appends one empty
    *  step slot to the span; the answer carries the MINTED slot id — the

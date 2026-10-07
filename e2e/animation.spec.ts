@@ -216,9 +216,9 @@ test('an animation envelope flips the shell attempt state (the fabric adapter)',
 // versioned binding): the empty session's missing inputs INLINE in the same
 // workspace (Refusal — never a blocked shell), the four fields + submit
 // creating the versioned binding, the prepared handoff opening DIRECTLY into
-// the timeline placeholder, the medium chips as the kit's exclusive
-// radiogroup, the Workbench exit's "Open animation" arm, and the 409 rebase
-// notice (never a silent lost update).
+// the timeline, the medium chips as the kit's exclusive radiogroup, the
+// Workbench exit's "Open animation" arm, and the 409 rebase notice (never a
+// silent lost update).
 // ---------------------------------------------------------------------------
 
 /** The pre-binding document (§4.1's empty session): created WITHOUT a
@@ -460,4 +460,241 @@ test('the workbench exit opens animation with a bound handoff (binding)', async 
     await request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } }).catch(() => undefined)
     await request.post('/api/lan/documents/projects/delete', { data: { id: project.project.id } }).catch(() => undefined)
   }
+})
+
+// ---------------------------------------------------------------------------
+// Task 8 — the timeline (§5 the key-slot model, §6 span authoring, §7.4 the
+// playhead/review position): keys as IMAGE-BACKED cards with lock chips and
+// origin badges (the badge follows the SELECTED candidate — no permanent tile
+// treatments by origin, §5.1), spans as connecting bars with tween step slots
+// NESTED inside, selection highlighting the active span AND its endpoint
+// keys, the seed-the-initial-key affordance for a bound-but-empty timeline
+// (the binding's initialKeyAssetId materializes no slot on its own), and the
+// "new animation document" creation arm in the selection state.
+// ---------------------------------------------------------------------------
+
+/** Ingest the 1x1 key PNG through the real blob route — the returned relPath
+ *  is the content-addressed handle every key candidate's image renders
+ *  through (the same handle the binding panel binds). */
+async function ingestKeyImage(request: APIRequestContext, name: string): Promise<string> {
+  const ingested = await (await request.post('/api/lan/documents/blobs/ingest', { data: { kind: 'image', name, data: KEY_PNG } })).json() as { blob?: { relPath?: string } }
+  expect(ingested.blob?.relPath, `the key image ingests (${JSON.stringify(ingested)})`).toBeTruthy()
+  return ingested.blob!.relPath!
+}
+
+/** A bound document whose timeline is fully authored through the real routes:
+ *  three selected keys (hero / import / frame-promotion origins, real blob
+ *  images, the third LOCKED), an adjacent span carrying TWO step slots, and a
+ *  skip-span across all three keys (nesting lane 1 in the timeline model). */
+async function seedTimelineDocument(request: APIRequestContext, projectId: string, name: string) {
+  const relPathA = await ingestKeyImage(request, 'anim-key-a.png')
+  const relPathB = await ingestKeyImage(request, 'anim-key-b.png')
+  const relPathC = await ingestKeyImage(request, 'anim-key-c.png')
+  const created = await (await request.post('/api/lan/animation/documents', {
+    data: { projectId, name, binding: { characterDescription: 'a lanky courier in a long coat', referenceAssetIds: [uuid()], medium: 'clean line on white', initialKeyAssetId: relPathA } },
+  })).json() as { document: { id: string; revision: number } }
+  const documentId = created.document.id
+  let revision = created.document.revision
+
+  const addSelectedKey = async (origin: string, relPath: string) => {
+    const keyId = uuid()
+    const candidateId = uuid()
+    let landed = await (await request.post('/api/lan/animation/keys', {
+      data: { op: 'add-candidate', documentId, keyId, expectedRevision: revision, candidate: { id: candidateId, assetReference: { assetId: `animref-${uuid().slice(0, 8)}`, relPath, kind: 'image' }, origin, provenance: { assetId: `animref-${uuid().slice(0, 8)}` }, poseDescription: 'mid-stride, arms pumping', facing: 'screen-left' } },
+    })).json() as { document: { revision: number } }
+    revision = landed.document.revision
+    landed = await (await request.post('/api/lan/animation/select/key-candidate', { data: { documentId, keyId, candidateId, expectedRevision: revision } })).json() as { document: { revision: number } }
+    revision = landed.document.revision
+    return keyId
+  }
+
+  const keyOne = await addSelectedKey('hero', relPathA)
+  const keyTwo = await addSelectedKey('import', relPathB)
+  const keyThree = await addSelectedKey('frame-promotion', relPathC)
+  const locked = await (await request.post('/api/lan/animation/keys', { data: { op: 'lock', documentId, keyId: keyThree, expectedRevision: revision } })).json() as { document: { revision: number } }
+  revision = locked.document.revision
+
+  const spanOne = await (await request.post('/api/lan/animation/spans', {
+    data: { op: 'insert', documentId, fromKeyId: keyOne, toKeyId: keyTwo, intent: { movement: 'she pushes off the back foot into a full stride', preservation: 'coat hem and scarf stay consistent' }, expectedRevision: revision },
+  })).json() as { document: { revision: number }; spanId: string }
+  revision = spanOne.document.revision
+  const appended = await (await request.post('/api/lan/animation/spans', { data: { op: 'append-step-slot', documentId, spanId: spanOne.spanId, expectedRevision: revision } })).json() as { document: { revision: number }; stepSlotId: string }
+  revision = appended.document.revision
+  const spanTwo = await (await request.post('/api/lan/animation/spans', {
+    data: { op: 'insert', documentId, fromKeyId: keyOne, toKeyId: keyThree, intent: { movement: 'a long beeline across the plaza', preservation: 'the silhouette stays readable' }, expectedRevision: revision },
+  })).json() as { document: { revision: number }; spanId: string }
+  revision = spanTwo.document.revision
+
+  return { documentId, revision, keyIds: [keyOne, keyTwo, keyThree], spanIds: [spanOne.spanId, spanTwo.spanId], stepSlotId: appended.stepSlotId }
+}
+
+async function openTimeline(page: Page, projectId: string, documentId: string) {
+  await page.goto(`/?images=1&view=animation&project=${projectId}&document=${documentId}`)
+  const timeline = page.locator('[data-anim-timeline]')
+  await expect(timeline).toBeVisible({ timeout: 15_000 })
+  return timeline
+}
+
+test('keys render as image cards with lock chips and origin badges (timeline)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await seedTimelineDocument(request, projectId, 'Timeline cards')
+  const timeline = await openTimeline(page, projectId, seeded.documentId)
+  // Three key cards, ordered by the slots' order, each IMAGE-backed through
+  // the real blob route (the candidate relPath → the preview URL).
+  const cards = timeline.locator('[data-anim-key]')
+  await expect(cards).toHaveCount(3)
+  await expect(cards.nth(0)).toHaveAttribute('data-anim-key', seeded.keyIds[0])
+  await expect(cards.nth(1)).toHaveAttribute('data-anim-key', seeded.keyIds[1])
+  await expect(cards.nth(2)).toHaveAttribute('data-anim-key', seeded.keyIds[2])
+  for (let index = 0; index < 3; index += 1) {
+    const img = cards.nth(index).locator('img')
+    await expect(img).toBeVisible()
+    expect((await img.getAttribute('src')) ?? '', `key ${index} renders through the blob route`).toContain('/api/lan/documents/blobs/file')
+  }
+  // The origin badge follows the SELECTED candidate (§5.1).
+  await expect(cards.nth(0).locator('[data-anim-key-badge]')).toHaveAttribute('data-anim-key-badge', 'hero')
+  await expect(cards.nth(1).locator('[data-anim-key-badge]')).toHaveAttribute('data-anim-key-badge', 'import')
+  await expect(cards.nth(2).locator('[data-anim-key-badge]')).toHaveAttribute('data-anim-key-badge', 'frame-promotion')
+  // The lock chip reflects the SERVER's lock state — and the toggle rides the
+  // real revision-gated command (the server enforces the lock contract).
+  const lockChip = cards.nth(2).locator('[data-anim-key-lock]')
+  await expect(lockChip).toHaveAttribute('aria-pressed', 'true')
+  await lockChip.click()
+  await expect(lockChip).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.locator('[data-anim-revision]')).toHaveText(`rev ${seeded.revision + 1}`)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('selecting a span highlights it and its two endpoint keys; step slots nest inside the bar (timeline)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await seedTimelineDocument(request, projectId, 'Timeline spans')
+  const timeline = await openTimeline(page, projectId, seeded.documentId)
+  // The adjacent span renders on lane 0; the skip-span across all three keys
+  // stacks one lane up (the model's nesting, §6 connectivity).
+  const adjacent = timeline.locator(`[data-anim-span="${seeded.spanIds[0]}"]`)
+  const skip = timeline.locator(`[data-anim-span="${seeded.spanIds[1]}"]`)
+  await expect(adjacent).toBeVisible()
+  await expect(adjacent).toHaveAttribute('data-anim-span-nesting', '0')
+  await expect(skip).toBeVisible()
+  await expect(skip).toHaveAttribute('data-anim-span-nesting', '1')
+  await expect(adjacent).toHaveAttribute('data-anim-span-from', seeded.keyIds[0])
+  await expect(adjacent).toHaveAttribute('data-anim-span-to', seeded.keyIds[1])
+  // Two tween step slots nest INSIDE the span bar.
+  await expect(adjacent.locator('[data-anim-step-slot]')).toHaveCount(2)
+  await expect(skip.locator('[data-anim-step-slot]')).toHaveCount(1)
+  // Selecting the span highlights it AND its two endpoint keys — not the
+  // third key, not the other span.
+  await adjacent.click()
+  await expect(adjacent).toHaveAttribute('data-anim-selected', 'true')
+  await expect(timeline.locator(`[data-anim-key="${seeded.keyIds[0]}"]`)).toHaveAttribute('data-anim-selected', 'true')
+  await expect(timeline.locator(`[data-anim-key="${seeded.keyIds[1]}"]`)).toHaveAttribute('data-anim-selected', 'true')
+  await expect(timeline.locator(`[data-anim-key="${seeded.keyIds[2]}"]`)).toHaveAttribute('data-anim-selected', 'false')
+  await expect(skip).toHaveAttribute('data-anim-selected', 'false')
+  // Selecting a key re-highlights cleanly (the selection is one id).
+  await timeline.locator(`[data-anim-key="${seeded.keyIds[2]}"]`).click()
+  await expect(timeline.locator(`[data-anim-key="${seeded.keyIds[2]}"]`)).toHaveAttribute('data-anim-selected', 'true')
+  await expect(adjacent).toHaveAttribute('data-anim-selected', 'false')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('an empty timeline seeds the initial key slot from the binding (timeline)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  // The binding's initialKeyAssetId is a REAL blob path here, so the seed
+  // card previews it and the seeded candidate renders image-backed.
+  const initialKey = await ingestKeyImage(request, 'anim-initial-key.png')
+  const created = await (await request.post('/api/lan/animation/documents', {
+    data: { projectId, name: 'Seed me', binding: { characterDescription: 'a lanky courier', referenceAssetIds: [uuid()], medium: 'clean line on white', initialKeyAssetId: initialKey } },
+  })).json() as { document: { id: string } }
+  const timeline = await openTimeline(page, projectId, created.document.id)
+  // The seed affordance stands in the stage — the bound initial key named,
+  // previewable, one explicit action away (§5.3: selection is explicit).
+  const seedCard = page.locator('[data-anim-seed-card]')
+  await expect(seedCard).toBeVisible()
+  await expect(seedCard.locator('img')).toBeVisible()
+  expect((await seedCard.locator('img').getAttribute('src')) ?? '').toContain('/api/lan/documents/blobs/file')
+  await expect(page.locator('[data-anim-seed-initial]')).toBeEnabled()
+  // The seed materializes the slot AND selects it — two real commands.
+  await page.locator('[data-anim-seed-initial]').click()
+  await expect(seedCard).toHaveCount(0)
+  const cards = timeline.locator('[data-anim-key]')
+  await expect(cards).toHaveCount(1)
+  await expect(cards.first().locator('img')).toBeVisible()
+  expect((await cards.first().locator('img').getAttribute('src')) ?? '').toContain(encodeURIComponent(initialKey))
+  await expect(cards.first().locator('[data-anim-key-badge]')).toHaveAttribute('data-anim-key-badge', 'project-asset')
+  await expect(page.locator('[data-anim-revision]')).toHaveText('rev 2')
+  // The seeded card is selectable like any key.
+  await cards.first().click()
+  await expect(cards.first()).toHaveAttribute('data-anim-selected', 'true')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('the playhead indicates the newest attempt\'s review position (timeline)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  // The stub engine (test (d)'s posture): accepts, never answers — a
+  // submitted tween persists queued and its dispatch hangs.
+  const stub = http.createServer(() => { /* no response */ })
+  const stubPort = await new Promise<number>((resolve) => stub.listen(0, '127.0.0.1', () => resolve((stub.address() as { port: number }).port)))
+  const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    await request.post('/api/lan/settings', { data: { settings: { ...originalSettings, comfyUrl: `http://127.0.0.1:${stubPort}` } } })
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedTimelineDocument(request, projectId, 'Playhead')
+    const timeline = await openTimeline(page, projectId, seeded.documentId)
+    // No attempts — the playhead is ABSENT, not a lying position.
+    await expect(timeline.locator('[data-anim-playhead]')).toHaveCount(0)
+    // Submit one tween attempt against the span's appended step slot —
+    // WITHOUT awaiting the response: the route hangs at the engine dispatch
+    // (the stub never answers) while the ATTEMPT persists first (test (d)'s
+    // posture), so the durable read is the settle point, not the POST.
+    await page.evaluate(({ documentId, targetStepSlotId, idempotencyKey }) => {
+      void fetch('/api/lan/animation/attempts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          documentId, tool: 'tween', targetId: targetStepSlotId, idempotencyKey,
+          draft: { tool: 'tween', targetStepSlotId, movementStep: 'the lead foot plants and the weight transfers forward', overrides: { medium: 'clean line on white' } },
+        }),
+      }).catch(() => undefined)
+    }, { documentId: seeded.documentId, targetStepSlotId: seeded.stepSlotId, idempotencyKey: `anim-e2e-playhead-${Date.now()}` })
+    await expect.poll(async () => {
+      const view = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document?: { attempts?: unknown[] } }
+      return view.document?.attempts?.length ?? 0
+    }, { timeout: 15_000 }).toBeGreaterThan(0)
+    // Leave and return (§7.4): the recovery read carries the attempt, and
+    // the playhead marks its review position — the span owning the step slot.
+    await page.reload()
+    const reloaded = page.locator('[data-anim-timeline]')
+    await expect(reloaded).toBeVisible({ timeout: 15_000 })
+    const playhead = reloaded.locator('[data-anim-playhead]')
+    await expect(playhead).toBeVisible()
+    await expect(playhead).toHaveAttribute('data-anim-playhead-at', seeded.spanIds[0])
+    await expect(playhead).toHaveAttribute('data-anim-playhead-kind', 'span')
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    await new Promise<void>((resolve) => {
+      stub.closeAllConnections()
+      stub.close(() => resolve())
+    })
+  }
+})
+
+test('the selection state creates a new empty animation document (timeline)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  await page.goto(`/?images=1&view=animation&project=${projectId}&document=${uuid()}`)
+  await expect(page.locator('[data-anim-select]')).toBeVisible({ timeout: 15_000 })
+  // The creation arm (task 7's Minor-2): one click creates the pre-binding
+  // document in this project and opens it — the empty session's panel.
+  const create = page.locator('[data-anim-new-document]')
+  await expect(create).toBeEnabled()
+  await create.click()
+  await expect(page.locator('[data-anim-binding]')).toBeVisible({ timeout: 15_000 })
+  await expect(page).toHaveURL(/view=animation&project=[^&]+&document=/)
+  await expect(page.locator('[data-anim-document-name]')).toHaveText('Untitled animation')
+  await expect(page.locator('[data-anim-revision]')).toHaveText('rev 0')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
