@@ -55,9 +55,9 @@ const REPO = path.resolve(__dirname, '..')
 const SUITES = {
   'animation-assembly': { build: null, windows: false, python: false, ffmpeg: false },
   'animation-compiler': { build: null, windows: false, python: false, ffmpeg: false },
-  'animation-rendering': { build: 'server', windows: false, python: false, ffmpeg: false },
+  'animation-rendering': { build: 'server', windows: false, python: false, ffmpeg: true },
   'animation-export': { build: 'full', windows: false, python: false, ffmpeg: true },
-  'animation-routes': { build: 'full', windows: false, python: false, ffmpeg: false },
+  'animation-routes': { build: 'full', windows: false, python: false, ffmpeg: true },
   'animation-store': { build: 'server', windows: false, python: false, ffmpeg: false },
   'animation-timeline-model': { build: null, windows: false, python: false, ffmpeg: false },
   'animation-types': { build: null, windows: false, python: false, ffmpeg: false },
