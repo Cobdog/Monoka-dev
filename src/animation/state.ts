@@ -29,13 +29,25 @@
  * `createEmptyDocument` (the selection state's creation arm, task 7's
  * Minor-2). The shared failure arm is extracted as `failCommand` — one
  * idiom, three-plus commands.
+ *
+ * What task 9 adds: the SPAN INSPECTOR's surface — `deriveTweenPreview`
+ * (the LIVE PREVIEW SELECTOR: the server's tween draft resolution mirrored
+ * client-side, so the inspector's "View caption" compiles exactly what
+ * submission freezes — the ACTUAL current rolling reference, §6.4) plus the
+ * commands `updateSpanIntent` (the debounced durable draft), `setKeyFacing`
+ * (§5.1: facing follows the candidate — a corrected facing is a cloned
+ * alternative + the explicit selection, the seed command's two-command
+ * idiom; no update-candidate route exists), and `submitTweenStep` (flushes
+ * the intent, resolves the target step slot from the live document, submits
+ * the tween draft with a fresh idempotency key per deliberate click).
  */
 import { useEffect } from 'react'
 import { create } from 'zustand'
 import { animationApi, animationHref, AnimationConflict, AnimationHttpError, type AnimationDocumentView } from './client'
 import { subscribeAnimationEvents } from './fabric'
 import { documentsApi } from '../canvas/api'
-import type { AttemptExecutionState, BindingInput } from '../../shared/animation/types'
+import type { AssetReference, AttemptExecutionState, BindingInput, FacingTerm } from '../../shared/animation/types'
+import type { PoseRef, SessionOverrideInput } from '../../shared/animation/compiler'
 
 /** The states whose engine-side truth is not settled — the seeded attribute
  *  prefers the newest of these over an older terminal one, so a reopening
@@ -102,6 +114,17 @@ type AnimationSessionState = {
   seedInitialKey(): Promise<boolean>
   /** The lock chip's toggle — the server owns the enforcement (§7.2.1). */
   toggleKeyLock(keyId: string, locked: boolean): Promise<boolean>
+  /** Task 9 — the span inspector's commands. */
+  /** The durable span intent (the debounced draft persist — §7.4's "edit
+   *  future motion drafts"). */
+  updateSpanIntent(spanId: string, intent: { movement: string; preservation: string }): Promise<boolean>
+  /** A corrected facing for a key's selected image (§5.1: facing follows the
+   *  candidate — the clone-and-select authoring path, lock-guarded). */
+  setKeyFacing(keyId: string, facing: FacingTerm | null): Promise<boolean>
+  /** Submits one tween step: flushes the intent, resolves the target step
+   *  slot from the live document, submits the draft (a fresh idempotency key
+   *  per deliberate click). Null = the failure surface already names it. */
+  submitTweenStep(spanId: string, draft: { movement: string; preservation: string; overrides: SessionOverrideInput }): Promise<{ attemptId: string } | null>
   /** The selection state's creation arm (task 7's Minor-2): creates the
    *  pre-binding document in the named project and navigates to it. */
   createEmptyDocument(projectId: string): Promise<boolean>
@@ -130,6 +153,98 @@ async function fileToBase64(file: File): Promise<string> {
  *  A bare canvas output id is opaque (task 7's concern) and never rides a
  *  URL. */
 const isPathLikeHandle = (assetId: string): boolean => assetId.includes('/')
+
+// ---------------------------------------------------------------------------
+// deriveTweenPreview — the live preview selector (task 9, §6.4)
+// ---------------------------------------------------------------------------
+
+/** Where a tween reference's pose came from — the §6.4 distinction the
+ *  inspector labels on the FIRST FRAME card: the span's start key's selected
+ *  image, or a frame PROMOTED from a landed step (the chain's actual current
+ *  rolling reference — never a frozen copy of the original endpoint). */
+export type TweenRefSource =
+  | { kind: 'start-key'; keyId: string; keyOrder: number }
+  | { kind: 'promoted-frame'; stepIndex: number; attemptId: string; frameIndex: number }
+
+/** One resolved tween reference (the rolling-near or the fixed-far): ok
+ *  carries the asset + pose the compile consumes; not-ok the NAMED problem
+ *  (the same name the server's submission refusal would carry). */
+export type TweenRef =
+  | { ok: true; assetReference: AssetReference; pose: PoseRef; source: TweenRefSource }
+  | { ok: false; problem: string }
+
+/** The tween compile context's client-side resolution — the input the
+ *  inspector compiles its live preview from and the submit command targets. */
+export type TweenPreview = {
+  spanId: string
+  /** The chain's step slots in order — the LAST is the next submission's
+   *  target (the append-step-slot contract: the minted slot is the one the
+   *  next step submits against). */
+  stepCount: number
+  targetStepSlotId: string | null
+  rollingReference: TweenRef
+  farReference: TweenRef
+  /** Every named problem (either reference, a vanished span) — empty when
+   *  the context compiles. */
+  problems: string[]
+}
+
+/** The pure mirror of the submit route's tween draft resolution
+ *  (server/animation/routes.ts' resolveDraft tween arm): the ACTUAL current
+ *  rolling reference — the promoted frame of the last landed step BEFORE the
+ *  target slot (its pose belongs to the frame, and this build's frames carry
+ *  none — the same nulls the server freezes), falling back to the span's
+ *  start key's selected candidate (pose follows the image, §5.1); the far
+ *  reference is always the destination key's selected candidate. A step
+ *  whose selected attempt has NOT landed stops the walk with a named
+ *  problem — the server refuses that submission with the same name, and the
+ *  preview must never silently skip past an explicit selection. */
+export function deriveTweenPreview(document: AnimationDocumentView, spanId: string): TweenPreview {
+  const span = document.body.spans.find((entry) => entry.id === spanId) ?? null
+  if (span === null) {
+    const problem = 'This span no longer exists in the document.'
+    return { spanId, stepCount: 0, targetStepSlotId: null, rollingReference: { ok: false, problem }, farReference: { ok: false, problem }, problems: [problem] }
+  }
+
+  const keyRef = (keyId: string, label: string): TweenRef => {
+    const slot = document.body.keys.find((entry) => entry.id === keyId) ?? null
+    const candidate = slot === null || slot.selectedCandidateId === null
+      ? null
+      : slot.candidates.find((entry) => entry.id === slot.selectedCandidateId) ?? null
+    if (slot === null || candidate === null) {
+      return { ok: false, problem: `${label} key has no selected image — the caption needs its pose.` }
+    }
+    return { ok: true, assetReference: candidate.assetReference, pose: { poseDescription: candidate.poseDescription, facing: candidate.facing }, source: { kind: 'start-key', keyId, keyOrder: slot.order } }
+  }
+
+  // The backward walk over EARLIER steps, the server's loop verbatim: skip
+  // steps with no promoted selection, stop at the first one — landed or not.
+  let rolling: TweenRef | null = null
+  for (let index = span.stepSlots.length - 2; index >= 0; index -= 1) {
+    const selected = span.stepSlots[index]?.selectedRollingReference
+    if (!selected) continue
+    const attempt = document.attempts.find((entry) => entry.attemptId === selected.attemptId) ?? null
+    if (attempt === null || attempt.candidate === null) {
+      rolling = { ok: false, problem: `The rolling reference attempt ${selected.attemptId} holds no landed clip yet — step ${index + 1}'s promoted frame is not reviewable.` }
+      break
+    }
+    rolling = {
+      ok: true,
+      assetReference: attempt.candidate.assetReference,
+      pose: { poseDescription: null, facing: null },
+      source: { kind: 'promoted-frame', stepIndex: index, attemptId: selected.attemptId, frameIndex: selected.frameIndex },
+    }
+    break
+  }
+
+  const rollingReference = rolling ?? keyRef(span.fromKeyId, 'The start')
+  const farReference = keyRef(span.toKeyId, 'The destination')
+  const problems: string[] = []
+  if (!rollingReference.ok) problems.push(rollingReference.problem)
+  if (!farReference.ok) problems.push(farReference.problem)
+  const lastSlot = span.stepSlots[span.stepSlots.length - 1] ?? null
+  return { spanId, stepCount: span.stepSlots.length, targetStepSlotId: lastSlot === null ? null : lastSlot.id, rollingReference, farReference, problems }
+}
 
 export const useAnimationSessionStore = create<AnimationSessionState>()((set, get) => {
   /** The command failure surface every authoring command shares (extracted
@@ -316,6 +431,109 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     }
   },
 
+  updateSpanIntent: async (spanId, intent) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      const { document: view } = await animationApi.spanCommand(current.id, 'update-intent', { spanId, intent }, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  setKeyFacing: async (keyId, facing) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const slot = current.body.keys.find((entry) => entry.id === keyId) ?? null
+    if (slot === null) {
+      set({ commandError: 'That key slot no longer exists — reload picked up a change.' })
+      return false
+    }
+    if (slot.lock) {
+      // The server enforces the same refusal (§7.2.1) — naming it here keeps
+      // the picker's affordance honest instead of firing a doomed command.
+      set({ commandError: `Key ${slot.order} is locked — unlock it before changing its facing.` })
+      return false
+    }
+    const selected = slot.selectedCandidateId === null ? null : slot.candidates.find((entry) => entry.id === slot.selectedCandidateId) ?? null
+    if (selected === null) {
+      set({ commandError: `Key ${slot.order} has no selected image to carry the facing.` })
+      return false
+    }
+    if (selected.facing === facing) return true
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // §5.1: facing follows the CANDIDATE, and candidates are immutable on
+      // the wire — a corrected facing for the same image is a cloned
+      // alternative plus the explicit selection (§5.3's append-then-select,
+      // the seed command's own two-command idiom). The selection change
+      // marks dependent spans stale 'pose' server-side, exactly as it should.
+      const candidateId = crypto.randomUUID()
+      const added = await animationApi.keyCommand(current.id, 'add-candidate', {
+        keyId,
+        candidate: { ...selected, id: candidateId, facing },
+      }, get().document?.revision ?? 0)
+      const view = await animationApi.selectKeyCandidate(current.id, keyId, candidateId, added.revision)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  submitTweenStep: async (spanId, draft) => {
+    const current = get().document
+    if (!current || get().busy) return null
+    if (!draft.movement.trim()) {
+      set({ commandError: 'The movement step needs text before submission.' })
+      return null
+    }
+    // The flush: the span's DURABLE intent catches up to the submitted draft
+    // first, so the frozen caption's movement and the document's span label
+    // can never disagree. A failed flush (conflict, refusal) stops the
+    // submission — the surface already names it.
+    const span = current.body.spans.find((entry) => entry.id === spanId) ?? null
+    if (span !== null && (span.intent.movement !== draft.movement || span.intent.preservation !== draft.preservation)) {
+      const persisted = await get().updateSpanIntent(spanId, { movement: draft.movement, preservation: draft.preservation })
+      if (!persisted) return null
+    }
+    const fresh = get().document
+    if (!fresh) return null
+    const preview = deriveTweenPreview(fresh, spanId)
+    if (preview.targetStepSlotId === null || !preview.rollingReference.ok || !preview.farReference.ok) {
+      set({ commandError: preview.problems.join(' ') || 'The tween references are not resolvable.' })
+      return null
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // A fresh idempotency key per deliberate click — §7.2.2's retry key
+      // belongs to a LOST RESPONSE, never to a user's explicit re-roll.
+      const submitted = await animationApi.submit({
+        documentId: fresh.id,
+        tool: 'tween',
+        targetId: preview.targetStepSlotId,
+        draft: { tool: 'tween', targetStepSlotId: preview.targetStepSlotId, movementStep: draft.movement, overrides: draft.overrides },
+      }, `anim-tween-${spanId.slice(0, 8)}-${crypto.randomUUID()}`)
+      if (ticket !== openTicket) return null
+      // The attempt's state arrives through the fabric (attempt-state
+      // envelopes); the document itself did not move (attempt rows carry
+      // their own revision, §11.2).
+      set({ busy: false })
+      return { attemptId: submitted.attemptId }
+    } catch (error) {
+      await failCommand(error, ticket)
+      return null
+    }
+  },
+
   createEmptyDocument: async (projectId) => {
     if (get().busy) return false
     set({ busy: true, commandError: null })
@@ -378,6 +596,9 @@ export function useAnimationDocument(documentId: string, projectId = '') {
       importImages: session.importImages,
       seedInitialKey: session.seedInitialKey,
       toggleKeyLock: session.toggleKeyLock,
+      updateSpanIntent: session.updateSpanIntent,
+      setKeyFacing: session.setKeyFacing,
+      submitTweenStep: session.submitTweenStep,
       createEmptyDocument: session.createEmptyDocument,
       retry: session.retry,
       clearCommandError: session.clearCommandError,
