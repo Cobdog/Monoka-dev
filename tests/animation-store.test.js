@@ -621,6 +621,34 @@ test('(g) selectRollingReference sets the step slot pointer and never creates a 
 
   assert.throws(() => anim.selectClipContribution(docG.id, uuid(), attemptG1.attempt.id, 0, 18, 4, row.revision), (err) => err.status === 404)
   assert.throws(() => anim.selectClipContribution(docG.id, spanG.id, attemptG1.attempt.id, -1, 18, 4, row.revision), (err) => err.status === 400)
+
+  // A dangling attemptId is the same refusal class as selectRollingReference
+  // (review Important-1): the attempt must be a REAL row of THIS document and
+  // attached to THIS span — otherwise the editorial entry references a clip
+  // whose row never rides this project's export.
+  assert.throws(
+    () => anim.selectClipContribution(docG.id, spanG.id, uuid(), 0, 18, 4, row.revision),
+    (err) => err.status === 404 && /not an attempt of this document/.test(err.message),
+    'a fabricated attemptId (no row) is a 404',
+  )
+  assert.throws(
+    () => anim.selectClipContribution(docG.id, spanG.id, attemptE1.attempt.id, 0, 18, 4, row.revision),
+    (err) => err.status === 404 && /not an attempt of this document/.test(err.message),
+    'an attempt belonging to a DIFFERENT document is a 404 (its row would never ride this project export)',
+  )
+  // A real attempt of this document, but attached to a different span.
+  row = anim.insertSpan(docG.id, { fromKeyId: keyQ, toKeyId: keyP, intent: { movement: 'returns', preservation: 'silhouette intact' } }, row.revision)
+  const spanG2 = row.body.spans[1]
+  const stepG2 = spanG2.stepSlots[0].id
+  const attemptG2 = recordAttemptSimple(anim, docG.id, 'tween', stepG2, 'idem-g2', { documentRevision: row.revision })
+  anim.landCandidate(attemptG2.attempt.id, { assetReference: { assetId: 'clip-g2', relPath: null, kind: 'video' }, frameCount: 22, earlierRevision: false })
+  assert.equal(anim.getDocument(docG.id).body.spans[1].stepSlots[0].attempts.length, 1, 'the second tween attempt attached to the second span')
+  assert.throws(
+    () => anim.selectClipContribution(docG.id, spanG.id, attemptG2.attempt.id, 0, 18, 4, anim.getDocument(docG.id).revision),
+    (err) => err.status === 404 && /not attached to span/.test(err.message),
+    'a same-document attempt attached to a DIFFERENT span is a 404',
+  )
+  assert.equal(anim.getDocument(docG.id).body.editorial.length, 1, 'every refused contribution left the editorial list untouched')
 })
 
 // ---------------------------------------------------------------------------
@@ -659,7 +687,7 @@ test('(h) project archive round-trips animation documents, attempts, and referen
 
   const { archive, manifest } = exportProjectArchive(documentStore, projectId)
   assert.equal(manifest.counts.animationDocuments, 7, 'all seven authored documents ride the archive')
-  assert.equal(manifest.counts.animationAttempts, 6, 'all six attempts ride the archive')
+  assert.equal(manifest.counts.animationAttempts, 7, 'all seven attempts ride the archive')
   assert.ok(manifest.blobs.some((b) => b.path === registered.relPath && b.hash === registered.hash), 'the referenced blob rides the archive')
   // The three fabricated engine-output relPaths (gen-d1/gen-e1/clip-g1) were
   // never registered as blobs — the archive records them as VISIBLE missing
