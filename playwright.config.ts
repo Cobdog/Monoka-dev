@@ -118,8 +118,10 @@ export default defineConfig({
     // nodepacks.spec.ts joined with mjhlt3k (the status board — boots its
     // own local fake engine, unlike the engine-independent settings spec);
     // gallery.spec.ts joined with the component vocabulary round's task 23
-    // (k2q0n9s — the kit's state-matrix exhibit at ?gallery=1).
-    { name: 'e2e', testMatch: /(app|poserig|canvas|datasets|images|settings|nodepacks|wave1|journey|gallery)\.spec\.ts/ },
+    // (k2q0n9s — the kit's state-matrix exhibit at ?gallery=1);
+    // animation.spec.ts joined with the animation-authoring module's task 6
+    // (k2q0n9s — the client boundary at ?images=1&view=animation, §11.1).
+    { name: 'e2e', testMatch: /(app|poserig|canvas|datasets|images|settings|nodepacks|wave1|journey|gallery|animation)\.spec\.ts/ },
     { name: 'vision', testMatch: /vision-capture\.spec\.ts/ },
   ],
   webServer: {

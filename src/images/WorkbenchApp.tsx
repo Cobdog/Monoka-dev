@@ -13,8 +13,13 @@
  * The session is a canvas chain of kind 'h3img' in the ACTIVE project (the
  * document-store object, spec §2) — generations land as packet takes
  * through the shared landing loop; nothing here re-implements queueing.
+ *
+ * HOST (k2q0n9s task 6, animation spec §11.1): this component is a light
+ * host — `view=animation` renders the animation module instead (see the
+ * branch in WorkbenchApp below); everything under this comment is the image
+ * editor the default ?images=1 view has always been.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { lazy, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { ImagePlus, Layers, LoaderCircle, Lock, Send, Settings, Sparkles, Wand2, X } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { StudioSelect } from '../ui/StudioSelect'
@@ -69,6 +74,12 @@ function experimentsEnabled(): boolean {
     return false
   }
 }
+
+// The animation module (k2q0n9s task 6, spec §11.1 the route decision): a
+// Workbench SUBVIEW at ?images=1&view=animation — NOT a fifth registry
+// entry (the images id and its bookmarks stay; the registry is untouched).
+// Own lazy chunk, so the module never loads beside the image editor.
+const AnimationApp = lazy(() => import('../animation/AnimationApp').then((m) => ({ default: m.AnimationApp })))
 
 /** The engine/session host for the workbench route (the CanvasEngineHost
  * pattern: the shared hooks keep one queue, one engine session — mounted
@@ -146,6 +157,11 @@ const T1_MACHINERIES: H3ImgT1Settings[] = ['image-studio', 'fizgig', 'fizgig-max
 const T1_MACHINERY_SHORT: Record<H3ImgT1Settings, string> = { 'image-studio': 'Image Studio', fizgig: 'Fizgig', 'fizgig-max': 'Fizgig max quality' }
 
 export function WorkbenchApp() {
+  // §11.1's route decision: `view=animation` renders the animation module
+  // INSTEAD of the image editor — the branch sits ABOVE the engine host, so
+  // the editor (and its browser queue) never mounts beside the animation
+  // module. Read once per mount: a view switch is a full navigation.
+  if (new URLSearchParams(window.location.search).get('view') === 'animation') return <AnimationApp />
   return (
     <WorkbenchEngineHost>
       <WorkbenchSurface />
