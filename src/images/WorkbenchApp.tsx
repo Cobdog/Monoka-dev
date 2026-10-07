@@ -20,13 +20,16 @@
  * editor the default ?images=1 view has always been.
  */
 import { lazy, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
-import { ImagePlus, Layers, LoaderCircle, Lock, Send, Settings, Sparkles, Wand2, X } from 'lucide-react'
+import { Clapperboard, ImagePlus, Layers, LoaderCircle, Lock, Send, Settings, Sparkles, Wand2, X } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { StudioSelect } from '../ui/StudioSelect'
 import { NoticeBanner } from '../ui/NoticeBanner'
 import { Refusal } from '../ui/Refusal'
 import { HandoffResult } from '../ui/HandoffResult'
 import { SaveStatus, type SaveState } from '../ui/SaveStatus'
+import { Chip, ChipGroup } from '../ui/Chip'
+import { animationApi, animationHref } from '../animation/client'
+import { ANIMATION_MEDIA, mediumChipId, mediumFromChipId, type MediumString } from '../../shared/animation/types'
 import { StudioDialogLayered } from '../ui/StudioDialogLayered'
 import { CanvasToastAdapter } from '../canvas/toastAdapter'
 import { useStudioSession } from '../hooks/useStudioSession'
@@ -976,6 +979,52 @@ function WorkbenchSurface() {
   }, [doc, exitPlan, frames, effectivePick, runPinWrites, detectionOf, sessionState.settings, contract, settings.refs, commitExitRun])
 
   const hybridAvailable = detectionOf('h3img.exit.anchor')?.hybrid ?? false
+
+  // The "Open animation" handoff (task 6 deferred it to task 7 — the binding
+  // UX prerequisite, spec §4.1 "or receives a Workbench handoff"): the exit
+  // flow's second destination. The prepared session becomes a BOUND
+  // animation document through animationApi.createDocument — the durable
+  // handoff IS the document (§11.1: payloads live in the shared store,
+  // never localStorage) — and the browser lands in the animation module
+  // with the timeline already open. The workbench supplies the description
+  // (its generated contract, retained verbatim), the references (the
+  // strip), and the initial key (the picked frame); the MEDIUM is the one
+  // input it cannot infer — the dialog asks, and the confirm stays gated
+  // until it is answered.
+  const [openAnimOpen, setOpenAnimOpen] = useState(false)
+  const [openAnimMedium, setOpenAnimMedium] = useState<MediumString | null>(null)
+  const [openAnimBusy, setOpenAnimBusy] = useState(false)
+  const [openAnimError, setOpenAnimError] = useState<string | null>(null)
+  const animReferenceIds = useMemo(() => {
+    const ids: string[] = []
+    for (const slot of settings.refs) {
+      const handle = slot.source.kind === 'canvas' ? slot.source.outputId : slot.source.kind === 'file' || slot.source.kind === 'poserig' ? slot.source.path : null
+      if (handle && !ids.includes(handle)) ids.push(handle)
+    }
+    return ids
+  }, [settings.refs])
+  const animInitialKey = frames[effectivePick]?.path ?? frames[effectivePick]?.blob ?? null
+  const openAnimReady = Boolean(openAnimMedium) && animReferenceIds.length > 0 && animInitialKey !== null
+  const openAnimationHandoff = useCallback(async (): Promise<void> => {
+    if (!doc || !openAnimMedium || !animInitialKey || !openAnimReady || openAnimBusy) return
+    setOpenAnimBusy(true)
+    setOpenAnimError(null)
+    try {
+      const document = await animationApi.createDocument({
+        projectId: doc.project.id,
+        name: `Animation — ${contract.slice(0, 60)}`,
+        binding: { characterDescription: contract, referenceAssetIds: animReferenceIds, medium: openAnimMedium, initialKeyAssetId: animInitialKey },
+      })
+      // A full navigation (the registry's own precedent): the animation
+      // module owns the address from here.
+      window.location.assign(animationHref(doc.project.id, document.id))
+    } catch (error) {
+      // The dialog stands with the reason — the retry is the same confirm.
+      setOpenAnimBusy(false)
+      setOpenAnimError(error instanceof Error ? error.message : String(error))
+    }
+  }, [doc, openAnimMedium, animInitialKey, animReferenceIds, openAnimReady, openAnimBusy, contract])
+
   // The image tiers' machinery key (the decode-leg-aware optimal markers):
   // both fizgig values share the Fizgig leg's documented preference.
   const imageTierMachinery: ImageMachinery = t1Machinery === 'image-studio' ? 'image-studio' : 'fizgig'
@@ -1478,6 +1527,16 @@ function WorkbenchSurface() {
             <button type="button" className="iw-exit" data-iw-exit disabled={!selectedTake} onClick={() => { exitRunRef.current = null; setExitRun(null); setExitOpen(true) }} title="Seed a video chain anchored on this frame (created, never submitted)">
               <Send size={12} /> Start-frame exit →
             </button>
+            <button
+              type="button"
+              className="iw-open-anim"
+              data-iw-open-animation
+              disabled={!selectedTake}
+              onClick={() => { setOpenAnimOpen(true); setOpenAnimMedium(null); setOpenAnimError(null) }}
+              title="Bind this session into an animation document — the contract, the reference strip, and the picked frame"
+            >
+              <Clapperboard size={12} /> Open animation →
+            </button>
           </div>
         </aside>
       </main>
@@ -1600,6 +1659,56 @@ function WorkbenchSurface() {
           <footer>
             <button type="button" className="secondary" onClick={closeExit}>Cancel</button>
             <button type="button" className="primary" data-iw-exit-confirm disabled={!exitPlan || busy} onClick={() => void advanceExit('confirm')}><Send size={12} /> Seed the chain</button>
+          </footer>
+        </StudioDialogLayered>
+      )}
+
+      {openAnimOpen && (
+        /* The "Open animation" handoff (task 7, §4.1): the same layered
+           dialog tier as the start-frame exit. The prepared inputs are
+           NAMED (the contract verbatim, the strip's references, the picked
+           frame as the initial key); the medium is the one question, and
+           the confirm stays gated until it is answered — the medium is an
+           animation-session setting the workbench cannot infer. */
+        <StudioDialogLayered
+          layerId="iw-open-animation"
+          open
+          onClose={() => { if (!openAnimBusy) setOpenAnimOpen(false) }}
+          backdropClassName="iw-dialog-backdrop"
+          centerClassName="iw-dialog-center"
+          popupClassName="iw-dialog"
+          labelledBy="iw-open-animation-title"
+        >
+          <WorkbenchDialogHead id="iw-open-animation-title" title="Open animation" closeLabel="Close the animation handoff" onClose={() => { if (!openAnimBusy) setOpenAnimOpen(false) }} />
+          <p>Bind this session into an animation document — <strong>created and bound, never rendered</strong>. The timeline opens with the bound character.</p>
+          <div className="iw-open-anim-prepared" data-iw-open-animation-prepared>
+            <p><strong>Description (retained verbatim):</strong> {contract}</p>
+            <p><strong>References:</strong> {animReferenceIds.length > 0 ? `${animReferenceIds.length} from the strip` : 'none on the strip yet'}</p>
+            <p><strong>Initial key:</strong> {animInitialKey ? 'the picked frame' : 'no picked frame'}</p>
+          </div>
+          {animReferenceIds.length === 0 && (
+            <Refusal
+              title="The handoff is missing its references"
+              reason="The reference strip is empty — the animation session binds the character's prepared references, and none are prepared here."
+              satisfy={{ label: 'Add references on the strip…', action: () => { if (!openAnimBusy) setOpenAnimOpen(false) } }}
+            />
+          )}
+          <ChipGroup
+            className="iw-open-anim-mediums"
+            data-iw-open-animation-medium
+            exclusive
+            aria-label="Medium"
+            value={openAnimMedium === null ? null : mediumChipId(openAnimMedium)}
+            onChange={(next) => setOpenAnimMedium(mediumFromChipId(next as string))}
+          >
+            {ANIMATION_MEDIA.map((entry) => (
+              <Chip key={entry} id={mediumChipId(entry)} variant="radio" className="iw-chip">{entry}</Chip>
+            ))}
+          </ChipGroup>
+          {openAnimError && <p className="iw-open-anim-error" role="alert" data-iw-open-animation-error>The handoff failed: {openAnimError}</p>}
+          <footer>
+            <button type="button" className="secondary" onClick={() => { if (!openAnimBusy) setOpenAnimOpen(false) }}>Cancel</button>
+            <button type="button" className="primary" data-iw-open-animation-confirm disabled={!openAnimReady || openAnimBusy} onClick={() => void openAnimationHandoff()}><Clapperboard size={12} /> Open animation</button>
           </footer>
         </StudioDialogLayered>
       )}

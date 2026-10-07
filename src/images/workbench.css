@@ -232,3 +232,16 @@
 .iw-mask-tools button { padding: 3px 10px; border-radius: 7px; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); background: none; color: inherit; cursor: pointer; font-size: 10px; }
 .iw-mask-tools button.active { border-color: var(--danger); color: var(--danger); }
 .iw-mask-error { color: var(--danger); font-size: 10px; }
+
+/* The "Open animation" handoff (task 7, k2q0n9s — the binding UX
+   prerequisite §4.1): the third handoff button shares the pin/exit recipe;
+   the dialog's prepared-inputs list and medium chips follow the exit
+   dialog's geometry. */
+.iw-open-anim { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 9px; border-radius: 9px; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); background: none; color: inherit; cursor: pointer; font-size: var(--text-2xs); }
+.iw-open-anim:disabled { opacity: 0.5; cursor: default; }
+.iw-open-anim-prepared { display: grid; gap: 4px; }
+.iw-open-anim-prepared p { margin: 0; font-size: var(--text-md); color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.iw-open-anim-prepared strong { color: var(--text); font-weight: 600; }
+.iw-open-anim-mediums { display: flex; flex-wrap: wrap; gap: 8px; }
+.iw-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-sm); cursor: pointer; }
+.iw-open-anim-error { color: var(--danger); font-size: var(--text-md); }

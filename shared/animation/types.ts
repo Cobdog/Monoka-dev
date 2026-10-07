@@ -113,6 +113,24 @@ export type AttemptExecutionState = 'queued' | 'rendering' | 'preparing' | 'read
 export const ANIMATION_MEDIA: readonly MediumString[] = ['clean line on white', 'flat black-and-white animatic', 'flat cel colour on white']
 export const FACING_TERMS: readonly FacingTerm[] = ['toward camera', 'back to camera', 'screen-left', 'screen-right']
 
+/** The medium vocabulary's chip keys (task 7): the kit's exclusive ChipGroup
+ *  keys a member by its `id` AND renders it as the DOM id — the medium
+ *  strings carry spaces, so the group key is this deterministic slug and
+ *  the medium string itself stays the chip's accessible name. Pure and
+ *  environment-neutral like the rest of this module; both medium pickers
+ *  (the binding panel, the Workbench exit arm) derive through these two so
+ *  the mapping exists exactly once. */
+export function mediumChipId(medium: MediumString): string {
+  return `anim-medium-${medium.replace(/[^a-z]+/g, '-')}`
+}
+
+export function mediumFromChipId(chipId: string): MediumString | null {
+  for (const medium of ANIMATION_MEDIA) {
+    if (mediumChipId(medium) === chipId) return medium
+  }
+  return null
+}
+
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value)
 }

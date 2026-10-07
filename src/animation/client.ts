@@ -121,6 +121,15 @@ function toDocumentView(value: unknown): AnimationDocumentView | null {
   return view
 }
 
+/** The module's URL (§11.1's route): one helper, so every navigation — the
+ *  shell's document pick rows AND the Workbench exit's handoff — lands the
+ *  exact shape the host branch matches. Lives beside the routes it names
+ *  (task 7 gave it its second consumer; it left AnimationApp per the
+ *  component-files-component-only rule). */
+export function animationHref(projectId: string, documentId: string): string {
+  return `/?images=1&view=animation&project=${encodeURIComponent(projectId)}&document=${encodeURIComponent(documentId)}`
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
   headers.set('x-minimax-token', new URLSearchParams(window.location.search).get('token') ?? '')
@@ -159,12 +168,20 @@ async function documentOf(body: { document: unknown }): Promise<AnimationDocumen
 export const animationApi = {
   bootstrap: () => call<AnimationBootstrap>('/api/lan/animation/bootstrap'),
 
-  createDocument: (input: { projectId: string; name: string; binding: BindingInput }) =>
+  /** `binding` optional (task 7, §4.1): omitted creates the EMPTY SESSION —
+   *  the pre-binding document the session panel fills (§4.2 versions it). */
+  createDocument: (input: { projectId: string; name: string; binding?: BindingInput }) =>
     documentCall('/api/lan/animation/documents', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }),
 
+  /** A malformed listing (documents not an array) is a FAILED read, never
+   *  "no documents" — task 6 review Important-1: the swallow rendered a
+   *  broken route as an honest empty list. */
   listDocuments: async (projectId: string): Promise<Array<{ id: string; name: string; updatedAt: number }>> => {
     const body = await call<{ documents: unknown }>(`/api/lan/animation/documents?project=${encodeURIComponent(projectId)}`)
-    return Array.isArray(body.documents) ? body.documents as Array<{ id: string; name: string; updatedAt: number }> : []
+    if (!Array.isArray(body.documents)) {
+      throw new AnimationHttpError(500, 'The animation document listing was malformed — no document array in the response.')
+    }
+    return body.documents as Array<{ id: string; name: string; updatedAt: number }>
   },
 
   /** The recovery read — document + attempts, durable, never

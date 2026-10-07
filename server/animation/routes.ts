@@ -518,7 +518,11 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       try {
         const projectId = typeof body.projectId === 'string' && body.projectId.length <= 400 ? body.projectId : ''
         const name = typeof body.name === 'string' && body.name.trim() ? body.name.trim().slice(0, 200) : ''
-        const binding = recordField(body, 'binding', 'The document needs a binding (character description, reference asset ids, medium, initial key asset id).') as BindingInput
+        // binding OPTIONAL (task 7, §4.1's empty session): absent creates the
+        // pre-binding document; present-but-malformed still refuses 400.
+        const binding = body.binding === undefined
+          ? undefined
+          : recordField(body, 'binding', 'The document needs a binding (character description, reference asset ids, medium, initial key asset id).') as BindingInput
         const row = store.createDocument({ projectId, name, binding })
         emitDocumentChanged(row.id, row.revision, 'created')
         return sendJson(response, 200, { document: documentView(row) })
