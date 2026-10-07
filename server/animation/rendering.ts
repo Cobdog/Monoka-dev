@@ -58,10 +58,20 @@ import {
 } from './store'
 import type { CompletionOwner } from './completion-owner'
 import {
+  AnimationModelResolutionError,
+  type ModelEnumerations,
+  modelOverrides,
+  modelsFromSnapshotSettings,
+  resolveAnimationModels,
+  type ResolvedAnimationModels,
+} from './models'
+import { sanitizeForUser } from '../logSanitize'
+import {
   ANIMATION_OPERATING_POINT,
   buildAnimationGraph,
   engineInputName,
   type AnimationGraph,
+  type GraphBuildSettings,
 } from '../../shared/animation/graphs'
 import { COMPILER_VERSION, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../../shared/animation/compiler'
 import type { CompiledCaption, HeroContext, SequenceContext, TweenContext } from '../../shared/animation/compiler'
@@ -114,6 +124,14 @@ export type EnginePort = {
   /** Uploads a reference asset into the engine's input folder under the
    *  shared deterministic name (graphs.ts' engineInputName). */
   uploadReference(assetId: string, bytes: Buffer): Promise<void>
+  /** The engine's OWN enumeration of what its loader nodes accept — THE
+   *  registry the animation lane resolves its model slots against (wave 1,
+   *  the live review's #1: never a pinned filename, never another
+   *  installation-specific hardcode). Cached per port instance with a short
+   *  TTL; `force` refetches (the submit preflight, dispatch resolution, and
+   *  the boot reconcile's redispatch all resolve against fresh truth).
+   *  Throws when the engine is unreachable — the caller defers. */
+  modelEnumerations(options?: { force?: boolean }): Promise<ModelEnumerations>
 }
 
 export type AttemptStateView = {
@@ -165,6 +183,12 @@ export type AnimationRenderingService = {
   getState(attemptId: string): AttemptStateView
   cancel(attemptId: string): Promise<void>
   extractFrame(attemptId: string, frameIndex: number): Promise<AssetReference>
+  /** The boot reconcile's redispatch arm (wave 1's queue semantics): a
+   *  persisted attempt whose dispatch PROVABLY never landed dispatches from
+   *  its frozen snapshot — the service the owner calls. 'uncertain' leaves
+   *  the attempt reconciliation-pending; null means the row was not the
+   *  sweep's to redispatch. */
+  redispatchAttempt(attemptId: string): Promise<'submitted' | 'failed' | 'uncertain' | null>
   /** §11.4's explicit preparation retry (the foundation contract review's
    *  F3) — the owner's recovery action behind the service facade (the
    *  cancel idiom): re-prepare the proposed frame of a LANDED clip without
@@ -178,14 +202,62 @@ export type AnimationRenderingService = {
 
 /** The definitive engine refusal (a 400 from /prompt): the attempt stays
  *  persisted but is failed outright — distinct from an uncertain dispatch,
- *  which leaves the attempt reconciliation-pending. */
+ *  which leaves the attempt reconciliation-pending. `reason` is the
+ *  sanitized, durable text (Fix C: composed from the engine's structured
+ *  node_errors — the failing node class, input, and value — through the
+ *  logSanitize discipline, never raw engine output); `engineDetail` keeps
+ *  the raw answer for the server-side log. */
 export class AnimationEngineValidationError extends Error {
   readonly engineDetail: string
-  constructor(engineDetail: string) {
+  readonly reason: string
+  constructor(engineDetail: string, reason?: string) {
     super('The engine refused the submitted graph.')
     this.name = 'AnimationEngineValidationError'
     this.engineDetail = engineDetail
+    this.reason = reason ?? sanitizeForUser(engineDetail)
   }
+}
+
+/** Composes the sanitized failure reason for an engine /prompt refusal from
+ *  the structured node_errors ComfyUI answers with (the fake and real
+ *  engines share the shape): the failing node's class, the input it
+ *  rejected, and the value — every fragment through sanitizeForUser, so
+ *  whatever the engine echoed collapses to technical signal. Falls back to
+ *  the sanitized raw body when the answer does not parse. */
+function engineValidationReason(bodyText: string): string {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(bodyText)
+  } catch {
+    return sanitizeForUser(bodyText)
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return sanitizeForUser(bodyText)
+  const nodeErrors = (parsed as Record<string, unknown>).node_errors
+  if (typeof nodeErrors !== 'object' || nodeErrors === null || Array.isArray(nodeErrors)) return sanitizeForUser(bodyText)
+  const parts: string[] = []
+  for (const node of Object.values(nodeErrors as Record<string, unknown>)) {
+    if (typeof node !== 'object' || node === null) continue
+    const entry = node as { class_type?: unknown; errors?: unknown }
+    if (typeof entry.class_type !== 'string') continue
+    const inputBits: string[] = []
+    if (Array.isArray(entry.errors)) {
+      for (const failure of entry.errors) {
+        if (typeof failure !== 'object' || failure === null) continue
+        const extra = (failure as { extra_info?: unknown }).extra_info
+        const inputName = typeof extra === 'object' && extra !== null && Array.isArray((extra as { input_name?: unknown }).input_name)
+          ? (extra as { input_name: unknown[] }).input_name
+          : null
+        if (inputName !== null) inputBits.push(`input "${sanitizeForUser(String(inputName[0]))}" (value ${sanitizeForUser(String(inputName[1]))})`)
+        else {
+          const message = (failure as { message?: unknown }).message
+          if (typeof message === 'string') inputBits.push(sanitizeForUser(message))
+        }
+      }
+    }
+    parts.push(`${entry.class_type}${inputBits.length > 0 ? ` — ${inputBits.join('; ')}` : ''}`)
+  }
+  if (parts.length === 0) return sanitizeForUser(bodyText)
+  return `The engine refused the graph at validation: ${parts.join(' | ')}`.slice(0, 2000)
 }
 
 // ---------------------------------------------------------------------------
@@ -233,15 +305,60 @@ export function attemptOutputPrefix(attemptId: string): string {
 }
 
 export function createComfyEnginePort(options: { baseUrl: string; clientId?: string; blobs: AnimationBlobSink; /** How long a queue-empty + history-absent verdict must PERSIST before the port answers 'lost' — the completion transition (queue slot emptied, history record not yet visible) must not be misread as a lost job. Default 300 ms. */
-lostSettleMs?: number }): EnginePort {
+lostSettleMs?: number; /** How long the port's model-enumeration cache stands. Default 30 s; correctness-critical callers (submit preflight, dispatch resolution) pass `force` and never read the cache. */
+enumerationTtlMs?: number }): EnginePort {
   const base = options.baseUrl.replace(/\/$/, '')
   const lostSettleMs = options.lostSettleMs ?? 300
+  const enumerationTtlMs = options.enumerationTtlMs ?? 30_000
   // F6 Option A's stable id: the one clientId whose WebSocket session the
   // engine actually finds (the realtime hub's). Tests default to the same
   // constant; Task 5's wiring passes realtimeHub.clientId().
   const clientId = options.clientId ?? 'studio-realtime'
   const blobs = options.blobs
   const materialized = new Map<string, MaterializedJob>()
+
+  // ---- the model-enumeration registry (wave 1, the live review's #1) ------
+
+  /** The per-instance enumeration cache: short TTL, force-refresh path.
+   *  Correctness-critical resolutions always force; the cache serves the
+   *  TTL window so repeated read-style consumers do not refetch. */
+  let enumerationCache: { at: number; value: ModelEnumerations } | null = null
+
+  /** One loader class's combo list from the engine's own /object_info —
+   *  the targeted per-class form (small answers, the same shape the capture
+   *  fixtures pin). A class the engine does not know answers empty (a
+   *  resolution against it will name the empty enumeration); an unreachable
+   *  engine THROWS (the defer signal). */
+  async function loaderEnumeration(className: string, inputName: string): Promise<string[]> {
+    const response = await fetch(`${base}/object_info/${encodeURIComponent(className)}`)
+    if (!response.ok) return []
+    const body = (await response.json().catch(() => null)) as Record<string, unknown> | null
+    const entry = body !== null ? body[className] : null
+    if (typeof entry !== 'object' || entry === null) return []
+    const input = (entry as { input?: unknown }).input
+    if (typeof input !== 'object' || input === null) return []
+    const required = (input as { required?: unknown }).required
+    if (typeof required !== 'object' || required === null) return []
+    const field = (required as Record<string, unknown>)[inputName]
+    if (!Array.isArray(field) || !Array.isArray(field[0])) return []
+    return field[0].filter((name): name is string => typeof name === 'string' && name.length > 0)
+  }
+
+  async function fetchModelEnumerations(): Promise<ModelEnumerations> {
+    const [unet, loraModelOnly, lora, clip, vae] = await Promise.all([
+      loaderEnumeration('UNETLoader', 'unet_name'),
+      loaderEnumeration('LoraLoaderModelOnly', 'lora_name'),
+      loaderEnumeration('LoraLoader', 'lora_name'),
+      loaderEnumeration('CLIPLoader', 'clip_name'),
+      loaderEnumeration('VAELoader', 'vae_name'),
+    ])
+    return {
+      unet,
+      lora: [...new Set([...loraModelOnly, ...lora])].sort(),
+      clip,
+      vae,
+    }
+  }
 
   /** Generic engine GET/POST: throws on unreachable (the uncertain signal)
    *  and on any non-ok answer (plain errors stay uncertain-class; only
@@ -363,8 +480,11 @@ lostSettleMs?: number }): EnginePort {
       }) // an unreachable engine throws — the uncertain outcome (§11.4)
       if (!response.ok) {
         // A 4xx from /prompt is the engine's own validation gate refusing
-        // the graph — definitive, never retried as-is.
-        throw new AnimationEngineValidationError(`${response.status} ${(await response.text()).slice(0, 400)}`)
+        // the graph — definitive, never retried as-is. The sanitized reason
+        // rides the error (Fix C); the raw answer stays in engineDetail for
+        // the log.
+        const raw = (await response.text()).slice(0, 400)
+        throw new AnimationEngineValidationError(`${response.status} ${raw}`, engineValidationReason(raw))
       }
       const result = (await response.json()) as { prompt_id?: string }
       if (typeof result.prompt_id !== 'string' || !result.prompt_id) {
@@ -459,6 +579,15 @@ lostSettleMs?: number }): EnginePort {
       form.append('overwrite', 'true')
       const response = await fetch(`${base}/upload/image`, { method: 'POST', body: form }) // throws on unreachable
       if (!response.ok) throw new Error(`the engine's /upload/image answered ${response.status}`)
+    },
+
+    async modelEnumerations(force) {
+      if (!force?.force && enumerationCache !== null && Date.now() - enumerationCache.at < enumerationTtlMs) {
+        return enumerationCache.value
+      }
+      const value = await fetchModelEnumerations()
+      enumerationCache = { at: Date.now(), value }
+      return value
     },
   }
 }
@@ -730,25 +859,112 @@ export function createAnimationRenderingService(deps: {
     }
   }
 
-  /** The frozen snapshot AS PERSISTED: the received snapshot stamped with the
-   *  document's active binding version (task 1's forward flag — §11.2 frozen
-   *  snapshots carry the binding version). The input hash stays over the
-   *  RECEIVED snapshot so a lost-response retry of the same request matches
-   *  even if the document has moved since. */
-  function stampedSnapshot(input: AttemptInput): FrozenAttemptSnapshot {
-    const document = store.getDocument(input.documentId)
-    const bindingVersion = document?.body.activeBindingVersion ?? 0
-    return { ...input.snapshot, settings: { ...input.snapshot.settings, bindingVersion } }
-  }
-
-  function resolveBuildSettings(input: AttemptInput): { width: number; height: number; steps: number } {
+  /** The frozen snapshot AS PERSISTED (wave 1's Fix B): the received
+   *  snapshot stamped with the document's active binding version (task 1's
+   *  forward flag) AND the COMPLETE resolved execution configuration —
+   *  width/height/steps resolved at PERSIST time (snapshot override >
+   *  document settings > operating point — today's dispatch-time
+   *  resolveBuildSettings read the LIVE document, so a document that moved
+   *  between submit and dispatch/recovery changed the graph), the
+   *  sampler/scheduler/shift/fps values in force, and the RESOLVED model
+   *  ids whenever the submit-time preflight resolved them (an engine
+   *  unreachable at submit defers that one piece to dispatch — the only
+   *  thing the enumeration gates). The input hash stays over the RECEIVED
+   *  snapshot (computed before this stamping) so same-key retries keep
+   *  matching even when the document or the engine's enumeration moved:
+   *  the ROW's frozen config is what a retry or a recovery replays. */
+  function stampedSnapshot(input: AttemptInput, models: ResolvedAnimationModels | null): FrozenAttemptSnapshot {
     const document = store.getDocument(input.documentId)
     const body = document?.body
     const overrides = isRecord(input.snapshot.settings) ? input.snapshot.settings : {}
     const width = typeof overrides.width === 'number' ? overrides.width : body?.settings.outputWidth ?? ANIMATION_OPERATING_POINT.width
     const height = typeof overrides.height === 'number' ? overrides.height : body?.settings.outputHeight ?? ANIMATION_OPERATING_POINT.height
     const steps = typeof overrides.steps === 'number' ? overrides.steps : body?.settings.steps ?? ANIMATION_OPERATING_POINT.stepsDefault
-    return { width, height, steps }
+    const asString = (value: unknown, fallback: string): string => (typeof value === 'string' && value.length > 0 ? value : fallback)
+    const asInt = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback)
+    return {
+      ...input.snapshot,
+      settings: {
+        ...input.snapshot.settings,
+        bindingVersion: document?.body.activeBindingVersion ?? 0,
+        width,
+        height,
+        steps,
+        sampler: asString(overrides.sampler, ANIMATION_OPERATING_POINT.sampler),
+        scheduler: asString(overrides.scheduler, ANIMATION_OPERATING_POINT.scheduler),
+        shiftVideo: asInt(overrides.shiftVideo, ANIMATION_OPERATING_POINT.shiftVideo),
+        shiftAudio: asInt(overrides.shiftAudio, ANIMATION_OPERATING_POINT.shiftAudio),
+        fps: asInt(overrides.fps, ANIMATION_OPERATING_POINT.fps),
+        ...(models !== null ? models : {}),
+      },
+    }
+  }
+
+  /** The build settings consumed at dispatch — ONLY the frozen snapshot
+   *  (plus the resolver's output when the frozen config deferred models):
+   *  never the live document, never a code constant the snapshot already
+   *  froze. Replay and recovery therefore cannot drift when the document
+   *  moves (the reviewer's named test). */
+  function frozenBuildSettings(snapshot: FrozenAttemptSnapshot, models: ResolvedAnimationModels): GraphBuildSettings {
+    const settings = isRecord(snapshot.settings) ? snapshot.settings : {}
+    const positiveIntOr = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback)
+    return {
+      width: positiveIntOr(settings.width, ANIMATION_OPERATING_POINT.width),
+      height: positiveIntOr(settings.height, ANIMATION_OPERATING_POINT.height),
+      steps: typeof settings.steps === 'number' && Number.isInteger(settings.steps) && settings.steps > 0 ? settings.steps : ANIMATION_OPERATING_POINT.stepsDefault,
+      ...models,
+    }
+  }
+
+  /** The dispatch core submit and the boot reconcile's redispatch share:
+   *  resolve the effective model set FIRST (from the FROZEN snapshot when
+   *  submit-time resolution stamped it — otherwise fresh against the
+   *  engine's current enumeration; a dead slot fails the attempt WITHOUT
+   *  uploading a byte or spending a submission), upload the reference
+   *  bytes, build the graph EXCLUSIVELY from the frozen config, and submit
+   *  with the attempt id stamped in both carriers. Outcomes: 'submitted'
+   *  (queued + observed), 'failed' (a definitive NAMED refusal — model
+   *  resolution or engine validation), 'uncertain' (the dispatch may or
+   *  may not have reached the engine — reconciling, preserved for the
+   *  sweep, §11.4). */
+  async function dispatchAttempt(attemptId: string, snapshot: FrozenAttemptSnapshot, documentId: string): Promise<'submitted' | 'failed' | 'uncertain'> {
+    try {
+      const models = modelsFromSnapshotSettings(snapshot.settings) ?? resolveAnimationModels({
+        tool: snapshot.tool,
+        enumerations: await engine.modelEnumerations({ force: true }),
+        overrides: modelOverrides(snapshot.settings),
+      })
+      for (const reference of snapshot.references) {
+        const bytes = blobs.readBlob((reference.assetReference as { relPath: string }).relPath)
+        if (!bytes) throw new AnimationRuleError(`The ${String(reference.role)} reference asset is no longer readable.`, 400)
+        await engine.uploadReference(reference.assetReference.assetId, bytes)
+      }
+      const graph: AnimationGraph = buildAnimationGraph(snapshot, frozenBuildSettings(snapshot, models))
+      const { engineJobId } = await engine.submitGraph(graph, attemptId)
+      store.setAttemptExecution(attemptId, { state: 'queued', engineJobId })
+      owner.observe(attemptId)
+      emit('animation.attempt.submitted', { attemptId, documentId, engineJobId, tool: snapshot.tool })
+      return 'submitted'
+    } catch (failure) {
+      if (failure instanceof AnimationModelResolutionError) {
+        // The engine's enumeration cannot serve a slot: definitively failed
+        // with the NAMED reason (the re-roll re-resolves by construction).
+        store.setAttemptExecution(attemptId, { state: 'failed' })
+        emit('animation.attempt.failed', { attemptId, documentId, reason: 'model-resolution', detail: failure.message })
+        return 'failed'
+      }
+      if (failure instanceof AnimationEngineValidationError) {
+        // Definitive refusal (the engine answered and said no): failed.
+        store.setAttemptExecution(attemptId, { state: 'failed' })
+        emit('animation.attempt.failed', { attemptId, documentId, reason: 'engine-validation', detail: failure.reason })
+        return 'failed'
+      }
+      // Uncertain dispatch (§11.4): the request may or may not have
+      // reached the engine — reconciliation pending, the attempt preserved.
+      store.setAttemptExecution(attemptId, { state: 'reconciling' })
+      emit('animation.attempt.uncertain', { attemptId, documentId, error: failure instanceof Error ? failure.message : String(failure), at: now() })
+      return 'uncertain'
+    }
   }
 
   return {
@@ -771,7 +987,28 @@ export function createAnimationRenderingService(deps: {
         return { attemptId: existing.id, created: false }
       }
 
-      const snapshot = stampedSnapshot(input)
+      // Wave 1's preflight (the live review's #1): resolve the model set
+      // against the engine's OWN enumeration BEFORE anything is persisted —
+      // a dead slot is a structured 400 naming the slot, the tried names,
+      // and what the engine enumerates, with NOTHING spent (no attempt row,
+      // no upload, no submission). An unreachable engine defers resolution
+      // to dispatch: queue semantics stand, submits never block on engine
+      // reachability.
+      let preflight: ResolvedAnimationModels | null = null
+      try {
+        preflight = resolveAnimationModels({
+          tool: input.tool,
+          enumerations: await engine.modelEnumerations({ force: true }),
+          overrides: modelOverrides(input.snapshot.settings),
+        })
+      } catch (failure) {
+        if (failure instanceof AnimationModelResolutionError) {
+          throw new AnimationRuleError(failure.message, 400)
+        }
+        preflight = null
+      }
+
+      const snapshot = stampedSnapshot(input, preflight)
       const attemptId = randomUUID()
       const recorded = store.recordAttempt({
         id: attemptId,
@@ -789,35 +1026,25 @@ export function createAnimationRenderingService(deps: {
       }
       emit('animation.attempt.persisted', { attemptId, documentId: input.documentId, tool: input.tool })
 
-      // Dispatch: reference bytes reach the engine's input folder first (the
-      // shared deterministic naming rule), then the graph. The attempt row is
-      // the durable dispatch intent — an outcome that cannot be confirmed
-      // leaves it reconciliation-pending, never dropped (§11.4).
-      try {
-        for (const reference of snapshot.references) {
-          const bytes = blobs.readBlob((reference.assetReference as { relPath: string }).relPath)
-          if (!bytes) throw new AnimationRuleError(`The ${String(reference.role)} reference asset is no longer readable.`, 400)
-          await engine.uploadReference(reference.assetReference.assetId, bytes)
-        }
-        const graph: AnimationGraph = buildAnimationGraph(snapshot, resolveBuildSettings(input))
-        const { engineJobId } = await engine.submitGraph(graph, attemptId)
-        store.setAttemptExecution(attemptId, { state: 'queued', engineJobId })
-        owner.observe(attemptId)
-        emit('animation.attempt.submitted', { attemptId, documentId: input.documentId, engineJobId, tool: input.tool })
-        return { attemptId, created: true }
-      } catch (failure) {
-        if (failure instanceof AnimationEngineValidationError) {
-          // Definitive refusal (the engine answered and said no): failed.
-          store.setAttemptExecution(attemptId, { state: 'failed' })
-          emit('animation.attempt.failed', { attemptId, documentId: input.documentId, reason: 'engine-validation', detail: failure.engineDetail })
-          return { attemptId, created: true }
-        }
-        // Uncertain dispatch (§11.4): the request may or may not have
-        // reached the engine — reconciliation pending, the attempt preserved.
-        store.setAttemptExecution(attemptId, { state: 'reconciling' })
-        emit('animation.attempt.uncertain', { attemptId, documentId: input.documentId, error: failure instanceof Error ? failure.message : String(failure), at: now() })
-        return { attemptId, created: true }
-      }
+      // Dispatch (shared with the reconcile redispatch): reference bytes
+      // reach the engine's input folder, then the graph built from the
+      // FROZEN config. The attempt row is the durable dispatch intent — an
+      // outcome that cannot be confirmed leaves it reconciliation-pending,
+      // never dropped (§11.4).
+      await dispatchAttempt(attemptId, snapshot, input.documentId)
+      return { attemptId, created: true }
+    },
+
+    async redispatchAttempt(attemptId) {
+      // The sweep's queue-semantic redispatch: only a row that is in
+      // flight, holds no engine job, and was PROVEN never-landed by the
+      // caller (reachable engine, empty queue, no history trace) reaches
+      // here — the dispatch happens at most once per classification, and
+      // the graph comes from the FROZEN snapshot (Fix B).
+      const attempt = store.getAttempt(attemptId)
+      if (!attempt || attempt.engineJobId !== null) return null
+      if (!['queued', 'reconciling', 'rendering', 'preparing'].includes(attempt.execution.state)) return null
+      return dispatchAttempt(attempt.id, attempt.snapshot, attempt.documentId)
     },
 
     getState(attemptId) {

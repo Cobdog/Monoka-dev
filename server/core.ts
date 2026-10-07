@@ -591,6 +591,7 @@ export function createStudioServer(paths: StudioServerPaths) {
       findJobByAttempt: (attemptId) => enginePortFor().findJobByAttempt(attemptId),
       queuedJobIds: () => enginePortFor().queuedJobIds(),
       uploadReference: (assetId, bytes) => enginePortFor().uploadReference(assetId, bytes),
+      modelEnumerations: (options) => enginePortFor().modelEnumerations(options),
     }
     // The fabric seam: internal service/owner events adapt onto the
     // animation channel, and the hub's normalized upstream engine events
@@ -601,7 +602,19 @@ export function createStudioServer(paths: StudioServerPaths) {
     // real engine's video-only listing resolves review frames by decoding
     // them out of the registered clip.
     const animationFfmpeg = () => loadSettingsCached().ffmpegPath || 'ffmpeg'
-    const owner = createCompletionOwner({ store, engine, emit, prepareFrame: makeFramePreparer({ engine, store, blobs, ffmpegPath: animationFfmpeg }) })
+    // Wave 1's queue-semantic redispatch: the owner is constructed before
+    // the service (the service takes the owner), so the sweep's redispatch
+    // arm calls through this forward-declared thunk — assigned once the
+    // service exists below. Until then it answers null (the pre-wave-1
+    // interrupted verdict), which no sweep can observe before boot anyway.
+    let animationRedispatch: (attemptId: string) => Promise<'submitted' | 'failed' | 'uncertain' | null> = async () => null
+    const owner = createCompletionOwner({
+      store,
+      engine,
+      emit,
+      prepareFrame: makeFramePreparer({ engine, store, blobs, ffmpegPath: animationFfmpeg }),
+      redispatch: (attemptId) => animationRedispatch(attemptId),
+    })
     const service = createAnimationRenderingService({
       store,
       engine,
@@ -611,6 +624,7 @@ export function createStudioServer(paths: StudioServerPaths) {
       compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
       emit,
     })
+    animationRedispatch = (attemptId) => service.redispatchAttempt(attemptId)
     // The export pipeline (task 14, §11.3): the document store's synchronous
     // blob resolution for source media, ffmpeg re-resolved per export from
     // the configured settings (settings changes apply without a restart).

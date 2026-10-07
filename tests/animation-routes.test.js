@@ -57,6 +57,11 @@
 //       while the engine is UNREACHABLE answers { created: false } with the
 //       existing attempt id: the idempotency check precedes any extraction
 //       work, so no engine call (and no 400) can fire on the retry
+//   (k) wave 1 (the live review's #1) — registry-driven model resolution:
+//       a dead slot answers the named 400 with NOTHING spent (no attempt
+//       row, no engine submission); a healthy submit's received graph
+//       carries the RESOLVED names (the profile enumerates DIFFERENT names
+//       than the pinned constants — resolution exercised at the wire)
 //
 // Run after `pnpm build` (the server + web dist boot from dist-server).
 // Scratch homes through the Wave 4 ledger; ports through the allocator.
@@ -1309,4 +1314,83 @@ test('(j) a same-key retry of a promoted-near submit with the engine DOWN answer
   const retry = await apiB.post('/api/lan/animation/attempts', body)
   assert.equal(retry.status, 200, `the dead-engine retry answers the idempotent return (${retry.body.error ?? ''})`)
   assert.deepEqual(retry.body, { attemptId: submitted.body.attemptId, created: false })
+})
+
+// ---------------------------------------------------------------------------
+// (k) wave 1 (the live review's #1) — registry-driven model resolution at
+//     the route: a dead slot answers the named 400 with NOTHING spent (no
+//     attempt row, no engine submission), and a healthy submit's received
+//     graph carries the RESOLVED names — the standing profile enumerates
+//     DIFFERENT names than the pinned constants, so resolution is exercised
+//     at the wire, never echoed
+// ---------------------------------------------------------------------------
+
+test('(k) a dead model slot answers the named 400 with nothing persisted; the received graph carries the RESOLVED names', async () => {
+  // (j) killed the engine — bring it back on the same port (the boot shape
+  // the suite has used all along).
+  engine = spawn(process.execPath, [
+    path.join(REPO, 'e2e', 'mirror', 'fakeEngineServer.mjs'),
+    '--port', String(enginePort),
+    '--profile', path.join('e2e/mirror/profiles/animation-h3.json'),
+  ], { cwd: REPO, stdio: ['ignore', 'ignore', 'pipe'] })
+  engine.stderr.on('data', (chunk) => { process.stderr.write(`[fake-engine] ${chunk}`) })
+  await waitUntil(async () => {
+    try { return (await engineFetch('/system_stats')).ok } catch { return false }
+  }, 15_000, 'the fake engine restarting on its port')
+
+  const created = await apiB.post('/api/lan/animation/documents', { projectId, name: 'Kilo', binding: makeBinding() })
+  assert.equal(created.status, 200)
+  const docK = created.body.document
+  const from = await makeSelectedKey(apiB, docK.id, docK.revision, 'k-from')
+  const to = await makeSelectedKey(apiB, docK.id, from.revision, 'k-to')
+  const span = await apiB.post('/api/lan/animation/spans', {
+    op: 'insert', documentId: docK.id, fromKeyId: from.keyId, toKeyId: to.keyId,
+    intent: { movement: 'she pushes off the back foot into a full stride', preservation: 'coat hem stays consistent' },
+    expectedRevision: to.revision,
+  })
+  assert.equal(span.status, 200, `the span inserts (${span.body.error ?? ''})`)
+  const stepOne = span.body.document.body.spans.find((entry) => entry.id === span.body.spanId).stepSlots[0].id
+  const draftBody = (idempotencyKey) => ({
+    documentId: docK.id,
+    tool: 'tween',
+    targetId: stepOne,
+    idempotencyKey,
+    draft: { tool: 'tween', targetStepSlotId: stepOne, movementStep: 'she pushes off the back foot', overrides: { medium: 'clean line on white' } },
+  })
+
+  // The dead slot: the engine enumerates NOTHING for the clip.
+  const countBefore = await engineRecordCount()
+  await engineControl({ loaderEnumerations: { unet: ['minimax_h3_ref2va_pruned_int8_convrot.safetensors'], clip: [], vae: ['minimax_h3_video_vae_fp16.safetensors'], lora: ['h3_tween_step12000.safetensors'] } })
+  let refused
+  try {
+    refused = await apiB.post('/api/lan/animation/attempts', draftBody('idem-k-dead'))
+  } finally {
+    await engineControl({ loaderEnumerations: null })
+  }
+  assert.equal(refused.status, 400, 'the dead slot is the structured validation refusal')
+  assert.match(refused.body.error, /textEncoder/)
+  assert.match(refused.body.error, /CLIPLoader/)
+  assert.match(refused.body.error, /qwen3vl_32b_minimax_h3_nvfp4_awq\.safetensors/)
+  assert.match(refused.body.error, /qwen3vl_32b_int8_convrot\.safetensors/)
+  assert.match(refused.body.error, /enumerates/)
+
+  // NOTHING was spent: no attempt row, no engine submission.
+  const view = await apiB.get(`/api/lan/animation/document?id=${docK.id}`)
+  assert.equal(view.body.document.attempts.length, 0, 'no attempt row was persisted')
+  assert.equal(await engineRecordCount(), countBefore, 'the engine received no submission')
+
+  // The healthy submit: the engine's OWN record shows the RESOLVED names —
+  // the profile enumerates the FLAT unet and the int8 clip, neither of
+  // which is the pinned constant.
+  const ok = await apiB.post('/api/lan/animation/attempts', draftBody('idem-k-ok'))
+  assert.equal(ok.status, 200, `the healthy submit lands (${JSON.stringify(ok.body)})`)
+  await waitUntil(async () => {
+    const response = await apiB.get(`/api/lan/animation/attempt?id=${ok.body.attemptId}`)
+    return response.body.attempt?.execution === 'ready'
+  }, 30_000, 'the resolved submission landing')
+  const record = (await engineRecordsFor(ok.body.attemptId))[0]
+  assert.ok(record, 'the engine holds the submitted graph')
+  const graph = record.prompt[2]
+  assert.equal(Object.values(graph).find((node) => node.class_type === 'UNETLoader').inputs.unet_name, 'minimax_h3_ref2va_pruned_int8_convrot.safetensors', 'the RESOLVED unet (the FLAT name the profile enumerates — not the pinned H3/ssd constant)')
+  assert.equal(Object.values(graph).find((node) => node.class_type === 'CLIPLoader').inputs.clip_name, 'qwen3vl_32b_int8_convrot.safetensors', 'the RESOLVED clip (the documented preference — not the pinned nvfp4 constant)')
 })
