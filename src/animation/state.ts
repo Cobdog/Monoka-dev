@@ -21,10 +21,18 @@
  * 409 sets `conflict` and re-reads (the rebase surface — the UI shows a
  * reload notice, NEVER a silent lost update); other failures land in
  * `commandError` for the calling surface to name.
+ *
+ * What task 8 adds: the TIMELINE's commands — `seedInitialKey` (the bound
+ * initial key materializes the first key slot through add-candidate + the
+ * explicit selection, only on an empty timeline, never a silent no-op),
+ * `toggleKeyLock` (the lock chip's server-enforced toggle), and
+ * `createEmptyDocument` (the selection state's creation arm, task 7's
+ * Minor-2). The shared failure arm is extracted as `failCommand` — one
+ * idiom, three-plus commands.
  */
 import { useEffect } from 'react'
 import { create } from 'zustand'
-import { animationApi, AnimationConflict, AnimationHttpError, type AnimationDocumentView } from './client'
+import { animationApi, animationHref, AnimationConflict, AnimationHttpError, type AnimationDocumentView } from './client'
 import { subscribeAnimationEvents } from './fabric'
 import { documentsApi } from '../canvas/api'
 import type { AttemptExecutionState, BindingInput } from '../../shared/animation/types'
@@ -85,6 +93,18 @@ type AnimationSessionState = {
   refresh(): Promise<void>
   updateBinding(binding: BindingInput): Promise<boolean>
   importImages(files: File[]): Promise<AnimationImportedImage[]>
+  /** Task 8 — the timeline's commands. */
+  /** Materializes the initial key slot from the active binding's
+   *  initialKeyAssetId (add-candidate, then the explicit selection — two
+   *  revision-gated commands; the binding alone creates no slot). Only an
+   *  EMPTY timeline seeds; anything else is a named refusal, never a silent
+   *  no-op. */
+  seedInitialKey(): Promise<boolean>
+  /** The lock chip's toggle — the server owns the enforcement (§7.2.1). */
+  toggleKeyLock(keyId: string, locked: boolean): Promise<boolean>
+  /** The selection state's creation arm (task 7's Minor-2): creates the
+   *  pre-binding document in the named project and navigates to it. */
+  createEmptyDocument(projectId: string): Promise<boolean>
   retry(): Promise<void>
   clearCommandError(): void
 }
@@ -105,7 +125,30 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary)
 }
 
-export const useAnimationSessionStore = create<AnimationSessionState>()((set, get) => ({
+/** True when a binding asset id is a STORE PATH (ingest paths carry '/') —
+ *  the preview/relPath heuristic the seed command and the seed card share.
+ *  A bare canvas output id is opaque (task 7's concern) and never rides a
+ *  URL. */
+const isPathLikeHandle = (assetId: string): boolean => assetId.includes('/')
+
+export const useAnimationSessionStore = create<AnimationSessionState>()((set, get) => {
+  /** The command failure surface every authoring command shares (extracted
+   *  when task 8 added the timeline's): a 409 lands the conflict + re-reads
+   *  (the rebase surface — never a silent lost update, never a blind
+   *  re-POST), anything else lands commandError for the surface to name.
+   *  Ticket-guarded: a superseded command reports nothing. */
+  const failCommand = async (error: unknown, ticket: number): Promise<boolean> => {
+    if (ticket !== openTicket) return false
+    if (error instanceof AnimationConflict) {
+      set({ conflict: { message: error.message, currentRevision: error.currentRevision }, busy: false })
+      await get().refresh()
+      return false
+    }
+    set({ busy: false, commandError: error instanceof Error ? error.message : String(error) })
+    return false
+  }
+
+  return {
   phase: 'loading',
   errorDetail: '',
   document: null,
@@ -201,17 +244,7 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
       set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
       return true
     } catch (error) {
-      if (ticket !== openTicket) return false
-      if (error instanceof AnimationConflict) {
-        // The rebase surface: name the conflict, then re-read the server's
-        // current document — the caller decides whether to re-issue on the
-        // fresh revision. Never silent, never a blind re-POST.
-        set({ conflict: { message: error.message, currentRevision: error.currentRevision }, busy: false })
-        await get().refresh()
-        return false
-      }
-      set({ busy: false, commandError: error instanceof Error ? error.message : String(error) })
-      return false
+      return failCommand(error, ticket)
     }
   },
 
@@ -225,6 +258,79 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     return imported
   },
 
+  seedInitialKey: async () => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const binding = current.body.bindingHistory.find((entry) => entry.version === current.body.activeBindingVersion) ?? null
+    if (binding === null) {
+      set({ commandError: 'The session has no active binding to seed the initial key from.' })
+      return false
+    }
+    if (current.body.keys.length > 0) {
+      // A named refusal, never a silent no-op — the seed button can be one
+      // refresh behind a concurrent write that already added keys.
+      set({ commandError: 'The timeline already holds keys — the initial key seeds only an empty timeline.' })
+      return false
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // The seed: the bound image becomes the slot's first candidate, then
+      // the explicit selection follows (§5.3 — the slot materializes with
+      // selection null, choosing is its own act). relPath rides only a
+      // path-like handle; the origin is the §5.2 prepared-image pick.
+      const keyId = crypto.randomUUID()
+      const candidateId = crypto.randomUUID()
+      const added = await animationApi.keyCommand(current.id, 'add-candidate', {
+        keyId,
+        candidate: {
+          id: candidateId,
+          assetReference: { assetId: binding.initialKeyAssetId, relPath: isPathLikeHandle(binding.initialKeyAssetId) ? binding.initialKeyAssetId : null, kind: 'image' },
+          origin: 'project-asset',
+          provenance: { assetId: binding.initialKeyAssetId },
+          poseDescription: null,
+          facing: null,
+        },
+      }, get().document?.revision ?? 0)
+      const selected = await animationApi.selectKeyCandidate(current.id, keyId, candidateId, added.revision)
+      if (ticket !== openTicket) return false
+      set({ document: selected, conflict: null, busy: false, attemptState: seedAttemptState(selected.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  toggleKeyLock: async (keyId, locked) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      const view = await animationApi.keyCommand(current.id, locked ? 'lock' : 'unlock', { keyId }, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  createEmptyDocument: async (projectId) => {
+    if (get().busy) return false
+    set({ busy: true, commandError: null })
+    try {
+      const view = await animationApi.createDocument({ projectId, name: 'Untitled animation' })
+      // The durable handoff is the address (the workbench arm's own
+      // precedent): a full navigation opens the empty session's panel.
+      window.location.assign(animationHref(view.projectId || projectId, view.id))
+      return true
+    } catch (error) {
+      set({ busy: false, commandError: error instanceof Error ? error.message : String(error) })
+      return false
+    }
+  },
+
   retry: async () => {
     const { document, open } = get()
     const params = new URLSearchParams(window.location.search)
@@ -232,7 +338,8 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
   },
 
   clearCommandError: () => set({ commandError: null }),
-}))
+  }
+})
 
 /** The shell's store connection (P07): opens the named document, owns the
  *  fabric subscription for as long as the caller is mounted, and hands back
@@ -269,6 +376,9 @@ export function useAnimationDocument(documentId: string, projectId = '') {
     commands: {
       updateBinding: session.updateBinding,
       importImages: session.importImages,
+      seedInitialKey: session.seedInitialKey,
+      toggleKeyLock: session.toggleKeyLock,
+      createEmptyDocument: session.createEmptyDocument,
       retry: session.retry,
       clearCommandError: session.clearCommandError,
     },
