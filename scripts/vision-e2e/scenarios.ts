@@ -1924,14 +1924,16 @@ export const SCENARIOS: VisionScenario[] = [
       await page.goto('/?gallery=1')
       await expect(page.locator('[data-gallery-root]')).toBeVisible()
       // DOM truth at capture: the matrix the node suite walks is the matrix
-      // on the page — 16 sections, 138 cells, 19 justified N/A.
+      // on the page — 16 sections, 143 cells (122 rendered + 21 justified
+      // N/A; the post-fix-round totals the unit suite's per-section pins
+      // sum to).
       const header = page.locator('[data-gallery-counts]')
       await expect(header).toHaveAttribute('data-sections', '16')
-      await expect(header).toHaveAttribute('data-cells', '138')
-      await expect(header).toHaveAttribute('data-na', '19')
+      await expect(header).toHaveAttribute('data-cells', '143')
+      await expect(header).toHaveAttribute('data-na', '21')
       await expect(page.locator('[data-gallery-section]')).toHaveCount(16)
-      await expect(page.locator('[data-gallery-cell]')).toHaveCount(138)
-      await expect(page.locator('[data-gallery-na]')).toHaveCount(19)
+      await expect(page.locator('[data-gallery-cell]')).toHaveCount(143)
+      await expect(page.locator('[data-gallery-na]')).toHaveCount(21)
       await page.waitForTimeout(400)
     },
     checkpoints: [
