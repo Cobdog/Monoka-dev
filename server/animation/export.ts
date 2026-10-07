@@ -68,17 +68,17 @@ import { AnimationRuleError, type AnimationAttemptRow, type AnimationDocumentRow
 import { packZip } from '../documentArchive'
 import { decodedFrameCount, runTool } from '../datasets/probe'
 import type { AnimationDocumentBody, FrozenAttemptSnapshot } from '../../shared/animation/types'
+import { assemblyDocumentProblems, assemblyEntryVerdict, EXPORT_FPS, MAX_EXPORT_FRAMES } from '../../shared/animation/assembly'
 
 /** The manifest's own format version — bumped when the manifest SHAPE
  *  changes (distinct from the document schema version it also records). */
 export const ANIMATION_EXPORT_MANIFEST_VERSION = 1
 
-/** The hard ceiling on assembled output frames (a ~70-minute sequence at
- *  24 fps): a runaway selection refuses loudly instead of encoding for
- *  hours. Generous by design — real sessions sit in the hundreds. */
-export const MAX_EXPORT_FRAMES = 100_000
-
-export const EXPORT_FPS = 24
+// Task 15a: the export constants and the LENGTH/EDGE refusal semantics live
+// in shared/animation/assembly.ts — one derivation for the gate and the
+// preview (the editorial panel foreshadows exactly these refusals);
+// re-exported here so this module's own imports and tests stay stable.
+export { EXPORT_FPS, MAX_EXPORT_FRAMES }
 
 // ---------------------------------------------------------------------------
 // the gate (pure — the plan derivation the route and the tests share)
@@ -197,17 +197,6 @@ export function deriveExportPlan(
   const segments: ExportSegmentSpec[] = []
   let outputStart = 0
 
-  if (document.body.editorial.length === 0) {
-    refusals.push('The assembled sequence is empty — contribute at least one landed clip before exporting.')
-  }
-  // H.264 at 4:2:0 chroma needs even dimensions; the settings schema allows
-  // any positive integer pair, so an odd pair is refused HERE, by name —
-  // never discovered as an ffmpeg failure mid-assembly.
-  const { outputWidth, outputHeight } = document.body.settings
-  if (outputWidth % 2 !== 0 || outputHeight % 2 !== 0) {
-    refusals.push(`The document's output dimensions (${outputWidth}x${outputHeight}) are odd — H.264 at 4:2:0 chroma needs even dimensions; adjust the document's settings before exporting.`)
-  }
-
   for (const entry of document.body.editorial) {
     const attempt = attempts.find((candidate) => candidate.id === entry.attemptId) ?? null
     const label = sourceLabel(entry, attempt, document)
@@ -235,27 +224,24 @@ export function deriveExportPlan(
       refusals.push(`${label}: the selected media (${typeof relPath === 'string' ? relPath : 'no materialized asset'}) is missing from the store — re-land or re-render the clip; the export refuses rather than dropping it.`)
       continue
     }
-    // Length semantics live HERE (task 13's narrowing): the clip frames the
-    // entry burns, the degenerate-range rule, the range bounds.
-    const clipFrames = Math.max(0, entry.outFrame - entry.inFrame)
-    if (clipFrames > 0 && entry.outFrame > frameCount) {
-      refusals.push(`${label}: the selection [${entry.inFrame}, ${entry.outFrame}) exceeds the clip's ${frameCount} frames — narrow it before export (the export refuses rather than clamping).`)
+    // Length semantics live in the SHARED assembly derivation (task 15a —
+    // task 13's narrowing, now written once): the preview reads the same
+    // verdicts, so the editorial panel foreshadows exactly these refusals
+    // before the click — the wide out-of-range selection, the degenerate
+    // range that must name an existing frame, the zero-frame phantom row.
+    const verdict = assemblyEntryVerdict(
+      { contributionId: entry.id, inFrame: entry.inFrame, outFrame: entry.outFrame, holdDuration: entry.holdDuration, frameCount },
+      label,
+    )
+    if (verdict.problem !== null) {
+      refusals.push(verdict.problem)
       continue
     }
+    const clipFrames = verdict.clipFrames
+    const outputFrames = verdict.outputFrames
     // The degenerate range is a held drawing: trim the ONE frame the range
-    // points at, clone the rest. That frame must exist; and whatever the
-    // range, the entry must contribute at least one output frame — a
-    // zero-frame entry is a phantom manifest row.
+    // points at, clone the rest.
     const selEnd = clipFrames > 0 ? entry.outFrame : entry.inFrame + 1
-    if (clipFrames === 0 && entry.inFrame >= frameCount) {
-      refusals.push(`${label}: the held drawing points at frame ${entry.inFrame} of a ${frameCount}-frame clip — a degenerate range must name an existing frame; the export refuses rather than dropping it.`)
-      continue
-    }
-    const outputFrames = clipFrames + entry.holdDuration
-    if (outputFrames < 1) {
-      refusals.push(`${label}: the entry contributes no frames (a degenerate range with no hold) — set a hold or widen the range; the export refuses a phantom manifest row.`)
-      continue
-    }
     const reasons = staleReasonsOf(entry, attempt, document)
     if (reasons.length > 0) stale.push({ contributionId: entry.id, attemptId: entry.attemptId, label, reasons })
     segments.push({
@@ -280,9 +266,17 @@ export function deriveExportPlan(
     outputStart += outputFrames
   }
 
-  if (segments.length > 0 && outputStart > MAX_EXPORT_FRAMES) {
-    refusals.push(`The assembled sequence is ${outputStart} frames — beyond the export ceiling of ${MAX_EXPORT_FRAMES}. Split the document or trim the contribution list.`)
-  }
+  // The document-level verdicts (task 15a, the shared strings): the empty
+  // list and the odd-dimension pair keep their historical place at the HEAD
+  // of the refusal list, the ceiling at its tail — unshifting the shared
+  // block preserves both. The ceiling's old `segments.length > 0` guard is
+  // unchanged in effect: outputStart only grows when a segment assembles,
+  // so a total beyond the ceiling implies segments exist.
+  refusals.unshift(...assemblyDocumentProblems(
+    { outputWidth: document.body.settings.outputWidth, outputHeight: document.body.settings.outputHeight },
+    outputStart,
+    document.body.editorial.length === 0,
+  ))
 
   return { fps: EXPORT_FPS, totalFrames: outputStart, segments, stale, refusals }
 }

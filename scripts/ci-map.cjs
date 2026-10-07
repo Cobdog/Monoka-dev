@@ -53,6 +53,7 @@ const REPO = path.resolve(__dirname, '..')
  * The ci-map self-test enforces this stays in lockstep with tests/.
  */
 const SUITES = {
+  'animation-assembly': { build: null, windows: false, python: false, ffmpeg: false },
   'animation-compiler': { build: null, windows: false, python: false, ffmpeg: false },
   'animation-rendering': { build: 'server', windows: false, python: false, ffmpeg: false },
   'animation-export': { build: 'full', windows: false, python: false, ffmpeg: true },
@@ -254,6 +255,11 @@ const RULES = [
 
   // ---------- shared (server + client + compiler contracts) -------------
   {
+    match: ['shared/animation/assembly.ts'],
+    suites: ['animation-assembly', 'animation-export', 'animation-timeline-model'],
+    reason: "the shared assembly-edge derivation (task 15a) — export's gate and the timeline preview both consume it.",
+  },
+  {
     match: ['shared/animation/types.ts'],
     suites: ['animation-types', 'animation-store', 'animation-compiler'],
     reason: 'the animation domain types + guards — the store suite drives parseAnimationDocumentBody + the candidate parser through every authoring command and landing; the compiler suite compiles through the closed vocabularies.',
@@ -283,7 +289,7 @@ const RULES = [
   { match: ['server/db.ts'], suites: ['datasets', 'documents', 'storage', 'animation-store'], reason: 'the sqlite layer: migrations (documents + animation-store via 006), dataset tables (datasets), jobs/library (storage).' },
   { match: ['server/animation/store.ts'], suites: ['animation-store', 'animation-rendering', 'animation-routes'], reason: 'the animation document store — its suite drives it directly off dist-server; the rendering suite composes the same store under the real fake engine; the routes suite drives every authoring command + landing through the mounted HTTP block (task 5 landed removeSpan + attemptsForDocument there).' },
   { match: ['server/animation/rendering.ts', 'server/animation/completion-owner.ts'], suites: ['animation-rendering', 'animation-routes'], reason: 'the rendering service + the shared completion owner — the rendering suite runs their dispatch/observation/landing/reconciliation paths for real against the fake engine; the routes suite reaches them through the real server process (submit/getState/cancel/extract-frame + boot reconcile).' },
-  { match: ['server/animation/export.ts'], suites: ['animation-export'], reason: 'the export pipeline (task 14, spec §11.3) — its own suite owns it end to end: the pure gate + manifest derivations and the real assembly (server + fake engine + ffmpeg) over HTTP.' },
+  { match: ['server/animation/export.ts'], suites: ['animation-assembly', 'animation-export'], reason: 'the export pipeline (task 14, spec §11.3) — its own suite owns it end to end: the pure gate + manifest derivations and the real assembly (server + fake engine + ffmpeg) over HTTP; task 15a added the assembly-agreement suite, which drives the same gate against the preview (the shared-edge pin).' },
   { match: ['server/animation/routes.ts'], suites: ['animation-routes'], reason: 'the animation HTTP block — a pure handler mounted by core.ts; its suite boots the real server against the fake engine.' },
   { match: ['server/documents.ts', 'server/documentArchive.ts'], suites: ['documents', 'animation-store'], reason: 'document store + zip archive — the animation round-trip (spec §11.3) rides the same archive, exercised by the animation-store suite.' },
   { match: ['server/realtime.ts'], suites: ['realtime', 'manager-install', 'animation-routes'], reason: 'the fabric — WS realtime framing/delivery; the Manager cm-queue event normalizer (0pktw5h) is exercised by the manager-install suite too, and the animation channel + emitAnimation + the engine-event tap (animation module task 5) are driven end-to-end by the animation-routes suite.' },
@@ -339,9 +345,9 @@ const RULES = [
   { match: ['src/poserig/**'], suites: ['poserig'], reason: 'pose rig domain (logic modules; PoseRigApp.tsx rides the dir).' },
   {
     match: ['src/animation/**'],
-    suites: ['animation-timeline-model'],
+    suites: ['animation-assembly', 'animation-timeline-model'],
     forceE2e: true,
-    reason: 'animation browser modules (k2q0n9s) — e2e owns their behavior; the timeline model (task 8) is the node-tested pure core (deriveTimeline lane/badge derivation + the review position), every other module in the tree is browser-only. NOTE timelineModel.ts is deliberately not split into its own narrower rule: the whole tree forces the e2e leg either way, and the suite rides the same diff.',
+    reason: "animation browser modules (k2q0n9s) — e2e owns their behavior; the timeline model (task 8) is the node-tested pure core (deriveTimeline lane/badge derivation + the review position), every other module in the tree is browser-only. Task 15a: timelineModel.ts's assembled-sequence preview consumes the shared assembly-edge derivation, so the assembly-agreement suite rides the diff too. NOTE timelineModel.ts is deliberately not split into its own narrower rule: the whole tree forces the e2e leg either way, and the suite rides the same diff.",
   },
   { match: ['src/lib/graph/h3image.ts'], suites: ['canvas', 'h3img', 'registry', 'workflows'], reason: 'the H3 image graph factory — loaded by four suites.' },
   { match: ['src/lib/graph/engineFamilies.ts', 'tests/engine-families.test.js'], suites: ['canvas', 'engine-families', 'workflows'], reason: 'the engine-family registry (A-3): the canvas selector/panel seam + its own suite; workflows loads the graph barrel.' },

@@ -35,6 +35,7 @@
  * than crashing the render.
  */
 import type { AnimationDocumentBody, AnimationTool, AttemptExecutionState, KeyCandidate, KeySlot, Span } from '../../shared/animation/types'
+import { assemblyDocumentProblems, assemblyEntryVerdict } from '../../shared/animation/assembly'
 
 /** Where a key's chosen image came from (the closed §5.1 vocabulary). */
 export type KeyOrigin = KeyCandidate['origin']
@@ -254,8 +255,9 @@ export function deriveContributableClips(body: AnimationDocumentBody, attempts: 
  *  ([inFrame, outFrame), start-inclusive/end-exclusive integer frames), the
  *  hold in OUTPUT frames (§11.3), and where the entry sits in the assembled
  *  whole. A degenerate range (outFrame ≤ inFrame) contributes no clip frames
- *  — a held drawing; length semantics beyond that belong to the export
- *  compiler, so this derivation computes and NAMES, never clamps. */
+ *  — a held drawing; the length/edge semantics ARE the shared assembly
+ *  derivation (task 15a): the preview and the export gate read one verdict,
+ *  and this derivation computes and NAMES, never clamps. */
 export type AssembledContribution = {
   contributionId: string
   attemptId: string
@@ -285,8 +287,12 @@ export type AssembledSequence = {
 /** What the ordered editorial list assembles to (§9): the contributions in
  *  document order — the list order IS the assembled order — each with its
  *  computed output span, plus the whole sequence's frame total at the
- *  document's constant frame rate. A missing clip or an out-of-range
- *  selection is a NAMED problem (§11.3's reject-don't-drop rule, previewed);
+ *  document's constant frame rate. Per entry, the SHARED assembly verdict
+ *  (task 15a — the gate's own refusal classes and arithmetic, so the panel
+ *  foreshadows exactly what the export refuses); the unlanded class keeps
+ *  its softer preview copy (the shared verdict answers problem:null for
+ *  it). The document-level verdicts (empty, odd dimensions, the ceiling)
+ *  append to the problems list — §11.3's reject-don't-drop rule, previewed;
  *  the entry still renders, never silently skipped. */
 export function deriveAssembledSequence(body: AnimationDocumentBody, attempts: ReadonlyArray<EditorialAttemptSummary>): AssembledSequence {
   const clipOf = new Map<string, ContributableClip>()
@@ -297,31 +303,35 @@ export function deriveAssembledSequence(body: AnimationDocumentBody, attempts: R
   let outputStart = 0
   for (const entry of body.editorial) {
     const clip = clipOf.get(entry.attemptId) ?? null
-    const clipFrames = Math.max(0, entry.outFrame - entry.inFrame)
-    const outputFrames = clipFrames + entry.holdDuration
-    let problem: string | null = null
-    if (clip === null) {
-      problem = `The clip for this contribution has not landed (attempt ${entry.attemptId}) — it contributes nothing until its take lands.`
-    } else if (entry.outFrame > clip.frameCount || entry.inFrame > clip.frameCount) {
-      problem = `The selection [${entry.inFrame}, ${entry.outFrame}) exceeds the clip's ${clip.frameCount} frames — narrow it before export.`
-    }
+    const label = clip?.label ?? `Unlanded clip (${entry.attemptId.slice(0, 8)})`
+    const verdict = assemblyEntryVerdict(
+      { contributionId: entry.id, inFrame: entry.inFrame, outFrame: entry.outFrame, holdDuration: entry.holdDuration, frameCount: clip?.frameCount ?? null },
+      label,
+    )
+    const problem = verdict.problem ?? (clip === null
+      ? `The clip for this contribution has not landed (attempt ${entry.attemptId}) — it contributes nothing until its take lands.`
+      : null)
     if (problem !== null) problems.push(problem)
     contributions.push({
       contributionId: entry.id,
       attemptId: entry.attemptId,
       spanId: entry.spanId,
-      label: clip?.label ?? `Unlanded clip (${entry.attemptId.slice(0, 8)})`,
+      label,
       detail: clip?.detail ?? '',
       inFrame: entry.inFrame,
       outFrame: entry.outFrame,
       holdDuration: entry.holdDuration,
-      clipFrames,
-      outputFrames,
+      clipFrames: verdict.clipFrames,
+      outputFrames: verdict.outputFrames,
       outputStart,
       frameCount: clip?.frameCount ?? null,
       problem,
     })
-    outputStart += outputFrames
+    outputStart += verdict.outputFrames
   }
+  // The document-level verdicts append (task 15a): the empty list, odd
+  // dimensions, the export ceiling — classes the gate refuses that the
+  // preview used to render silently.
+  problems.push(...assemblyDocumentProblems(body.settings, outputStart, body.editorial.length === 0))
   return { fps: body.settings.fps, totalFrames: outputStart, contributions, problems }
 }
