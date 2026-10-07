@@ -76,7 +76,11 @@ export type AttemptStateView = {
   compilerVersion: string
   execution: AttemptExecutionState
   progress?: { value: number; max: number }
-  preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number }
+  /** The durable, sanitized reason a FAILED attempt carries (wave 1, the
+   *  live review's #6) — absent on every non-failed state (a cancellation
+   *  or a lost job renders its own neutral copy, never a failure reason). */
+  failureReason?: string
+  preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number; error?: string }
   candidate: { id: string | null; assetReference: AssetReference; frameCount: number; earlierRevision: boolean } | null
 }
 

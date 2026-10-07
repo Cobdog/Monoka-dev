@@ -99,6 +99,10 @@
 .anim-bound header span { color: var(--muted); font-size: var(--text-sm); }
 .anim-bound p { margin: 0; color: var(--text); font-size: var(--text-md); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .anim-conflict { border-left: 3px solid var(--accent); padding-left: 10px; }
+/* The durable failure reason of a FAILED attempt (wave 1, the live review's
+   #6) — the same accent rail as the conflict note, so the actionable line
+   reads as a named problem, not prose. */
+.anim-review-failure { border-left: 3px solid var(--accent); padding-left: 10px; color: var(--text); }
 
 /* The span inspector (task 9, §6.1) — the .anim-select card shape again:
    one authoring panel under the timeline, geometry only (tokens, the kit's

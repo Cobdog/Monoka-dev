@@ -170,7 +170,13 @@ export type AttemptStateView = {
   compilerVersion: string
   execution: AttemptExecutionState
   progress?: { value: number; max: number }
-  preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number }
+  /** The durable, sanitized reason a FAILED attempt carries (wave 1, the
+   *  live review's #6): composed at the failure site — model resolution,
+   *  engine validation, execution error — never raw engine output. Absent
+   *  on every non-failed state (a cancellation or a lost job is not a
+   *  failure and renders its own neutral copy). */
+  failureReason?: string
+  preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number; error?: string }
   /** Mirrors the store's result candidate: `id` is the MINTED document
    *  candidate id (hero landings — the correlation key against the document
    *  body's slot candidates); null when the tool mints nothing (tween
@@ -221,9 +227,12 @@ export class AnimationEngineValidationError extends Error {
 /** Composes the sanitized failure reason for an engine /prompt refusal from
  *  the structured node_errors ComfyUI answers with (the fake and real
  *  engines share the shape): the failing node's class, the input it
- *  rejected, and the value — every fragment through sanitizeForUser, so
- *  whatever the engine echoed collapses to technical signal. Falls back to
- *  the sanitized raw body when the answer does not parse. */
+ *  rejected, and the value. Field NAMES and class names are technical by
+ *  nature (capped, verbatim — sanitizeForUser would collapse a bare name
+ *  like "length" to nothing); VALUES and free-text messages go through
+ *  sanitizeForUser, so whatever the engine echoed collapses to technical
+ *  signal. Falls back to the sanitized raw body when the answer does not
+ *  parse. */
 function engineValidationReason(bodyText: string): string {
   let parsed: unknown
   try {
@@ -247,14 +256,15 @@ function engineValidationReason(bodyText: string): string {
         const inputName = typeof extra === 'object' && extra !== null && Array.isArray((extra as { input_name?: unknown }).input_name)
           ? (extra as { input_name: unknown[] }).input_name
           : null
-        if (inputName !== null) inputBits.push(`input "${sanitizeForUser(String(inputName[0]))}" (value ${sanitizeForUser(String(inputName[1]))})`)
-        else {
+        if (inputName !== null) {
+          inputBits.push(`input "${String(inputName[0]).slice(0, 80)}" (value ${sanitizeForUser(String(inputName[1]))})`)
+        } else {
           const message = (failure as { message?: unknown }).message
           if (typeof message === 'string') inputBits.push(sanitizeForUser(message))
         }
       }
     }
-    parts.push(`${entry.class_type}${inputBits.length > 0 ? ` — ${inputBits.join('; ')}` : ''}`)
+    parts.push(`${entry.class_type.slice(0, 120)}${inputBits.length > 0 ? ` — ${inputBits.join('; ')}` : ''}`)
   }
   if (parts.length === 0) return sanitizeForUser(bodyText)
   return `The engine refused the graph at validation: ${parts.join(' | ')}`.slice(0, 2000)
@@ -328,9 +338,12 @@ enumerationTtlMs?: number }): EnginePort {
    *  the targeted per-class form (small answers, the same shape the capture
    *  fixtures pin). A class the engine does not know answers empty (a
    *  resolution against it will name the empty enumeration); an unreachable
-   *  engine THROWS (the defer signal). */
+   *  engine THROWS (the defer signal). The fetch is TIME-BOUNDED: a hung
+   *  engine (connections accepted, never answered) must not stall the
+   *  submit path ahead of persistence — the preflight defers and the
+   *  queue semantics stand. */
   async function loaderEnumeration(className: string, inputName: string): Promise<string[]> {
-    const response = await fetch(`${base}/object_info/${encodeURIComponent(className)}`)
+    const response = await fetch(`${base}/object_info/${encodeURIComponent(className)}`, { signal: AbortSignal.timeout(3000) })
     if (!response.ok) return []
     const body = (await response.json().catch(() => null)) as Record<string, unknown> | null
     const entry = body !== null ? body[className] : null
@@ -481,10 +494,10 @@ enumerationTtlMs?: number }): EnginePort {
       if (!response.ok) {
         // A 4xx from /prompt is the engine's own validation gate refusing
         // the graph — definitive, never retried as-is. The sanitized reason
-        // rides the error (Fix C); the raw answer stays in engineDetail for
-        // the log.
-        const raw = (await response.text()).slice(0, 400)
-        throw new AnimationEngineValidationError(`${response.status} ${raw}`, engineValidationReason(raw))
+        // (Fix C) parses the FULL answer; the raw excerpt stays in
+        // engineDetail for the log.
+        const text = await response.text()
+        throw new AnimationEngineValidationError(`${response.status} ${text.slice(0, 400)}`, engineValidationReason(text))
       }
       const result = (await response.json()) as { prompt_id?: string }
       if (typeof result.prompt_id !== 'string' || !result.prompt_id) {
@@ -917,28 +930,37 @@ export function createAnimationRenderingService(deps: {
   }
 
   /** The dispatch core submit and the boot reconcile's redispatch share:
-   *  resolve the effective model set FIRST (from the FROZEN snapshot when
+   *  upload the reference bytes (the idempotent, re-usable engine inputs),
+   *  resolve the effective model set (from the FROZEN snapshot when
    *  submit-time resolution stamped it — otherwise fresh against the
-   *  engine's current enumeration; a dead slot fails the attempt WITHOUT
-   *  uploading a byte or spending a submission), upload the reference
-   *  bytes, build the graph EXCLUSIVELY from the frozen config, and submit
-   *  with the attempt id stamped in both carriers. Outcomes: 'submitted'
-   *  (queued + observed), 'failed' (a definitive NAMED refusal — model
-   *  resolution or engine validation), 'uncertain' (the dispatch may or
-   *  may not have reached the engine — reconciling, preserved for the
-   *  sweep, §11.4). */
+   *  engine's current enumeration, a dead slot failing the attempt with the
+   *  NAMED reason), build the graph EXCLUSIVELY from the frozen config,
+   *  and submit with the attempt id stamped in both carriers. Outcomes:
+   *  'submitted' (queued + observed), 'failed' (a definitive NAMED refusal
+   *  — model resolution or engine validation), 'uncertain' (the dispatch
+   *  may or may not have reached the engine — reconciling, preserved for
+   *  the sweep, §11.4). */
   async function dispatchAttempt(attemptId: string, snapshot: FrozenAttemptSnapshot, documentId: string): Promise<'submitted' | 'failed' | 'uncertain'> {
     try {
-      const models = modelsFromSnapshotSettings(snapshot.settings) ?? resolveAnimationModels({
-        tool: snapshot.tool,
-        enumerations: await engine.modelEnumerations({ force: true }),
-        overrides: modelOverrides(snapshot.settings),
-      })
+      // The reference uploads come BEFORE the deferred model resolution: a
+      // hung engine (connections accepted, never answered) then stalls
+      // exactly where the pre-wave-1 dispatch stalled — after persistence,
+      // with no verdict — instead of racing a resolution timeout into a
+      // reconciling verdict. The reachable-engine paths are unaffected: the
+      // submit-time preflight already gated the reachable case (a dead slot
+      // costs no row and no upload there), and a live engine with a dead
+      // slot here has already received idempotent, re-usable uploads when
+      // the named refusal lands.
       for (const reference of snapshot.references) {
         const bytes = blobs.readBlob((reference.assetReference as { relPath: string }).relPath)
         if (!bytes) throw new AnimationRuleError(`The ${String(reference.role)} reference asset is no longer readable.`, 400)
         await engine.uploadReference(reference.assetReference.assetId, bytes)
       }
+      const models = modelsFromSnapshotSettings(snapshot.settings) ?? resolveAnimationModels({
+        tool: snapshot.tool,
+        enumerations: await engine.modelEnumerations({ force: true }),
+        overrides: modelOverrides(snapshot.settings),
+      })
       const graph: AnimationGraph = buildAnimationGraph(snapshot, frozenBuildSettings(snapshot, models))
       const { engineJobId } = await engine.submitGraph(graph, attemptId)
       store.setAttemptExecution(attemptId, { state: 'queued', engineJobId })
@@ -948,14 +970,17 @@ export function createAnimationRenderingService(deps: {
     } catch (failure) {
       if (failure instanceof AnimationModelResolutionError) {
         // The engine's enumeration cannot serve a slot: definitively failed
-        // with the NAMED reason (the re-roll re-resolves by construction).
-        store.setAttemptExecution(attemptId, { state: 'failed' })
+        // with the NAMED reason persisted durably (the re-roll re-resolves
+        // by construction — the repair path is the reason text itself).
+        store.setAttemptExecution(attemptId, { state: 'failed', failureReason: failure.message })
         emit('animation.attempt.failed', { attemptId, documentId, reason: 'model-resolution', detail: failure.message })
         return 'failed'
       }
       if (failure instanceof AnimationEngineValidationError) {
-        // Definitive refusal (the engine answered and said no): failed.
-        store.setAttemptExecution(attemptId, { state: 'failed' })
+        // Definitive refusal (the engine answered and said no): failed with
+        // the composed SANITIZED reason (node class, input, value — never
+        // the raw engine answer).
+        store.setAttemptExecution(attemptId, { state: 'failed', failureReason: failure.reason })
         emit('animation.attempt.failed', { attemptId, documentId, reason: 'engine-validation', detail: failure.reason })
         return 'failed'
       }
@@ -1072,10 +1097,15 @@ export function createAnimationRenderingService(deps: {
         caption: attempt.snapshot.caption,
         compilerVersion: attempt.snapshot.compilerVersion,
         execution: attempt.execution.state,
-        preparation: { state: attempt.preparation.state, ...(attempt.preparation.proposedFrameIndex !== undefined ? { proposedFrameIndex: attempt.preparation.proposedFrameIndex } : {}) },
+        preparation: {
+          state: attempt.preparation.state,
+          ...(attempt.preparation.proposedFrameIndex !== undefined ? { proposedFrameIndex: attempt.preparation.proposedFrameIndex } : {}),
+          ...(attempt.preparation.error !== undefined ? { error: attempt.preparation.error } : {}),
+        },
         candidate: attempt.result ? attempt.result.candidate : null,
       }
       if (attempt.execution.progress !== undefined) view.progress = attempt.execution.progress
+      if (attempt.execution.failureReason !== undefined) view.failureReason = attempt.execution.failureReason
       return view
     },
 

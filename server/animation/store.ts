@@ -81,7 +81,7 @@ export type AnimationAttemptRow = {
   inputHash: string
   snapshot: FrozenAttemptSnapshot
   engineJobId: string | null
-  execution: { state: AttemptExecutionState; progress?: { value: number; max: number } }
+  execution: { state: AttemptExecutionState; progress?: { value: number; max: number }; failureReason?: string }
   preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number; error?: string }
   /** `candidate.id` is the MINTED document candidate id — the id inside the
    *  document body's key slot (hero landings); null when the tool mints
@@ -981,7 +981,7 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       return { attempt: hydrateAttempt(statements.attempt.get(attemptIdValue) as Record<string, unknown>) }
     }),
 
-    setAttemptExecution: (attemptId: string, execution: { state: AttemptExecutionState; engineJobId?: string; progress?: { value: number; max: number } }) => {
+    setAttemptExecution: (attemptId: string, execution: { state: AttemptExecutionState; engineJobId?: string; progress?: { value: number; max: number }; failureReason?: string }) => {
       const row = statements.attempt.get(attemptId ?? '') as Record<string, unknown> | undefined
       if (!row) throw new AnimationRuleError(`No attempt with id ${attemptId}.`, 404)
       if (!EXECUTION_STATES.has(execution?.state)) throw new AnimationRuleError(`Unknown execution state ${String(execution?.state)}.`, 400)
@@ -991,10 +991,19 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
           throw new AnimationRuleError('progress must be { value, max } with 0 <= value <= max.', 400)
         }
       }
+      // The durable failure detail (wave 1, the live review's #6): the
+      // sanitized, structured reason a failed attempt carries — composed by
+      // the failure sites (never raw engine output), capped so a pathological
+      // reason cannot flood the row. Written only WITH the failed verdict;
+      // a state transition that carries none writes none.
+      if (execution.failureReason !== undefined && typeof execution.failureReason !== 'string') {
+        throw new AnimationRuleError('failureReason must be a string.', 400)
+      }
       const current = parseJson<AnimationAttemptRow['execution']>(row.execution_json, { state: 'queued' as const })
       const next: AnimationAttemptRow['execution'] = { state: execution.state }
       if (execution.progress !== undefined) next.progress = execution.progress
       else if (current.progress !== undefined) next.progress = current.progress
+      if (execution.failureReason !== undefined) next.failureReason = execution.failureReason.slice(0, 2000)
       statements.setAttemptExecution.run(JSON.stringify(next), execution.engineJobId ?? null, now(), attemptId)
     },
 

@@ -1431,11 +1431,15 @@ test('a failed preparation recovers through the panel retry action (review)', as
   expect(engineExited).toBe(true)
 })
 
-test('a failed attempt renders the Failed-or-canceled vocabulary without touching selections (review)', async ({ page, request }) => {
+test('a failed attempt renders its named reason and the distinct Failed copy without touching selections (review)', async ({ page, request }) => {
   test.setTimeout(90_000)
   const problems = await trackErrors(page)
   const engine = await startFakeEngine()
-  await engine.control({ failMode: 'error' })
+  // The review's own #6 scenario: the engine's validation gate refuses the
+  // graph at /prompt (the invalid-model refusal shape) — a precise,
+  // structured answer the pre-wave-1 surface collapsed into "Failed or
+  // canceled".
+  await engine.control({ failMode: 'validation' })
   const originalSettings = await pointAtEngine(request, engine.port)
   let engineExited = false
   try {
@@ -1459,8 +1463,16 @@ test('a failed attempt renders the Failed-or-canceled vocabulary without touchin
     const panel = page.locator('[data-anim-review]')
     await expect(panel).toBeVisible({ timeout: 15_000 })
     await expect(panel).toHaveAttribute('data-anim-review-state', 'failed')
-    await expect(panel.locator('[data-anim-review-status]')).toHaveText('Failed or canceled')
-    await expect(panel.locator('[data-anim-review-meaning]')).toContainText('previous selections remain')
+    // Wave 1 (the review's #6): FAILED is its own word — distinct from the
+    // neutral stopped line — and the DURABLE named reason renders with it
+    // (the failing node class, the rejected input and value), so the re-roll
+    // beside it is not the only visible fact.
+    await expect(panel.locator('[data-anim-review-status]')).toHaveText('Failed')
+    await expect(panel.locator('[data-anim-review-meaning]')).toContainText('Previous selections remain')
+    const reason = panel.locator('[data-anim-review-failure-reason]')
+    await expect(reason).toBeVisible()
+    await expect(reason).toContainText('MiniMaxH3ImageToVideo')
+    await expect(reason).toContainText('length')
     // No candidate landed: no clip, no frame strip, nothing to continue
     // from — and a re-roll stays available (a fresh take is a new attempt).
     await expect(panel.locator('[data-anim-review-clip]')).toHaveCount(0)
@@ -1474,6 +1486,103 @@ test('a failed attempt renders the Failed-or-canceled vocabulary without touchin
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
     await engine.control({ failMode: null }).catch(() => undefined)
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('a cancelled attempt renders the neutral Stopped copy — never a failure reason (review)', async ({ page, request }) => {
+  test.setTimeout(90_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  // Slow enough that the cancel lands mid-render, deterministically.
+  await engine.control({ steps: 12, stepDelayMs: 350 })
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Cancelled vocabulary')
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    await expect(page.locator('[data-anim-timeline]')).toBeVisible({ timeout: 15_000 })
+    const submitted = await page.evaluate(async (payload) => {
+      const response = await fetch('/api/lan/animation/attempts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+      return await response.json() as { attemptId: string }
+    }, tweenDraftBody(seeded.documentId, seeded.stepSlotId, `anim-e2e-cancel-${Date.now()}`))
+    await request.post('/api/lan/animation/attempt/cancel', { data: { attemptId: submitted.attemptId } })
+    await expect.poll(async () => (await readAttemptView(request, submitted.attemptId)).attempt.execution, { timeout: 30_000 }).toBe('cancelled')
+
+    // The panel through the span: the NEUTRAL stopped line — a cancellation
+    // is not a failure, so no reason block ever renders (wave 1's failed ≠
+    // canceled split).
+    await page.reload()
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    await timeline.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    const panel = page.locator('[data-anim-review]')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    await expect(panel).toHaveAttribute('data-anim-review-state', 'cancelled')
+    await expect(panel.locator('[data-anim-review-status]')).toHaveText('Stopped')
+    await expect(panel.locator('[data-anim-review-meaning]')).toContainText('stopped')
+    await expect(panel.locator('[data-anim-review-failure-reason]')).toHaveCount(0)
+    await expect(panel.locator('[data-anim-review-reroll]')).toBeEnabled()
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await engine.control({ steps: 3, stepDelayMs: 40 }).catch(() => undefined)
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('a model-slot refusal surfaces through the inspector and the resubmit renders once the engine serves the slot (resolution)', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Resolution refusal')
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+    await page.goto(animationUrl)
+    await expect(page.locator('[data-anim-timeline]')).toBeVisible({ timeout: 15_000 })
+    // Open the span's inspector and fill the movement (the slice test's
+    // seeding shape).
+    await page.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    const inspector = page.locator('[data-anim-inspector]')
+    await expect(inspector).toBeVisible({ timeout: 15_000 })
+    await page.locator('[data-anim-inspector-movement]').fill('she pushes off the back foot into a full stride')
+
+    // The engine enumerates NOTHING for the lora slot: the submit through
+    // the REAL inspector is refused BEFORE anything is spent, and the named
+    // reason reaches the surface (the slot, the node class, the tried
+    // pinned adapter, the enumeration).
+    await engine.control({ loaderEnumerations: { unet: ['minimax_h3_ref2va_pruned_int8_convrot.safetensors'], clip: ['qwen3vl_32b_int8_convrot.safetensors'], vae: ['minimax_h3_video_vae_fp16.safetensors'], lora: [] } })
+    await page.locator('[data-anim-inspector-submit]').click()
+    const commandError = page.locator('[data-anim-command-error]')
+    await expect(commandError).toBeVisible({ timeout: 15_000 })
+    await expect(commandError).toContainText('adapterLora')
+    await expect(commandError).toContainText('LoraLoaderModelOnly')
+    await expect(commandError).toContainText('h3_tween_step12000.safetensors')
+    await expect(commandError).toContainText('enumerates')
+
+    // Nothing was spent: no attempt row exists for the document.
+    const view = await readAnimationDocument(request, seeded.documentId)
+    expect(view.document.attempts.length).toBe(0)
+
+    // The enumeration CHANGES (the engine now serves the slot): the same
+    // submit path resolves and RENDERS — the repair the reason names.
+    await engine.control({ loaderEnumerations: null })
+    await page.locator('[data-anim-inspector-submit]').click()
+    await expect(page.locator('[data-anim-command-error]')).toHaveCount(0, { timeout: 15_000 })
+    const panel = page.locator('[data-anim-review]')
+    await expect(panel).toBeVisible({ timeout: 30_000 })
+    await expect(panel).toHaveAttribute('data-anim-review-state', 'ready', { timeout: 30_000 })
+    await expect(panel.locator('[data-anim-review-clip]')).toBeVisible()
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await engine.control({ loaderEnumerations: null }).catch(() => undefined)
     await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
     engineExited = await engine.kill()
   }

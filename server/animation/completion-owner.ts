@@ -80,8 +80,8 @@ export function createCompletionOwner(deps: {
     return attempt
   }
 
-  function setExecution(attempt: AnimationAttemptRow, state: AnimationAttemptRow['execution']['state'], extra?: { engineJobId?: string }): void {
-    store.setAttemptExecution(attempt.id, { state, ...(extra?.engineJobId !== undefined ? { engineJobId: extra.engineJobId } : {}) })
+  function setExecution(attempt: AnimationAttemptRow, state: AnimationAttemptRow['execution']['state'], extra?: { engineJobId?: string; failureReason?: string }): void {
+    store.setAttemptExecution(attempt.id, { state, ...(extra?.engineJobId !== undefined ? { engineJobId: extra.engineJobId } : {}), ...(extra?.failureReason !== undefined ? { failureReason: extra.failureReason } : {}) })
     emit('animation.attempt.updated', { attemptId: attempt.id, documentId: attempt.documentId, execution: state })
   }
 
@@ -135,7 +135,11 @@ export function createCompletionOwner(deps: {
       return 'lost'
     }
     if (status.status === 'error') {
-      setExecution(attempt, 'failed')
+      // The durable failure detail (wave 1, the live review's #6): the
+      // engine's own history carries no structured reason for an execution
+      // error, so the named reason states exactly what was observed — never
+      // invented detail, never raw engine output.
+      setExecution(attempt, 'failed', { failureReason: 'The engine reported an execution error while rendering this attempt (the engine\'s history record holds the error status). A re-roll starts a fresh take.' })
       emit('animation.attempt.failed', { attemptId: attempt.id, documentId: attempt.documentId, reason: 'engine-error' })
       return 'error'
     }
@@ -154,7 +158,7 @@ export function createCompletionOwner(deps: {
     // done — THE LANDING PATH.
     const outputs = status.outputs ?? []
     if (outputs.length === 0) {
-      setExecution(attempt, 'failed')
+      setExecution(attempt, 'failed', { failureReason: 'The engine reported the render finished but listed no output artifacts — nothing could land. A re-roll starts a fresh take.' })
       emit('animation.attempt.failed', { attemptId: attempt.id, documentId: attempt.documentId, reason: 'engine-reported-done-without-outputs' })
       return 'error'
     }

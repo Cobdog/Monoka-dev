@@ -93,6 +93,14 @@ export function SequenceReview({ attempt, keyEntity, endKey, takes, windows, act
         )}
       </header>
       <p className="anim-review-meaning" data-anim-review-meaning>{status.meaning}</p>
+      {/* The durable failure reason (the live review's #6) — the tween
+          panel's contract: a FAILED attempt names its reason; a cancelled or
+          interrupted one never does. */}
+      {attempt.execution === 'failed' && attempt.failureReason !== undefined && (
+        <p className="anim-note anim-review-failure" role="alert" data-anim-review-failure-reason>
+          {attempt.failureReason}
+        </p>
+      )}
       {/* The frozen window (§8.1): the pair this render meant — the start is
           the attempt's target, the end the frozen draft's own pick. */}
       <p className="anim-note" data-anim-seq-review-window>
@@ -180,7 +188,7 @@ export function SequenceReview({ attempt, keyEntity, endKey, takes, windows, act
       {attempt.preparation.state === 'failed' && (
         <Refusal
           title="The proposed frame could not be prepared"
-          reason="The engine's record of this clip was unreadable past the bounded retries, so the proposed reference frame is not prepared. The clip itself is safe and landed — retrying preparation never re-renders."
+          reason={`The engine's record of this clip was unreadable past the bounded retries, so the proposed reference frame is not prepared. The clip itself is safe and landed — retrying preparation never re-renders.${attempt.preparation.error !== undefined ? ` Last error: ${attempt.preparation.error}` : ''}`}
           satisfy={{ label: 'Retry frame preparation', action: onRetryPreparation }}
         />
       )}

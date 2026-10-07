@@ -62,6 +62,11 @@
 //       row, no engine submission); a healthy submit's received graph
 //       carries the RESOLVED names (the profile enumerates DIFFERENT names
 //       than the pinned constants — resolution exercised at the wire)
+//   (l) wave 1 queue-then-fail (the review's #1/#6) — an offline submit
+//       persists (queue semantics), the engine returns with an enumeration
+//       lacking a slot, the SERVER restarts, and the fresh boot's sweep
+//       FAILS the deferred dispatch with the durable sanitized reason; the
+//       enumeration changes and the re-roll renders
 //
 // Run after `pnpm build` (the server + web dist boot from dist-server).
 // Scratch homes through the Wave 4 ledger; ports through the allocator.
@@ -1393,4 +1398,98 @@ test('(k) a dead model slot answers the named 400 with nothing persisted; the re
   const graph = record.prompt[2]
   assert.equal(Object.values(graph).find((node) => node.class_type === 'UNETLoader').inputs.unet_name, 'minimax_h3_ref2va_pruned_int8_convrot.safetensors', 'the RESOLVED unet (the FLAT name the profile enumerates — not the pinned H3/ssd constant)')
   assert.equal(Object.values(graph).find((node) => node.class_type === 'CLIPLoader').inputs.clip_name, 'qwen3vl_32b_int8_convrot.safetensors', 'the RESOLVED clip (the documented preference — not the pinned nvfp4 constant)')
+})
+
+// ---------------------------------------------------------------------------
+// (l) wave 1 queue-then-fail over HTTP — the deferred dispatch's durable
+//     named reason: submit while the engine is DOWN (the row persists),
+//     bring the engine back with an enumeration LACKING a slot, restart the
+//     SERVER (the boot reconcile is the sweep), and the attempt FAILS with
+//     the sanitized reason; the enumeration changes and the re-roll renders
+// ---------------------------------------------------------------------------
+
+test('(l) an offline submit fails on the fresh boot\'s sweep with the durable named reason; the re-roll renders after the enumeration changes', async () => {
+  const created = await apiB.post('/api/lan/animation/documents', { projectId, name: 'Lima', binding: makeBinding() })
+  assert.equal(created.status, 200)
+  const docL = created.body.document
+  const from = await makeSelectedKey(apiB, docL.id, docL.revision, 'l-from')
+  const to = await makeSelectedKey(apiB, docL.id, from.revision, 'l-to')
+  const span = await apiB.post('/api/lan/animation/spans', {
+    op: 'insert', documentId: docL.id, fromKeyId: from.keyId, toKeyId: to.keyId,
+    intent: { movement: 'she turns through the doorway', preservation: 'coat hem stays consistent' },
+    expectedRevision: to.revision,
+  })
+  assert.equal(span.status, 200, `the span inserts (${span.body.error ?? ''})`)
+  const stepOne = span.body.document.body.spans.find((entry) => entry.id === span.body.spanId).stepSlots[0].id
+  const draftBody = (idempotencyKey) => ({
+    documentId: docL.id,
+    tool: 'tween',
+    targetId: stepOne,
+    idempotencyKey,
+    draft: { tool: 'tween', targetStepSlotId: stepOne, movementStep: 'she turns through the doorway', overrides: { medium: 'clean line on white' } },
+  })
+
+  // The engine goes down; the submit is ACCEPTED (queue semantics) and the
+  // row stays reconciliation-pending.
+  engine.kill('SIGINT')
+  let exit = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve('timeout'), 10_000)
+    engine.once('exit', (code) => { clearTimeout(timer); resolve(code) })
+  })
+  assert.ok(exit !== 'timeout', 'the fake engine exited')
+  const offline = await apiB.post('/api/lan/animation/attempts', draftBody(`idem-l-1-${Date.now()}`))
+  assert.equal(offline.status, 200, `the offline submit is accepted (${JSON.stringify(offline.body)})`)
+  const pending = await apiB.get(`/api/lan/animation/attempt?id=${offline.body.attemptId}`)
+  assert.equal(pending.body.attempt.execution, 'reconciling', 'the offline dispatch stays pending')
+
+  // The engine returns enumerating NOTHING for the lora slot; the SERVER
+  // restarts on the same home and its boot reconcile resolves the deferred
+  // dispatch → the attempt FAILS with the durable named reason.
+  engine = spawn(process.execPath, [
+    path.join(REPO, 'e2e', 'mirror', 'fakeEngineServer.mjs'),
+    '--port', String(enginePort),
+    '--profile', path.join('e2e/mirror/profiles/animation-h3.json'),
+  ], { cwd: REPO, stdio: ['ignore', 'ignore', 'pipe'] })
+  engine.stderr.on('data', (chunk) => { process.stderr.write(`[fake-engine] ${chunk}`) })
+  await waitUntil(async () => {
+    try { return (await engineFetch('/system_stats')).ok } catch { return false }
+  }, 15_000, 'the fake engine restarting on its port')
+  await engineControl({ loaderEnumerations: { unet: ['minimax_h3_ref2va_pruned_int8_convrot.safetensors'], clip: ['qwen3vl_32b_int8_convrot.safetensors'], vae: ['minimax_h3_video_vae_fp16.safetensors'], lora: [] } })
+
+  serverB.child.kill('SIGKILL')
+  await new Promise((resolve) => serverB.child.once('exit', resolve))
+  const serverC = await bootServer(home, 'animation-routes C')
+  const apiC = client(serverC.port)
+  try {
+    let failedView = null
+    await waitUntil(async () => {
+      const response = await apiC.get(`/api/lan/animation/attempt?id=${offline.body.attemptId}`)
+      failedView = response.body.attempt
+      return response.status === 200 && failedView?.execution === 'failed'
+    }, 20_000, 'the fresh boot\'s sweep failing the deferred dispatch with the named reason')
+    assert.equal(failedView.candidate, null)
+    assert.match(failedView.failureReason, /adapterLora/, 'the durable reason names the slot')
+    assert.match(failedView.failureReason, /LoraLoaderModelOnly/, 'the durable reason names the node class')
+    assert.match(failedView.failureReason, /h3_tween_step12000\.safetensors/, 'the durable reason names the tried pinned adapter')
+    assert.match(failedView.failureReason, /enumerates/, 'the durable reason carries the enumeration excerpt')
+
+    // The enumeration changes (the knob restores the profile's servable
+    // names); the re-roll (a NEW key) resolves and RENDERS through the
+    // fresh server.
+    await engineControl({ loaderEnumerations: null })
+    const repair = await apiC.post('/api/lan/animation/attempts', draftBody(`idem-l-2-${Date.now()}`))
+    assert.equal(repair.status, 200, `the re-roll submits (${JSON.stringify(repair.body)})`)
+    await waitUntil(async () => {
+      const response = await apiC.get(`/api/lan/animation/attempt?id=${repair.body.attemptId}`)
+      return response.body.attempt?.execution === 'ready'
+    }, 30_000, 'the re-roll rendering after the enumeration changed')
+    const record = (await engineRecordsFor(repair.body.attemptId))[0]
+    assert.ok(record, 'the engine holds the re-rolled graph')
+    const graph = record.prompt[2]
+    assert.equal(Object.values(graph).find((node) => node.class_type === 'LoraLoaderModelOnly').inputs.lora_name, 'h3_tween_step12000.safetensors', 'the re-roll resolved the pinned adapter once the engine enumerates it')
+    assert.equal(Object.values(graph).find((node) => node.class_type === 'UNETLoader').inputs.unet_name, 'minimax_h3_ref2va_pruned_int8_convrot.safetensors', 'the re-roll resolved the FLAT unet')
+  } finally {
+    serverC.child.kill('SIGKILL')
+    await new Promise((resolve) => { const t = setTimeout(resolve, 5_000); serverC.child.once('exit', () => { clearTimeout(t); resolve() }) })
+  }
 })

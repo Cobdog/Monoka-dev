@@ -115,6 +115,17 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
         )}
       </header>
       <p className="anim-review-meaning" data-anim-review-meaning>{status.meaning}</p>
+      {/* The durable failure reason (the live review's #6): a FAILED attempt
+          shows the named, sanitized reason the failure site persisted — the
+          reason text itself names what to change (a model-slot refusal says
+          which slot and what the engine serves), and the re-roll beside it
+          re-resolves by construction. A cancelled or interrupted attempt
+          never renders a reason — its copy is the neutral stopped line. */}
+      {attempt.execution === 'failed' && attempt.failureReason !== undefined && (
+        <p className="anim-note anim-review-failure" role="alert" data-anim-review-failure-reason>
+          {attempt.failureReason}
+        </p>
+      )}
       <p className="anim-note" data-anim-review-span>Span: {span.intent.movement}</p>
       {candidate?.earlierRevision === true && (
         <p className="anim-note" role="status" data-anim-review-earlier>
@@ -203,11 +214,12 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
       )}
 
       {/* §11.4's preparation failure: the clip is PRESERVED, the explicit
-          retry re-prepares without re-rendering (F3). */}
+          retry re-prepares without re-rendering (F3). The durable last
+          error rides the refusal when the row carries one. */}
       {attempt.preparation.state === 'failed' && (
         <Refusal
           title="The proposed frame could not be prepared"
-          reason="The engine's record of this clip was unreadable past the bounded retries, so the proposed reference frame is not prepared. The clip itself is safe and landed — retrying preparation never re-renders."
+          reason={`The engine's record of this clip was unreadable past the bounded retries, so the proposed reference frame is not prepared. The clip itself is safe and landed — retrying preparation never re-renders.${attempt.preparation.error !== undefined ? ` Last error: ${attempt.preparation.error}` : ''}`}
           satisfy={{ label: 'Retry frame preparation', action: onRetryPreparation }}
         />
       )}
