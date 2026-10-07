@@ -27,7 +27,8 @@
  *                    "hideHistoryFor":"<promptId>"|null,
  *                    "videoOnly":true|false,
  *                    "underdeliverFrames":n,
- *                    "loaderEnumerations":{unet,clip,vae,lora}|null}
+ *                    "loaderEnumerations":{unet,clip,vae,lora}|null,
+ *                    "hangObjectInfo":true|false}
  *   GET  /__control — current state
  *
  * "loaderEnumerations" (wave 1) overrides the profile's loader combo lists
@@ -202,6 +203,12 @@ const state = {
   // { "loaderEnumerations": { unet, clip, vae, lora } | null }. null serves
   // the captured fixture as-is (the stock empty combos).
   loaderEnumerations: profile.loaderEnumerations ?? null,
+  // While true, every /object_info answer (full + targeted) is ACCEPTED and
+  // NEVER WRITTEN — the hung-enumeration shape (an engine whose object-info
+  // surface stalls). The studio's enumeration fetch must be time-bounded or
+  // its submit path hangs ahead of persistence (wave 1 fix round M-1's
+  // regression knob).
+  hangObjectInfo: false,
 }
 const control = (req, res, url) => {
   if (url.pathname === '/__control' && req.method === 'GET') {
@@ -400,9 +407,13 @@ async function handle(req, res) {
       })
     }
 
-    if (url.pathname === '/object_info') return json(res, 200, state.loaderEnumerations ? patchLoaderCombos(state.loaderEnumerations) : objectInfo)
+    if (url.pathname === '/object_info') {
+      if (state.hangObjectInfo) return true // accepted, never answered — the hung-enumeration shape
+      return json(res, 200, state.loaderEnumerations ? patchLoaderCombos(state.loaderEnumerations) : objectInfo)
+    }
     const targeted = /^\/object_info\/(.+)$/.exec(url.pathname)
     if (targeted) {
+      if (state.hangObjectInfo) return true
       const className = decodeURIComponent(targeted[1])
       const source = state.loaderEnumerations ? patchLoaderCombos(state.loaderEnumerations) : objectInfo
       return json(res, 200, className in source ? { [className]: source[className] } : {})

@@ -356,17 +356,27 @@ export function createCompletionOwner(deps: {
             setExecution(fresh, 'reconciling')
             continue
           }
-          // Reachable engine, empty queue, no history trace: the dispatch
-          // never landed engine-side — PROOF, the §11.4 epistemics. Wave
-          // 1's queue semantics: the user's submission dispatches NOW from
-          // its FROZEN snapshot (the redispatch is not a resubmit — no
-          // engine job ever existed, and the graph is the frozen config,
-          // not a re-derivation). A dead model slot fails the attempt with
-          // the NAMED reason there; an uncertain redispatch leaves the row
-          // reconciliation-pending for the next sweep. Without the
-          // redispatch dep the pre-wave-1 verdict stands: interrupted +
-          // explicit retry only.
-          if (redispatch) {
+          // Reachable engine, empty queue, no history trace. That evidence
+          // proves "no trace exists NOW" — NOT "no engine job ever
+          // existed": after an engine restart, an empty history is equally
+          // consistent with ran-and-wiped, and this sweep cannot tell the
+          // worlds apart. The DELIVERY VERDICT the dispatch path persisted
+          // at failure time is the discriminator (fix round I-1):
+          //   - 'never-delivered' — the /prompt provably never left the
+          //     studio (the failure preceded the send: an offline submit).
+          //     Re-driving the persisted intent repeats no GPU work, so the
+          //     queue semantics apply: REDISPATCH from the frozen snapshot
+          //     (the graph is the frozen config, not a re-derivation; a
+          //     dead model slot fails the attempt with the NAMED reason
+          //     there; an uncertain redispatch leaves the row pending).
+          //   - 'uncertain' or absent — the send happened and its outcome
+          //     is the engine's to know: §11.4's "engine restarted;
+          //     job/output confirmed lost" world. Interrupted + explicit
+          //     retry only (a user action creates a new linked attempt) —
+          //     NEVER an automatic repeat of work that may already have
+          //     run. Also the pre-verdict default (rows from before the
+          //     verdict existed), which is the pre-wave-1 verdict exactly.
+          if (redispatch && fresh.execution.dispatchVerdict === 'never-delivered') {
             const outcome = await redispatch(fresh.id)
             if (outcome !== null) continue // submitted, failed (named), or left pending
           }

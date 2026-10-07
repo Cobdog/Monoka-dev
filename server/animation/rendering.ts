@@ -879,7 +879,9 @@ export function createAnimationRenderingService(deps: {
    *  document settings > operating point — today's dispatch-time
    *  resolveBuildSettings read the LIVE document, so a document that moved
    *  between submit and dispatch/recovery changed the graph), the
-   *  sampler/scheduler/shift/fps values in force, and the RESOLVED model
+   *  sampler/scheduler/shift/fps values in force, the graph-level extras
+   *  (length, refImageSize, denoise, loraStrength — fix round M-6), and
+   *  the RESOLVED model
    *  ids whenever the submit-time preflight resolved them (an engine
    *  unreachable at submit defers that one piece to dispatch — the only
    *  thing the enumeration gates). The input hash stays over the RECEIVED
@@ -895,6 +897,7 @@ export function createAnimationRenderingService(deps: {
     const steps = typeof overrides.steps === 'number' ? overrides.steps : body?.settings.steps ?? ANIMATION_OPERATING_POINT.stepsDefault
     const asString = (value: unknown, fallback: string): string => (typeof value === 'string' && value.length > 0 ? value : fallback)
     const asInt = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback)
+    const asFloat = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback)
     return {
       ...input.snapshot,
       settings: {
@@ -908,6 +911,15 @@ export function createAnimationRenderingService(deps: {
         shiftVideo: asInt(overrides.shiftVideo, ANIMATION_OPERATING_POINT.shiftVideo),
         shiftAudio: asInt(overrides.shiftAudio, ANIMATION_OPERATING_POINT.shiftAudio),
         fps: asInt(overrides.fps, ANIMATION_OPERATING_POINT.fps),
+        // The graph-level extras the live review's #2 named ("the graph has
+        // additional defaults" — fix round M-6): clip length, reference
+        // sizing, denoise, and the adapter strength freeze with everything
+        // else; no execution-relevant value stays a code constant the
+        // snapshot does not carry.
+        length: asInt(overrides.length, ANIMATION_OPERATING_POINT.length),
+        refImageSize: asString(overrides.refImageSize, ANIMATION_OPERATING_POINT.refImageSize),
+        denoise: asFloat(overrides.denoise, ANIMATION_OPERATING_POINT.denoise),
+        loraStrength: asFloat(overrides.loraStrength, ANIMATION_OPERATING_POINT.loraStrength),
         ...(models !== null ? models : {}),
       },
     }
@@ -937,10 +949,23 @@ export function createAnimationRenderingService(deps: {
    *  NAMED reason), build the graph EXCLUSIVELY from the frozen config,
    *  and submit with the attempt id stamped in both carriers. Outcomes:
    *  'submitted' (queued + observed), 'failed' (a definitive NAMED refusal
-   *  — model resolution or engine validation), 'uncertain' (the dispatch
-   *  may or may not have reached the engine — reconciling, preserved for
-   *  the sweep, §11.4). */
+   *  — model resolution, engine validation, or an unreadable reference),
+   *  'uncertain' (the /prompt send happened and its outcome is unknown).
+   *
+   *  THE DELIVERY VERDICT (fix round I-1): a delivery failure is
+   *  classified AT THE SEND BOUNDARY and persisted. Everything before
+   *  engine.submitGraph — reference uploads, the deferred resolution —
+   *  never sent the /prompt, so no engine GPU work for THIS attempt can
+   *  have run: those failures persist 'never-delivered' and the boot
+   *  sweep's redispatch arm may safely re-drive them (the offline-submit
+   *  queue semantics). Anything at or past the send persists 'uncertain'
+   *  — the §11.4 ran-and-wiped world, where an empty history proves
+   *  nothing and the sweep returns the row to interrupted + explicit
+   *  retry. The dispatch path is the ONLY place that knows which side of
+   *  the boundary a failure fell on, so the verdict is written here,
+   *  durably, at the moment of failure. */
   async function dispatchAttempt(attemptId: string, snapshot: FrozenAttemptSnapshot, documentId: string): Promise<'submitted' | 'failed' | 'uncertain'> {
+    let sent = false
     try {
       // The reference uploads come BEFORE the deferred model resolution: a
       // hung engine (connections accepted, never answered) then stalls
@@ -953,7 +978,7 @@ export function createAnimationRenderingService(deps: {
       // the named refusal lands.
       for (const reference of snapshot.references) {
         const bytes = blobs.readBlob((reference.assetReference as { relPath: string }).relPath)
-        if (!bytes) throw new AnimationRuleError(`The ${String(reference.role)} reference asset is no longer readable.`, 400)
+        if (!bytes) throw new AnimationRuleError(`The ${String(reference.role)} reference asset (${(reference.assetReference as { relPath: string }).relPath}) is no longer readable from the store — the frozen reference cannot be uploaded. Re-import the reference asset and re-roll.`, 400)
         await engine.uploadReference(reference.assetReference.assetId, bytes)
       }
       const models = modelsFromSnapshotSettings(snapshot.settings) ?? resolveAnimationModels({
@@ -962,6 +987,7 @@ export function createAnimationRenderingService(deps: {
         overrides: modelOverrides(snapshot.settings),
       })
       const graph: AnimationGraph = buildAnimationGraph(snapshot, frozenBuildSettings(snapshot, models))
+      sent = true // past this point the /prompt has left (or failed leaving) — the outcome is the engine's to know
       const { engineJobId } = await engine.submitGraph(graph, attemptId)
       store.setAttemptExecution(attemptId, { state: 'queued', engineJobId })
       owner.observe(attemptId)
@@ -984,10 +1010,24 @@ export function createAnimationRenderingService(deps: {
         emit('animation.attempt.failed', { attemptId, documentId, reason: 'engine-validation', detail: failure.reason })
         return 'failed'
       }
-      // Uncertain dispatch (§11.4): the request may or may not have
-      // reached the engine — reconciliation pending, the attempt preserved.
-      store.setAttemptExecution(attemptId, { state: 'reconciling' })
-      emit('animation.attempt.uncertain', { attemptId, documentId, error: failure instanceof Error ? failure.message : String(failure), at: now() })
+      if (failure instanceof AnimationRuleError) {
+        // A rule-class failure at dispatch (the unreadable-reference shape)
+        // is TERMINAL, not uncertain (fix round M-2): the throw precedes
+        // the send, so nothing is in flight — marking it reconciling would
+        // make every later boot re-attempt a row that can never dispatch,
+        // forever. Failed with the named reason; the re-roll re-freezes
+        // fresh references.
+        store.setAttemptExecution(attemptId, { state: 'failed', failureReason: failure.message })
+        emit('animation.attempt.failed', { attemptId, documentId, reason: 'dispatch-input', detail: failure.message })
+        return 'failed'
+      }
+      // A delivery failure, classified at the send boundary (I-1): the
+      // verdict persists WITH the reconciling state, and the boot sweep's
+      // redispatch arm reads it. Reconciliation pending, the attempt
+      // preserved (§11.4).
+      const verdict = sent ? 'uncertain' : 'never-delivered'
+      store.setAttemptExecution(attemptId, { state: 'reconciling', dispatchVerdict: verdict })
+      emit('animation.attempt.uncertain', { attemptId, documentId, verdict, error: failure instanceof Error ? failure.message : String(failure), at: now() })
       return 'uncertain'
     }
   }
@@ -1061,13 +1101,17 @@ export function createAnimationRenderingService(deps: {
     },
 
     async redispatchAttempt(attemptId) {
-      // The sweep's queue-semantic redispatch: only a row that is in
-      // flight, holds no engine job, and was PROVEN never-landed by the
-      // caller (reachable engine, empty queue, no history trace) reaches
-      // here — the dispatch happens at most once per classification, and
-      // the graph comes from the FROZEN snapshot (Fix B).
+      // The sweep's queue-semantic redispatch, narrowed to the PROVABLY
+      // never-delivered (fix round I-1): only a row that is in flight,
+      // holds no engine job, AND carries the dispatch path's own
+      // 'never-delivered' verdict — the /prompt provably never left the
+      // studio, so re-driving the persisted intent repeats no engine work —
+      // reaches here. Uncertain-verdict and verdict-less rows (the
+      // §11.4 ran-and-wiped world, pre-verdict rows) answer null and the
+      // sweep marks them interrupted + explicit retry.
       const attempt = store.getAttempt(attemptId)
       if (!attempt || attempt.engineJobId !== null) return null
+      if (attempt.execution.dispatchVerdict !== 'never-delivered') return null
       if (!['queued', 'reconciling', 'rendering', 'preparing'].includes(attempt.execution.state)) return null
       return dispatchAttempt(attempt.id, attempt.snapshot, attempt.documentId)
     },

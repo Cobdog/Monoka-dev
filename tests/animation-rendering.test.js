@@ -47,9 +47,10 @@
 //       Important-1/2/3): reattach-while-running (a restart mid-render
 //       re-attaches observation and lands once); confirmed-lost with a KNOWN
 //       job id (a wiped engine ⇒ interrupted, prior work preserved);
-//       dispatch-never-landed (lost ack + empty engine ⇒ wave 1's queue
-//       semantics: the PROVEN-never-landed dispatch REDISPATCHES from the
-//       frozen snapshot exactly once and lands); lost
+//       the UNCERTAIN world (fix round I-1: a dispatch that genuinely
+//       landed, then lost ack + wiped engine ⇒ interrupted + explicit
+//       retry — an empty history proves nothing and GPU work is never
+//       automatically repeated); lost
 //       ack while the job still RENDERS ⇒ reconcile stays pending — the
 //       queue is non-empty and bare ids cannot correlate — and the NEXT
 //       sweep lands the completed record without any resubmission; and the
@@ -882,24 +883,30 @@ test('(g2) reattach-while-running lands; wiped engines interrupt; a lost-ack ren
   assert.equal(lostRow.result, null)
   assert.equal(anim.getDocument(docG2.id).body.keys.length, candidatesBefore + 1, 'prior landed work is preserved (only the reattached leg A candidate was added)')
 
-  // ---- Leg C — dispatch-never-landed: the acknowledgment was lost AND the
-  // engine (reachable, quiet) holds no trace. Wave 1's queue semantics: the
-  // PROVEN-never-landed dispatch REDISPATCHES from the frozen snapshot
-  // (this is not a resubmit — no engine job ever existed for the attempt;
-  // the pre-wave-1 interrupted verdict is the redispatch-less fallback),
-  // exactly once, and lands.
-  const neverLanded = await submitHero(docG2, uuid(), 'idem-g2-never')
+  // ---- Leg C — the UNCERTAIN world (fix round I-1's ruling): the dispatch
+  // genuinely LANDED (submitted against the live engine), the render may
+  // even have run — then the acknowledgment is lost (the row's job id
+  // nulled) and the engine restarts quiet (the wipe: killed jobs leave no
+  // history record). An empty history is equally consistent with
+  // ran-and-wiped, so "no trace NOW" proves nothing: the row carries no
+  // never-delivered verdict (its dispatch SUCCEEDED) and the sweep must
+  // answer interrupted + explicit retry — NEVER an automatic repeat of
+  // work that may already have spent engine time (§11.4's own table row).
+  const uncertainDispatch = await submitHero(docG2, uuid(), 'idem-g2-never')
   owner.stopObserving()
   await sleep(250)
-  db.prepare('UPDATE animation_attempt SET engine_job_id = NULL WHERE id = ?').run(neverLanded.attemptId)
+  db.prepare('UPDATE animation_attempt SET engine_job_id = NULL WHERE id = ?').run(uncertainDispatch.attemptId)
   await engineControl({ wipe: true }) // the engine restarts QUIET: the dispatched job dies unrecorded
   const countBeforeC = await engineRecordCount()
   await owner.reconcile()
-  const neverRow = await waitAttemptState(neverLanded.attemptId, ['ready'], 'the never-landed dispatch redispatching from the frozen snapshot')
-  assert.ok(neverRow.result, 'the redispatched render landed its candidate')
-  assert.ok(neverRow.engineJobId, 'the redispatch recorded its engine job id')
-  assert.equal(await engineRecordCount(), countBeforeC + 1, 'exactly ONE redispatched engine job — never a second')
-  assert.equal(Object.values(await engineHistoryAll()).filter((record) => record.prompt?.[3]?.attempt_id === neverLanded.attemptId).length, 1, 'exactly one record carries the attempt id after the redispatch')
+  const uncertainRow = await waitAttemptState(uncertainDispatch.attemptId, ['interrupted'], 'the sent-and-unacknowledged dispatch resolving interrupted')
+  assert.equal(uncertainRow.result, null)
+  assert.equal(uncertainRow.engineJobId, null)
+  assert.equal(uncertainRow.execution.dispatchVerdict, undefined, 'a dispatch that SUCCEEDED carries no delivery verdict — the verdict is a failure-time classification')
+  assert.equal(await engineRecordCount(), countBeforeC, 'the ambiguous world was never retried as new GPU work')
+  // The world-A contrast lives in (n)/(o): a dispatch that provably never
+  // left the studio (offline submit) carries 'never-delivered' and the
+  // sweep REDISPATCHES it from the frozen snapshot.
 
   // ---- Leg D — the Important-1 core: the acknowledgment was lost while the
   // job still RENDERS. The queue is non-empty and bare ids cannot correlate,
@@ -1090,6 +1097,20 @@ test('(i) every builder emission validates CLEAN against the REAL captured schem
   const lowSnap = { ...snapshots.hero, settings: { ...snapshots.hero.settings, steps: 5 } }
   const low = buildHeroGraph(lowSnap, resolvedSettings('hero'))
   assert.equal(Object.values(low).find((node) => node.class_type === 'BasicScheduler').inputs.steps, 30, 'steps clamp to the floor')
+
+  // The frozen extras (fix round M-6): length, refImageSize, denoise, and
+  // the adapter strength ride the frozen snapshot's settings — no builder
+  // holds them as code constants.
+  const extrasSnap = {
+    ...snapshots.tween,
+    settings: { ...snapshots.tween.settings, length: 39, refImageSize: 'match', denoise: 0.72, loraStrength: 0.85 },
+  }
+  const extrasGraph = buildTweenGraph(extrasSnap, resolvedSettings('tween'))
+  const extrasConditioning = Object.values(extrasGraph).find((node) => node.class_type === 'MiniMaxH3ReferenceToVideo')
+  assert.equal(extrasConditioning.inputs.length, 39, 'the frozen clip length rides the conditioning node')
+  assert.equal(extrasConditioning.inputs.ref_image_size, 'match', 'the frozen reference sizing rides the conditioning node')
+  assert.equal(Object.values(extrasGraph).find((node) => node.class_type === 'BasicScheduler').inputs.denoise, 0.72, 'the frozen denoise rides the scheduler')
+  assert.equal(Object.values(extrasGraph).find((node) => node.class_type === 'LoraLoaderModelOnly').inputs.strength_model, 0.85, 'the frozen adapter strength rides the LoRA loader')
 
   // And the graph the DIST build actually submitted (read back from the
   // fake engine's history in (a)) validates clean too — same gate, same
@@ -1457,9 +1478,9 @@ test('(o) the dispatched graph carries the FROZEN config — document moves betw
   assert.equal(fresh.clip, 'qwen3vl_32b_int8_convrot.safetensors', 'the RESOLVED clip (the documented preference)')
   const frozen = anim.getAttempt(submitted.attemptId).snapshot.settings
   assert.deepEqual(
-    { width: frozen.width, height: frozen.height, steps: frozen.steps, sampler: frozen.sampler, scheduler: frozen.scheduler, shiftVideo: frozen.shiftVideo, shiftAudio: frozen.shiftAudio, fps: frozen.fps, bindingVersion: frozen.bindingVersion },
-    { width: 1344, height: 768, steps: 30, sampler: 'euler', scheduler: 'simple', shiftVideo: 12, shiftAudio: 3, fps: 24, bindingVersion: doc.body.activeBindingVersion },
-    'the frozen snapshot carries the COMPLETE resolved execution config',
+    { width: frozen.width, height: frozen.height, steps: frozen.steps, sampler: frozen.sampler, scheduler: frozen.scheduler, shiftVideo: frozen.shiftVideo, shiftAudio: frozen.shiftAudio, fps: frozen.fps, length: frozen.length, refImageSize: frozen.refImageSize, denoise: frozen.denoise, loraStrength: frozen.loraStrength, bindingVersion: frozen.bindingVersion },
+    { width: 1344, height: 768, steps: 30, sampler: 'euler', scheduler: 'simple', shiftVideo: 12, shiftAudio: 3, fps: 24, length: 22, refImageSize: 'max', denoise: 1, loraStrength: 1, bindingVersion: doc.body.activeBindingVersion },
+    'the frozen snapshot carries the COMPLETE resolved execution config (M-6 extras included)',
   )
 
   // ---- the restart leg: the engine is DOWN at submit (queue semantics —
@@ -1523,11 +1544,15 @@ test('(n) an offline submit fails at dispatch with the durable named reason when
   const stepId = row.body.spans[0].stepSlots[0].id
 
   // The engine goes DOWN; the submit is accepted anyway (queue semantics —
-  // submits never block on engine reachability) and stays pending.
+  // submits never block on engine reachability) and stays pending, carrying
+  // the dispatch path's own NEVER-DELIVERED verdict (the failure preceded
+  // the /prompt send — the request provably never left the studio).
   await killEngine()
   const offline = await service.submit({ documentId: doc.id, tool: 'tween', targetId: stepId, snapshot: makeTweenSnapshot(stepId, row.revision) }, 'idem-n-1')
   assert.equal(offline.created, true)
-  assert.equal(anim.getAttempt(offline.attemptId).execution.state, 'reconciling', 'the offline dispatch stays pending')
+  const offlineRow = anim.getAttempt(offline.attemptId)
+  assert.equal(offlineRow.execution.state, 'reconciling', 'the offline dispatch stays pending')
+  assert.equal(offlineRow.execution.dispatchVerdict, 'never-delivered', 'the offline dispatch is classified never-delivered — the redispatch gate reads exactly this')
 
   // The engine returns enumerating NOTHING for the clip slot: the deferred
   // dispatch resolves → the attempt FAILS with the durable named reason.
@@ -1557,4 +1582,67 @@ test('(n) an offline submit fails at dispatch with the durable named reason when
   } finally {
     await engineControl({ loaderEnumerations: null })
   }
+})
+
+// ---------------------------------------------------------------------------
+// (p) fix round M-1 + M-2 — the hung-enumeration regression (the submit
+//     path's 3 s bound; the attempt persists FIRST) and the terminal settle
+//     of an unreadable reference at redispatch (no infinite boot retry)
+// ---------------------------------------------------------------------------
+
+test('(p) a hung /object_info bounds the preflight — the submit returns and the row persists; an unreadable reference at redispatch settles TERMINALLY', async () => {
+  const doc = anim.createDocument({ projectId, name: 'Papa', binding: makeBinding() })
+
+  // ---- M-1: the hung-enumeration shape. The engine accepts /object_info
+  // connections and never answers. Without the fetch bound, the preflight
+  // would hang the submit path AHEAD of persistence (the pre-wave-1 stub
+  // repro); with it, the preflight defers after ~3 s, the attempt persists,
+  // and the deferred dispatch's own resolution times out the same way —
+  // never-delivered, pending, no GPU spent.
+  await engineControl({ hangObjectInfo: true })
+  let hung = null
+  try {
+    const startedAt = Date.now()
+    hung = await submitHero(doc, uuid(), 'idem-p-hang')
+    const elapsed = Date.now() - startedAt
+    assert.equal(hung.created, true, 'the submit RETURNS — the enumeration fetch is time-bounded')
+    assert.ok(elapsed < 12_000, `the two bounded waits (preflight + deferred resolution) resolved in ${elapsed} ms, not forever`)
+    const hungRow = anim.getAttempt(hung.attemptId)
+    assert.equal(hungRow.engineJobId, null, 'nothing reached the engine')
+    assert.equal(hungRow.execution.state, 'reconciling', 'the dispatch stays pending')
+    assert.equal(hungRow.execution.dispatchVerdict, 'never-delivered', 'the failure preceded the send — classified at the boundary')
+  } finally {
+    await engineControl({ hangObjectInfo: false })
+  }
+  await service.cancel(hung.attemptId) // hygiene: terminal, so later sweeps leave it alone
+
+  // ---- M-2: a reference blob that stops being readable between the
+  // offline submit and the redispatch settles TERMINALLY — failed with the
+  // named reason — instead of reconciling forever across boots.
+  const keyFrom = uuid()
+  const keyTo = uuid()
+  let row = anim.addKeyCandidate(doc.id, keyFrom, { id: uuid(), assetReference: registerRefImage('p-from'), origin: 'import', provenance: { assetId: 'stable-p1' }, poseDescription: null, facing: null }, anim.getDocument(doc.id).revision)
+  row = anim.addKeyCandidate(doc.id, keyTo, { id: uuid(), assetReference: registerRefImage('p-to'), origin: 'import', provenance: { assetId: 'stable-p2' }, poseDescription: null, facing: null }, row.revision)
+  row = anim.insertSpan(doc.id, { fromKeyId: keyFrom, toKeyId: keyTo, intent: { movement: 'the coat swings', preservation: 'silhouette intact' } }, row.revision)
+  const stepId = row.body.spans[0].stepSlots[0].id
+  const snapshot = makeTweenSnapshot(stepId, row.revision)
+  await killEngine()
+  const offline = await service.submit({ documentId: doc.id, tool: 'tween', targetId: stepId, snapshot }, 'idem-p-unreadable')
+  assert.equal(anim.getAttempt(offline.attemptId).execution.dispatchVerdict, 'never-delivered')
+
+  // The near reference's blob file leaves the store (the imported bytes are
+  // gone — the trash-backed rm wrapper makes this recoverable).
+  const nearRelPath = snapshot.references[0].assetReference.relPath
+  fs.rmSync(path.join(home, nearRelPath))
+  assert.equal(sink.readBlob(nearRelPath), null, 'the reference blob is no longer readable')
+
+  await restartEngine()
+  await owner.reconcile()
+  const settled = await waitAttemptState(offline.attemptId, ['failed'], 'the unreadable-reference redispatch settling terminally')
+  assert.equal(settled.engineJobId, null, 'no engine work was spent')
+  assert.match(settled.execution.failureReason, /no longer readable/, 'the durable reason names the reference problem')
+  assert.match(settled.execution.failureReason, /rolling-near/, 'the durable reason names the slot that could not upload')
+  // Terminal: a second sweep does not resurrect it.
+  await owner.reconcile()
+  assert.equal(anim.getAttempt(offline.attemptId).execution.state, 'failed', 'a terminal dispatch-input failure stays settled — no infinite boot retry')
 })

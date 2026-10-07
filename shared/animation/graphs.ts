@@ -134,6 +134,25 @@ function positiveInt(value: unknown, fallback: number): number {
   return value
 }
 
+/** A finite positive float (the frozen config's denoise / LoRA-strength
+ *  overrides) — the operating point stands in for anything malformed. */
+function positiveFloat(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+/** The frozen conditioning extras (fix round M-6 — the live review's #2
+ *  "the graph has additional defaults"): clip length and the adapters'
+ *  reference-image sizing ride the frozen snapshot's settings with the
+ *  operating point as the pre-freeze fallback, exactly like the sampler
+ *  values. No builder holds these as constants anymore. */
+function conditioningExtrasOf(snapshot: FrozenAttemptSnapshot): { length: number; refImageSize: string } {
+  const settings = isRecord(snapshot.settings) ? snapshot.settings : {}
+  return {
+    length: positiveInt(settings.length, ANIMATION_OPERATING_POINT.length),
+    refImageSize: stringIn(settings.refImageSize, ANIMATION_OPERATING_POINT.refImageSize),
+  }
+}
+
 function nonNegativeInt(value: unknown, fallback: number): number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return fallback
   return value
@@ -221,12 +240,15 @@ function buildSkeleton(input: SkeletonInputs): AnimationGraph {
   // complete resolved config) win; the operating point is the fallback for
   // pre-freeze shapes. Same values by construction unless a snapshot froze
   // an override — building exclusively from the frozen config is what makes
-  // replay independent of mutable state.
+  // replay independent of mutable state. The denoise + LoRA-strength
+  // extras (fix round M-6) ride the same seam.
   const sampler = stringIn(settings.sampler, ANIMATION_OPERATING_POINT.sampler)
   const scheduler = stringIn(settings.scheduler, ANIMATION_OPERATING_POINT.scheduler)
   const shiftVideo = nonNegativeInt(settings.shiftVideo, ANIMATION_OPERATING_POINT.shiftVideo)
   const shiftAudio = nonNegativeInt(settings.shiftAudio, ANIMATION_OPERATING_POINT.shiftAudio)
   const fps = positiveInt(settings.fps, ANIMATION_OPERATING_POINT.fps)
+  const denoise = positiveFloat(settings.denoise, ANIMATION_OPERATING_POINT.denoise)
+  const loraStrength = positiveFloat(settings.loraStrength, ANIMATION_OPERATING_POINT.loraStrength)
 
   const graph: AnimationGraph = {
     '1': { class_type: 'UNETLoader', inputs: { unet_name: input.build.baseModel, weight_dtype: 'default' } },
@@ -234,7 +256,7 @@ function buildSkeleton(input: SkeletonInputs): AnimationGraph {
     '3': { class_type: 'VAELoader', inputs: { vae_name: input.build.videoVae } },
     // The per-tool keyframe adapter at trained strength — model-only (the
     // adapters are LoRAs over the DiT, never over the text encoder).
-    '5': { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: input.build.adapterLora, strength_model: ANIMATION_OPERATING_POINT.loraStrength } },
+    '5': { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: input.build.adapterLora, strength_model: loraStrength } },
     '6': { class_type: 'MiniMaxH3SigmaShift', inputs: { model: ['5', 0], shift_video: shiftVideo, shift_audio: shiftAudio } },
   }
   for (const reference of input.referenceLinks) reference.node(graph)
@@ -247,7 +269,7 @@ function buildSkeleton(input: SkeletonInputs): AnimationGraph {
   graph['13'] = { class_type: 'KSamplerSelect', inputs: { sampler_name: sampler } }
   graph['14'] = {
     class_type: 'BasicScheduler',
-    inputs: { model: ['6', 0], scheduler, steps, denoise: ANIMATION_OPERATING_POINT.denoise },
+    inputs: { model: ['6', 0], scheduler, steps, denoise },
   }
   graph['15'] = {
     class_type: 'SamplerCustomAdvanced',
@@ -285,6 +307,7 @@ export function buildHeroGraph(snapshot: FrozenAttemptSnapshot, settings: GraphB
   if (snapshot.tool !== 'hero') throw new Error(`buildHeroGraph compiles hero attempts — this snapshot's tool is "${snapshot.tool}".`)
   const [currentKey] = referencesFor(snapshot, ['current-key'])
   const { width, height } = dimensionsOf(snapshot, settings)
+  const extras = conditioningExtrasOf(snapshot)
   return buildSkeleton({
     tool: 'hero',
     settings: snapshot.settings,
@@ -293,7 +316,7 @@ export function buildHeroGraph(snapshot: FrozenAttemptSnapshot, settings: GraphB
     attachConditioning: (graph, id) => {
       graph[id] = {
         class_type: 'MiniMaxH3ImageToVideo',
-        inputs: { clip: ['2', 0], vae: ['3', 0], prompt: snapshot.caption, width, height, length: ANIMATION_OPERATING_POINT.length, first_frame: ['30', 0] },
+        inputs: { clip: ['2', 0], vae: ['3', 0], prompt: snapshot.caption, width, height, length: extras.length, first_frame: ['30', 0] },
       }
     },
   })
@@ -306,6 +329,7 @@ export function buildTweenGraph(snapshot: FrozenAttemptSnapshot, settings: Graph
   if (snapshot.tool !== 'tween') throw new Error(`buildTweenGraph compiles tween attempts — this snapshot's tool is "${snapshot.tool}".`)
   const [rollingNear, fixedFar] = referencesFor(snapshot, ['rolling-near', 'fixed-far'])
   const { width, height } = dimensionsOf(snapshot, settings)
+  const extras = conditioningExtrasOf(snapshot)
   return buildSkeleton({
     tool: 'tween',
     settings: snapshot.settings,
@@ -323,8 +347,8 @@ export function buildTweenGraph(snapshot: FrozenAttemptSnapshot, settings: Graph
           prompt: snapshot.caption,
           width,
           height,
-          length: ANIMATION_OPERATING_POINT.length,
-          ref_image_size: ANIMATION_OPERATING_POINT.refImageSize,
+          length: extras.length,
+          ref_image_size: extras.refImageSize,
           'ref_images.ref_image_0': ['30', 0],
           'ref_images.ref_image_1': ['31', 0],
         },
@@ -340,6 +364,7 @@ export function buildSequenceGraph(snapshot: FrozenAttemptSnapshot, settings: Gr
   if (snapshot.tool !== 'sequence') throw new Error(`buildSequenceGraph compiles sequence attempts — this snapshot's tool is "${snapshot.tool}".`)
   const [windowStart, windowEnd] = referencesFor(snapshot, ['window-start', 'window-end'])
   const { width, height } = dimensionsOf(snapshot, settings)
+  const extras = conditioningExtrasOf(snapshot)
   return buildSkeleton({
     tool: 'sequence',
     settings: snapshot.settings,
@@ -357,8 +382,8 @@ export function buildSequenceGraph(snapshot: FrozenAttemptSnapshot, settings: Gr
           prompt: snapshot.caption,
           width,
           height,
-          length: ANIMATION_OPERATING_POINT.length,
-          ref_image_size: ANIMATION_OPERATING_POINT.refImageSize,
+          length: extras.length,
+          ref_image_size: extras.refImageSize,
           'ref_images.ref_image_0': ['30', 0],
           'ref_images.ref_image_1': ['31', 0],
         },

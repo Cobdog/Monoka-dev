@@ -81,7 +81,7 @@ export type AnimationAttemptRow = {
   inputHash: string
   snapshot: FrozenAttemptSnapshot
   engineJobId: string | null
-  execution: { state: AttemptExecutionState; progress?: { value: number; max: number }; failureReason?: string }
+  execution: { state: AttemptExecutionState; progress?: { value: number; max: number }; failureReason?: string; dispatchVerdict?: 'never-delivered' | 'uncertain' }
   preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number; error?: string }
   /** `candidate.id` is the MINTED document candidate id — the id inside the
    *  document body's key slot (hero landings); null when the tool mints
@@ -126,6 +126,13 @@ export class AnimationRuleError extends Error {
 }
 
 const EXECUTION_STATES: ReadonlySet<string> = new Set(['queued', 'rendering', 'preparing', 'ready', 'failed', 'cancelled', 'interrupted', 'reconciling'])
+/** The delivery verdict a dispatch failure persists (wave 1 fix round, the
+ *  review's I-1): 'never-delivered' — the failure preceded the /prompt send
+ *  (the engine was unreachable at the upload/enumeration stage, the request
+ *  provably never left the studio); 'uncertain' — the send happened and the
+ *  outcome is unknown (the §11.4 ran-and-wiped world). The boot sweep's
+ *  redispatch arm gates on never-delivered ONLY. */
+const DISPATCH_VERDICTS: ReadonlySet<string> = new Set(['never-delivered', 'uncertain'])
 const PREPARATION_STATES: ReadonlySet<string> = new Set(['pending', 'proposed', 'failed', 'done'])
 const ANIMATION_TOOLS: ReadonlySet<string> = new Set(['hero', 'tween', 'sequence'])
 /** Execution states whose engine-side truth is not settled — the recovery
@@ -981,7 +988,7 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       return { attempt: hydrateAttempt(statements.attempt.get(attemptIdValue) as Record<string, unknown>) }
     }),
 
-    setAttemptExecution: (attemptId: string, execution: { state: AttemptExecutionState; engineJobId?: string; progress?: { value: number; max: number }; failureReason?: string }) => {
+    setAttemptExecution: (attemptId: string, execution: { state: AttemptExecutionState; engineJobId?: string; progress?: { value: number; max: number }; failureReason?: string; dispatchVerdict?: 'never-delivered' | 'uncertain' }) => {
       const row = statements.attempt.get(attemptId ?? '') as Record<string, unknown> | undefined
       if (!row) throw new AnimationRuleError(`No attempt with id ${attemptId}.`, 404)
       if (!EXECUTION_STATES.has(execution?.state)) throw new AnimationRuleError(`Unknown execution state ${String(execution?.state)}.`, 400)
@@ -999,11 +1006,16 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       if (execution.failureReason !== undefined && typeof execution.failureReason !== 'string') {
         throw new AnimationRuleError('failureReason must be a string.', 400)
       }
+      // The delivery verdict (fix round I-1): a closed two-member vocabulary.
+      if (execution.dispatchVerdict !== undefined && !DISPATCH_VERDICTS.has(execution.dispatchVerdict)) {
+        throw new AnimationRuleError('dispatchVerdict must be "never-delivered" or "uncertain".', 400)
+      }
       const current = parseJson<AnimationAttemptRow['execution']>(row.execution_json, { state: 'queued' as const })
       const next: AnimationAttemptRow['execution'] = { state: execution.state }
       if (execution.progress !== undefined) next.progress = execution.progress
       else if (current.progress !== undefined) next.progress = current.progress
       if (execution.failureReason !== undefined) next.failureReason = execution.failureReason.slice(0, 2000)
+      if (execution.dispatchVerdict !== undefined) next.dispatchVerdict = execution.dispatchVerdict
       statements.setAttemptExecution.run(JSON.stringify(next), execution.engineJobId ?? null, now(), attemptId)
     },
 
