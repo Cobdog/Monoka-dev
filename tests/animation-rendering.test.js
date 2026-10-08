@@ -122,6 +122,11 @@
 //       await and ABORTS without engine contact; the send-race leg's
 //       just-submitted orphan is deposed best-effort and the row keeps its
 //       terminal cancelled, engine_job_id never claimed
+//   (s) offline-engine durable resolution (Codex I9) — an UNREACHABLE
+//       engine (connection refused, not the reachable-with-empty-history
+//       world (k) covers) no longer fails frame extraction: the transport
+//       failure falls to the DURABLE registered clip; only both paths dead
+//       refuses, naming both causes in separate sentences
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -377,7 +382,10 @@ async function engineRecord(jobId) {
  *  (a fresh process, empty history, the profile's boot state) used by the
  *  wave-1 queue/frozen-config legs. */
 async function killEngine() {
-  if (!engine || engine.exitCode !== null) return
+  // signal death leaves exitCode null (signalCode carries it) — the e2e
+  // harness's guard, so a section that ends with the engine DOWN (s) never
+  // re-kills or waits on an already-dead child.
+  if (!engine || engine.exitCode !== null || engine.signalCode !== null) return
   engine.kill('SIGINT')
   await new Promise((resolve) => {
     const timer = setTimeout(resolve, 10_000)
@@ -487,7 +495,9 @@ afterAll(async () => {
   try {
     db?.close()
   } catch { /* the scratch teardown below still runs */ }
-  if (engine && engine.exitCode === null) {
+  // signal death leaves exitCode null — check both (the killEngine guard's
+  // own note; section (s) legitimately ends with the engine already down).
+  if (engine && engine.exitCode === null && engine.signalCode === null) {
     engine.kill('SIGINT')
     const exit = await new Promise((resolve) => {
       const timer = setTimeout(() => resolve('timeout'), 10_000)
@@ -1883,4 +1893,52 @@ test('(r) a cancel during the held reference upload submits NOTHING; a cancel ra
     held.owner.stopObserving()
     await engineControl({ stepDelayMs: 40 })
   }
+})
+
+// ---------------------------------------------------------------------------
+// (s) offline-engine durable resolution (Codex I9) — the engine being DOWN
+//     is indistinguishable-from-empty for frame RESOLUTION
+// ---------------------------------------------------------------------------
+
+test('(s) an unreachable engine no longer blocks frame extraction — the durable clip answers; both dead names both causes', async () => {
+  const doc = anim.createDocument({ projectId, name: 'Sierra', binding: makeBinding() })
+  // A landed VIDEO-ONLY take (the real engine's save tail): its clip is the
+  // registered blob every frame decodes from.
+  await engineControl({ videoOnly: true })
+  let landed = null
+  try {
+    const attempt = await submitHero(doc, uuid(), 'idem-s')
+    landed = await waitAttemptState(attempt.attemptId, ['ready'], 'the video-only attempt landing (its clip registered at landing)')
+  } finally {
+    await engineControl({ videoOnly: false })
+  }
+  assert.ok(landed.result, 'the clip landed')
+
+  // The engine goes OFFLINE — connection refused, the I9 shape (a transport
+  // failure; the (k) suite's wiped-history world is a REACHABLE engine with
+  // empty history, a different branch). Pre-fix, the history fetch's
+  // connection error escaped BEFORE the durable fallback and every
+  // extraction/acceptance/retry against a landed clip failed.
+  await killEngine()
+  const frame = await service.extractFrame(landed.id, 7)
+  assert.equal(frame.kind, 'image')
+  const png = documents.readBlob(frame.relPath)
+  assert.ok(png && png.subarray(0, 8).equals(PNG_MAGIC), 'the durable path decoded and registered a real PNG with the engine down')
+  // The explicit preparation retry runs the SAME seam — no engine needed.
+  await owner.retryPreparation(landed.id)
+  const retried = anim.getAttempt(landed.id)
+  assert.equal(retried.preparation.state, 'proposed', 'retryPreparation succeeds through the durable path while the engine is unreachable')
+  assert.equal(retried.execution.state, 'ready', 'the landed clip was never at risk')
+
+  // BOTH paths dead: the registered clip's bytes leave the store too — the
+  // named refusal honestly carries BOTH causes, separate sentences.
+  fs.rmSync(path.join(home, landed.result.candidate.assetReference.relPath))
+  await assert.rejects(
+    () => service.extractFrame(landed.id, 8),
+    (err) => err instanceof AnimationRuleError && err.status === 400
+      && /unreachable/.test(err.message)
+      && /fetch failed/.test(err.message)
+      && /not readable from the store/.test(err.message),
+    'the both-dead refusal names the unreachable engine AND the unreadable clip, separately',
+  )
 })
