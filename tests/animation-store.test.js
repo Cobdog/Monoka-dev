@@ -327,6 +327,21 @@ test('(b) create/list/get round-trip, conflict carries the current document, loc
   row = anim.selectKeyCandidate(docA.id, keyA, candA1.id, row.revision)
   assert.equal(row.body.keys[0].selectedCandidateId, candA1.id, 'unlock then select succeeds')
 
+  // Codex I12 — a key slot selects an IMAGE: a hero landing materializes the
+  // landed CLIP as a video candidate of the proposed key (a retained
+  // alternative), and selecting it would strand the timeline with a key no
+  // adapter can consume. The refusal is the lock's own class — named, with
+  // the review path (§5.2's frame promotion) as the way forward.
+  const candVideo = makeCandidate({ assetReference: { assetId: 'clip-video-a', relPath: null, kind: 'video' }, origin: 'hero' })
+  row = anim.addKeyCandidate(docA.id, keyA, candVideo, row.revision)
+  assert.equal(row.body.keys[0].candidates.length, 4, 'the clip candidate joins as an alternative (§8.2: retained)')
+  assert.throws(
+    () => anim.selectKeyCandidate(docA.id, keyA, candVideo.id, row.revision),
+    (err) => err instanceof AnimationRuleError && err.status === 400 && /A key slot selects an image; promote a frame from the clip through review/.test(err.message),
+    'selecting a video candidate is a 400 naming the review path',
+  )
+  assert.equal(anim.getDocument(docA.id).body.keys[0].selectedCandidateId, candA1.id, 'the refused selection left the slot untouched')
+
   // Unknown targets are 404s, not silent no-ops.
   assert.throws(() => anim.selectKeyCandidate(docA.id, uuid(), candA1.id, row.revision), (err) => err.status === 404)
   assert.throws(() => anim.selectKeyCandidate(docA.id, keyA, uuid(), row.revision), (err) => err.status === 404)

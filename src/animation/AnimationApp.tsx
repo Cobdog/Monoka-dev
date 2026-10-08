@@ -690,7 +690,9 @@ export function AnimationApp() {
                         key's alternatives — importing lands an ALTERNATIVE
                         candidate (never a selection change, §5.3); choosing is
                         the explicit select command. Presented under either
-                        tool. */}
+                        tool. A landed CLIP candidate's review link (Codex
+                        I12) switches the key's tool to hero — the lane that
+                        holds its takes and the frame acceptance. */}
                     {selectedKey !== null && (
                       <KeyCandidates
                         key={`candidates-${selectedKey.id}`}
@@ -700,6 +702,7 @@ export function AnimationApp() {
                         onImportFiles={session.commands.importImages}
                         onImport={(destination: KeyImportDestination, image, origin) => session.commands.importKeyCandidate(destination, image, origin)}
                         onSelect={(candidateId) => void session.commands.selectKeyCandidate(selectedKey.id, candidateId)}
+                        onOpenClipReview={() => { setKeyTool({ keyId: selectedKey.id, tool: 'hero' }) }}
                       />
                     )}
                   </div>

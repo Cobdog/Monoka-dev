@@ -633,13 +633,24 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       if (!isUuid(candidateId)) throw new AnimationRuleError('The candidate id must be a UUID.', 400)
       return authorCommand(documentId, expectedRevision, (body) => {
         const slot = body.keys[requireKeySlot(body, keyId)]
-        if (!slot.candidates.some((candidate) => candidate.id === candidateId)) {
+        const candidate = slot.candidates.find((entry) => entry.id === candidateId)
+        if (!candidate) {
           throw new AnimationRuleError(`No candidate with id ${candidateId} in key slot ${keyId}.`, 404)
         }
         // Server-enforced lock (§7.2.1): a locked key's selection cannot change
         // without an explicit unlock — checked here, not in the client.
         if (slot.lock) {
           throw new AnimationRuleError(`Key slot ${keyId} is locked — unlock it before changing its selection.`, 400)
+        }
+        // A key slot selects an IMAGE (Codex I12): a hero landing materializes
+        // the landed CLIP as a video candidate of the proposed key, and no
+        // adapter can consume a video as the current-key/endpoint reference —
+        // selecting it would strand the timeline with a key whose next
+        // submission is doomed. The same refusal class as the lock: the
+        // frame must be promoted through review (§5.2's frame acceptance),
+        // never the clip itself.
+        if (candidate.assetReference.kind !== 'image') {
+          throw new AnimationRuleError(`A key slot selects an image; promote a frame from the clip through review — §5.2 (candidate ${candidateId} is a video asset).`, 400)
         }
         if (slot.selectedCandidateId !== candidateId) {
           slot.selectedCandidateId = candidateId
