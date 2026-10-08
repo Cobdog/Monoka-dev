@@ -2218,3 +2218,44 @@ test('(v) two concurrent same-key submits with DIFFERENT inputs ⇒ exactly one 
     held.owner.stopObserving()
   }
 })
+
+// ---------------------------------------------------------------------------
+// (w) Codex batch C, M1 — the registration seam leaves NO staging copies:
+//     registerBlobFile dedupes identical bytes to ONE canonical blob while
+//     the sink's staging file was never removed (three identical
+//     registrations grew three staging files — unbounded disk on the
+//     extraction/preparation path, large video artifacts included). The
+//     staging directory holds only in-flight files now: success removes the
+//     source (the blob store owns the canonical copy), and so does a FAILED
+//     registration — no orphan either.
+// ---------------------------------------------------------------------------
+test('(w) three identical registrations ⇒ one blob row, ZERO staging files; a failed registration leaves no orphan (M1)', () => {
+  const stagingDir = path.join(home, 'm1-staging')
+  const m1Sink = makeDocumentStoreBlobSink(documents, stagingDir)
+  const bytes = Buffer.from(`m1-identical-${uuid()} — the content is the dedupe key, never the name`)
+  const first = m1Sink.registerBytes('image', bytes, 'frame-a.png')
+  const second = m1Sink.registerBytes('image', bytes, 'frame-b.png')
+  const third = m1Sink.registerBytes('video', bytes, 'clip-c.mp4')
+  assert.equal(first.present, true)
+  assert.equal(second.relPath, first.relPath, 'identical bytes dedupe to the identical relPath')
+  assert.equal(third.relPath, first.relPath, 'content addressing dedupes across names and kinds')
+  // ONE blob row for the content (the canonical copy the store owns)…
+  const rows = db.prepare('SELECT COUNT(*) AS n FROM canvas_blob WHERE path = ?').get(first.relPath)
+  assert.equal(rows.n, 1, 'exactly one canvas_blob row for three identical registrations')
+  // …and it is READABLE through the sink (the canonical copy serves, never
+  // the staging source).
+  const roundTrip = m1Sink.readBlob(first.relPath)
+  assert.ok(roundTrip && roundTrip.equals(bytes), 'the blob store owns the canonical copy')
+  // THE PIN: zero staging files remain.
+  assert.deepEqual(fs.readdirSync(stagingDir), [], 'three identical registrations leave ZERO staging files')
+
+  // The in-flight failure path: a registration that throws must not leave
+  // its staging file behind either.
+  const failingDir = path.join(home, 'm1-staging-fail')
+  const failing = makeDocumentStoreBlobSink({
+    registerBlobFile: () => { throw new Error('registration exploded') },
+    readBlob: () => null,
+  }, failingDir)
+  assert.throws(() => failing.registerBytes('image', bytes, 'frame-d.png'), /registration exploded/, 'the failed registration propagates its error')
+  assert.deepEqual(fs.readdirSync(failingDir), [], 'a failed registration leaves no orphan staging file')
+})

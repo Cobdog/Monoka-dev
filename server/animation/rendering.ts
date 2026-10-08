@@ -48,7 +48,7 @@
  *      retry of the same request still matches even if the document moved.
  */
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -316,14 +316,28 @@ export type AnimationBlobSink = {
  *  studio home (registerBlobFile only accepts in-home sources) and are
  *  registered content-addressed — identical bytes dedupe to the identical
  *  relPath, which is what makes frame extraction idempotent by
- *  (take, frame, extraction version). */
+ *  (take, frame, extraction version). The staging file is TRANSIENT (Codex
+ *  M1): registerBlobFile copies/dedupes into the canonical blob tree and the
+ *  blob store owns that copy, so the source is removed on BOTH outcomes —
+ *  the staging directory holds only in-flight files, never one permanent
+ *  copy per registration (three identical extractions left three staging
+ *  files behind one blob row before; preparation retries and large video
+ *  artifacts grew the disk without bound). Export's mkdtemp cleanup is the
+ *  same discipline. */
 export function makeDocumentStoreBlobSink(documentStore: { registerBlobFile(kind: string, path: string): { relPath: string; present: boolean }; readBlob(relPath: string): Buffer | null }, stagingDir: string): AnimationBlobSink {
   return {
     registerBytes: (kind, bytes, name) => {
       mkdirSync(stagingDir, { recursive: true })
       const staged = join(stagingDir, `${randomUUID().slice(0, 8)}-${name}`)
       writeFileSync(staged, bytes)
-      return documentStore.registerBlobFile(kind, staged)
+      try {
+        return documentStore.registerBlobFile(kind, staged)
+      } finally {
+        // Removed on success AND failure — a registration that threw leaves
+        // no orphan either. The registered blob (or the refusal) is the
+        // outcome; the staging file is never it.
+        rmSync(staged, { force: true })
+      }
     },
     readBlob: (relPath) => documentStore.readBlob(relPath),
   }
