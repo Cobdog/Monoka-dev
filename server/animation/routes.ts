@@ -501,6 +501,16 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
     if (!gate.ok) return sendJson(response, 400, { error: gate.error })
     try {
       const documentId = documentIdFrom(body)
+      // FREEZE-BEFORE-SUBMISSION (Codex I5 — the export module's doctrine,
+      // applied to this boundary): the document is read ONCE, here,
+      // synchronously after the body parse and before any engine-dependent
+      // await. This single row feeds EVERYTHING the submission freezes — the
+      // reference resolution, the caption context, the documentRevision, and
+      // (passed into the service) the bindingVersion/settings stamps. The
+      // service re-reading the live store behind the model-enumeration or
+      // promoted-frame-extraction awaits is what spliced a moved document's
+      // stamps onto the entry revision's references; it now consumes the row
+      // handed to it and never re-reads on the freeze path.
       const document = store.getDocument(documentId)
       if (!document) throw new AnimationRuleError(`No animation document with id ${documentId}.`, 404)
       const tool = body.tool
@@ -587,7 +597,9 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       const nearAsset = promotedNear !== undefined
         ? await service.extractFrame(promotedNear.attemptId, promotedNear.frameIndex)
         : undefined
-      const submitted = await service.submit({ documentId, tool, targetId, snapshot: freeze(nearAsset) }, idempotencyKey)
+      // The frozen entry document rides the input (I5): the service stamps
+      // the bindingVersion/settings from THIS row, never a later re-read.
+      const submitted = await service.submit({ documentId, tool, targetId, snapshot: freeze(nearAsset), document }, idempotencyKey)
       return sendJson(response, 200, submitted)
     } catch (error) {
       if (animationFailure(response, error)) return

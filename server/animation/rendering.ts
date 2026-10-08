@@ -55,6 +55,7 @@ import { join } from 'node:path'
 import {
   AnimationConflictError,
   AnimationRuleError,
+  type AnimationDocumentRow,
   type AnimationStore,
 } from './store'
 import type { CompletionOwner } from './completion-owner'
@@ -76,7 +77,7 @@ import {
 } from '../../shared/animation/graphs'
 import { COMPILER_VERSION, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../../shared/animation/compiler'
 import type { CompiledCaption, HeroContext, SequenceContext, TweenContext } from '../../shared/animation/compiler'
-import { animationInputHash, isUuid } from '../../shared/animation/types'
+import { animationInputHash } from '../../shared/animation/types'
 import type { AnimationTool, AssetReference, AttemptExecutionState, FrozenAttemptSnapshot, MediumString } from '../../shared/animation/types'
 import { runTool } from '../datasets/probe'
 
@@ -84,7 +85,26 @@ import { runTool } from '../datasets/probe'
 // the service contract (§7.2)
 // ---------------------------------------------------------------------------
 
-export type AttemptInput = { documentId: string; tool: AnimationTool; targetId: string; snapshot: FrozenAttemptSnapshot }
+export type AttemptInput = {
+  documentId: string
+  tool: AnimationTool
+  targetId: string
+  snapshot: FrozenAttemptSnapshot
+  /** THE FROZEN DOCUMENT (Codex I5 — freeze-before-submission, the export
+   *  module's own doctrine applied to this boundary): the document row the
+   *  submission freezes against, read ONCE synchronously at the caller's
+   *  entry BEFORE any await (the route's read; a direct-service caller's
+   *  read happens synchronously at submit's own entry instead). Everything
+   *  the freeze stamps — the bindingVersion, the dimensions, the steps —
+   *  comes from THIS row, so an authoring write that lands behind the
+   *  model-enumeration (or promoted-frame extraction) await cannot splice
+   *  the moved document's stamps onto the references/caption/revision the
+   *  entry row resolved. `store.getDocument` after an await is BANNED on
+   *  the freeze path (the conflict-error surface's fresh-document read is
+   *  the one deliberate exception — a 409's rebase payload wants the
+   *  CURRENT document, not the frozen one). */
+  document?: AnimationDocumentRow
+}
 
 /** The engine's history answer for one job. 'lost' means the engine was
  *  asked and has no trace of the job anywhere (history + queue) — the
@@ -903,12 +923,11 @@ export function createAnimationRenderingService(deps: {
   const { store, engine, owner, blobs, compile, emit, ffmpegPath } = deps
   const now = deps.now ?? Date.now
 
-  /** §7.2.2 validation — everything checked BEFORE anything is persisted. */
-  function validate(input: AttemptInput, idempotencyKey: string): void {
+  /** §7.2.2 validation — everything checked BEFORE anything is persisted.
+   *  The document row arrives as the submit path's ONE frozen read (I5). */
+  function validate(input: AttemptInput, idempotencyKey: string, document: AnimationDocumentRow | null): void {
     if (!isNonEmptyString(idempotencyKey)) throw new AnimationRuleError('The submission needs an idempotency key.', 400)
-    if (!isUuid(input?.documentId)) throw new AnimationRuleError(`No animation document with id ${String(input?.documentId)}.`, 404)
-    const document = store.getDocument(input.documentId)
-    if (!document) throw new AnimationRuleError(`No animation document with id ${input.documentId}.`, 404)
+    if (!document) throw new AnimationRuleError(`No animation document with id ${String(input?.documentId)}.`, 404)
     if (input.tool !== 'hero' && input.tool !== 'tween' && input.tool !== 'sequence') {
       throw new AnimationRuleError(`Unknown animation tool ${String(input?.tool)}.`, 400)
     }
@@ -992,9 +1011,20 @@ export function createAnimationRenderingService(deps: {
    *  thing the enumeration gates). The input hash stays over the RECEIVED
    *  snapshot (computed before this stamping) so same-key retries keep
    *  matching even when the document or the engine's enumeration moved:
-   *  the ROW's frozen config is what a retry or a recovery replays. */
-  function stampedSnapshot(input: AttemptInput, models: ResolvedAnimationModels | null): FrozenAttemptSnapshot {
-    const document = store.getDocument(input.documentId)
+   *  the ROW's frozen config is what a retry or a recovery replays.
+   *
+   *  FREEZE-BEFORE-SUBMISSION (Codex I5): every stamp below reads the
+   *  PASSED frozen document row — never the live store. The route reads the
+   *  document once, synchronously, before any await (its reference
+   *  resolution and caption come from that same row); a `store.getDocument`
+   *  here would run behind the enumeration/extraction awaits and stamp the
+   *  MOVED document's bindingVersion/dimensions/steps onto the OLD
+   *  references/caption/revision — one frozen attempt combining two
+   *  document revisions, faithfully replayed by dispatch forever after. A
+   *  document that moves mid-submission leaves the freeze CONSISTENT at the
+   *  entry revision; an honest same-key retry after the move resolves
+   *  different references and hash-conflicts (the existing 409). */
+  function stampedSnapshot(input: AttemptInput, models: ResolvedAnimationModels | null, document: AnimationDocumentRow | null): FrozenAttemptSnapshot {
     const body = document?.body
     const overrides = isRecord(input.snapshot.settings) ? input.snapshot.settings : {}
     const width = typeof overrides.width === 'number' ? overrides.width : body?.settings.outputWidth ?? ANIMATION_OPERATING_POINT.width
@@ -1189,7 +1219,14 @@ export function createAnimationRenderingService(deps: {
         return { attemptId: existing.id, created: false }
       }
 
-      validate(input, idempotencyKey)
+      // THE FROZEN DOCUMENT (I5): the submit path's ONE document read, taken
+      // here — synchronously, before the first await below (the caller that
+      // already read one at its own entry, the route, passes its row in and
+      // this read never fires). Validation and every stamp consume this row;
+      // nothing after the enumeration/extraction awaits re-reads the store's
+      // live document on the freeze path.
+      const frozenDocument = input.document ?? store.getDocument(input?.documentId ?? '')
+      validate(input, idempotencyKey, frozenDocument)
 
       // Wave 1's preflight (the live review's #1): resolve the model set
       // against the engine's OWN enumeration BEFORE anything is persisted —
@@ -1212,7 +1249,7 @@ export function createAnimationRenderingService(deps: {
         preflight = null
       }
 
-      const snapshot = stampedSnapshot(input, preflight)
+      const snapshot = stampedSnapshot(input, preflight, frozenDocument)
       const attemptId = randomUUID()
       const recorded = store.recordAttempt({
         id: attemptId,

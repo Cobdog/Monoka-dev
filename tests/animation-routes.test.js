@@ -67,6 +67,12 @@
 //       lacking a slot, the SERVER restarts, and the fresh boot's sweep
 //       FAILS the deferred dispatch with the durable sanitized reason; the
 //       enumeration changes and the re-roll renders
+//   (m) wave 2a — the annotate route + the compiled annotation (its own
+//       banner comment sits at the section)
+//   (n) freeze-before-submission (Codex batch B: I5) — a binding update
+//       landing behind the submission's held enumeration await changes
+//       NOTHING the row freezes: the frozen documentRevision and the
+//       bindingVersion/settings stamps all describe the ENTRY revision
 //
 // Run after `pnpm build` (the server + web dist boot from dist-server).
 // Scratch homes through the Wave 4 ledger; ports through the allocator.
@@ -310,6 +316,9 @@ let docE = null
 let serverB = null
 let apiB = null
 let docF = null
+// (n)/(o) — Codex batch B: the freeze and idempotency legs share a server life
+let serverE = null
+let apiE = null
 
 // ---- suite boot --------------------------------------------------------------
 
@@ -1655,4 +1664,68 @@ test('(m) the annotate route lands the pointer annotation; the step-2 frozen cap
     'the authored preservation appends to the tween STATIC section',
   )
   fabricD.close()
+})
+
+// ---------------------------------------------------------------------------
+// (n) freeze-before-submission at the ROUTE (Codex batch B: I5) — the public
+//     handler freezes ONE revision: a binding update landing behind the
+//     submission's held enumeration await changes NOTHING the row freezes
+// ---------------------------------------------------------------------------
+
+test('(n) a binding update mid-submission leaves the frozen row at the ENTRY revision — never a hybrid of two', async () => {
+  serverE = await bootServer(home, 'animation-routes E')
+  apiE = client(serverE.port)
+
+  const created = await apiE.post('/api/lan/animation/documents', { projectId, name: 'November', binding: makeBinding() })
+  assert.equal(created.status, 200)
+  const documentId = created.body.document.id
+  const key = await makeSelectedKey(apiE, documentId, created.body.document.revision, 'n1')
+  const entryRevision = (await apiE.get(`/api/lan/animation/document?id=${documentId}`)).body.document.revision
+
+  // The engine's /object_info answers are accepted-never-answered: the
+  // submit's preflight enumeration holds (bounded at 3 s inside the port) —
+  // the exact await window behind which the old stamping re-read the LIVE
+  // document and froze the moved binding's version onto the entry revision's
+  // references/caption.
+  await engineControl({ hangObjectInfo: true })
+  const targetId = uuid()
+  const submitPromise = fetch(`http://127.0.0.1:${serverE.port}/api/lan/animation/attempts`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ documentId, tool: 'hero', targetId, idempotencyKey: 'idem-n', draft: heroDraft(key.keyId) }),
+  }).then(async (response) => ({ status: response.status, body: await response.json() }))
+
+  // The document MOVES inside the window: binding v2 lands over HTTP while
+  // the submission holds. (Unhang first so the dispatch that follows the
+  // aborted preflight resolves against a live engine.)
+  await sleep(500)
+  await engineControl({ hangObjectInfo: false })
+  const moved = await apiE.post('/api/lan/animation/binding', { documentId, binding: makeBinding(), expectedRevision: entryRevision })
+  assert.equal(moved.status, 200, `the binding update lands mid-flight (${moved.body.error ?? ''})`)
+  assert.equal(moved.body.document.body.activeBindingVersion, 2)
+  const moveLandedAt = Date.now()
+
+  const submitted = await submitPromise
+  assert.equal(submitted.status, 200, `the submission resolves (${JSON.stringify(submitted.body)}`)
+  assert.equal(submitted.body.created, true)
+  assert.ok(moveLandedAt < Date.now(), 'the binding move preceded the submission completing — the freeze ran against a moved document')
+
+  // The frozen row describes the ENTRY revision alone. Pre-fix, the row
+  // carried documentRevision N with bindingVersion 2 — a combination the
+  // user never authored, faithfully replayed by every later dispatch.
+  const external = new Database(path.join(home, 'studio.db'))
+  let snapshot
+  try {
+    const row = external.prepare('SELECT snapshot_json FROM animation_attempt WHERE idempotency_key = ?').get('idem-n')
+    assert.ok(row, 'the attempt row persisted')
+    snapshot = JSON.parse(row.snapshot_json)
+  } finally {
+    external.close()
+  }
+  assert.equal(snapshot.documentRevision, entryRevision, 'the frozen revision is the entry revision')
+  assert.equal(snapshot.settings.bindingVersion, 1, 'the bindingVersion stamp describes the ENTRY binding (v1) — not the mid-flight v2')
+  assert.equal(snapshot.settings.width, 1344, 'the frozen settings still describe the entry document')
+  const live = (await apiE.get(`/api/lan/animation/document?id=${documentId}`)).body.document
+  assert.equal(live.body.activeBindingVersion, 2, 'the live document really did move (the freeze ignored it)')
+  assert.equal(live.revision, entryRevision + 1)
 })

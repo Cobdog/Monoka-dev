@@ -135,6 +135,11 @@
 //       the delete no-ops against a running id and the NEXT round's
 //       interrupt must catch the mover — the loop terminates, cancelled
 //       settles)
+//   (u) freeze-before-submission (Codex batch B: I5) — a binding+settings
+//       move behind the submission's enumeration await changes NOTHING the
+//       row freezes: one revision everywhere (caption, references,
+//       documentRevision, bindingVersion, and the settings stamps all
+//       describe the ENTRY document)
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -2058,4 +2063,63 @@ test('(t) the error record carries the real completion shape; a job moving pendi
   assert.ok((victimRecords[0].status.messages ?? []).some((entry) => Array.isArray(entry) && entry[0] === 'execution_interrupted'), 'the mover was interrupted mid-run — caught as RUNNING, not dequeued as pending')
   await waitAttemptState(foreign.attemptId, ['ready'], 'the foreign render landing on its own')
   await engineControl({ stepDelayMs: 40 })
+})
+
+// ---------------------------------------------------------------------------
+// (u) freeze-before-submission (Codex I5) — a document that moves behind the
+//     submission's own await changes NOTHING the row freezes
+// ---------------------------------------------------------------------------
+
+test('(u) a binding+settings move behind the enumeration await leaves the frozen snapshot CONSISTENT at the entry revision', async () => {
+  const doc = anim.createDocument({ projectId, name: 'Uniform', binding: makeBinding() })
+  const keyId = uuid()
+  const entryRevision = anim.getDocument(doc.id).revision
+  const entryBindingVersion = anim.getDocument(doc.id).body.activeBindingVersion
+  assert.equal(entryBindingVersion, 1)
+
+  // The preflight enumeration is HELD — the await window the old stamping
+  // re-read the live document behind (the promoted-frame extraction await is
+  // the same window at the route; the service leg pins the stamp seam).
+  let release = null
+  const gate = new Promise((resolve) => { release = resolve })
+  let entered = 0
+  const port = gatedEnginePort((p) => {
+    p.modelEnumerations = async (options) => {
+      entered += 1
+      await gate
+      return engineClient.modelEnumerations(options)
+    }
+  })
+  const held = gatedServiceFor(port)
+  const snapshot = makeHeroSnapshot(keyId, entryRevision)
+  const submitted = held.service.submit(
+    { documentId: doc.id, tool: 'hero', targetId: keyId, snapshot },
+    'idem-u',
+  )
+  await waitUntil(() => entered === 1, 10_000, 'the submit holding inside the preflight enumeration')
+
+  // The document MOVES behind the await: binding v2 + new output settings.
+  anim.updateBinding(doc.id, makeBinding(), entryRevision)
+  anim.updateDocumentSettings(doc.id, { outputWidth: 640, outputHeight: 360, steps: 12 }, entryRevision + 1)
+  const moved = anim.getDocument(doc.id)
+  assert.equal(moved.revision, entryRevision + 2)
+  assert.equal(moved.body.activeBindingVersion, 2, 'the moved document carries binding v2')
+  assert.equal(moved.body.settings.outputWidth, 640)
+
+  release()
+  const result = await submitted
+  await waitAttemptState(result.attemptId, ['ready'], 'the frozen attempt landing on its own terms')
+  const row = anim.getAttempt(result.attemptId)
+  // ONE revision everywhere: the references, the caption, the revision, the
+  // bindingVersion, and the settings stamps all describe the ENTRY document.
+  // Pre-fix, the stamping re-read the live row and froze bindingVersion 2 /
+  // width 640 / steps 12 onto the entry revision's caption and references.
+  assert.equal(row.snapshot.documentRevision, entryRevision, 'the frozen revision is the entry revision')
+  assert.equal(row.snapshot.settings.bindingVersion, 1, 'the bindingVersion stamp describes the ENTRY binding — not the moved v2')
+  assert.equal(row.snapshot.settings.width, 1344, 'the width stamp is the entry operating point')
+  assert.equal(row.snapshot.settings.height, 768)
+  assert.equal(row.snapshot.settings.steps, 30, 'the steps stamp is the entry setting — not the moved 12')
+  assert.equal(row.snapshot.caption, snapshot.caption, 'the frozen caption is the one submitted against the entry document')
+  assert.deepEqual(row.snapshot.references, snapshot.references, 'the frozen references are the entry resolution')
+  held.owner.stopObserving()
 })
