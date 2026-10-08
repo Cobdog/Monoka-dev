@@ -439,6 +439,12 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
             rollingReference: near,
             farReference: far,
             movementStep: boundedText(draft.movementStep, 'The movement step'),
+            // The span's authored preservation (the "What stays fixed" field)
+            // is the durable home the v2 compiler reads — the draft carries
+            // the movement only, so there is exactly one source of the hold
+            // text (the flush before submit keeps preview and server
+            // byte-identical).
+            preservation: span.intent.preservation,
             overrides: parseOverrides(draft.overrides),
           },
         },

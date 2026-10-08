@@ -294,6 +294,9 @@ function makeTweenSnapshot(targetId, revision) {
     rollingReference: { assetReference: rolling, pose: { poseDescription: 'weight forward over the planted left foot', facing: 'screen-left' } },
     farReference: { assetReference: far, pose: { poseDescription: 'settled onto the heel, arms at the sides', facing: 'screen-right' } },
     movementStep: 'she shifts her weight onto the heel, hips following',
+    // No authored hold in this snapshot's span — the v1-identical STATIC line
+    // (the compiler v2 empty-preservation arm).
+    preservation: '',
     overrides: { medium: 'flat black-and-white animatic' },
   })
   return {

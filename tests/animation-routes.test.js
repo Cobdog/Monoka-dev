@@ -365,7 +365,7 @@ test('(a) bootstrap serves the vocabularies; document create/list/read round-tri
   const boot = await api.get('/api/lan/animation/bootstrap')
   assert.equal(boot.status, 200)
   assert.equal(boot.body.schemaVersion, 1, 'the animation document schema version')
-  assert.equal(boot.body.compilerVersion, '1', 'the shared caption compiler version')
+  assert.equal(boot.body.compilerVersion, '2', 'the shared caption compiler version (v2: the tween STATIC append)')
   assert.deepEqual(boot.body.media, ['clean line on white', 'flat black-and-white animatic', 'flat cel colour on white'])
   assert.deepEqual(boot.body.facingTerms, ['toward camera', 'back to camera', 'screen-left', 'screen-right'])
   assert.equal(boot.body.defaults.outputWidth, 1344)
@@ -589,7 +589,7 @@ test('(c) submit emits attempt-state envelopes on the animation channel; the lan
   assert.equal(heroState.body.attempt.sourceKeyId, keyC1, 'the frozen draft names the SOURCE key')
   assert.equal(heroState.body.attempt.movementArc, heroDraft(keyC1).movementArc, 'the authored arc froze verbatim')
   assert.ok(typeof heroState.body.attempt.caption === 'string' && heroState.body.attempt.caption.length > 0, 'the frozen compiled caption rides the view')
-  assert.equal(heroState.body.attempt.compilerVersion, '1', 'the compiler version that built the frozen caption')
+  assert.equal(heroState.body.attempt.compilerVersion, '2', 'the compiler version that built the frozen caption')
   assert.ok(!heroState.body.attempt.caption.includes('TARGET END FRAME'), 'the hero caption has NO destination section (§6.2)')
   // The §5.2 document truth: the clip lands into the PROPOSED slot (which
   // materializes with it, selection null — §5.3), and the SOURCE key is
@@ -1626,6 +1626,14 @@ test('(m) the annotate route lands the pointer annotation; the step-2 frozen cap
   )
   // The frozen reference's pose fields carry it too (the snapshot's truth).
   const annotatedView = (await apiD.get(`/api/lan/animation/attempt?id=${takeTwo.body.attemptId}`)).body.attempt
-  assert.equal(annotatedView.compilerVersion, '1')
+  assert.equal(annotatedView.compilerVersion, '2', 'the compiler v2 built the annotated caption')
+  // The v2 STATIC append (the live review's #3): the span's authored
+  // preservation — persisted all along, never before compiled — rides the
+  // frozen caption after the fixed hold.
+  assert.equal(
+    annotatedCaption.split('\n')[4],
+    'STATIC: identity, wardrobe, and proportions stay consistent; framing and ground plane stay fixed. coat hem and scarf stay consistent',
+    'the authored preservation appends to the tween STATIC section',
+  )
   fabricD.close()
 })

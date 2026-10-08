@@ -30,6 +30,16 @@
  * text reaches the caption VERBATIM, punctuation included; the compiler
  * appends nothing after it.
  *
+ * VERSION 2 (wave 2a, the 2026-10-07 ruling): the tween STATIC section
+ * APPENDS the span's authored preservation after the fixed hold phrase —
+ * a field in the motion authoring inspector must have an honest effect.
+ * The hold phrase itself is unchanged and still ends the v1 line
+ * byte-identically when no preservation is authored; frozen attempts keep
+ * their frozen caption + compilerVersion verbatim ('1' rows replay as
+ * captured — no migration, no rewrite). Hero and sequence templates are
+ * unchanged (hero has no preservation field; sequence already compiles
+ * its Preserve section).
+ *
  * NOT emitted: the `landing <progress>` token. Set K measured the lever
  * dead and spec §6.5 bans controls implying generation-time timing — the
  * tween MOVEMENT section carries the authored step and nothing else.
@@ -37,7 +47,7 @@
 import { ANIMATION_MEDIA, isFacingTerm, isMediumString } from './types'
 import type { AssetReference, FacingTerm, MediumString } from './types'
 
-export const COMPILER_VERSION = '1'
+export const COMPILER_VERSION = '2'
 
 export type PoseRef = { poseDescription: string | null; facing: FacingTerm | null }
 export type SessionOverrideInput = { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
@@ -57,11 +67,15 @@ export type HeroContext = {
 
 /** TWEEN — the ACTUAL current rolling reference (a promoted frame from the
  *  LAST landed step, NOT the span's original start endpoint), plus the
- *  fixed far reference, plus ONE movement step. Both poses carry facing. */
+ *  fixed far reference, plus ONE movement step. Both poses carry facing.
+ *  V2: the span's authored preservation (the "What stays fixed" field)
+ *  appends to the STATIC section after the fixed hold phrase — the
+ *  movement-authoring field has an honest effect on the caption. */
 export type TweenContext = {
   rollingReference: { assetReference: AssetReference; pose: PoseRef }
   farReference: { assetReference: AssetReference; pose: PoseRef }
   movementStep: string
+  preservation: string
   overrides: SessionOverrideInput
 }
 
@@ -116,9 +130,20 @@ function sceneSection(overrides: SessionOverrideInput): string {
 }
 
 /** The hero/tween STATIC hold — fixed positive phrasing, ending on the
- *  framing+ground clause the dialect requires (authored hold text belongs
- *  to spans; these two tools carry none in their compile contexts). */
+ *  framing+ground clause the dialect requires. Hero compiles it alone
+ *  (it carries no preservation field); tween appends the span's authored
+ *  preservation through tweenStaticSection (v2). */
 const STATIC_HOLD = 'STATIC: identity, wardrobe, and proportions stay consistent; framing and ground plane stay fixed'
+
+/** The tween STATIC section (v2, the maintainer's 2026-10-07 ruling): the
+ *  fixed hold phrase, then — when the span carries authored preservation —
+ *  the authored sentence appended after a full stop, verbatim (the
+ *  compiler appends nothing after authored text). Empty/whitespace
+ *  preservation keeps the v1 line byte-identical. */
+function tweenStaticSection(preservation: string): string {
+  const authored = preservation.trim()
+  return authored === '' ? STATIC_HOLD : `${STATIC_HOLD}. ${authored}`
+}
 
 /** A tween frame section: the reference number rides the section header so
  *  the attachment order is unambiguous, the pose text lands verbatim, the
@@ -238,12 +263,15 @@ export function compileTweenCaption(ctx: TweenContext): CompiledCaption {
   if (ctx.farReference.pose.facing === null) hints.push(missingFacingHint('TARGET END FRAME'))
   pushContradictionHint(hints, 'The movement step', 'TARGET END FRAME', ctx.movementStep, ctx.farReference.pose.facing)
   pushNegationHint(hints, 'The movement step', ctx.movementStep)
+  // The appended preservation is authored text like the movement — checked
+  // for negation on the same string the caption carries (the trimmed form).
+  pushNegationHint(hints, 'The preservation text', ctx.preservation.trim())
   const caption = [
     sceneSection(ctx.overrides),
     frameLine('FIRST FRAME', 1, ctx.rollingReference.pose),
     frameLine('TARGET END FRAME', 2, ctx.farReference.pose),
     `MOVEMENT: ${ctx.movementStep}`,
-    STATIC_HOLD,
+    tweenStaticSection(ctx.preservation),
   ].join('\n')
   return { caption, hints, compilerVersion: COMPILER_VERSION }
 }
