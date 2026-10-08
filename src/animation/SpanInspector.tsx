@@ -177,9 +177,13 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
   // them with the user's own persisted words one refresh later).
   const [userTyped, setUserTyped] = useState(false)
   // The rolling-reference annotation draft (wave 2a, §6.4): bound to the
-  // SELECTION POINTER, not the span — a different promoted frame re-seeds
-  // the editor from the document's (null) annotation, and selecting a frame
-  // behind the page's back resets it through the same rule.
+  // SELECTION POINTER, not the span — and it exists ONLY once the user has
+  // typed for that pointer (the movement draft's task-13 doctrine,
+  // pointer-scoped). An UNEDITED editor holds NO draft: the textarea reads
+  // the document's annotation and FOLLOWS external writes (another
+  // surface's annotate lands through the fabric refresh straight into the
+  // field), and the settle NEVER fires — an idle inspector must not revert
+  // another surface's authored pose 400ms after the refresh lands it.
   const [poseDraft, setPoseDraft] = useState<{ pointer: string; text: string } | null>(null)
   // Span-scoped overrides: a null medium inherits the bound session's.
   const [mediumOverride, setMediumOverride] = useState<MediumString | null>(span.overrides.medium ?? null)
@@ -233,36 +237,38 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
   const rollingPose = rollingSource !== null && nearForAnnotation.ok ? nearForAnnotation.pose.poseDescription : null
   const rollingFacing = rollingSource !== null && nearForAnnotation.ok ? nearForAnnotation.pose.facing : null
 
-  // The editor follows the SELECTION POINTER: a different promoted frame (or
-  // the chain falling back to the start key) re-seeds the draft from the
-  // document's annotation — the new selection's pose is unknown until
-  // authored, and the reset the selection command writes must reach the
-  // editor. The SAME pointer keeps the user's draft: neither the command's
-  // own landing nor an external refresh may re-arm over authored text (the
-  // intent draft's doctrine, scoped to the pointer).
+  // The draft's lifetime is the POINTER: a different promoted frame (or the
+  // chain falling back to the start key) DISCARDS it — the new selection's
+  // pose is unknown until authored, and the reset the selection command
+  // writes must reach the editor. The SAME pointer keeps the user's draft:
+  // neither the command's own landing nor an external refresh may re-arm
+  // over authored text. With no draft (unedited), the field below reads the
+  // LIVE annotation and follows whatever lands.
   useEffect(() => {
     setPoseDraft((current) => {
       if (rollingPointerKey === null) return null
       if (current !== null && current.pointer === rollingPointerKey) return current
-      return { pointer: rollingPointerKey, text: rollingPose ?? '' }
+      return null
     })
-  }, [rollingPointerKey, rollingPose])
+  }, [rollingPointerKey])
   const poseDraftText = poseDraft !== null && poseDraft.pointer === rollingPointerKey ? poseDraft.text : rollingPose ?? ''
 
   // The annotation settle: 400ms after the last keystroke the pose persists
   // through the annotate command (the adapter parks it behind a busy
   // store), and the refreshed document's pointer recompiles the preview —
-  // every later step's caption freezes the authored pose. Empty text IS a
-  // clear (null).
+  // every later step's caption freezes the authored pose. It fires ONLY on
+  // the user's OWN draft (a matching, non-null poseDraft): an unedited
+  // editor never settles, whatever the document does around it. Empty text
+  // IS a clear (null).
   useEffect(() => {
-    if (rollingSource === null) return
-    if (poseDraftText === (rollingPose ?? '')) return
+    if (rollingSource === null || poseDraft === null || poseDraft.pointer !== rollingPointerKey) return
+    if (poseDraft.text === (rollingPose ?? '')) return
     const stepSlotId = rollingSource.stepSlotId
     const timer = window.setTimeout(() => {
-      void onAnnotateRolling(span.id, stepSlotId, { poseDescription: poseDraftText.trim() === '' ? null : poseDraftText })
+      void onAnnotateRolling(span.id, stepSlotId, { poseDescription: poseDraft.text.trim() === '' ? null : poseDraft.text })
     }, DRAFT_SETTLE_MS)
     return () => window.clearTimeout(timer)
-  }, [rollingSource, poseDraftText, rollingPose, span.id, onAnnotateRolling])
+  }, [rollingSource, poseDraft, rollingPointerKey, rollingPose, span.id, onAnnotateRolling])
 
   /** The compile overrides the preview AND the submission share — one object,
    *  so the frozen caption is byte-identical to the previewed one. Empty

@@ -1422,6 +1422,93 @@ test('annotating the rolling reference recompiles the preview and freezes verbat
   expect(engineExited).toBe(true)
 })
 
+// Wave 2a fix round I-1 (the blind review's mandatory finding): an IDLE,
+// never-typed inspector FOLLOWS an external annotation write — it never
+// reverts it. The pre-fix settle effect fired on ANY divergence between its
+// stale seed and the document, so a second surface's annotate (this test's
+// API context) was wiped by a {poseDescription: null} settle 400ms after the
+// fabric refresh landed it. The regression: the page's editor gains the
+// external pose and fires ZERO annotate commands of its own.
+test('an idle inspector follows an external annotation write — never reverts it (regression, wave 2a I-1)', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  await engine.control({ steps: 6, stepDelayMs: 150 })
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Idle follows')
+
+    // Step 1 lands; frame 3 is selected as the rolling reference.
+    const first = await request.post('/api/lan/animation/attempts', { data: tweenDraftBody(seeded.documentId, seeded.stepSlotId, `anim-e2e-idle-1-${Date.now()}`) })
+    expect(first.ok(), `step 1 submits (${await first.text()})`).toBe(true)
+    const attemptId = ((await first.json()) as { attemptId: string }).attemptId
+    await expect.poll(async () => {
+      const view = await readAttemptView(request, attemptId)
+      return view.attempt.execution === 'ready' && view.attempt.candidate !== null
+    }, { timeout: 30_000 }).toBe(true)
+    const landed = await readAnimationDocument(request, seeded.documentId)
+    const selected = await request.post('/api/lan/animation/select/rolling-reference', {
+      data: { documentId: seeded.documentId, spanId: seeded.spanId, attemptId, frameIndex: 3, expectedRevision: landed.document.revision },
+    })
+    expect(selected.ok(), `the rolling reference selects (${await selected.text()})`).toBe(true)
+    // The chain appends step 2 — the preview's TARGET slot, so the FIRST
+    // FRAME card resolves the promoted frame (the annotation editor's
+    // subject) rather than falling back to the start key.
+    const appended = await request.post('/api/lan/animation/spans', {
+      data: { op: 'append-step-slot', documentId: seeded.documentId, spanId: seeded.spanId, expectedRevision: landed.document.revision + 1 },
+    })
+    expect(appended.ok(), `the step slot appends (${await appended.text()})`).toBe(true)
+    const selectedView = await readAnimationDocument(request, seeded.documentId)
+
+    // The inspector mounts IDLE — the annotation editor seeds empty, the
+    // caption disclosure open, and the user NEVER types.
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+    await page.goto(animationUrl)
+    await page.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    await expect(page.locator('[data-anim-inspector]')).toBeVisible({ timeout: 15_000 })
+    const poseField = page.locator('[data-anim-inspector-pose]')
+    await expect(poseField).toHaveValue('')
+    await page.locator('[data-anim-caption-preview] summary').click()
+    const caption = page.locator('[data-anim-caption-text]')
+    await expect(caption).toBeVisible()
+    let annotateCalls = 0
+    page.on('request', (route) => { if (route.url().includes('/api/lan/animation/annotate/rolling-reference')) annotateCalls += 1 })
+
+    // The SECOND WRITER: this test's API context annotates the SAME frame.
+    const POSE = 'weight forward over the planted left foot, head level'
+    const external = await request.post('/api/lan/animation/annotate/rolling-reference', {
+      data: {
+        documentId: seeded.documentId, spanId: seeded.spanId, stepSlotId: seeded.stepSlotId,
+        annotation: { poseDescription: POSE, facing: 'screen-right' }, expectedRevision: selectedView.document.revision,
+      },
+    })
+    expect(external.ok(), `the external annotation lands (${await external.text()})`).toBe(true)
+    const externalView = ((await external.json()) as { document: { revision: number } }).document
+
+    // The idle editor FOLLOWS: the textarea gains the external pose (the
+    // fabric refresh lands it) and the preview carries it — and after a wait
+    // well past the 400ms settle, the page has fired NO annotate command and
+    // the document's revision stands exactly where the external write left
+    // it (the pre-fix build bumped it again with the wipe).
+    await expect(poseField).toHaveValue(POSE, { timeout: 10_000 })
+    await expect(caption).toContainText(`FIRST FRAME (Reference 1): ${POSE}, facing screen-right`, { timeout: 10_000 })
+    await page.waitForTimeout(1_500)
+    expect(annotateCalls, 'an unedited inspector never settles an annotation of its own').toBe(0)
+    const after = await readAnimationDocument(request, seeded.documentId)
+    expect(after.document.revision).toBe(externalView.revision)
+    expect(after.document.body.spans.find((entry) => entry.id === seeded.spanId)!.stepSlots[0]!.selectedRollingReference!.poseDescription).toBe(POSE)
+    await expect(page.locator('[data-anim-command-error]')).toHaveCount(0)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  // The fake-engine child actually exited — never orphaned.
+  expect(engineExited).toBe(true)
+})
+
 test('a duplicate completion at the surface leaves exactly one candidate (review)', async ({ page, request }) => {
   test.setTimeout(90_000)
   const problems = await trackErrors(page)

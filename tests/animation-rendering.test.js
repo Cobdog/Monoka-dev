@@ -143,6 +143,7 @@ import {
   engineInputName,
 } from '../shared/animation/graphs'
 import { COMPILER_VERSION, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../shared/animation/compiler'
+import { animationInputHash } from '../shared/animation/types'
 
 const REAL_INFO = require(path.join(REPO, 'scripts/fixtures/engine-object-info.json')).nodes
 
@@ -661,6 +662,23 @@ test('(d) same key + same input ⇒ { created: false }, no second engine submiss
     (err) => err instanceof AnimationConflictError && err.status === 409,
     'same key + different input ⇒ a 409 conflict',
   )
+
+  // The fix round's M-3 — the cross-version retry: the idempotency peek
+  // precedes validation, so a same-key retry of a V1-ERA submission answers
+  // the idempotent return instead of the compiler-version gate's 400 ("this
+  // build submits compiler 2 captions"). §7.2.2's letter holds across a
+  // version bump; first reachable now that the version has bumped.
+  const legacySnapshot = makeHeroSnapshot(keyD, revision)
+  legacySnapshot.compilerVersion = '1'
+  const legacyRow = anim.recordAttempt({
+    id: uuid(), documentId: docD.id, tool: 'hero', targetId: keyD,
+    idempotencyKey: 'idem-d-v1-era', inputHash: animationInputHash(legacySnapshot), snapshot: legacySnapshot,
+  })
+  assert.equal(legacyRow.created, true)
+  const legacyRetry = await service.submit({ documentId: docD.id, tool: 'hero', targetId: keyD, snapshot: legacySnapshot }, 'idem-d-v1-era')
+  assert.equal(legacyRetry.created, false, 'the same-key v1-era retry answers the idempotent return, never the version gate')
+  assert.equal(legacyRetry.attemptId, legacyRow.attempt.id)
+  assert.equal(await engineRecordCount(), countAfterFirst, 'no engine work for the retry')
 })
 
 // ---------------------------------------------------------------------------

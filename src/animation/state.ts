@@ -868,6 +868,17 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
   annotateRollingReference: async (spanId, stepSlotId, patch) => {
     const current = get().document
     if (!current) return false
+    const pointerOf = (doc: AnimationDocumentView) =>
+      doc.body.spans.find((entry) => entry.id === spanId)?.stepSlots.find((step) => step.id === stepSlotId)?.selectedRollingReference ?? null
+    // The pointer identity captured at ENTRY (the fix round's M-4): the patch
+    // was authored against THIS frame. A park that outlives another surface's
+    // re-selection must never land the old frame's pose on the new one — the
+    // new selection's pose is unknown until authored (§6.4).
+    const entryPointer = pointerOf(current)
+    if (entryPointer === null) {
+      set({ commandError: 'That rolling reference is no longer selected — reload picked up a change.' })
+      return false
+    }
     const ticket = openTicket
     // The intent draft's park doctrine (task 9's Minor-2, fixed in task 13):
     // the debounced pose settle waits out a command in flight instead of
@@ -877,10 +888,14 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     while (get().busy && ticket === openTicket) await whenIdle()
     if (ticket !== openTicket || !get().document) return false
     const fresh = get().document!
-    const slot = fresh.body.spans.find((entry) => entry.id === spanId)?.stepSlots.find((step) => step.id === stepSlotId) ?? null
-    const pointer = slot?.selectedRollingReference ?? null
-    if (pointer === null) {
-      set({ commandError: 'That rolling reference is no longer selected — reload picked up a change.' })
+    const pointer = pointerOf(fresh)
+    if (pointer === null || pointer.attemptId !== entryPointer.attemptId || pointer.frameIndex !== entryPointer.frameIndex) {
+      // A NAMED drop, never a silent one: the selection moved while the
+      // settle waited — the typed pose belongs to the frame it was typed
+      // for, and the editor has already re-seeded onto the new pointer.
+      console.warn(
+        `[animation] dropped a rolling-reference annotation settle: the selection moved from ${entryPointer.attemptId}#${entryPointer.frameIndex} to ${pointer === null ? 'none' : `${pointer.attemptId}#${pointer.frameIndex}`} while the command waited — the new frame starts unannotated (§6.4).`,
+      )
       return false
     }
     // The patch merges over the LIVE pointer: the command always carries the
