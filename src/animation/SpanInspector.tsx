@@ -369,8 +369,15 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
           {near.ok ? (
             <>
               <FrameImage
-                relPath={near.source.kind === 'start-key' ? near.assetReference.relPath : null}
-                assetId={near.assetReference.assetId}
+                // The promoted frame renders its OWN extracted image (Codex
+                // I11): the selection pointer's recorded frameAsset — the
+                // actual conditioning drawing, exactly what the submission
+                // freezes as the rolling-near reference. A pre-widening
+                // pointer (frameAsset null) falls back to the honest
+                // placeholder naming the clip handle, never the clip blob
+                // served as a broken <img>.
+                relPath={near.source.kind === 'start-key' ? near.assetReference.relPath : near.source.frameAsset?.relPath ?? null}
+                assetId={near.source.kind === 'start-key' ? near.assetReference.assetId : near.source.frameAsset?.assetId ?? near.assetReference.assetId}
                 alt="The rolling reference image"
               />
               {near.source.kind === 'promoted-frame' ? (

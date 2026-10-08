@@ -732,10 +732,15 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       })
     },
 
-    selectRollingReference: (documentId: string, spanId: string, attemptId: string, frameIndex: number, expectedRevision: number) => {
+    selectRollingReference: (documentId: string, spanId: string, attemptId: string, frameIndex: number, frameAsset: AssetReference, expectedRevision: number) => {
       if (!isUuid(spanId)) throw new AnimationRuleError('The span id must be a UUID.', 400)
       if (!isUuid(attemptId)) throw new AnimationRuleError('The attempt id must be a UUID.', 400)
       if (!isNonNegativeInt(frameIndex)) throw new AnimationRuleError('frameIndex must be a non-negative integer.', 400)
+      // The frame's extracted image rides the pointer (Codex I11). The route
+      // resolves it through the §7.2.2 extraction seam — SERVER-side truth,
+      // never a client-supplied handle — so the store takes it as a trusted
+      // internal argument (the wire-facing shape check happened at the route;
+      // the body re-validation below still refuses a malformed write).
       return authorCommand(documentId, expectedRevision, (body) => {
         const span = body.spans[requireSpan(body, spanId)]
         const slot = span.stepSlots.find((step) => step.attempts.includes(attemptId))
@@ -743,14 +748,22 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
         // The annotation rides the selection pointer (wave 2a, §6.4): a
         // DIFFERENT rolling reference starts unannotated — the new frame's
         // pose is unknown until authored — while re-selecting the SAME frame
-        // is a GENUINE no-op (the fix round's M-1): the pointer already is
-        // the requested selection, so no write, no revision bump, no stale
-        // mark — an idempotent re-click neither destroys the authored
-        // annotation nor spuriously marks the span (§5.3 reserves marks for
-        // actual selection changes).
+        // is a GENUINE no-op once the pointer carries its frame asset (the
+        // fix round's M-1): the pointer already is the requested selection,
+        // so no write, no revision bump, no stale mark — an idempotent
+        // re-click neither destroys the authored annotation nor spuriously
+        // marks the span (§5.3 reserves marks for actual selection changes).
+        // The one remaining write on the same frame is the I11 backfill: a
+        // PRE-widening pointer (frameAsset null) records the resolved image —
+        // a real change, one revision bump, nothing marked stale (the
+        // REFERENCE did not change, and the annotation rides untouched).
         const current = slot.selectedRollingReference
-        if (current !== null && current.attemptId === attemptId && current.frameIndex === frameIndex) return false
-        slot.selectedRollingReference = { attemptId, frameIndex, poseDescription: null, facing: null }
+        if (current !== null && current.attemptId === attemptId && current.frameIndex === frameIndex) {
+          if (current.frameAsset !== null) return false
+          slot.selectedRollingReference = { ...current, frameAsset }
+          return
+        }
+        slot.selectedRollingReference = { attemptId, frameIndex, poseDescription: null, facing: null, frameAsset }
         // The new near reference changes the reference state the span's later
         // steps consume (§6.4) — mark the span stale with the pose reason;
         // previous takes stay in the slot's attempts (§8.3).

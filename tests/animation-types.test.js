@@ -101,7 +101,7 @@ function makeBody() {
           camera: { description: 'low wide', reason: 'establishes the alley' },
         },
         stepSlots: [
-          { id: step1, attempts: [attemptA, attemptB], selectedRollingReference: { attemptId: attemptA, frameIndex: 11, poseDescription: 'weight forward over the planted left foot', facing: 'screen-left' } },
+          { id: step1, attempts: [attemptA, attemptB], selectedRollingReference: { attemptId: attemptA, frameIndex: 11, poseDescription: 'weight forward over the planted left foot', facing: 'screen-left', frameAsset: { assetId: 'canvas-blobs/ab/frame-11.png', relPath: 'canvas-blobs/ab/frame-11.png', kind: 'image' } } },
           { id: step2, attempts: [], selectedRollingReference: null },
         ],
         stale: true,
@@ -187,13 +187,17 @@ test('the rolling-reference annotation round-trips; the pre-wave-2a shape reads 
   assert.notEqual(parsed, null)
   assert.deepEqual(
     parsed.spans[0].stepSlots[0].selectedRollingReference,
-    { attemptId: body.spans[0].stepSlots[0].selectedRollingReference.attemptId, frameIndex: 11, poseDescription: 'weight forward over the planted left foot', facing: 'screen-left' },
+    {
+      attemptId: body.spans[0].stepSlots[0].selectedRollingReference.attemptId, frameIndex: 11,
+      poseDescription: 'weight forward over the planted left foot', facing: 'screen-left',
+      frameAsset: { assetId: 'canvas-blobs/ab/frame-11.png', relPath: 'canvas-blobs/ab/frame-11.png', kind: 'image' },
+    },
     'the annotated pointer survives the round-trip',
   )
   // The pre-wave-2a wire shape (no annotation fields) is the one widening
-  // normalization: rows the older build wrote must keep parsing — their whole
-  // document would otherwise become unservable — and "missing" is exactly
-  // "unannotated".
+  // normalization family: rows the older build wrote must keep parsing — their
+  // whole document would otherwise become unservable — and "missing" is
+  // exactly "unannotated".
   const legacy = makeBody()
   const legacyPointer = { attemptId: legacy.spans[0].stepSlots[0].selectedRollingReference.attemptId, frameIndex: 11 }
   legacy.spans[0].stepSlots[0].selectedRollingReference = legacyPointer
@@ -201,7 +205,7 @@ test('the rolling-reference annotation round-trips; the pre-wave-2a shape reads 
   assert.notEqual(legacyParsed, null, 'a pointer without annotation fields parses (the widening read)')
   assert.deepEqual(
     legacyParsed.spans[0].stepSlots[0].selectedRollingReference,
-    { ...legacyPointer, poseDescription: null, facing: null },
+    { ...legacyPointer, poseDescription: null, facing: null, frameAsset: null },
     'absent annotation fields read as nulls',
   )
   rejects('a non-string, non-null pose description', (mutated) => {
@@ -209,6 +213,38 @@ test('the rolling-reference annotation round-trips; the pre-wave-2a shape reads 
   })
   rejects('a facing outside FACING_TERMS on the annotation', (mutated) => {
     mutated.spans[0].stepSlots[0].selectedRollingReference.facing = 'leftward'
+  })
+})
+
+// Codex batch C, I11 — the rolling-reference pointer carries the frame's OWN
+// extracted image (frameAsset), recorded at selection time by the route's
+// §7.2.2 resolution. The same widening doctrine as the annotation: the
+// pre-I11 shape reads as null (the pointer annotates beside the honest
+// placeholder until its frame is re-selected), a well-formed asset
+// round-trips, and a malformed one refuses the whole body.
+test('the rolling-reference frameAsset round-trips; the pre-I11 shape reads as null; malformation rejects', () => {
+  const body = makeBody()
+  const pointer = body.spans[0].stepSlots[0].selectedRollingReference
+  // The pre-I11 wire shape (annotation present, no frameAsset) parses with
+  // frameAsset null — rows the older build wrote stay servable.
+  const legacy = makeBody()
+  const legacyPointer = { attemptId: legacy.spans[0].stepSlots[0].selectedRollingReference.attemptId, frameIndex: 11, poseDescription: 'weight forward over the planted left foot', facing: 'screen-left' }
+  legacy.spans[0].stepSlots[0].selectedRollingReference = legacyPointer
+  const legacyParsed = parseAnimationDocumentBody(legacy)
+  assert.notEqual(legacyParsed, null, 'a pointer without frameAsset parses (the widening read)')
+  assert.equal(legacyParsed.spans[0].stepSlots[0].selectedRollingReference.frameAsset, null, 'an absent frameAsset reads as null')
+  // A well-formed asset survives the round-trip verbatim.
+  const parsed = parseAnimationDocumentBody(body)
+  assert.deepEqual(parsed.spans[0].stepSlots[0].selectedRollingReference.frameAsset, pointer.frameAsset, 'the recorded frame asset round-trips')
+  // Malformation refuses: the asset reference shape is the shared contract.
+  rejects('a frameAsset without an asset id', (mutated) => {
+    mutated.spans[0].stepSlots[0].selectedRollingReference.frameAsset = { relPath: 'canvas-blobs/ab/x.png', kind: 'image' }
+  })
+  rejects('a frameAsset of an unknown kind', (mutated) => {
+    mutated.spans[0].stepSlots[0].selectedRollingReference.frameAsset = { assetId: 'x', relPath: null, kind: 'audio' }
+  })
+  rejects('a non-null, non-string relPath on the frameAsset', (mutated) => {
+    mutated.spans[0].stepSlots[0].selectedRollingReference.frameAsset = { assetId: 'x', relPath: 3, kind: 'image' }
   })
 })
 

@@ -1209,7 +1209,7 @@ test('the §12.2 vertical slice — leave, land, return, review, select, continu
     // near reference).
     const selected = await readAnimationDocument(request, seeded.documentId)
     const selectedSpan = selected.document.body.spans.find((entry) => entry.id === seeded.spanId)!
-    expect(selectedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 5, poseDescription: null, facing: null })
+    expect(selectedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 5, poseDescription: null, facing: null, frameAsset: expect.objectContaining({ kind: 'image' }) })
     expect(selected.document.revision).toBe(seeded.revision + 1)
     await expect(page.locator(`[data-anim-span="${seeded.spanId}"]`)).toHaveAttribute('data-anim-span-stale', 'true')
 
@@ -1234,7 +1234,7 @@ test('the §12.2 vertical slice — leave, land, return, review, select, continu
     const continued = await readAnimationDocument(request, seeded.documentId)
     const continuedSpan = continued.document.body.spans.find((entry) => entry.id === seeded.spanId)!
     expect(continuedSpan.stepSlots).toHaveLength(2)
-    expect(continuedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 5, poseDescription: null, facing: null })
+    expect(continuedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 5, poseDescription: null, facing: null, frameAsset: expect.objectContaining({ kind: 'image' }) })
     const stepTwoAttempt = continued.document.attempts.find((entry) => continuedSpan.stepSlots[1]!.attempts.includes(entry.attemptId))!
     await expect(back).toHaveAttribute('data-anim-review-attempt', stepTwoAttempt.attemptId, { timeout: 15_000 })
     await expect(back).toContainText('step 2')
@@ -1398,7 +1398,7 @@ test('annotating the rolling reference recompiles the preview and freezes verbat
     // annotation marked the span stale 'pose' (§6.4's reference state).
     const annotated = await readAnimationDocument(request, seeded.documentId)
     const annotatedSpan = annotated.document.body.spans.find((entry) => entry.id === seeded.spanId)!
-    expect(annotatedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 3, poseDescription: POSE, facing: 'screen-left' })
+    expect(annotatedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 3, poseDescription: POSE, facing: 'screen-left', frameAsset: expect.objectContaining({ kind: 'image' }) })
     await expect(page.locator(`[data-anim-span="${seeded.spanId}"]`)).toHaveAttribute('data-anim-span-stale', 'true')
 
     // The authored preservation (wave 2a's second fix, the live review's #3):
@@ -1484,6 +1484,16 @@ test('a submit inside the annotation debounce flushes the pose draft first — a
     await expect(page.locator('[data-anim-inspector]')).toBeVisible({ timeout: 15_000 })
     await expect(page.locator('[data-anim-frame-source="promoted-frame"]')).toBeVisible()
     await expect(page.locator('[data-anim-rolling-annotation]')).toBeVisible()
+
+    // Codex batch C, I11 — the promoted-reference card renders the frame's
+    // OWN extracted image: the selection pointer's recorded frameAsset
+    // through the real blob route. The pre-fix build passed relPath:null
+    // unconditionally for every promoted frame and the author annotated
+    // beside the clip's blob-handle placeholder.
+    const rollingImage = page.locator('[data-anim-frame="first"] img.anim-frame-img')
+    await expect(rollingImage).toBeVisible()
+    await expect(rollingImage).toHaveAttribute('src', /\/api\/lan\/documents\/blobs\/file/)
+    await expect(page.locator('[data-anim-frame="first"] [data-anim-frame-placeholder]')).toHaveCount(0, 'the promoted frame renders an actual image, zero placeholders')
 
     // The wire order, observed at the page: type a pose and click Submit
     // IMMEDIATELY — inside the 400 ms annotation debounce window.
@@ -1946,7 +1956,7 @@ test('a re-roll adds an alternative take without replacing the selection (review
     const rolled = await readAnimationDocument(request, seeded.documentId)
     const rolledSlot = rolled.document.body.spans.find((entry) => entry.id === seeded.spanId)!.stepSlots[0]!
     expect(rolledSlot.attempts).toEqual([takeOne.attemptId, takeTwo])
-    expect(rolledSlot.selectedRollingReference).toEqual({ attemptId: takeOne.attemptId, frameIndex: 3, poseDescription: null, facing: null })
+    expect(rolledSlot.selectedRollingReference).toEqual({ attemptId: takeOne.attemptId, frameIndex: 3, poseDescription: null, facing: null, frameAsset: expect.objectContaining({ kind: 'image' }) })
 
     // Switching takes is an EXPLICIT user act: reviewing take 2 moves the
     // subject (and clears the "new" marker — the reviewer has now seen it),
@@ -1958,7 +1968,7 @@ test('a re-roll adds an alternative take without replacing the selection (review
     await panel.locator('[data-anim-review-frame="8"]').click()
     await expect(panel.locator('[data-anim-review-frame="8"]')).toHaveAttribute('data-anim-frame-selected', 'true')
     const switched = await readAnimationDocument(request, seeded.documentId)
-    expect(switched.document.body.spans.find((entry) => entry.id === seeded.spanId)!.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId: takeTwo, frameIndex: 8, poseDescription: null, facing: null })
+    expect(switched.document.body.spans.find((entry) => entry.id === seeded.spanId)!.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId: takeTwo, frameIndex: 8, poseDescription: null, facing: null, frameAsset: expect.objectContaining({ kind: 'image' }) })
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
     await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
@@ -3240,7 +3250,7 @@ test('a bound session updates its binding through the UI — read-only descripti
     expect(span.stale).toBe(true)
     expect(span.staleReasons).toContain('binding')
     expect(span.stepSlots[0]!.attempts).toEqual([takeOne], 'prior takes are preserved (§8.3)')
-    expect(span.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId: takeOne, frameIndex: 3, poseDescription: null, facing: null }, 'the selection pointer rides through the update untouched')
+    expect(span.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId: takeOne, frameIndex: 3, poseDescription: null, facing: null, frameAsset: expect.objectContaining({ kind: 'image' }) }, 'the selection pointer rides through the update untouched')
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
     await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)

@@ -584,10 +584,15 @@ test('(g) selectRollingReference sets the step slot pointer and never creates a 
   assert.deepEqual(spanG.stepSlots[0].attempts, [attemptG1.attempt.id], 'the landed tween attempt joined its step slot')
   assert.equal(row.body.keys.length, 2, 'a tween landing never creates a key')
 
-  // Command 2 — selectRollingReference: the step slot's pointer, nothing else.
-  row = anim.selectRollingReference(docG.id, spanG.id, attemptG1.attempt.id, 11, row.revision)
+  // Command 2 — selectRollingReference: the step slot's pointer, nothing
+  // else. The pointer records the frame's OWN extracted image (Codex I11 —
+  // the route resolves it through the §7.2.2 seam; the store test supplies
+  // the asset directly, the store's contract being to record what it is
+  // handed).
+  const frameAssetG = { assetId: 'canvas-blobs/ea/frame-g1-11.png', relPath: 'canvas-blobs/ea/frame-g1-11.png', kind: 'image' }
+  row = anim.selectRollingReference(docG.id, spanG.id, attemptG1.attempt.id, 11, frameAssetG, row.revision)
   spanG = row.body.spans[0]
-  assert.deepEqual(spanG.stepSlots[0].selectedRollingReference, { attemptId: attemptG1.attempt.id, frameIndex: 11, poseDescription: null, facing: null })
+  assert.deepEqual(spanG.stepSlots[0].selectedRollingReference, { attemptId: attemptG1.attempt.id, frameIndex: 11, poseDescription: null, facing: null, frameAsset: frameAssetG })
   assert.equal(row.body.keys.length, 2, 'selecting a rolling reference never creates a key')
   assert.equal(row.body.keys.find((k) => k.id === keyP).selectedCandidateId, cP.id)
   assert.equal(row.body.keys.find((k) => k.id === keyQ).selectedCandidateId, cQ.id)
@@ -595,8 +600,8 @@ test('(g) selectRollingReference sets the step slot pointer and never creates a 
   assert.equal(spanG.stale, true, 'the re-selected near reference makes the later steps of the span outdated')
   assert.ok(spanG.staleReasons.includes('pose'), 'the rolling-reference change rides the pose reason (§6.4: the reference state carries the pose)')
 
-  assert.throws(() => anim.selectRollingReference(docG.id, spanG.id, attemptG1.attempt.id, -1, row.revision), (err) => err.status === 400, 'a negative frame index is a 400')
-  assert.throws(() => anim.selectRollingReference(docG.id, spanG.id, uuid(), 3, row.revision), (err) => err.status === 404, 'an attempt not attached to the span is a 404')
+  assert.throws(() => anim.selectRollingReference(docG.id, spanG.id, attemptG1.attempt.id, -1, frameAssetG, row.revision), (err) => err.status === 400, 'a negative frame index is a 400')
+  assert.throws(() => anim.selectRollingReference(docG.id, spanG.id, uuid(), 3, frameAssetG, row.revision), (err) => err.status === 404, 'an attempt not attached to the span is a 404')
 
   // Command 3 — selectClipContribution: the editorial list, upserted per
   // (span, attempt); assembly timing never marks anything stale (§9).
@@ -806,11 +811,13 @@ test('(g3) annotateRollingReference — transactional, pointer-bound, pose-stale
   )
 
   // Select, then annotate in place — correctable, exactly as the ruling says.
-  row = anim.selectRollingReference(docG.id, span.id, takeOne.attempt.id, 11, row.revision)
+  const frameAssetOne = { assetId: 'canvas-blobs/1f/frame-g3-11.png', relPath: 'canvas-blobs/1f/frame-g3-11.png', kind: 'image' }
+  const frameAssetTwo = { assetId: 'canvas-blobs/2f/frame-g3-3.png', relPath: 'canvas-blobs/2f/frame-g3-3.png', kind: 'image' }
+  row = anim.selectRollingReference(docG.id, span.id, takeOne.attempt.id, 11, frameAssetOne, row.revision)
   row = anim.annotateRollingReference(docG.id, span.id, step, { poseDescription: 'weight forward over the planted left foot', facing: 'screen-left' }, row.revision)
   assert.deepEqual(
     row.body.spans[0].stepSlots[0].selectedRollingReference,
-    { attemptId: takeOne.attempt.id, frameIndex: 11, poseDescription: 'weight forward over the planted left foot', facing: 'screen-left' },
+    { attemptId: takeOne.attempt.id, frameIndex: 11, poseDescription: 'weight forward over the planted left foot', facing: 'screen-left', frameAsset: frameAssetOne },
     'the annotation rides the selection pointer',
   )
   assert.equal(row.body.spans[0].stale, true, 'the annotation marks the span stale')
@@ -827,8 +834,8 @@ test('(g3) annotateRollingReference — transactional, pointer-bound, pose-stale
   row = anim.annotateRollingReference(docG.id, span.id, step, { poseDescription: null, facing: 'back to camera' }, row.revision)
   assert.deepEqual(
     row.body.spans[0].stepSlots[0].selectedRollingReference,
-    { attemptId: takeOne.attempt.id, frameIndex: 11, poseDescription: null, facing: 'back to camera' },
-    'a re-annotation corrects in place (null clears the pose)',
+    { attemptId: takeOne.attempt.id, frameIndex: 11, poseDescription: null, facing: 'back to camera', frameAsset: frameAssetOne },
+    'a re-annotation corrects in place (null clears the pose; the frame asset rides untouched)',
   )
 
   // A NO-OP annotation (the pointer already carries these values — the fix
@@ -864,17 +871,74 @@ test('(g3) annotateRollingReference — transactional, pointer-bound, pose-stale
   // annotation (an idempotent re-click must not destroy authored work) and
   // is itself a GENUINE no-op — no bump, no mark (the fix round's M-1)…
   const revisionBeforeReselect = row.revision
-  row = anim.selectRollingReference(docG.id, span.id, takeOne.attempt.id, 11, row.revision)
+  row = anim.selectRollingReference(docG.id, span.id, takeOne.attempt.id, 11, frameAssetOne, row.revision)
   assert.equal(row.body.spans[0].stepSlots[0].selectedRollingReference.facing, 'back to camera', 'the same-pointer re-select keeps the annotation')
   assert.equal(row.revision, revisionBeforeReselect, 'an idempotent same-frame re-select bumps no revision')
   // …while selecting a DIFFERENT rolling reference starts unannotated — the
-  // new frame's pose is unknown until authored.
-  row = anim.selectRollingReference(docG.id, span.id, takeTwo.attempt.id, 3, row.revision)
+  // new frame's pose is unknown until authored (and its pointer records the
+  // NEW frame's own asset, Codex I11).
+  row = anim.selectRollingReference(docG.id, span.id, takeTwo.attempt.id, 3, frameAssetTwo, row.revision)
   assert.deepEqual(
     row.body.spans[0].stepSlots[0].selectedRollingReference,
-    { attemptId: takeTwo.attempt.id, frameIndex: 3, poseDescription: null, facing: null },
-    'a different rolling reference resets the annotation to nulls',
+    { attemptId: takeTwo.attempt.id, frameIndex: 3, poseDescription: null, facing: null, frameAsset: frameAssetTwo },
+    'a different rolling reference resets the annotation to nulls and records the new frame asset',
   )
+})
+
+// ---------------------------------------------------------------------------
+// (g4) Codex batch C, I11 — the pointer's frameAsset book: a same-frame
+//      re-select is a no-op only once the asset stands; a PRE-widening
+//      pointer (frameAsset null — rows the older build wrote, hydrated to
+//      null on every read) takes the BACKFILL: the resolved image records,
+//      exactly one revision bump, nothing marked stale (the reference did
+//      not change), the annotation riding untouched. Its OWN project — (h)
+//      pins the archive counts of `projectId` below.
+// ---------------------------------------------------------------------------
+test('(g4) a pre-widening pointer takes the frameAsset backfill — one bump, no stale mark; the asset-carried no-op stands', () => {
+  docG = anim.createDocument({ projectId: `${projectId}-frame-asset`, name: 'Golf-frame-asset', binding: makeBinding() })
+  const cP = makeCandidate()
+  const cQ = makeCandidate()
+  let row = anim.addKeyCandidate(docG.id, keyP, cP, 0)
+  row = anim.addKeyCandidate(docG.id, keyQ, cQ, row.revision)
+  row = anim.selectKeyCandidate(docG.id, keyP, cP.id, row.revision)
+  row = anim.selectKeyCandidate(docG.id, keyQ, cQ.id, row.revision)
+  row = anim.insertSpan(docG.id, { fromKeyId: keyP, toKeyId: keyQ, intent: { movement: 'walks two steps', preservation: 'silhouette intact' } }, row.revision)
+  const span = row.body.spans[0]
+  const step = span.stepSlots[0].id
+  const take = recordAttemptSimple(anim, docG.id, 'tween', step, 'idem-g4-a', { documentRevision: row.revision })
+  anim.landCandidate(take.attempt.id, { assetReference: { assetId: 'clip-g4', relPath: 'takes/clip-g4.mp4', kind: 'video' }, frameCount: 22, earlierRevision: false })
+  row = anim.getDocument(docG.id)
+
+  // The legacy shape, authored exactly as the pre-I11 build wrote it: a
+  // pointer with NO frameAsset (hydration reads the absent field as null).
+  const legacyAsset = { assetId: 'canvas-blobs/0f/frame-g4-4.png', relPath: 'canvas-blobs/0f/frame-g4-4.png', kind: 'image' }
+  const legacyBody = JSON.parse(JSON.stringify(row.body))
+  legacyBody.spans[0].stepSlots[0].selectedRollingReference = { attemptId: take.attempt.id, frameIndex: 4, poseDescription: 'arms folded', facing: null }
+  db.prepare('UPDATE animation_document SET body_json = ?, authored_revision = authored_revision + 1 WHERE id = ?').run(JSON.stringify(legacyBody), docG.id)
+  row = anim.getDocument(docG.id)
+  assert.equal(row.body.spans[0].stepSlots[0].selectedRollingReference.frameAsset, null, 'the surgically-authored legacy pointer hydrates with no frame asset')
+
+  // The BACKFILL: the same frame re-selected now records the resolved image —
+  // one revision bump, the annotation untouched, and NO new stale mark (the
+  // stale reasons stand exactly as the legacy write left them).
+  const reasonsBefore = row.body.spans[0].staleReasons.slice()
+  const staleBefore = row.body.spans[0].stale
+  row = anim.selectRollingReference(docG.id, span.id, take.attempt.id, 4, legacyAsset, row.revision)
+  assert.deepEqual(
+    row.body.spans[0].stepSlots[0].selectedRollingReference,
+    { attemptId: take.attempt.id, frameIndex: 4, poseDescription: 'arms folded', facing: null, frameAsset: legacyAsset },
+    'the backfill records the frame asset over the legacy pointer',
+  )
+  assert.equal(row.revision, anim.getDocument(docG.id).revision, 'the backfill is a real write (one bump)')
+  assert.deepEqual(row.body.spans[0].staleReasons, reasonsBefore, 'the backfill marks nothing stale — the reference did not change')
+  assert.equal(row.body.spans[0].stale, staleBefore, 'the stale flag stands where the legacy write left it')
+
+  // With the asset standing, the same-frame re-select is the GENUINE no-op
+  // again (the fix round's M-1 semantics — no bump, no write).
+  const revisionAfterBackfill = row.revision
+  row = anim.selectRollingReference(docG.id, span.id, take.attempt.id, 4, legacyAsset, row.revision)
+  assert.equal(row.revision, revisionAfterBackfill, 'an assetd same-frame re-select bumps no revision')
+  assert.equal(row.body.spans[0].stepSlots[0].selectedRollingReference.frameAsset.assetId, legacyAsset.assetId, 'the pointer is unchanged')
 })
 
 
@@ -920,10 +984,12 @@ test('(h) project archive round-trips animation documents, attempts, and referen
   // were never registered as blobs — the archive records them as VISIBLE
   // missing entries (the §7 idiom: never a silent omission while counts claim
   // full coverage). In production the completion owner registers real outputs
-  // before landing (task 4).
+  // before landing (task 4). The two frame-asset paths join them since I11:
+  // (g)/(g3) hand the store fabricated extraction relPaths (the route's real
+  // resolution registers the PNG before the pointer ever carries it).
   assert.deepEqual(
     manifest.missingBlobs.map((b) => b.path).sort(),
-    ['takes/clip-g1.mp4', 'takes/clip-g3-a.mp4', 'takes/gen-d1.mp4', 'takes/gen-e1.mp4'],
+    ['canvas-blobs/2f/frame-g3-3.png', 'canvas-blobs/ea/frame-g1-11.png', 'takes/clip-g1.mp4', 'takes/clip-g3-a.mp4', 'takes/gen-d1.mp4', 'takes/gen-e1.mp4'],
     'unregistered referenced paths are visible, never silently dropped',
   )
 
