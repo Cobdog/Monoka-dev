@@ -777,8 +777,12 @@ async function decodeFrameFromRegisteredClip(deps: FrameResolutionDeps, attemptI
  *  no usable outputs) the DURABLE registered clip answers instead (the final
  *  review's F1 — §7.2.1/§10.2's "durable, not callback-chained" contract,
  *  applied to frame resolution: the tween chain's promoted-near submits and
- *  the hero frame acceptance keep working across an engine restart). Throws
- *  when the frame cannot be resolved anywhere — a NAMED refusal, never a
+ *  the hero frame acceptance keep working across an engine restart — and,
+ *  since a restart is also the UNREACHABLE window, across the engine being
+ *  DOWN entirely: the transport failure falls to the same durable path
+ *  (Codex I9), so nothing in the review chain waits on engine
+ *  reachability). Throws when the frame cannot be resolved anywhere — a
+ *  NAMED refusal (naming BOTH causes when both paths are dead), never a
  *  silently wrong frame — and that IS a preparation failure the owner's
  *  bounded retry + preserve-the-clip policy handles (§11.4). */
 async function resolveFrameAsset(deps: FrameResolutionDeps, attemptId: string, frameIndex: number): Promise<AssetReference> {
@@ -786,21 +790,50 @@ async function resolveFrameAsset(deps: FrameResolutionDeps, attemptId: string, f
   if (!attempt || !attempt.engineJobId || !attempt.result) {
     throw new Error(`Attempt ${attemptId} has no landed clip to resolve a frame from.`)
   }
-  const status = await deps.engine.history(attempt.engineJobId)
-  const outputs = status.outputs ?? []
-  if (outputs.length === 0) {
-    // The engine's history holds nothing usable — the restart/eviction shape.
-    // The landed candidate's clip is DURABLE in the app's own blob store
-    // whether or not the engine remembers producing it: decode the frame from
-    // it through the same content-addressed registration the video-only
+  // The engine is asked FIRST (the cheap listing path for the hot case) —
+  // but for RESOLUTION purposes an UNREACHABLE engine is
+  // indistinguishable-from-empty (Codex I9): its history is volatile
+  // anyway, the DURABLE registered clip holds every needed byte, and the
+  // transport failure must not fail extraction, hero acceptance,
+  // retry-preparation, or dependent submissions that need no engine fact.
+  // Only the queue/history OBSERVATION paths keep their unreachable
+  // semantics (reconciling) — resolution changes and nothing else.
+  let outputs: NonNullable<EngineJobStatus['outputs']> | null = null
+  let engineUnreachable = ''
+  try {
+    const status = await deps.engine.history(attempt.engineJobId)
+    outputs = status.outputs ?? []
+  } catch (failure) {
+    engineUnreachable = failure instanceof Error ? failure.message : String(failure)
+  }
+  if (outputs === null || outputs.length === 0) {
+    // The engine's history holds nothing usable — the restart/eviction
+    // shape, or an engine that cannot be reached at all. The landed
+    // candidate's clip is DURABLE in the app's own blob store whether or
+    // not the engine remembers producing it: decode the frame from it
+    // through the same content-addressed registration the video-only
     // branch performs (same asset for the same (attempt, frame) — content
     // addressing proves the path equivalence), same named beyond-range
-    // refusal from the decoder.
+    // refusal from the decoder. Refusing needs BOTH paths dead, and the
+    // refusal then names both causes in separate sentences.
     const clipRelPath = attempt.result.candidate.assetReference.relPath
+    const unreachableSentence = outputs === null
+      ? `The animation engine is unreachable, so its output listing could not be read for this attempt (${engineUnreachable}).`
+      : null
     if (clipRelPath === null) {
-      throw new Error(`The engine holds no outputs for attempt ${attemptId} and its landed candidate carries no registered clip path — the frame cannot be resolved.`)
+      throw new Error([
+        ...(unreachableSentence !== null ? [unreachableSentence] : []),
+        `The engine holds no outputs for attempt ${attemptId} and its landed candidate carries no registered clip path — the frame cannot be resolved.`,
+      ].join(' '))
     }
-    return decodeFrameFromRegisteredClip(deps, attemptId, clipRelPath, frameIndex)
+    try {
+      return await decodeFrameFromRegisteredClip(deps, attemptId, clipRelPath, frameIndex)
+    } catch (failure) {
+      if (unreachableSentence !== null) {
+        throw new Error(`${unreachableSentence} ${failure instanceof Error ? failure.message : String(failure)}`)
+      }
+      throw failure
+    }
   }
   const artifact = frameArtifactOf(outputs, frameIndex)
   if (artifact.kind === 'image') {
