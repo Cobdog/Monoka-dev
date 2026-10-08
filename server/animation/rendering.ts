@@ -1261,8 +1261,21 @@ export function createAnimationRenderingService(deps: {
         snapshot,
       })
       if (!recorded.created) {
-        // A concurrent same-key insert won the race — the store's
-        // return-existing contract is exactly §11.4's answer.
+        // A concurrent same-key writer won the insert race (Codex I6): both
+        // requests peeked before either persisted, so the store's
+        // return-existing contract hands the loser the WINNER's row. The
+        // sequential same-input retry that contract answers must be earned —
+        // the loser's own input hash is compared against the row's, and a
+        // different-input loser gets the same 409 the sequential case answers
+        // (never a silent 200 for the winner's render).
+        if (recorded.attempt.inputHash !== inputHash) {
+          const document = store.getDocument(recorded.attempt.documentId)
+          throw new AnimationConflictError(
+            document ? document.revision : 0,
+            document,
+            `This idempotency key was already used for attempt ${recorded.attempt.id} with different inputs — a retry must carry the same frozen snapshot (spec §11.4).`,
+          )
+        }
         return { attemptId: recorded.attempt.id, created: false }
       }
       emit('animation.attempt.persisted', { attemptId, documentId: input.documentId, tool: input.tool })

@@ -140,6 +140,11 @@
 //       row freezes: one revision everywhere (caption, references,
 //       documentRevision, bindingVersion, and the settings stamps all
 //       describe the ENTRY document)
+//   (v) concurrent same-key submissions (Codex I6) — two submits that share
+//       an idempotency key with different captions, both peeking before
+//       either persists: exactly one created:true, the loser the same 409
+//       the sequential case answers; identical inputs racing stay
+//       idempotent (one created:false with the same attempt id)
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -2122,4 +2127,94 @@ test('(u) a binding+settings move behind the enumeration await leaves the frozen
   assert.equal(row.snapshot.caption, snapshot.caption, 'the frozen caption is the one submitted against the entry document')
   assert.deepEqual(row.snapshot.references, snapshot.references, 'the frozen references are the entry resolution')
   held.owner.stopObserving()
+})
+
+// ---------------------------------------------------------------------------
+// (v) concurrent same-key submissions (Codex I6) — the insert race's loser
+//     answers the 409, never a silent 200 for the winner's render
+// ---------------------------------------------------------------------------
+
+test('(v) two concurrent same-key submits with DIFFERENT inputs ⇒ exactly one created:true, the loser 409s; identical inputs stay idempotent', async () => {
+  const doc = anim.createDocument({ projectId, name: 'Victor', binding: makeBinding() })
+  const revision = anim.getDocument(doc.id).revision
+
+  // ---- Leg 1 — DIFFERENT inputs (the I6 reproduction): both peek before
+  // either persists; the store's return-existing contract alone answered
+  // created:false with the WINNER's row — the loser got a 200 for a render
+  // of the winner's caption.
+  {
+    const keyA = uuid()
+    const snapshotA = makeHeroSnapshot(keyA, revision)
+    const snapshotB = makeHeroSnapshot(keyA, revision)
+    snapshotB.caption = `${snapshotB.caption}\nA DIFFERENT CAPTION`
+    assert.notEqual(snapshotA.caption, snapshotB.caption)
+    // Two gates: the winner is released first and its row observed before
+    // the loser resumes past the enumeration — deterministic, no microtask
+    // ordering assumptions.
+    let releaseFirst = null
+    let releaseSecond = null
+    const firstGate = new Promise((resolve) => { releaseFirst = resolve })
+    const secondGate = new Promise((resolve) => { releaseSecond = resolve })
+    let entered = 0
+    const port = gatedEnginePort((p) => {
+      p.modelEnumerations = async (options) => {
+        entered += 1
+        await (entered === 1 ? firstGate : secondGate)
+        return engineClient.modelEnumerations(options)
+      }
+    })
+    const held = gatedServiceFor(port)
+    const inputA = { documentId: doc.id, tool: 'hero', targetId: keyA, snapshot: snapshotA }
+    const inputB = { documentId: doc.id, tool: 'hero', targetId: keyA, snapshot: snapshotB }
+    const first = held.service.submit(inputA, 'idem-v-race')
+    const second = held.service.submit(inputB, 'idem-v-race')
+    await waitUntil(() => entered === 2, 10_000, 'both submissions holding behind the enumeration (both peeks already missed)')
+    releaseFirst()
+    await waitUntil(() => anim.attemptByIdempotencyKey('idem-v-race') !== null, 10_000, 'the winner persisting its row')
+    releaseSecond()
+    const [a, b] = await Promise.allSettled([first, second])
+    const fulfilled = [a, b].filter((outcome) => outcome.status === 'fulfilled')
+    assert.equal(fulfilled.length, 1, 'exactly one submission succeeds')
+    assert.equal(fulfilled[0].value.created, true)
+    const row = anim.attemptByIdempotencyKey('idem-v-race')
+    assert.equal(fulfilled[0].value.attemptId, row.id, 'the winner owns the row')
+    assert.equal(row.snapshot.caption, snapshotA.caption, 'the row froze the WINNER\'s inputs — the loser never overwrote anything')
+    const rejected = [a, b].find((outcome) => outcome.status === 'rejected')
+    assert.ok(rejected, 'the loser rejects')
+    assert.ok(rejected.reason instanceof AnimationConflictError, `the loser's rejection is the conflict (got ${rejected.reason})`)
+    assert.equal(rejected.reason.status, 409)
+    assert.match(rejected.reason.message, /different inputs/)
+    held.owner.stopObserving()
+  }
+
+  // ---- Leg 2 — IDENTICAL inputs racing: the benign twin stays idempotent
+  // (one created:true, one created:false with the SAME attempt id — the fix
+  // must not have broken §7.2.2's letter for the honest concurrent retry).
+  {
+    const keyB = uuid()
+    const twin = makeHeroSnapshot(keyB, revision)
+    let release = null
+    const gate = new Promise((resolve) => { release = resolve })
+    let entered = 0
+    const port = gatedEnginePort((p) => {
+      p.modelEnumerations = async (options) => {
+        entered += 1
+        await gate
+        return engineClient.modelEnumerations(options)
+      }
+    })
+    const held = gatedServiceFor(port)
+    const input = { documentId: doc.id, tool: 'hero', targetId: keyB, snapshot: twin }
+    const first = held.service.submit(input, 'idem-v-twin')
+    const second = held.service.submit(input, 'idem-v-twin')
+    await waitUntil(() => entered === 2, 10_000, 'both twin submissions holding behind the enumeration')
+    release()
+    const [a, b] = await Promise.allSettled([first, second])
+    assert.equal(a.status, 'fulfilled')
+    assert.equal(b.status, 'fulfilled', 'the identical twin never conflicts')
+    assert.equal(a.value.created, true)
+    assert.equal(b.value.created, false)
+    assert.equal(b.value.attemptId, a.value.attemptId)
+    held.owner.stopObserving()
+  }
 })
