@@ -21,10 +21,13 @@ import { documentsApi } from '../canvas/api'
 import type { TimelineKey } from './timelineModel'
 import type { AnimationAssetPick } from './state'
 
-/** Where an imported image lands: the key under the strip, or a fresh
- *  slot (the store materializes unknown key ids — order max+1, selection
- *  null). */
-export type KeyImportDestination = { keyId: string } | { asNewKey: true }
+/** Where an imported image lands: the key under the strip, or a fresh slot
+ *  (the store materializes unknown key ids — order max+1, selection null).
+ *  ONE import action resolves ONE destination: a batch of N files "as a new
+ *  key" mints ONE key holding N candidates (the 2b review's I-1 — per-file
+ *  minting scattered N singleton keys, permanent clutter with no key delete
+ *  existing), matching the into-key arm's one-key-N-candidates behavior. */
+export type KeyImportDestination = { keyId: string }
 
 export type KeyCandidatesProps = {
   keyEntity: TimelineKey
@@ -53,10 +56,13 @@ export function KeyCandidates({ keyEntity, busy, onImportFiles, onImport, onSele
   const [destination, setDestination] = useState<'into' | 'as-new'>('into')
   const [importing, setImporting] = useState(false)
 
-  const destOf = (): KeyImportDestination => (destination === 'as-new' ? { asNewKey: true } : { keyId: keyEntity.id })
-
   const importImages = async (images: Array<{ assetId: string; relPath: string }>, origin: 'import' | 'project-asset') => {
-    for (const image of images) await onImport(destOf(), image, origin)
+    // The destination resolves ONCE per import action (I-1): "As a new key"
+    // mints the key id HERE so every file of the batch lands as a candidate
+    // of ONE key — the existing add-candidate command per file, one minted
+    // keyId, selection null (§5.3).
+    const target: KeyImportDestination = destination === 'as-new' ? { keyId: crypto.randomUUID() } : { keyId: keyEntity.id }
+    for (const image of images) await onImport(target, image, origin)
   }
 
   const importFiles = async (files: File[]) => {
