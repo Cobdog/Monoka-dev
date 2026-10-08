@@ -2101,6 +2101,30 @@ test('the §5.2 hero slice — generate the next key, accept a frame explicitly,
     await expect(review.locator('[data-anim-hero-frame="11"]')).toHaveAttribute('data-anim-frame-proposed', 'true')
     await expect(review.locator('[data-anim-frame-accepted="true"]')).toHaveCount(0)
     await expect(review.locator('[data-anim-hero-accepted-frame]')).toContainText('No frame accepted')
+
+    // Codex batch C, I12 — the landed clip is a VIDEO candidate of the
+    // proposed key, and the candidate strip (mounted under the tool panes for
+    // the selected key) presents it honestly: a named clip note, NO image
+    // preview (the blob URL would render a broken <img>), NO "Use this
+    // image" affordance (the store refuses a non-image selection — the
+    // timeline can never hold a key no adapter can consume), and a working
+    // path to THIS review surface where a frame promotes (§5.2).
+    const clipCandidateId = proposedSlot.candidates[0]!.id
+    const clipTile = page.locator(`[data-anim-key-candidate="${clipCandidateId}"]`)
+    await expect(clipTile).toBeVisible()
+    await expect(clipTile).toHaveAttribute('data-anim-key-candidate-kind', 'video')
+    await expect(clipTile.locator('[data-anim-key-candidate-clip-note]')).toContainText('a landed clip — open review to select a frame')
+    await expect(clipTile.locator('img')).toHaveCount(0, 'a clip candidate renders no broken image preview')
+    await expect(clipTile.locator('[data-anim-key-candidate-select]')).toHaveCount(0, 'a clip candidate offers no image-selection affordance')
+    const clipReviewLink = clipTile.locator('[data-anim-key-candidate-review]')
+    await expect(clipReviewLink).toBeVisible()
+    // The link navigates: switch the key's tool away from hero (the review
+    // lane hides), then the link brings it back.
+    await pickKeyTool(page, 'sequence')
+    await expect(page.locator('[data-anim-review-lane="hero"]')).toBeHidden()
+    await clipReviewLink.click()
+    await expect(page.locator('[data-anim-review-lane="hero"]')).toBeVisible()
+    await expect(page.locator('[data-anim-hero-review]')).toBeVisible()
     // ACCEPT frame 5 — explicit, not the proposal: the on-demand extraction
     // path (§7.2.2 path 2), wire-pinned to exactly one extract-frame POST.
     let extractCalls = 0

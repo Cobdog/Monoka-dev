@@ -743,6 +743,15 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
       set({ commandError: `Key ${slot.order} is locked — unlock it before changing its selection.` })
       return false
     }
+    const candidate = slot.candidates.find((entry) => entry.id === candidateId) ?? null
+    if (candidate !== null && candidate.assetReference.kind !== 'image') {
+      // Codex I12: a landed hero CLIP is a retained alternative, never a
+      // selectable drawing — the frame promotes through review (§5.2). The
+      // strip does not offer the action; this guard keeps a stale click
+      // honest (the server refuses it regardless).
+      set({ commandError: `A key slot selects an image — promote a frame from the clip through review (§5.2), never the clip itself.` })
+      return false
+    }
     if (slot.selectedCandidateId === candidateId) return true
     const ticket = openTicket
     set({ busy: true, commandError: null })

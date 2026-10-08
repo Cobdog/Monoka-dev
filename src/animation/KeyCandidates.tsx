@@ -16,6 +16,11 @@
  * Wave 3 fix round (the review's I-1): the batch STOPS at the first failed
  * file and names the honest partial (count + file) beside the store's named
  * error — a mid-batch failure is never silent.
+ *
+ * Codex batch C (I12): a hero landing materializes the landed CLIP as a
+ * video candidate of the proposed key. The strip presents it honestly — a
+ * named clip note and the path to the review surface where a frame
+ * promotes — never a "Use this image" affordance the store would refuse.
  */
 import { useRef, useState } from 'react'
 import { ImagePlus } from 'lucide-react'
@@ -44,6 +49,10 @@ export type KeyCandidatesProps = {
   onImport(destination: KeyImportDestination, image: { assetId: string; relPath: string }, origin: 'import' | 'project-asset'): Promise<boolean>
   /** The explicit choice (§7.2.1's select command). */
   onSelect(candidateId: string): void
+  /** Codex I12 — a landed CLIP candidate's path to the review surface (the
+   *  hero lane that holds its takes). Optional; absent leaves the named
+   *  note standing alone (still honest, just not navigable). */
+  onOpenClipReview?(): void
   /** The prepared characters (§4.1's project assets) — optional; absent or
    *  empty hides the asset half (the files half always stands). */
   assets?: AnimationAssetPick[]
@@ -55,7 +64,7 @@ export type KeyCandidatesProps = {
 const previewUrlOf = (relPath: string | null): string | null =>
   relPath !== null && relPath.includes('/') ? documentsApi.blobFileUrl(relPath) : null
 
-export function KeyCandidates({ keyEntity, busy, onImportFiles, onImport, onSelect, assets = [] }: KeyCandidatesProps) {
+export function KeyCandidates({ keyEntity, busy, onImportFiles, onImport, onSelect, onOpenClipReview, assets = [] }: KeyCandidatesProps) {
   const fileInput = useRef<HTMLInputElement>(null)
   const [destination, setDestination] = useState<'into' | 'as-new'>('into')
   const [importing, setImporting] = useState(false)
@@ -112,23 +121,53 @@ export function KeyCandidates({ keyEntity, busy, onImportFiles, onImport, onSele
       <ul className="anim-key-candidate-strip" data-anim-key-candidate-strip>
         {keyEntity.candidates.map((candidate) => {
           const selected = keyEntity.selectedCandidateId === candidate.id
-          const url = previewUrlOf(candidate.assetReference.relPath)
+          // Codex I12: a hero landing materializes the landed CLIP as a VIDEO
+          // candidate of the proposed key (a retained alternative, §8.2). A
+          // clip is honestly NOT a drawing: no <img> preview (the blob URL
+          // would render a broken image), no "Use this image" affordance (the
+          // server refuses a non-image selection — no adapter could consume
+          // it), and a named note pointing at the review surface where the
+          // frame promotes (§5.2). Never a dead-looking disabled control
+          // without explanation.
+          const isClip = candidate.assetReference.kind === 'video'
+          const url = isClip ? null : previewUrlOf(candidate.assetReference.relPath)
           return (
-            <li key={candidate.id} className="anim-key-candidate" data-anim-key-candidate={candidate.id} data-anim-key-candidate-selected={selected ? 'true' : 'false'}>
-              {url !== null
-                ? <img src={url} alt={`key #${keyEntity.order} candidate (${candidate.origin})`} />
-                : <span className="anim-key-candidate-placeholder" aria-hidden="true">no preview</span>}
+            <li key={candidate.id} className="anim-key-candidate" data-anim-key-candidate={candidate.id} data-anim-key-candidate-selected={selected ? 'true' : 'false'} data-anim-key-candidate-kind={candidate.assetReference.kind}>
+              {isClip ? (
+                <span className="anim-key-candidate-placeholder" data-anim-key-candidate-clip title={candidate.assetReference.assetId}>a landed clip</span>
+              ) : url !== null ? (
+                <img src={url} alt={`key #${keyEntity.order} candidate (${candidate.origin})`} />
+              ) : (
+                <span className="anim-key-candidate-placeholder" aria-hidden="true">no preview</span>
+              )}
               <span className="anim-note">{candidate.origin}</span>
-              <Button
-                variant="secondary" className="anim-btn"
-                busy={busy}
-                disabled={selected || keyEntity.lock}
-                onClick={() => onSelect(candidate.id)}
-                data-anim-key-candidate-select={candidate.id}
-                title={selected ? 'This candidate is the key\'s image' : 'Make this candidate the key\'s image'}
-              >
-                {selected ? 'Selected' : 'Use this image'}
-              </Button>
+              {isClip ? (
+                <>
+                  <span className="anim-note" data-anim-key-candidate-clip-note>a landed clip — open review to select a frame (§5.2)</span>
+                  {onOpenClipReview !== undefined && (
+                    <Button
+                      variant="secondary" className="anim-btn"
+                      busy={busy}
+                      onClick={onOpenClipReview}
+                      data-anim-key-candidate-review={candidate.id}
+                      title="Open this clip's review — accept a frame as the key's image"
+                    >
+                      Review the clip — choose a frame
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <Button
+                  variant="secondary" className="anim-btn"
+                  busy={busy}
+                  disabled={selected || keyEntity.lock}
+                  onClick={() => onSelect(candidate.id)}
+                  data-anim-key-candidate-select={candidate.id}
+                  title={selected ? 'This candidate is the key\'s image' : 'Make this candidate the key\'s image'}
+                >
+                  {selected ? 'Selected' : 'Use this image'}
+                </Button>
+              )}
             </li>
           )
         })}
