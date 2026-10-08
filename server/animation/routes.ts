@@ -758,10 +758,21 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       return authoring(response, request, 'annotate.rolling-reference', (body, expectedRevision) => {
         const annotation = recordField(body, 'annotation', 'The annotation needs a pose description (text or null) and a facing (a vocabulary term or null).')
         const { poseDescription, facing } = annotation
-        if (poseDescription !== undefined && poseDescription !== null && (typeof poseDescription !== 'string' || poseDescription.length > TEXT_LIMIT)) {
+        // The wire contract is the FULL annotation — BOTH fields, always
+        // (the fix round's M-2): null clears, and the shipped client merges
+        // a partial edit over the live pointer before sending. An ABSENT
+        // field would silently clear the other one, so it is a named 400
+        // instead — never a wipe by omission.
+        if (poseDescription === undefined) {
+          throw new AnimationRuleError('The annotation needs BOTH fields — poseDescription is missing (send null to clear it; the route takes the full annotation, never a partial patch).', 400)
+        }
+        if (facing === undefined) {
+          throw new AnimationRuleError('The annotation needs BOTH fields — facing is missing (send null to clear it; the route takes the full annotation, never a partial patch).', 400)
+        }
+        if (poseDescription !== null && (typeof poseDescription !== 'string' || poseDescription.length > TEXT_LIMIT)) {
           throw new AnimationRuleError(`The pose description must be text of at most ${TEXT_LIMIT} characters (or null to clear it).`, 400)
         }
-        if (facing !== undefined && facing !== null && !isFacingTerm(facing)) {
+        if (facing !== null && !isFacingTerm(facing)) {
           throw new AnimationRuleError('The facing must be one of: toward camera / back to camera / screen-left / screen-right (or null to clear it).', 400)
         }
         // An explicitly empty pose description IS a clear — the annotation's
@@ -770,7 +781,7 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
           documentIdFrom(body),
           uuidField(body, 'spanId'),
           uuidField(body, 'stepSlotId'),
-          { poseDescription: poseDescription === undefined || poseDescription === '' ? null : poseDescription, facing: facing === undefined ? null : facing },
+          { poseDescription: poseDescription === '' ? null : poseDescription, facing },
           expectedRevision,
         )
       })

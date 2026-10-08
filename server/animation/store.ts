@@ -433,12 +433,14 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
 
   // ---- the authoring-command core -------------------------------------------
 
-  type DocumentMutation = (body: AnimationDocumentBody) => void
+  type DocumentMutation = (body: AnimationDocumentBody) => boolean | void
 
   /** One revision-gated transaction: read → gate → mutate → re-validate →
    *  guarded persist. parseAnimationDocumentBody is the persist gate, so a
    *  mutation that would corrupt pointer integrity throws here instead of
-   *  ever reaching body_json. */
+   *  ever reaching body_json. A mutate that returns false declares a NO-OP
+   *  (nothing would change): the gate still ran, but no write, no revision
+   *  bump, no staleness — §5.3 reserves marks for actual changes. */
   const authorCommand = db.transaction((documentId: string, expectedRevision: number, mutate: DocumentMutation): AnimationDocumentRow => {
     if (typeof expectedRevision !== 'number' || !Number.isInteger(expectedRevision) || expectedRevision < 0) {
       throw new AnimationRuleError('expectedRevision must be a non-negative integer.', 400)
@@ -450,7 +452,10 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
     }
     const body = parseAnimationDocumentBody(parseJson<unknown>(row.body_json, null))
     if (!body) throw new Error(`Animation document ${documentId} carries a body this build cannot parse — refusing to mutate it.`)
-    mutate(body)
+    if (mutate(body) === false) {
+      // The command's own no-op verdict — return the row untouched.
+      return hydrateDocument(row)
+    }
     const revalidated = parseAnimationDocumentBody(body)
     if (!revalidated) {
       throw new Error(`An animation command produced a body that fails validation (document ${documentId}) — the write was refused, nothing was persisted.`)
@@ -738,12 +743,14 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
         // The annotation rides the selection pointer (wave 2a, §6.4): a
         // DIFFERENT rolling reference starts unannotated — the new frame's
         // pose is unknown until authored — while re-selecting the SAME frame
-        // keeps the authored annotation (an idempotent re-click of the
-        // already-selected frame must not destroy authored work).
+        // is a GENUINE no-op (the fix round's M-1): the pointer already is
+        // the requested selection, so no write, no revision bump, no stale
+        // mark — an idempotent re-click neither destroys the authored
+        // annotation nor spuriously marks the span (§5.3 reserves marks for
+        // actual selection changes).
         const current = slot.selectedRollingReference
-        slot.selectedRollingReference = current !== null && current.attemptId === attemptId && current.frameIndex === frameIndex
-          ? current
-          : { attemptId, frameIndex, poseDescription: null, facing: null }
+        if (current !== null && current.attemptId === attemptId && current.frameIndex === frameIndex) return false
+        slot.selectedRollingReference = { attemptId, frameIndex, poseDescription: null, facing: null }
         // The new near reference changes the reference state the span's later
         // steps consume (§6.4) — mark the span stale with the pose reason;
         // previous takes stay in the slot's attempts (§8.3).
@@ -780,6 +787,10 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
         if (slot.selectedRollingReference === null) {
           throw new AnimationRuleError(`Step slot ${stepSlotId} holds no selected rolling reference — the annotation is bound to a live selection.`, 400)
         }
+        // A no-op annotation (the pointer already carries these values — the
+        // fix round's M-1): nothing changes, so nothing marks and nothing
+        // bumps. The refusals above still ran, and the revision gate too.
+        if (slot.selectedRollingReference.poseDescription === poseDescription && slot.selectedRollingReference.facing === facing) return false
         slot.selectedRollingReference.poseDescription = poseDescription
         slot.selectedRollingReference.facing = facing
         // A changed annotation changes the pose the span's later steps'

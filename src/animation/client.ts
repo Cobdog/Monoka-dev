@@ -267,9 +267,10 @@ export const animationApi = {
     post<{ document: unknown }>('/api/lan/animation/select/rolling-reference', { documentId, spanId, attemptId, frameIndex, expectedRevision }).then(documentOf),
 
   /** Wave 2a (§6.4's inspectable-and-correctable ruling): the image-bound
-   *  annotation for a step slot's SELECTED rolling reference — the full
-   *  {poseDescription, facing} rides the wire (the adapter merges a partial
-   *  patch over the live pointer before calling). Null fields clear. */
+   *  annotation for a step slot's SELECTED rolling reference — the FULL
+   *  {poseDescription, facing} rides the wire (the route requires BOTH
+   *  fields, null clears; the adapter merges a partial edit over the live
+   *  pointer before calling, so a one-field edit never wipes the other). */
   annotateRollingReference: (documentId: string, spanId: string, stepSlotId: string, annotation: { poseDescription: string | null; facing: FacingTerm | null }, expectedRevision: number) =>
     post<{ document: unknown }>('/api/lan/animation/annotate/rolling-reference', { documentId, spanId, stepSlotId, annotation, expectedRevision }).then(documentOf),
 

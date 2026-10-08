@@ -1034,11 +1034,18 @@ export function createAnimationRenderingService(deps: {
 
   return {
     async submit(input, idempotencyKey) {
-      validate(input, idempotencyKey)
-
+      // §7.2.2 idempotency FIRST — the fix round's M-3 reorder (wave 1's M6
+      // pattern: the idempotency check precedes validation that depends on
+      // the CURRENT build). The compiler-version gate inside validate() would
+      // 400 a verbatim v1-era replay (or 409 after a fresh re-resolve) the
+      // moment the version bumps; the row that already exists is the retry's
+      // answer regardless of what a NEW build would demand of a NEW snapshot.
+      // Only the key's own shape guards the peek; everything else validates
+      // below for fresh keys.
+      if (!isNonEmptyString(idempotencyKey)) throw new AnimationRuleError('The submission needs an idempotency key.', 400)
       // §11.4 idempotency: the hash over the RECEIVED input; a same-key
       // retry with different inputs is a conflict, never a second render.
-      const inputHash = animationInputHash(input.snapshot)
+      const inputHash = animationInputHash(input?.snapshot ?? null)
       const existing = store.attemptByIdempotencyKey(idempotencyKey)
       if (existing) {
         if (existing.inputHash !== inputHash) {
@@ -1051,6 +1058,8 @@ export function createAnimationRenderingService(deps: {
         }
         return { attemptId: existing.id, created: false }
       }
+
+      validate(input, idempotencyKey)
 
       // Wave 1's preflight (the live review's #1): resolve the model set
       // against the engine's OWN enumeration BEFORE anything is persisted —

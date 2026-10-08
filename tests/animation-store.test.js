@@ -831,6 +831,16 @@ test('(g3) annotateRollingReference — transactional, pointer-bound, pose-stale
     'a re-annotation corrects in place (null clears the pose)',
   )
 
+  // A NO-OP annotation (the pointer already carries these values — the fix
+  // round's M-1): a genuine no-op — no revision bump, no stale mark, the row
+  // returned as it stands (§5.3 reserves marks for actual changes).
+  const revisionBeforeNoop = row.revision
+  const reasonsBeforeNoop = row.body.spans[0].staleReasons.slice()
+  row = anim.annotateRollingReference(docG.id, span.id, step, { poseDescription: null, facing: 'back to camera' }, row.revision)
+  assert.equal(row.revision, revisionBeforeNoop, 'a no-op annotation bumps no revision')
+  assert.deepEqual(row.body.spans[0].staleReasons, reasonsBeforeNoop, 'and marks nothing stale')
+  assert.equal(row.body.spans[0].stepSlots[0].selectedRollingReference.facing, 'back to camera', 'the annotation is unchanged')
+
   // The transactional gate: a stale expectedRevision loses to the current row.
   assert.throws(
     () => anim.annotateRollingReference(docG.id, span.id, step, { poseDescription: 'stale write', facing: null }, row.revision - 1),
@@ -851,9 +861,12 @@ test('(g3) annotateRollingReference — transactional, pointer-bound, pose-stale
   assert.throws(() => anim.annotateRollingReference(docG.id, span.id, step, { poseDescription: 7, facing: null }, row.revision), (err) => err.status === 400, 'a non-string pose is a 400')
 
   // The selection reset: re-selecting the SAME frame keeps the authored
-  // annotation (an idempotent re-click must not destroy authored work)…
+  // annotation (an idempotent re-click must not destroy authored work) and
+  // is itself a GENUINE no-op — no bump, no mark (the fix round's M-1)…
+  const revisionBeforeReselect = row.revision
   row = anim.selectRollingReference(docG.id, span.id, takeOne.attempt.id, 11, row.revision)
   assert.equal(row.body.spans[0].stepSlots[0].selectedRollingReference.facing, 'back to camera', 'the same-pointer re-select keeps the annotation')
+  assert.equal(row.revision, revisionBeforeReselect, 'an idempotent same-frame re-select bumps no revision')
   // …while selecting a DIFFERENT rolling reference starts unannotated — the
   // new frame's pose is unknown until authored.
   row = anim.selectRollingReference(docG.id, span.id, takeTwo.attempt.id, 3, row.revision)

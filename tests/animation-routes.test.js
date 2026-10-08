@@ -1570,6 +1570,19 @@ test('(m) the annotate route lands the pointer annotation; the step-2 frozen cap
     documentId: docM.id, spanId, stepSlotId: uuid(), annotation: { poseDescription: null, facing: null }, expectedRevision: revision,
   })).status, 404, 'an unknown step slot is a 404')
   assert.equal((await annotate({ poseDescription: null, facing: 'leftward' }, revision)).status, 400, 'a non-vocabulary facing is a 400')
+  // The wire contract is the FULL annotation (the fix round's M-2): a
+  // partial patch would silently clear the missing field, so an absent one
+  // is a named 400 — never a wipe by omission.
+  const partialPose = await apiD.post('/api/lan/animation/annotate/rolling-reference', {
+    documentId: docM.id, spanId, stepSlotId: stepOne, annotation: { poseDescription: 'weight forward' }, expectedRevision: revision,
+  })
+  assert.equal(partialPose.status, 400, 'a patch missing facing is a 400')
+  assert.match(partialPose.body.error, /facing is missing/)
+  const partialFacing = await apiD.post('/api/lan/animation/annotate/rolling-reference', {
+    documentId: docM.id, spanId, stepSlotId: stepOne, annotation: { facing: 'screen-left' }, expectedRevision: revision,
+  })
+  assert.equal(partialFacing.status, 400, 'a patch missing poseDescription is a 400')
+  assert.match(partialFacing.body.error, /poseDescription is missing/)
   const stale = await annotate({ poseDescription: 'weight forward', facing: 'screen-left' }, revision - 1)
   assert.equal(stale.status, 409, 'a stale expectedRevision is the 409 rebase surface')
   assert.equal(stale.body.conflict.currentRevision, revision, 'the 409 carries the current revision')
@@ -1606,6 +1619,12 @@ test('(m) the annotate route lands the pointer annotation; the step-2 frozen cap
     (envelopes) => envelopes.some((envelope) => envelope.ch === 'animation' && envelope.type === 'document-changed' && envelope.payload.documentId === docM.id && envelope.payload.reason === 'annotate.rolling-reference'),
     'the document-changed envelope for the annotation',
   )
+
+  // A NO-OP annotate over HTTP (the same values the pointer already carries —
+  // the fix round's M-1): 200 with the row as it stands — no revision bump.
+  const noOp = await annotate({ poseDescription: 'weight settled low over the balls of the feet', facing: 'screen-left' }, revision)
+  assert.equal(noOp.status, 200, `the no-op annotate answers 200 (${noOp.body.error ?? ''})`)
+  assert.equal(noOp.body.document.revision, revision, 'a no-op annotate bumps nothing')
 
   // The compile CONSUMES it: a fresh take for the SAME step (the re-roll's
   // new idempotency key) freezes the annotated pose in its caption — the
