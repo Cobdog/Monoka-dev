@@ -96,6 +96,14 @@
  * design. A stale-but-usable sequence answers with the acknowledgment
  * prompt (`exportStale` — each stale selection named); retrying with the
  * acknowledgment exports and records the staleness in the manifest.
+ *
+ * What wave 2a adds (the live review's #4, §6.4's ruling): the promoted
+ * frame's pose/facing — `deriveTweenPreview` reads the selection pointer's
+ * ANNOTATION where it hardcoded nulls (the server's tween resolution
+ * mirrored exactly), and `annotateRollingReference` lands the authoring
+ * edit: a partial patch merged over the live pointer, parked behind a busy
+ * store, so the inspector's debounced pose settle and the facing chips both
+ * serialize instead of clobbering each other.
  */
 import { useEffect } from 'react'
 import { create } from 'zustand'
@@ -197,6 +205,13 @@ type AnimationSessionState = {
    *  first; an extraction failure names itself and stops — the selection is
    *  never written against a frame that could not be resolved. */
   selectReferenceFrame(spanId: string, attemptId: string, frameIndex: number): Promise<boolean>
+  /** Wave 2a (§6.4's inspectable-and-correctable ruling): the image-bound
+   *  annotation for a step slot's SELECTED rolling reference. A PARTIAL
+   *  patch — the unspecified field keeps the live pointer's truth, so a
+   *  facing flip never clobbers a settling pose draft and vice versa. The
+   *  settled pose persist PARKS behind a busy store (the intent draft's
+   *  Minor-2 doctrine): parked persists serialize instead of dropping. */
+  annotateRollingReference(spanId: string, stepSlotId: string, patch: { poseDescription?: string | null; facing?: FacingTerm | null }): Promise<boolean>
   /** The §7.1 continuation — ONE step, always a user action: submits the
    *  next step from the span's durable intent, into the span's trailing
    *  EMPTY slot when one stands (a continuation whose submission was
@@ -306,10 +321,13 @@ const isPathLikeHandle = (assetId: string): boolean => assetId.includes('/')
 /** Where a tween reference's pose came from — the §6.4 distinction the
  *  inspector labels on the FIRST FRAME card: the span's start key's selected
  *  image, or a frame PROMOTED from a landed step (the chain's actual current
- *  rolling reference — never a frozen copy of the original endpoint). */
+ *  rolling reference — never a frozen copy of the original endpoint). The
+ *  promoted frame's source carries its OWN step slot id: the frame's pose
+ *  annotation is bound to that slot's selection pointer (wave 2a), and the
+ *  annotation editor addresses its command through it. */
 export type TweenRefSource =
   | { kind: 'start-key'; keyId: string; keyOrder: number }
-  | { kind: 'promoted-frame'; stepIndex: number; attemptId: string; frameIndex: number }
+  | { kind: 'promoted-frame'; stepIndex: number; stepSlotId: string; attemptId: string; frameIndex: number }
 
 /** One resolved tween reference (the rolling-near or the fixed-far): ok
  *  carries the asset + pose the compile consumes; not-ok the NAMED problem
@@ -337,13 +355,14 @@ export type TweenPreview = {
 /** The pure mirror of the submit route's tween draft resolution
  *  (server/animation/routes.ts' resolveDraft tween arm): the ACTUAL current
  *  rolling reference — the promoted frame of the last landed step BEFORE the
- *  target slot (its pose belongs to the frame, and this build's frames carry
- *  none — the same nulls the server freezes), falling back to the span's
- *  start key's selected candidate (pose follows the image, §5.1); the far
- *  reference is always the destination key's selected candidate. A step
- *  whose selected attempt has NOT landed stops the walk with a named
- *  problem — the server refuses that submission with the same name, and the
- *  preview must never silently skip past an explicit selection.
+ *  target slot, whose pose is the selection pointer's ANNOTATION (wave 2a,
+ *  §6.4: authored after the frame's promotion, nulls until then — the same
+ *  truth the server freezes), falling back to the span's start key's
+ *  selected candidate (pose follows the image, §5.1); the far reference is
+ *  always the destination key's selected candidate. A step whose selected
+ *  attempt has NOT landed stops the walk with a named problem — the server
+ *  refuses that submission with the same name, and the preview must never
+ *  silently skip past an explicit selection.
  *
  *  `targetStepSlotId` (optional) pins the submission target to a NAMED step
  *  slot instead of the span's last — the re-roll's arm (a re-roll targets
@@ -378,10 +397,13 @@ export function deriveTweenPreview(document: AnimationDocumentView, spanId: stri
 
   // The backward walk over EARLIER steps, the server's loop verbatim: skip
   // steps with no promoted selection, stop at the first one — landed or not.
+  // The promoted frame's pose is the pointer's ANNOTATION (wave 2a, §6.4) —
+  // the same truth the server's submission resolves, nulls until authored.
   let rolling: TweenRef | null = null
   for (let index = targetIndex - 1; index >= 0; index -= 1) {
-    const selected = span.stepSlots[index]?.selectedRollingReference
-    if (!selected) continue
+    const slot = span.stepSlots[index]
+    const selected = slot?.selectedRollingReference
+    if (!selected || slot === undefined) continue
     const attempt = document.attempts.find((entry) => entry.attemptId === selected.attemptId) ?? null
     if (attempt === null || attempt.candidate === null) {
       rolling = { ok: false, problem: `The rolling reference attempt ${selected.attemptId} holds no landed clip yet — step ${index + 1}'s promoted frame is not reviewable.` }
@@ -390,8 +412,8 @@ export function deriveTweenPreview(document: AnimationDocumentView, spanId: stri
     rolling = {
       ok: true,
       assetReference: attempt.candidate.assetReference,
-      pose: { poseDescription: null, facing: null },
-      source: { kind: 'promoted-frame', stepIndex: index, attemptId: selected.attemptId, frameIndex: selected.frameIndex },
+      pose: { poseDescription: selected.poseDescription, facing: selected.facing },
+      source: { kind: 'promoted-frame', stepIndex: index, stepSlotId: slot.id, attemptId: selected.attemptId, frameIndex: selected.frameIndex },
     }
     break
   }
@@ -835,6 +857,43 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
         await animationApi.extractFrame(attemptId, frameIndex)
       }
       const view = await animationApi.selectRollingReference(current.id, spanId, attemptId, frameIndex, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  annotateRollingReference: async (spanId, stepSlotId, patch) => {
+    const current = get().document
+    if (!current) return false
+    const ticket = openTicket
+    // The intent draft's park doctrine (task 9's Minor-2, fixed in task 13):
+    // the debounced pose settle waits out a command in flight instead of
+    // returning false and silently dropping the settled text. The facing
+    // arm's chips disable while busy, so the park in practice serves the
+    // settle; both serialize safely either way.
+    while (get().busy && ticket === openTicket) await whenIdle()
+    if (ticket !== openTicket || !get().document) return false
+    const fresh = get().document!
+    const slot = fresh.body.spans.find((entry) => entry.id === spanId)?.stepSlots.find((step) => step.id === stepSlotId) ?? null
+    const pointer = slot?.selectedRollingReference ?? null
+    if (pointer === null) {
+      set({ commandError: 'That rolling reference is no longer selected — reload picked up a change.' })
+      return false
+    }
+    // The patch merges over the LIVE pointer: the command always carries the
+    // full annotation the wire contract wants, and a one-field edit never
+    // reverts the other field's just-persisted truth.
+    const annotation = {
+      poseDescription: patch.poseDescription !== undefined ? patch.poseDescription : pointer.poseDescription,
+      facing: patch.facing !== undefined ? patch.facing : pointer.facing,
+    }
+    if (annotation.poseDescription === pointer.poseDescription && annotation.facing === pointer.facing) return true
+    set({ busy: true, commandError: null })
+    try {
+      const view = await animationApi.annotateRollingReference(fresh.id, spanId, stepSlotId, annotation, get().document?.revision ?? 0)
       if (ticket !== openTicket) return false
       set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
       return true
@@ -1417,6 +1476,7 @@ export function useAnimationDocument(documentId: string, projectId = '') {
       setKeyFacing: session.setKeyFacing,
       submitTweenStep: session.submitTweenStep,
       selectReferenceFrame: session.selectReferenceFrame,
+      annotateRollingReference: session.annotateRollingReference,
       continueChain: session.continueChain,
       rerollStep: session.rerollStep,
       retryPreparation: session.retryPreparation,

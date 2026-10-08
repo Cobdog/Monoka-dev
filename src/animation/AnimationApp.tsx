@@ -380,6 +380,7 @@ export function AnimationApp() {
                   busy={busy}
                   onIntentChange={session.commands.updateSpanIntent}
                   onFacingChange={session.commands.setKeyFacing}
+                  onAnnotateRolling={session.commands.annotateRollingReference}
                   onSubmit={session.commands.submitTweenStep}
                 />
               )}

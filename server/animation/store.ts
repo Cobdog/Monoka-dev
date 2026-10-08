@@ -42,6 +42,7 @@ import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
 import { CanvasSchemaVersionError, resolveStudioAppVersion } from '../documents'
 import {
+  isFacingTerm,
   isMediumString,
   isUuid,
   parseAnimationDocumentBody,
@@ -52,6 +53,7 @@ import {
   type AttemptExecutionState,
   type BindingInput,
   type BindingVersion,
+  type FacingTerm,
   type FrozenAttemptSnapshot,
   type KeyCandidate,
   type SessionOverrides,
@@ -733,10 +735,56 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
         const span = body.spans[requireSpan(body, spanId)]
         const slot = span.stepSlots.find((step) => step.attempts.includes(attemptId))
         if (!slot) throw new AnimationRuleError(`Attempt ${attemptId} is not attached to span ${spanId}.`, 404)
-        slot.selectedRollingReference = { attemptId, frameIndex }
+        // The annotation rides the selection pointer (wave 2a, §6.4): a
+        // DIFFERENT rolling reference starts unannotated — the new frame's
+        // pose is unknown until authored — while re-selecting the SAME frame
+        // keeps the authored annotation (an idempotent re-click of the
+        // already-selected frame must not destroy authored work).
+        const current = slot.selectedRollingReference
+        slot.selectedRollingReference = current !== null && current.attemptId === attemptId && current.frameIndex === frameIndex
+          ? current
+          : { attemptId, frameIndex, poseDescription: null, facing: null }
         // The new near reference changes the reference state the span's later
         // steps consume (§6.4) — mark the span stale with the pose reason;
         // previous takes stay in the slot's attempts (§8.3).
+        markStale(body, [spanId], 'pose')
+      })
+    },
+
+    /** Wave 2a (§6.4's "inspectable and correctable" ruling, 2026-10-07):
+     *  the image-bound annotation for a step slot's SELECTED rolling
+     *  reference — one {poseDescription, facing} riding the selection
+     *  pointer, correctable in place. The annotation feeds the next
+     *  submission's compile exactly as intent does, so the span marks stale
+     *  'pose' — the same class as a key-candidate pose change; the annotated
+     *  slot's own landed takes stay untouched (§8.3: prior takes preserved).
+     *  Bound to a LIVE selection: a slot with no selected rolling reference
+     *  is a state refusal, never an annotation floating free of its frame. */
+    annotateRollingReference: (
+      documentId: string,
+      spanId: string,
+      stepSlotId: string,
+      annotation: { poseDescription: string | null; facing: FacingTerm | null },
+      expectedRevision: number,
+    ) => {
+      if (!isUuid(spanId)) throw new AnimationRuleError('The span id must be a UUID.', 400)
+      if (!isUuid(stepSlotId)) throw new AnimationRuleError('The step slot id must be a UUID.', 400)
+      if (!isRecord(annotation)) throw new AnimationRuleError('The annotation needs a pose description (text or null) and a facing (a vocabulary term or null).', 400)
+      const { poseDescription, facing } = annotation
+      if (poseDescription !== null && typeof poseDescription !== 'string') throw new AnimationRuleError('The pose description must be text (or null to clear it).', 400)
+      if (facing !== null && !isFacingTerm(facing)) throw new AnimationRuleError('The facing must be one of: toward camera / back to camera / screen-left / screen-right (or null to clear it).', 400)
+      return authorCommand(documentId, expectedRevision, (body) => {
+        const span = body.spans[requireSpan(body, spanId)]
+        const slot = span.stepSlots.find((step) => step.id === stepSlotId)
+        if (!slot) throw new AnimationRuleError(`No tween step slot with id ${stepSlotId} in span ${spanId}.`, 404)
+        if (slot.selectedRollingReference === null) {
+          throw new AnimationRuleError(`Step slot ${stepSlotId} holds no selected rolling reference — the annotation is bound to a live selection.`, 400)
+        }
+        slot.selectedRollingReference.poseDescription = poseDescription
+        slot.selectedRollingReference.facing = facing
+        // A changed annotation changes the pose the span's later steps'
+        // captions compile from (§6.4's reference state) — the same 'pose'
+        // staleness a key-candidate selection change carries.
         markStale(body, [spanId], 'pose')
       })
     },

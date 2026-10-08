@@ -101,7 +101,7 @@ function makeBody() {
           camera: { description: 'low wide', reason: 'establishes the alley' },
         },
         stepSlots: [
-          { id: step1, attempts: [attemptA, attemptB], selectedRollingReference: { attemptId: attemptA, frameIndex: 11 } },
+          { id: step1, attempts: [attemptA, attemptB], selectedRollingReference: { attemptId: attemptA, frameIndex: 11, poseDescription: 'weight forward over the planted left foot', facing: 'screen-left' } },
           { id: step2, attempts: [], selectedRollingReference: null },
         ],
         stale: true,
@@ -154,7 +154,7 @@ test('parseAnimationDocumentBody returns null on malformation', () => {
 test('parseAnimationDocumentBody enforces the internal pointer integrity', () => {
   rejects('a selectedCandidateId pointing outside its own slot', (body) => { body.keys[0].selectedCandidateId = uuid() })
   rejects('a rolling reference pointing at an attempt outside its slot', (body) => {
-    body.spans[0].stepSlots[0].selectedRollingReference = { attemptId: uuid(), frameIndex: 3 }
+    body.spans[0].stepSlots[0].selectedRollingReference = { attemptId: uuid(), frameIndex: 3, poseDescription: null, facing: null }
   })
   rejects('an activeBindingVersion no binding history entry carries', (body) => { body.activeBindingVersion = 99 })
   rejects('two binding history entries sharing a version', (body) => {
@@ -175,6 +175,41 @@ test('parseAnimationDocumentBody enforces the internal pointer integrity', () =>
   preBinding.bindingHistory = []
   preBinding.activeBindingVersion = 0
   assert.notEqual(parseAnimationDocumentBody(preBinding), null, 'empty binding history + version 0 parses')
+})
+
+// Wave 2a (§6.4's ruling): the rolling-reference pointer carries the frame's
+// image-bound annotation — one {poseDescription, facing} per selected frame,
+// both nullable. The pointer-integrity rule (the attempt must live in its own
+// slot) is unchanged; the annotation widens the shape without loosening it.
+test('the rolling-reference annotation round-trips; the pre-wave-2a shape reads as nulls; malformation rejects', () => {
+  const body = makeBody()
+  const parsed = parseAnimationDocumentBody(body)
+  assert.notEqual(parsed, null)
+  assert.deepEqual(
+    parsed.spans[0].stepSlots[0].selectedRollingReference,
+    { attemptId: body.spans[0].stepSlots[0].selectedRollingReference.attemptId, frameIndex: 11, poseDescription: 'weight forward over the planted left foot', facing: 'screen-left' },
+    'the annotated pointer survives the round-trip',
+  )
+  // The pre-wave-2a wire shape (no annotation fields) is the one widening
+  // normalization: rows the older build wrote must keep parsing — their whole
+  // document would otherwise become unservable — and "missing" is exactly
+  // "unannotated".
+  const legacy = makeBody()
+  const legacyPointer = { attemptId: legacy.spans[0].stepSlots[0].selectedRollingReference.attemptId, frameIndex: 11 }
+  legacy.spans[0].stepSlots[0].selectedRollingReference = legacyPointer
+  const legacyParsed = parseAnimationDocumentBody(legacy)
+  assert.notEqual(legacyParsed, null, 'a pointer without annotation fields parses (the widening read)')
+  assert.deepEqual(
+    legacyParsed.spans[0].stepSlots[0].selectedRollingReference,
+    { ...legacyPointer, poseDescription: null, facing: null },
+    'absent annotation fields read as nulls',
+  )
+  rejects('a non-string, non-null pose description', (mutated) => {
+    mutated.spans[0].stepSlots[0].selectedRollingReference.poseDescription = 7
+  })
+  rejects('a facing outside FACING_TERMS on the annotation', (mutated) => {
+    mutated.spans[0].stepSlots[0].selectedRollingReference.facing = 'leftward'
+  })
 })
 
 test('the closed vocabularies are the spec-fixed byte-identical strings', () => {

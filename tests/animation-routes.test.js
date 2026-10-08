@@ -661,7 +661,7 @@ test('(c) submit emits attempt-state envelopes on the animation channel; the lan
     documentId: docC.id, spanId: spanC.id, attemptId: tweenAttemptC, frameIndex: 7, expectedRevision: afterTween.body.document.revision,
   })
   assert.equal(rolling.status, 200, `the rolling reference selects (${rolling.body.error ?? ''})`)
-  assert.deepEqual(rolling.body.document.body.spans.find((span) => span.id === spanC.id).stepSlots[0].selectedRollingReference, { attemptId: tweenAttemptC, frameIndex: 7 })
+  assert.deepEqual(rolling.body.document.body.spans.find((span) => span.id === spanC.id).stepSlots[0].selectedRollingReference, { attemptId: tweenAttemptC, frameIndex: 7, poseDescription: null, facing: null })
 
   const contribution = await api.post('/api/lan/animation/select/clip-contribution', {
     documentId: docC.id, spanId: spanC.id, attemptId: tweenAttemptC, inFrame: 2, outFrame: 15, holdDuration: 4, expectedRevision: rolling.body.document.revision,
@@ -1492,4 +1492,140 @@ test('(l) an offline submit fails on the fresh boot\'s sweep with the durable na
     serverC.child.kill('SIGKILL')
     await new Promise((resolve) => { const t = setTimeout(resolve, 5_000); serverC.child.once('exit', () => { clearTimeout(t); resolve() }) })
   }
+})
+
+// ---------------------------------------------------------------------------
+// (m) wave 2a (the live review's #4, §6.4's ruling) — the image-bound
+//     annotation for a selected rolling reference, over HTTP: the annotate
+//     route answers in the three-selection-command shape (distinct route,
+//     expectedRevision, document-changed), refuses without a live selection,
+//     and the tween arm's near-reference resolution READS the pointer's
+//     annotation — the frozen step-2 caption's FIRST FRAME carries the
+//     authored pose/facing, and an UNANNOTATED pointer still compiles the
+//     bare line (honest, never a guessed pose).
+// ---------------------------------------------------------------------------
+
+test('(m) the annotate route lands the pointer annotation; the step-2 frozen caption compiles it — bare line when unannotated', async () => {
+  // (l) killed server B for its restart leg — this section owns a fresh
+  // server life on the same home (the engine (l) left running).
+  const serverD = await bootServer(home, 'animation-routes D')
+  const apiD = client(serverD.port)
+  const fabricD = openFabricCollector(serverD.port)
+  await fabricD.subscribe('animation')
+
+  const created = await apiD.post('/api/lan/animation/documents', { projectId, name: 'Mike', binding: makeBinding() })
+  assert.equal(created.status, 200)
+  const docM = created.body.document
+  const from = await makeSelectedKey(apiD, docM.id, docM.revision, 'm-from')
+  const to = await makeSelectedKey(apiD, docM.id, from.revision, 'm-to')
+  const span = await apiD.post('/api/lan/animation/spans', {
+    op: 'insert', documentId: docM.id, fromKeyId: from.keyId, toKeyId: to.keyId,
+    intent: { movement: 'she pushes off the back foot into a full stride', preservation: 'coat hem and scarf stay consistent' },
+    expectedRevision: to.revision,
+  })
+  assert.equal(span.status, 200, `the span inserts (${span.body.error ?? ''})`)
+  const spanId = span.body.spanId
+  const stepOne = span.body.document.body.spans.find((entry) => entry.id === spanId).stepSlots[0].id
+
+  // Step 1 renders and lands; the reviewer selects frame 5 — the pointer the
+  // annotation will ride.
+  const first = await apiD.post('/api/lan/animation/attempts', {
+    documentId: docM.id, tool: 'tween', targetId: stepOne, idempotencyKey: 'idem-m-step-1',
+    draft: { tool: 'tween', targetStepSlotId: stepOne, movementStep: 'she pushes off the back foot', overrides: { medium: 'clean line on white' } },
+  })
+  assert.equal(first.status, 200, `step 1 submits (${first.body.error ?? ''})`)
+  await waitUntil(async () => {
+    const response = await apiD.get(`/api/lan/animation/attempt?id=${first.body.attemptId}`)
+    return response.body.attempt?.execution === 'ready' && response.body.attempt?.candidate !== null
+  }, 30_000, 'step 1 landing')
+  const stepOneView = (await apiD.get(`/api/lan/animation/document?id=${docM.id}`)).body.document
+  const selected = await apiD.post('/api/lan/animation/select/rolling-reference', {
+    documentId: docM.id, spanId, attemptId: first.body.attemptId, frameIndex: 5, expectedRevision: stepOneView.revision,
+  })
+  assert.equal(selected.status, 200, `the rolling reference selects (${selected.body.error ?? ''})`)
+  let revision = selected.body.document.revision
+
+  // The chain advances FIRST (the F1 append) so an EMPTY slot stands beside
+  // the selected one — the no-pointer refusal's subject.
+  const appended = await apiD.post('/api/lan/animation/spans', {
+    op: 'append-step-slot', documentId: docM.id, spanId, expectedRevision: revision,
+  })
+  assert.equal(appended.status, 200, `the step slot appends (${appended.body.error ?? ''})`)
+  const stepTwo = appended.body.stepSlotId
+  revision = appended.body.document.revision
+
+  // The annotate route's refusals, each named: a slot with NO selection is a
+  // state refusal (the annotation is bound to a live selection); an unknown
+  // slot a 404; a non-vocabulary facing a 400; a stale expectedRevision the
+  // 409 rebase surface.
+  const annotate = (payload, expectedRevision) => apiD.post('/api/lan/animation/annotate/rolling-reference', {
+    documentId: docM.id, spanId, stepSlotId: stepOne, annotation: payload, expectedRevision,
+  })
+  const unbound = await apiD.post('/api/lan/animation/annotate/rolling-reference', {
+    documentId: docM.id, spanId, stepSlotId: stepTwo, annotation: { poseDescription: 'weight forward', facing: 'screen-left' }, expectedRevision: revision,
+  })
+  assert.equal(unbound.status, 400, 'annotating a slot with no selection is a state refusal')
+  assert.match(unbound.body.error, /no selected rolling reference/)
+  assert.equal((await apiD.post('/api/lan/animation/annotate/rolling-reference', {
+    documentId: docM.id, spanId, stepSlotId: uuid(), annotation: { poseDescription: null, facing: null }, expectedRevision: revision,
+  })).status, 404, 'an unknown step slot is a 404')
+  assert.equal((await annotate({ poseDescription: null, facing: 'leftward' }, revision)).status, 400, 'a non-vocabulary facing is a 400')
+  const stale = await annotate({ poseDescription: 'weight forward', facing: 'screen-left' }, revision - 1)
+  assert.equal(stale.status, 409, 'a stale expectedRevision is the 409 rebase surface')
+  assert.equal(stale.body.conflict.currentRevision, revision, 'the 409 carries the current revision')
+
+  // Step 2 submits against the UNANNOTATED pointer first — the compile is
+  // honest: the bare FIRST FRAME line, never a guessed pose.
+  const takeOne = await apiD.post('/api/lan/animation/attempts', {
+    documentId: docM.id, tool: 'tween', targetId: stepTwo, idempotencyKey: 'idem-m-step-2-bare',
+    draft: { tool: 'tween', targetStepSlotId: stepTwo, movementStep: 'the stride opens through the hips', overrides: { medium: 'clean line on white' } },
+  })
+  assert.equal(takeOne.status, 200, `the unannotated step 2 submits (${takeOne.body.error ?? ''})`)
+  await waitUntil(async () => {
+    const response = await apiD.get(`/api/lan/animation/attempt?id=${takeOne.body.attemptId}`)
+    return response.body.attempt?.execution === 'ready'
+  }, 30_000, 'the unannotated step 2 landing')
+  const bare = (await apiD.get(`/api/lan/animation/attempt?id=${takeOne.body.attemptId}`)).body.attempt
+  assert.match(bare.caption, /FIRST FRAME \(Reference 1\)\n/, 'an unannotated pointer compiles the BARE first-frame line')
+
+  // THE ANNOTATION: the authored pose/facing ride the pointer, the
+  // document-changed envelope names the command, and the span marks stale
+  // 'pose' (the same class as a key-candidate pose change).
+  const annotated = await annotate({ poseDescription: 'weight settled low over the balls of the feet', facing: 'screen-left' }, revision)
+  assert.equal(annotated.status, 200, `the annotation lands (${annotated.body.error ?? ''})`)
+  revision = annotated.body.document.revision
+  assert.deepEqual(
+    annotated.body.document.body.spans.find((entry) => entry.id === spanId).stepSlots[0].selectedRollingReference,
+    { attemptId: first.body.attemptId, frameIndex: 5, poseDescription: 'weight settled low over the balls of the feet', facing: 'screen-left' },
+    'the annotation rides the selection pointer',
+  )
+  const annotatedSpan = annotated.body.document.body.spans.find((entry) => entry.id === spanId)
+  assert.equal(annotatedSpan.stale, true, 'the annotation marks the span stale')
+  assert.ok(annotatedSpan.staleReasons.includes('pose'), 'with the pose reason')
+  await fabricD.waitFor(
+    (envelopes) => envelopes.some((envelope) => envelope.ch === 'animation' && envelope.type === 'document-changed' && envelope.payload.documentId === docM.id && envelope.payload.reason === 'annotate.rolling-reference'),
+    'the document-changed envelope for the annotation',
+  )
+
+  // The compile CONSUMES it: a fresh take for the SAME step (the re-roll's
+  // new idempotency key) freezes the annotated pose in its caption — the
+  // frozen step-2 near-reference pose equals the authored annotation.
+  const takeTwo = await apiD.post('/api/lan/animation/attempts', {
+    documentId: docM.id, tool: 'tween', targetId: stepTwo, idempotencyKey: 'idem-m-step-2-annotated',
+    draft: { tool: 'tween', targetStepSlotId: stepTwo, movementStep: 'the stride opens through the hips', overrides: { medium: 'clean line on white' } },
+  })
+  assert.equal(takeTwo.status, 200, `the annotated step 2 re-roll submits (${takeTwo.body.error ?? ''})`)
+  await waitUntil(async () => {
+    const response = await apiD.get(`/api/lan/animation/attempt?id=${takeTwo.body.attemptId}`)
+    return response.body.attempt?.execution === 'ready'
+  }, 30_000, 'the annotated step 2 landing')
+  const annotatedCaption = (await apiD.get(`/api/lan/animation/attempt?id=${takeTwo.body.attemptId}`)).body.attempt.caption
+  assert.ok(
+    annotatedCaption.includes('FIRST FRAME (Reference 1): weight settled low over the balls of the feet, facing screen-left'),
+    `the frozen caption carries the authored annotation verbatim (${annotatedCaption.split('\n')[1]})`,
+  )
+  // The frozen reference's pose fields carry it too (the snapshot's truth).
+  const annotatedView = (await apiD.get(`/api/lan/animation/attempt?id=${takeTwo.body.attemptId}`)).body.attempt
+  assert.equal(annotatedView.compilerVersion, '1')
+  fabricD.close()
 })
