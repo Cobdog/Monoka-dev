@@ -7,7 +7,8 @@
  *
  *   1. THE ENGINE PORT — the ONLY engine-aware seam (the ComfyUI HTTP
  *      implementation: /prompt with the hub's stable clientId, /history,
- *      /view, /interrupt, /upload/image). The engine request CARRIES the
+ *      /view, /interrupt, /queue's deletion op, /upload/image). The engine
+ *      request CARRIES the
  *      attempt id — the SaveVideo filename_prefix becomes
  *      `animation/<attemptId>/clip` and extra_data carries it verbatim — so
  *      an uncertain dispatch (the submit response lost) is resolvable by
@@ -88,9 +89,11 @@ export type AttemptInput = { documentId: string; tool: AnimationTool; targetId: 
 /** The engine's history answer for one job. 'lost' means the engine was
  *  asked and has no trace of the job anywhere (history + queue) — the
  *  confirmed-lost row of §11.4. An UNREACHABLE engine throws; callers mark
- *  reconciliation pending. 'interrupted' joins the brief's union because the
- *  engine's own vocabulary has it (an interrupt the engine remembers) and
- *  the owner must distinguish a user cancel from a failure. */
+ *  reconciliation pending. 'interrupted' is the PORT's derivation, not a
+ *  status_str the engine writes: a real interruption lands in history as
+ *  `status_str:"error"` + `completed:false` with an `execution_interrupted`
+ *  message appended (main.py:375-379, execution.py:693-699) — the parser
+ *  reads the message so a user Stop is never classified a render failure. */
 export type EngineJobStatus = {
   status: 'running' | 'done' | 'error' | 'interrupted' | 'lost'
   /** Output artifacts with their registered KIND (task 11): an
@@ -106,6 +109,14 @@ export type EnginePort = {
    *  refusal (a 4xx from /prompt); any other throw is an UNCERTAIN outcome. */
   submitGraph(graph: unknown, attemptId: string): Promise<{ engineJobId: string }>
   interrupt(engineJobId: string): Promise<void>
+  /** Dequeues a PENDING job by id — the captured API's queue-deletion op
+   *  (POST /queue {"delete":[id]}, server.py:1146-1158; the answer is an
+   *  EMPTY 200). The real /interrupt deliberately no-ops a pending id
+   *  (server.py:1176-1192 checks only currently-running prompts), so this
+   *  is the pending half of cancellation; deleting an id that is running
+   *  or already gone is the engine's own documented no-op
+   *  (delete_queue_item walks the pending heap only). */
+  dequeue(engineJobId: string): Promise<void>
   history(engineJobId: string): Promise<EngineJobStatus>
   /** The bytes the engine serves for a frame of the job's output — the
    *  output artifact at frameIndex's position in the output listing. */
@@ -384,12 +395,30 @@ enumerationTtlMs?: number }): EnginePort {
 
   // ---- history record parsing (the ComfyUI /history shape) ----------------
 
+  /** True when the record's status messages carry the engine's own
+   *  interruption marker: add_message appends (event, data) TUPLES
+   *  (execution.py:682), so JSON serves them as 2-arrays whose first
+   *  element is the event name. */
+  function hasInterruptMessage(messages: unknown): boolean {
+    if (!Array.isArray(messages)) return false
+    for (const entry of messages) {
+      if (Array.isArray(entry) && entry.length > 0 && entry[0] === 'execution_interrupted') return true
+    }
+    return false
+  }
+
+  /** The engine's history status → the port's vocabulary. The canonical
+   *  engine writes only 'success' | 'error' (main.py:375-379 — there is NO
+   *  'interrupted' status_str); a REAL interruption is error + completed
+   *  false + the execution_interrupted message (execution.py:693-699), so
+   *  the message is what distinguishes a user Stop from a render failure —
+   *  read it, never guess from status_str alone. */
   function recordStatus(record: Record<string, unknown>): EngineJobStatus['status'] {
     const status = record.status
-    const statusStr = typeof (status as { status_str?: unknown })?.status_str === 'string' ? (status as { status_str: string }).status_str : ''
+    const statusObject = typeof status === 'object' && status !== null ? (status as { status_str?: unknown; messages?: unknown }) : {}
+    const statusStr = typeof statusObject.status_str === 'string' ? statusObject.status_str : ''
     if (statusStr === 'success') return 'done'
-    if (statusStr === 'error') return 'error'
-    if (statusStr === 'interrupted') return 'interrupted'
+    if (statusStr === 'error') return hasInterruptMessage(statusObject.messages) ? 'interrupted' : 'error'
     return 'running'
   }
 
@@ -507,13 +536,32 @@ enumerationTtlMs?: number }): EnginePort {
     },
 
     async interrupt(engineJobId) {
-      await fetchJson<unknown>('/interrupt', {
+      // The canonical engine answers /interrupt with a 200 and an EMPTY
+      // body (server.py:1198) — never parsed as JSON (Codex I2: the
+      // unconditional response.json() turned every real success into a
+      // transport failure). Any 2xx — empty or not — is success; only a
+      // non-2xx answer or a genuine transport failure throws.
+      const response = await fetch(`${base}/interrupt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Modern engines interrupt the named prompt; older ones interrupt
-        // whatever is running (the fake ignores the body entirely).
+        // Modern engines interrupt the named prompt — but ONLY while it is
+        // currently RUNNING (server.py:1176-1192 deliberately no-ops a
+        // pending id); dequeue() is the pending half of cancellation.
         body: JSON.stringify({ prompt_id: engineJobId }),
       })
+      if (!response.ok) throw new Error(`the engine answered ${response.status} on /interrupt`)
+    },
+
+    async dequeue(engineJobId) {
+      // The captured API's queue-deletion op (server.py:1146-1158): an
+      // EMPTY 200 always — never parsed (the same empty-body contract
+      // /interrupt serves).
+      const response = await fetch(`${base}/queue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delete: [engineJobId] }),
+      })
+      if (!response.ok) throw new Error(`the engine answered ${response.status} on /queue`)
     },
 
     async history(engineJobId) {

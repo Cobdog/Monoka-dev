@@ -586,6 +586,7 @@ export function createStudioServer(paths: StudioServerPaths) {
     const engine: EnginePort = {
       submitGraph: (graph, attemptId) => enginePortFor().submitGraph(graph, attemptId),
       interrupt: (engineJobId) => enginePortFor().interrupt(engineJobId),
+      dequeue: (engineJobId) => enginePortFor().dequeue(engineJobId),
       history: (engineJobId) => enginePortFor().history(engineJobId),
       view: (engineJobId, frameIndex) => enginePortFor().view(engineJobId, frameIndex),
       findJobByAttempt: (attemptId) => enginePortFor().findJobByAttempt(attemptId),

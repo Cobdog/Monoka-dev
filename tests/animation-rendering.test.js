@@ -106,6 +106,16 @@
 //       lacking a slot, and the deferred dispatch FAILS with the durable
 //       named reason; once the enumeration changes, the re-roll (a NEW key)
 //       re-resolves and RENDERS
+//   (q) the REAL interrupt contract (Codex batch A: I2+I3+I4) — /interrupt
+//       answers an EMPTY 200 (the pre-fix port parsed that as a transport
+//       failure); an interrupted run lands in history as the CANONICAL
+//       shape (status_str error + completed false + the
+//       execution_interrupted message pair — never the invented
+//       "interrupted" status_str) and the attempt settles the neutral
+//       cancelled, NOT failed; and cancelling a job that sits in
+//       queue_pending behind a running foreign job DEQUEUES it (the real
+//       /interrupt deliberately no-ops a pending id) — no render fires,
+//       cancelled settles, the foreign job is untouched
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -1666,4 +1676,88 @@ test('(p) a hung /object_info bounds the preflight — the submit returns and th
   // Terminal: a second sweep does not resurrect it.
   await owner.reconcile()
   assert.equal(anim.getAttempt(offline.attemptId).execution.state, 'failed', 'a terminal dispatch-input failure stays settled — no infinite boot retry')
+})
+
+// ---------------------------------------------------------------------------
+// (q) the REAL interrupt contract (Codex batch A) — I2 the empty-200
+//     answer, I4 the canonical interrupted record, I3 the pending dequeue
+// ---------------------------------------------------------------------------
+
+test('(q) the real /interrupt serves an EMPTY 200; the canonical interrupted record settles cancelled (never failed); a PENDING job is dequeued, not rendered', async () => {
+  const doc = anim.createDocument({ projectId, name: 'Quebec', binding: makeBinding() })
+
+  // ---- I2: the transport truth. The canonical engine answers /interrupt
+  // with 200 and NO BODY (server.py:1198 — web.Response(status=200)); the
+  // pre-fix port's unconditional response.json() turned exactly this into
+  // "SyntaxError: Unexpected end of JSON input" and every real-engine
+  // cancellation took the cancel-error branch. The mirror serves the real
+  // shape; pin it at the wire so it can never drift back to a friendlier
+  // JSON body.
+  const probe = await engineFetch('/interrupt', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ prompt_id: 'no-such-job' }),
+  })
+  assert.equal(probe.status, 200, 'the real /interrupt answers 200')
+  assert.equal(await probe.text(), '', 'with an EMPTY body — the shape the port must tolerate as success')
+
+  // ---- I4: a targeted interrupt of a RUNNING job. The cancellation must
+  // succeed through the empty 200 (no cancel-error), and the engine must
+  // remember the run the CANONICAL way: status_str "error", completed
+  // false, with the ("execution_interrupted", {...}) message pair — the
+  // only real-engine shape (main.py:375-379 writes success|error alone;
+  // execution.py:693-699 appends the message). The port reads the message
+  // and the attempt settles the NEUTRAL cancelled — a user Stop is never a
+  // render failure.
+  await engineControl({ stepDelayMs: 400 })
+  const running = await submitHero(doc, uuid(), 'idem-q-running')
+  const runningJob = anim.getAttempt(running.attemptId).engineJobId
+  await service.cancel(running.attemptId)
+  const stoppedRow = await waitAttemptState(running.attemptId, ['cancelled'], 'the empty-200 interrupt cancelling the running job')
+  assert.equal(stoppedRow.result, null)
+  assert.equal(stoppedRow.execution.failureReason, undefined, 'I4: an interrupted run is NOT a failure — no reason rides it')
+  const stoppedRecord = await engineRecord(runningJob)
+  assert.ok(stoppedRecord, 'the engine remembers the interrupted run')
+  assert.equal(stoppedRecord.status.status_str, 'error', 'the canonical record says error (there is no "interrupted" status_str in a real engine)')
+  assert.equal(stoppedRecord.status.completed, false)
+  const marker = (stoppedRecord.status.messages ?? []).find((entry) => Array.isArray(entry) && entry[0] === 'execution_interrupted')
+  assert.ok(marker, 'the execution_interrupted message pair is what tells a Stop from a failure')
+  assert.equal(marker[1].prompt_id, runningJob, 'the message names the interrupted job')
+  assert.ok(
+    !events.some((event) => event.type === 'animation.attempt.cancel-error' && event.payload.attemptId === running.attemptId),
+    'no cancel-error: the empty 200 was success, not a transport failure',
+  )
+
+  // ---- I3: the pending half. A FOREIGN job occupies the engine's single
+  // slot, so the victim WAITS in queue_pending (the mirror queues behind
+  // the running job exactly as a real ComfyUI does). Cancelling the victim:
+  // /interrupt deliberately NO-OPS its pending id (server.py:1176-1192
+  // checks only currently-running prompts), so the cancel path must resolve
+  // the disposition and DEQUEUE — the queue no longer lists it, no render
+  // ever fires, cancelled settles, and the foreign job is untouched.
+  const foreign = await submitHero(doc, uuid(), 'idem-q-foreign')
+  const foreignJob = anim.getAttempt(foreign.attemptId).engineJobId
+  const victim = await submitHero(doc, uuid(), 'idem-q-victim')
+  const victimJob = anim.getAttempt(victim.attemptId).engineJobId
+  assert.notEqual(victimJob, foreignJob)
+  const queueBefore = await engineFetch('/queue').then((r) => r.json())
+  assert.ok(queueBefore.queue_running.includes(foreignJob), 'the foreign job holds the execution slot')
+  assert.ok(queueBefore.queue_pending.includes(victimJob), 'the victim sits in queue_pending behind it')
+
+  await service.cancel(victim.attemptId)
+  const victimRow = await waitAttemptState(victim.attemptId, ['cancelled'], 'the pending job settling cancelled through the dequeue')
+  assert.equal(victimRow.result, null, 'nothing landed for the never-rendered job')
+  assert.equal(victimRow.execution.failureReason, undefined)
+  const queueAfter = await engineFetch('/queue').then((r) => r.json())
+  assert.ok(!queueAfter.queue_pending.includes(victimJob), 'the queue no longer lists the cancelled job')
+  assert.ok(!queueAfter.queue_running.includes(victimJob), 'it never ran')
+  assert.ok(queueAfter.queue_running.includes(foreignJob), "the foreign job is untouched by the victim's cancellation")
+
+  // The foreign render finishes on its own; the victim NEVER renders.
+  await waitAttemptState(foreign.attemptId, ['ready'], 'the foreign render landing')
+  const victimRecords = Object.values(await engineHistoryAll()).filter((record) => record.prompt?.[3]?.attempt_id === victim.attemptId)
+  assert.equal(victimRecords.length, 0, 'the engine holds no record carrying the victim attempt id — no render ever fired')
+  const foreignRecords = Object.values(await engineHistoryAll()).filter((record) => record.prompt?.[3]?.attempt_id === foreign.attemptId)
+  assert.equal(foreignRecords.length, 1, 'exactly the foreign job ran')
+  await engineControl({ stepDelayMs: 40 })
 })

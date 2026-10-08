@@ -53,6 +53,16 @@
  * History records carry the REAL tuple (docs/devdocs/comfyui-api §3):
  * [number, prompt_id, prompt_graph, extra_data, outputs_to_execute].
  *
+ * The cancellation contract is the REAL one (Codex batch A's
+ * mirror-truth corrections): /interrupt answers an EMPTY 200 and only
+ * interrupts a CURRENTLY-RUNNING prompt_id (a pending id is a deliberate
+ * no-op — server.py:1160-1198); an interrupted run lands in history as
+ * status_str "error" + completed false + the ("execution_interrupted",
+ * {...}) message pair (main.py:375-379, execution.py:693-699 — never an
+ * invented "interrupted" status_str); POST /queue {"delete":[id]} dequeues
+ * a pending id (server.py:1146-1158); and prompts submitted while another
+ * renders WAIT in queue_pending behind the single slot.
+ *
  * Video jobs (the animation lane) list the clip FIRST and then one output
  * IMAGE per conditioning frame — the frame-addressed listing the studio's
  * frame preparer/extractor contract consumes (see graphClipLength).
@@ -223,10 +233,12 @@ const control = (req, res, url) => {
       try {
         const patch = JSON.parse(body || '{}')
         // ACTION (not state): simulate an engine restart — the running job is
-        // killed without a record and every history record is forgotten, the
-        // confirmed-lost shape a reconciler must classify as 'lost'.
+        // killed without a record, every history record is forgotten, and the
+        // PENDING queue dies with the process (a real restart drops it too):
+        // the confirmed-lost shape a reconciler must classify as 'lost'.
         if (patch.wipe === true) {
           if (running) { clearTimeout(running.timer); running = null }
+          pending.length = 0
           histories.clear()
         }
         for (const key of Object.keys(state)) if (key in patch) state[key] = patch[key]
@@ -250,7 +262,14 @@ const control = (req, res, url) => {
 const viewFiles = new Map()
 let jobCounter = 0
 const histories = new Map() // promptId -> history record
-let running = null // { promptId, timer, interrupted }
+// The single execution slot + the PENDING queue behind it (the real
+// engine's queue_running/queue_pending split): a prompt submitted while
+// another renders WAITS, exactly as a real ComfyUI queues it — which is
+// what makes the target-sensitive /interrupt and the /queue deletion op
+// exercisable (a pending id is immune to interrupt by design; deleting it
+// is the only way to depose it).
+const pending = [] // { promptId, graph, extraData, queueNumber }
+let running = null // { promptId, graph, extraData, queueNumber, outputsToExecute, timer, interrupted }
 
 // ---------------------------------------------------------------- ws broadcast
 const server = http.createServer((req, res) => { void handle(req, res) })
@@ -285,16 +304,28 @@ function graphClipLength(graph) {
   return 22
 }
 
+/** The engine's queue-depth truth for status broadcasts: the running job
+ *  plus everything waiting behind it (the real engine's queue_updated). */
+const queueRemaining = () => (running ? 1 : 0) + pending.length
+
+/** Starts the next PENDING job the moment the slot frees (completion,
+ *  error, interrupt) — the queue semantics a real ComfyUI serves. */
+function startNextPending() {
+  if (running || pending.length === 0) return
+  const next = pending.shift()
+  runPrompt(next.promptId, next.graph, next.extraData, next.queueNumber)
+}
+
 function runPrompt(promptId, graph, extraData, queueNumber) {
-  const my = { promptId, timer: null, interrupted: false }
-  running = my
-  const tick = (fn, delay) => { my.timer = setTimeout(fn, delay) }
   // The REAL history tuple (docs/devdocs/comfyui-api §3):
   // [number, prompt_id, prompt_graph, extra_data, outputs_to_execute] — the
   // save-tail node ids as the engine's queue records them.
   const outputsToExecute = Object.entries(graph ?? {})
     .filter(([, node]) => node && typeof node === 'object' && (node.class_type === 'SaveVideo' || node.class_type === 'SaveImage'))
     .map(([id]) => id)
+  const my = { promptId, graph, extraData, queueNumber, outputsToExecute, timer: null, interrupted: false }
+  running = my
+  const tick = (fn, delay) => { my.timer = setTimeout(fn, delay) }
   const finishRecord = (images, status) => {
     const write = () => histories.set(promptId, {
       prompt: [queueNumber, promptId, graph, extraData, outputsToExecute],
@@ -304,7 +335,7 @@ function runPrompt(promptId, graph, extraData, queueNumber) {
     if (state.historyLagMs > 0) setTimeout(write, state.historyLagMs)
     else write()
   }
-  send({ type: 'status', data: { status: { exec_info: { queue_remaining: 1 } } } })
+  send({ type: 'status', data: { status: { exec_info: { queue_remaining: queueRemaining() } } } })
   send({ type: 'execution_start', data: { prompt_id: promptId } })
   if (state.failMode === 'hang') return // nothing more — the hang leg
   const total = state.steps
@@ -328,8 +359,9 @@ function runPrompt(promptId, graph, extraData, queueNumber) {
         },
       })
       finishRecord([], 'error')
-      send({ type: 'status', data: { status: { exec_info: { queue_remaining: 0 } } } })
+      send({ type: 'status', data: { status: { exec_info: { queue_remaining: queueRemaining() } } } })
       running = null
+      startNextPending()
       return
     }
     send({ type: 'progress', data: { prompt_id: promptId, value: step, max: total } })
@@ -377,11 +409,41 @@ function runPrompt(promptId, graph, extraData, queueNumber) {
     send({ type: 'executing', data: { prompt_id: promptId, node: 'MiniMaxH3ImageToVideo' } })
     send({ type: 'executed', data: { prompt_id: promptId, node: 'save', output: { images } } })
     send({ type: 'execution_success', data: { prompt_id: promptId } })
-    send({ type: 'status', data: { status: { exec_info: { queue_remaining: 0 } } } })
+    send({ type: 'status', data: { status: { exec_info: { queue_remaining: queueRemaining() } } } })
     finishRecord(images, 'success')
     running = null
+    startNextPending()
   }
   tick(advance, state.stepDelayMs)
+}
+
+/** Interrupts the RUNNING job the way the canonical engine does
+ *  (server.py:1185 + execution.py:693-699 + main.py:375-379): the run dies
+ *  mid-flight, the queue moves on, and the history record carries the REAL
+ *  interrupted shape — status_str 'error', completed false, and the
+ *  ('execution_interrupted', {...}) message pair. There is NO 'interrupted'
+ *  status_str in a real ComfyUI; the pre-Codex mirror invented one and hid
+ *  the port's misclassification (Codex I4).
+ */
+function interruptRunning() {
+  const killed = running
+  running = null
+  clearTimeout(killed.timer)
+  killed.interrupted = true
+  histories.set(killed.promptId, {
+    prompt: [killed.queueNumber, killed.promptId, killed.graph, killed.extraData, killed.outputsToExecute],
+    outputs: {},
+    status: {
+      status_str: 'error',
+      completed: false,
+      messages: [
+        ['execution_interrupted', { prompt_id: killed.promptId, node_id: 'sampler', node_type: 'MiniMaxH3ImageToVideo', executed: [] }],
+      ],
+    },
+  })
+  send({ type: 'execution_interrupted', data: { prompt_id: killed.promptId, node_id: 'sampler' } })
+  send({ type: 'status', data: { status: { exec_info: { queue_remaining: queueRemaining() } } } })
+  startNextPending()
 }
 
 // ---------------------------------------------------------------- http
@@ -450,13 +512,38 @@ async function handle(req, res) {
           },
         })
       }
-      runPrompt(promptId, body.prompt ?? {}, body.extra_data ?? '', jobCounter)
+      // A prompt submitted while another renders QUEUES (the real engine's
+      // queue_pending) — the single execution slot frees at completion,
+      // error, or interrupt.
+      if (running) pending.push({ promptId, graph: body.prompt ?? {}, extraData: body.extra_data ?? '', queueNumber: jobCounter })
+      else runPrompt(promptId, body.prompt ?? {}, body.extra_data ?? '', jobCounter)
       return json(res, 200, { prompt_id: promptId, number: jobCounter, node_errors: {} })
     }
 
-    if (url.pathname === '/queue') {
-      const q = running ? [running.promptId] : []
-      return json(res, 200, { queue_running: q, queue_pending: [] })
+    if (url.pathname === '/queue' && req.method === 'GET') {
+      return json(res, 200, {
+        queue_running: running ? [running.promptId] : [],
+        queue_pending: pending.map((job) => job.promptId),
+      })
+    }
+    if (url.pathname === '/queue' && req.method === 'POST') {
+      // The REAL queue-management op (server.py:1146-1158): {"clear":true}
+      // wipes pending; {"delete":[id,...]} dequeues by id — and the answer
+      // is an EMPTY 200 always. delete_queue_item walks the PENDING heap
+      // only, so a running (or unknown) id is a documented no-op.
+      let patch = {}
+      try { patch = JSON.parse((await readBody(req)).toString('utf8') || '{}') } catch { patch = {} }
+      if (patch.clear === true) pending.length = 0
+      if (Array.isArray(patch.delete)) {
+        for (const id of patch.delete) {
+          const index = pending.findIndex((job) => job.promptId === id)
+          if (index >= 0) pending.splice(index, 1)
+        }
+        send({ type: 'status', data: { status: { exec_info: { queue_remaining: queueRemaining() } } } })
+      }
+      res.writeHead(200)
+      res.end()
+      return
     }
     if (url.pathname === '/history') {
       const visible = Object.fromEntries(histories)
@@ -508,14 +595,24 @@ async function handle(req, res) {
     }
 
     if (url.pathname === '/interrupt' && req.method === 'POST') {
-      if (running) {
-        clearTimeout(running.timer)
-        send({ type: 'execution_interrupted', data: { prompt_id: running.promptId, node_id: 'sampler' } })
-        send({ type: 'status', data: { status: { exec_info: { queue_remaining: 0 } } } })
-        histories.set(running.promptId, { prompt: [], outputs: {}, status: { status_str: 'interrupted', completed: true, messages: [] } })
-        running = null
+      // The REAL contract (server.py:1160-1198): an unparseable/absent body
+      // is {} (the JSONDecodeError catch); a prompt_id interrupts ONLY if
+      // that id is CURRENTLY RUNNING — a pending id is a deliberate no-op
+      // (dequeue through POST /queue is the pending half); no prompt_id is
+      // a global interrupt. The answer is an EMPTY 200 — never JSON (the
+      // pre-Codex mirror's {} body hid the port's parse-the-empty-body
+      // defect, Codex I2).
+      let body = {}
+      try { body = JSON.parse((await readBody(req)).toString('utf8')) } catch { body = {} }
+      const promptId = body?.prompt_id
+      if (promptId) {
+        if (running && running.promptId === promptId) interruptRunning()
+      } else if (running) {
+        interruptRunning()
       }
-      return json(res, 200, {})
+      res.writeHead(200)
+      res.end()
+      return
     }
     if (url.pathname === '/free' && req.method === 'POST') return json(res, 200, {})
     if (url.pathname === '/refresh' && req.method === 'POST') {
