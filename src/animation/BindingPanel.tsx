@@ -119,6 +119,11 @@ export function BindingPanel({ document, mode = 'bind', assets, assetsFailed, on
     setReferences(asset.images.map((image) => image.assetId))
     setDescription(asset.description)
     setSourceName(asset.name)
+    // Wave 3 (the 2b review's M-2): a re-pick RESETS the override latch —
+    // the newly picked source's verbatim text is not an override, so the
+    // labeled session-local note never sits on an unedited copy. The next
+    // explicit "Edit session copy" unlatches it again.
+    setOverrideUnlocked(false)
   }
 
   const importFiles = async (files: File[]) => {

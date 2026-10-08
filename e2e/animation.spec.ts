@@ -2334,6 +2334,15 @@ test('the §5.2 sequence slice — pick the window explicitly, render it, review
     // RE-ROLL: the frozen window draft resubmitted — a fresh take for the
     // SAME window, landing as a retained alternative that replaces nothing.
     await review.locator('[data-anim-review-reroll]').click()
+    // Wave 3 (the 2b review's M-1): the "new" chip announces a LANDED take —
+    // this lane's strip reads document.attempts, which holds the re-roll row
+    // from submission, so while the fresh take renders the chip (whose title
+    // claims a landing) stays ABSENT.
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      return view.document.attempts.filter((entry) => entry.tool === 'sequence' && entry.targetId === seeded.startKeyId).length
+    }, { timeout: 15_000 }).toBe(2)
+    await expect(review.locator('[data-anim-take-new]')).toHaveCount(0)
     await expect.poll(async () => {
       const view = await readAnimationDocument(request, seeded.documentId)
       const takes = view.document.attempts.filter((entry) => entry.tool === 'sequence' && entry.targetId === seeded.startKeyId)
@@ -2997,15 +3006,55 @@ test('an import-only user builds two keys through the candidate strip — import
   expect(keyTwo.selectedCandidateId, 'the new key materialized unselected').toBeNull()
   expect(afterNewKey.document.body.keys.find((entry) => entry.id === keyOne.id)!.candidates).toHaveLength(2, 'key #1 untouched by the new-key import')
 
+    // Wave 3 (the 2b review's I-1) — the BATCH semantics the label promises:
+    // ONE import action of 3 files "as a new key" mints ONE key holding 3
+    // candidates (the into-key arm's behavior), never three singleton keys —
+    // key ops have no delete, so the scatter was permanent clutter.
+    await page.locator('[data-anim-key-import-files]').setInputFiles([
+      { name: 'batch-one.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') },
+      { name: 'batch-two.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') },
+      { name: 'batch-three.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') },
+    ])
+    await expect(cards).toHaveCount(3, { timeout: 15_000 })
+    // The batch lands as three sequential revision-gated commands — the key
+    // materializes on the FIRST, so the card count is not the done signal:
+    // wait for the last candidate before the document read (an unselected
+    // key's growth has no UI surface to await).
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, documentId)
+      const batch = view.document.body.keys.find((entry) => entry.id !== keyOne.id && entry.id !== keyTwo.id)
+      return batch?.candidates.length ?? 0
+    }, { timeout: 15_000 }).toBe(3)
+    const afterBatch = await readAnimationDocument(request, documentId)
+    expect(afterBatch.document.body.keys).toHaveLength(3, 'the batch minted exactly one new key')
+    const batchKey = afterBatch.document.body.keys.find((entry) => entry.id !== keyOne.id && entry.id !== keyTwo.id)!
+    expect(batchKey.candidates).toHaveLength(3, 'the 3 files landed as 3 candidates of that one key')
+    expect(batchKey.candidates.every((entry) => entry.origin === 'import')).toBe(true)
+    expect(batchKey.selectedCandidateId, 'the batch key materialized unselected (§5.3)').toBeNull()
+    expect(afterBatch.document.body.keys.find((entry) => entry.id === keyOne.id)!.candidates).toHaveLength(2, 'key #1 untouched by the batch')
+    expect(afterBatch.document.body.keys.find((entry) => entry.id === keyTwo.id)!.candidates).toHaveLength(1, 'key #2 untouched by the batch')
+    // The import button is disabled while the store is busy — enabled is the
+    // UI's idle signal, so the explicit select below never fires into a busy
+    // store (the batch's last command can still be settling here).
+    await expect(page.locator('[data-anim-key-import-button]')).toBeEnabled({ timeout: 15_000 })
+
   // The explicit select (§5.3's second command) on the NEW key.
   await cards.nth(1).click()
   const stripTwo = page.locator('[data-anim-key-candidates]')
   await expect(stripTwo).toHaveAttribute('data-anim-key-candidates-key', keyTwo.id)
   await stripTwo.locator(`[data-anim-key-candidate-select="${keyTwo.candidates[0]!.id}"]`).click()
+  // The select is a revision-gated command — poll the document for the
+  // write instead of racing it with a bare read.
+  await expect.poll(async () => {
+    const view = await readAnimationDocument(request, documentId)
+    return view.document.body.keys.find((entry) => entry.id === keyTwo.id)?.selectedCandidateId ?? ''
+  }, { timeout: 15_000 }).toBe(keyTwo.candidates[0]!.id)
   const selected = await readAnimationDocument(request, documentId)
   const selectedTwo = selected.document.body.keys.find((entry) => entry.id === keyTwo.id)!
   expect(selectedTwo.selectedCandidateId).toBe(keyTwo.candidates[0]!.id, 'the select command is the user’s explicit act')
-  expect(selected.document.body.keys.every((entry) => entry.selectedCandidateId !== null), 'both keys are selected').toBe(true)
+  // (Wave 3: the batch key from I-1 stays unselected by design — the
+  // "both selected" claim scopes to the two keys this test built.)
+  expect(selected.document.body.keys.filter((entry) => entry.id === keyOne.id || entry.id === keyTwo.id).every((entry) => entry.selectedCandidateId !== null), 'both built keys are selected').toBe(true)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
@@ -3104,6 +3153,48 @@ test('a bound session updates its binding through the UI — read-only descripti
     engineExited = await engine.kill()
   }
   expect(engineExited).toBe(true)
+})
+
+test('the bind-mode override latch resets on a character re-pick (binding, wave 3 M-2)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  // TWO prepared characters through the real asset route — the re-pick needs
+  // a second source to switch to.
+  const relA = await ingestKeyImage(request, 'm2-ada.png')
+  const relB = await ingestKeyImage(request, 'm2-bruno.png')
+  // The asset store is GLOBAL and survives runs; a tombstoned id cannot be
+  // revived by upsert (ON CONFLICT keeps deleted_at), so each run seeds
+  // FRESH rows with run-unique names — the pick locators match exactly one
+  // row per run whatever earlier runs left behind.
+  const run = Date.now()
+  const seed = async (name: string, description: string, relPath: string) => {
+    const landed = await request.post('/api/lan/documents/assets', { data: { kind: 'character', fields: { name, description }, canonicalReferenceSet: [relPath] } })
+    expect(landed.ok(), `the character asset upserts (${await landed.text()})`).toBe(true)
+  }
+  const adaName = `Ada ${run}`
+  const brunoName = `Bruno ${run}`
+  await seed(adaName, 'a tall geometer with chalked cuffs', relA)
+  await seed(brunoName, 'a stout ferryman with a brass lantern', relB)
+  const document = await createEmptySession(request, projectId, 'Latch reset')
+  const panel = await openPanel(page, projectId, document.id)
+  // Pick Ada: the description locks verbatim with the source named.
+  await panel.locator('[data-anim-asset-pick]', { hasText: adaName }).click()
+  const locked = panel.locator('[data-anim-binding-description-locked]')
+  await expect(locked).toBeVisible()
+  await expect(locked).toContainText('a tall geometer with chalked cuffs')
+  // Unlatch the session-local override — the labeled note stands.
+  await panel.locator('[data-anim-binding-override]').click()
+  const description = panel.locator('[data-anim-binding-description]')
+  await expect(description).toHaveValue('a tall geometer with chalked cuffs')
+  await expect(panel.locator('[data-anim-binding-override-label]')).toBeVisible()
+  // M-2: the re-pick RESETS the latch — Bruno's verbatim text renders
+  // read-only and the "session-local override" label is GONE (it never sits
+  // on an unedited verbatim copy of a newly picked source).
+  await panel.locator('[data-anim-asset-pick]', { hasText: brunoName }).click()
+  await expect(panel.locator('[data-anim-binding-override-label]')).toHaveCount(0)
+  await expect(locked).toContainText('a stout ferryman with a brass lantern')
+  await expect(panel.locator('[data-anim-binding-description]')).toHaveCount(0, 'the textarea is gone — the fresh source locks verbatim again')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
 // ---------------------------------------------------------------------------

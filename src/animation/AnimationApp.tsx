@@ -224,9 +224,13 @@ export function AnimationApp() {
       : null
     const subject = chosen ?? heroTakes[heroTakes.length - 1]!
     // T10-M4: the newest take announced while the reviewer holds an older
-    // one — the same doctrine as the tween strip.
+    // one — the same doctrine as the tween strip. Wave 3 (the 2b review's
+    // M-1): the chip announces a LANDED take — this lane's strip reads
+    // document.attempts, which holds the row from SUBMISSION
+    // (queued/running), so the chip is gated on the newest take no longer
+    // being in flight; its "landed" claim is never made while rendering.
     const newest = heroTakes[heroTakes.length - 1]!
-    const newTakeAttemptId = subject.attemptId !== newest.attemptId && !dismissedNewTakes.includes(newest.attemptId)
+    const newTakeAttemptId = subject.attemptId !== newest.attemptId && !IN_FLIGHT.has(newest.execution) && !dismissedNewTakes.includes(newest.attemptId)
       ? newest.attemptId
       : null
     return { subject, takes: heroTakes.map((entry) => ({ attemptId: entry.attemptId })), newTakeAttemptId }
@@ -264,9 +268,11 @@ export function AnimationApp() {
       ? chosen
       : ofWindow[ofWindow.length - 1] ?? windowTakes[windowTakes.length - 1]!
     // T10-M4: the window's newest take announced while the reviewer holds
-    // an older one — the same doctrine as the other two strips.
+    // an older one — the same doctrine as the other two strips, with the
+    // same wave-3 landed gating (M-1): no "new" chip while the fresh take
+    // is still rendering.
     const windowNewest = ofWindow[ofWindow.length - 1] ?? null
-    const newTakeAttemptId = windowNewest !== null && subject.attemptId !== windowNewest.attemptId && !dismissedNewTakes.includes(windowNewest.attemptId)
+    const newTakeAttemptId = windowNewest !== null && subject.attemptId !== windowNewest.attemptId && !IN_FLIGHT.has(windowNewest.execution) && !dismissedNewTakes.includes(windowNewest.attemptId)
       ? windowNewest.attemptId
       : null
     const endKey = activeEnd === undefined

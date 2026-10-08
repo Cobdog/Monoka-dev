@@ -187,11 +187,13 @@ type AnimationSessionState = {
   /** Wave 2b (Fix 1) — the bound key's "Import candidate…" action: ingests
    *  an image into a KEY SLOT as an ALTERNATIVE (§5.3's add half — it never
    *  selects; choosing the candidate is the explicit selectKeyCandidate
-   *  command). The destination is either an existing key (which may also be
-   *  a not-yet-materialized id — the store mints the slot, order max+1,
-   *  selection null) or a fresh key. `origin` names where the image came
-   *  from; the provenance carries the asset id. */
-  importKeyCandidate(destination: { keyId: string } | { asNewKey: true }, image: AnimationImportedImage, origin: 'import' | 'project-asset'): Promise<boolean>
+   *  command). The destination keyId is resolved by the CALLER — one import
+   *  action mints one id for its whole batch (the 2b review's I-1: N files
+   *  "as a new key" land as N candidates of ONE key, never N singleton
+   *  keys); the store materializes unknown ids (order max+1, selection
+   *  null). `origin` names where the image came from; the provenance
+   *  carries the asset id. */
+  importKeyCandidate(destination: { keyId: string }, image: AnimationImportedImage, origin: 'import' | 'project-asset'): Promise<boolean>
   /** Wave 2b (Fix 1) — the explicit candidate choice (§7.2.1's select
    *  command through the key-candidates strip). Lock-guarded client-side
    *  (the server enforces it regardless); re-selecting the already-selected
@@ -689,11 +691,11 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
   importKeyCandidate: async (destination, image, origin) => {
     const current = get().document
     if (!current || get().busy) return false
-    // The destination resolves NOW: an existing key keeps its id, a new key
-    // mints one — the store materializes unknown slots (order max+1,
+    // The keyId was resolved by the caller (one minted id per import
+    // action, I-1); the store materializes unknown slots (order max+1,
     // selection null), so "into key #N" and "as a new key" ride the same
     // add-candidate command (§5.3: membership grows, selection stays null).
-    const keyId = 'asNewKey' in destination ? crypto.randomUUID() : destination.keyId
+    const keyId = destination.keyId
     const ticket = openTicket
     set({ busy: true, commandError: null })
     try {
