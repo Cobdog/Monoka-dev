@@ -12,6 +12,10 @@
  * (one blob route, one idiom), and the import/select commands ride the
  * adapter's bag, handed down by the shell. Kit components only;
  * tokens-only styling (the .anim-key-candidates block in animation.css).
+ *
+ * Wave 3 fix round (the review's I-1): the batch STOPS at the first failed
+ * file and names the honest partial (count + file) beside the store's named
+ * error — a mid-batch failure is never silent.
  */
 import { useRef, useState } from 'react'
 import { ImagePlus } from 'lucide-react'
@@ -55,21 +59,44 @@ export function KeyCandidates({ keyEntity, busy, onImportFiles, onImport, onSele
   const fileInput = useRef<HTMLInputElement>(null)
   const [destination, setDestination] = useState<'into' | 'as-new'>('into')
   const [importing, setImporting] = useState(false)
+  // The batch's honest partial (the wave-3 fix round's I-1): when a per-file
+  // command fails mid-batch the loop STOPS and this note names the failing
+  // file with the landed count — beside the shell's commandError (role=alert,
+  // the named reason), never a silent drop. A fully successful import clears
+  // it.
+  const [importFailure, setImportFailure] = useState<string | null>(null)
 
-  const importImages = async (images: Array<{ assetId: string; relPath: string }>, origin: 'import' | 'project-asset') => {
-    // The destination resolves ONCE per import action (I-1): "As a new key"
-    // mints the key id HERE so every file of the batch lands as a candidate
-    // of ONE key — the existing add-candidate command per file, one minted
-    // keyId, selection null (§5.3).
+  /** The batch import: the destination resolves ONCE per action (wave 3's
+   *  I-1 — "As a new key" mints the key id HERE so every file lands as a
+   *  candidate of ONE key), the existing add-candidate command per file,
+   *  STOP-ON-FIRST-FALSE: a later success would clear the store's named
+   *  error and the batch would look whole, so the loop never outruns a
+   *  failure. `names` aligns by index with `images` (the ingest loop is
+   *  order-preserving), so the failing FILE is named, not just its
+   *  position. */
+  const importImages = async (images: Array<{ assetId: string; relPath: string }>, names: Array<string | null>, origin: 'import' | 'project-asset') => {
     const target: KeyImportDestination = destination === 'as-new' ? { keyId: crypto.randomUUID() } : { keyId: keyEntity.id }
-    for (const image of images) await onImport(target, image, origin)
+    for (let index = 0; index < images.length; index += 1) {
+      const landed = await onImport(target, images[index]!, origin)
+      if (!landed) {
+        const name = names[index]
+        setImportFailure(`Import stopped after ${index} of ${images.length} — ${name !== null ? `file "${name}"` : `entry ${index + 1}`} failed; the reason is shown above.`)
+        return
+      }
+    }
+    setImportFailure(null)
   }
 
   const importFiles = async (files: File[]) => {
     if (files.length === 0) return
     setImporting(true)
     try {
-      await importImages(await onImportFiles(files), 'import')
+      const images = await onImportFiles(files)
+      await importImages(images, files.map((file) => file.name), 'import')
+    } catch (error) {
+      // The ingest half can fail too — the same surface, never a
+      // console-only drop.
+      setImportFailure(`The import failed before any file landed: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setImporting(false)
     }
@@ -138,6 +165,9 @@ export function KeyCandidates({ keyEntity, busy, onImportFiles, onImport, onSele
             Import candidate…
           </Button>
         </div>
+        {importFailure !== null && (
+          <p className="anim-binding-error" role="alert" data-anim-key-import-failure>{importFailure}</p>
+        )}
         {assets.length > 0 && (
           <div className="anim-key-import-assets" data-anim-key-import-assets role="group" aria-label="Prepared character images">
             <span className="anim-note">Prepared characters</span>
@@ -147,7 +177,7 @@ export function KeyCandidates({ keyEntity, busy, onImportFiles, onImport, onSele
                   key={`${asset.id}:${image.assetId}`}
                   variant="secondary" className="anim-btn"
                   busy={importing || busy}
-                  onClick={() => void importImages([image], 'project-asset')}
+                  onClick={() => void importImages([image], [asset.name], 'project-asset')}
                   data-anim-key-import-asset={image.assetId}
                   title={`Import ${asset.name}'s image as an alternative candidate`}
                 >

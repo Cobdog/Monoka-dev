@@ -49,8 +49,14 @@
   /* The body stops being the scroller: the stage fills the remaining
      viewport height and the PANES scroll internally — the timeline band and
      the assembly foot stay in frame while authoring. Scoped to the BOUND
-     arm's body (the unbound/error arms keep their centered card flow). */
-  .anim-body--stage { display: flex; flex-direction: column; overflow: hidden; }
+     arm's body (the unbound/error arms keep their centered card flow).
+     `overflow-y: auto` is the ESCAPE VALVE (the fix round's M-3): with the
+     update-binding panel open (or stacked notices) on a wide-but-short
+     viewport the above-stage column can exceed the frame — the body then
+     scrolls instead of clipping the assembly out of reach; when the loop
+     alone stands (the normal authoring state) the content fits and no
+     scrollbar appears. */
+  .anim-body--stage { display: flex; flex-direction: column; overflow-y: auto; }
   .anim-body--stage .anim-stage { flex: 1; min-height: 0; align-content: stretch; grid-template-rows: auto minmax(0, 1fr) auto; }
   /* The panes' single row must be BOUNDED (minmax(0,1fr) + stretch + hidden)
      — the base rule's align-items:start would leave the panes content-sized
