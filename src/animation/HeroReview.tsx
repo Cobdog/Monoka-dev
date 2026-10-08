@@ -31,6 +31,7 @@ import { Button } from '../ui/Button'
 import { Refusal } from '../ui/Refusal'
 import { documentsApi } from '../canvas/api'
 import { IN_FLIGHT, REVIEW_STATUS } from './reviewStatus'
+import { TakeNewChip } from './ReviewPanel'
 import type { TimelineKey } from './timelineModel'
 import type { AttemptStateView } from './client'
 
@@ -58,9 +59,15 @@ export type HeroReviewProps = {
   /** §11.4's explicit preparation retry — re-prepares the proposed frame
    *  WITHOUT re-rendering. */
   onRetryPreparation(): void
+  /** T10-M4 (wave 2b): the strip's LAST take when it is fresher than the
+   *  subject — announced with a "new" chip, never auto-selected (§8.2). */
+  newTakeAttemptId?: string | null
+  /** Dismisses the "new" marker (the chip's own click; selecting the take
+   *  clears it through the shell). */
+  onDismissNewTake(attemptId: string): void
 }
 
-export function HeroReview({ attempt, keyEntity, takes, busy, onSelectTake, onAcceptFrame, onReroll, onOpenSpan, onRetryPreparation }: HeroReviewProps) {
+export function HeroReview({ attempt, keyEntity, takes, busy, onSelectTake, onAcceptFrame, onReroll, onOpenSpan, onRetryPreparation, newTakeAttemptId = null, onDismissNewTake }: HeroReviewProps) {
   const status = REVIEW_STATUS[attempt.execution]
   const candidate = attempt.candidate
   const proposedFrame = attempt.preparation.proposedFrameIndex
@@ -135,21 +142,27 @@ export function HeroReview({ attempt, keyEntity, takes, busy, onSelectTake, onAc
       )}
 
       {/* The takes (re-roll alternatives, §8.2): switching the SUBJECT is a
-          view act; the ACCEPTED marker follows the slot's durable selection. */}
+          view act; the ACCEPTED marker follows the slot's durable selection.
+          T10-M4: the fresh take carries the "new" chip — a sibling of the
+          take button, never a child (both are buttons). */}
       {takes.length > 1 && (
         <div className="anim-review-takes" data-anim-review-takes role="group" aria-label="Hero takes for this key">
           {takes.map((take, index) => (
-            <button
-              key={take.attemptId}
-              type="button"
-              className="anim-review-take"
-              data-anim-review-take={take.attemptId}
-              disabled={busy}
-              title={acceptedFromThisTake !== null && attempt.attemptId === take.attemptId ? 'The accepted take — its frame is this key' : 'Review this take'}
-              onClick={() => { if (take.attemptId !== attempt.attemptId) onSelectTake(take.attemptId) }}
-            >
-              take {index + 1}
-            </button>
+            <span key={take.attemptId} className="anim-take-wrap">
+              <button
+                type="button"
+                className="anim-review-take"
+                data-anim-review-take={take.attemptId}
+                disabled={busy}
+                title={acceptedFromThisTake !== null && attempt.attemptId === take.attemptId ? 'The accepted take — its frame is this key' : 'Review this take'}
+                onClick={() => { if (take.attemptId !== attempt.attemptId) onSelectTake(take.attemptId) }}
+              >
+                take {index + 1}
+              </button>
+              {newTakeAttemptId === take.attemptId && onDismissNewTake !== undefined && (
+                <TakeNewChip attemptId={take.attemptId} onDismiss={onDismissNewTake} />
+              )}
+            </span>
           ))}
         </div>
       )}

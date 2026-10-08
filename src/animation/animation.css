@@ -189,3 +189,36 @@
 .anim-export-stale p { margin: 0; }
 .anim-export-ack { display: flex; gap: 8px; align-items: start; color: var(--muted); font-size: var(--text-sm); }
 .anim-export-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+/* Wave 2b (k2q0n9s) — the key-candidate strip, the update-binding surface,
+   and the T10-M4 "new take" marker. Geometry only; tones ride the tokens. */
+
+/* The bound header's explicit update action (Fix 1). */
+.anim-bound-actions { display: inline-flex; align-items: center; margin-left: auto; }
+
+/* The T7-M1 read-only description (Fix 2): the verbatim block with its
+   source named, and the override latch's labeled note — the accent rail
+   idiom the conflict/failure notes share. */
+.anim-binding-locked { display: grid; gap: 8px; justify-items: start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.anim-binding-locked-text { margin: 0; color: var(--text); font-size: var(--text-md); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.anim-binding-override-label { border-left: 3px solid var(--accent); padding-left: 10px; }
+.anim-binding-submit { flex-wrap: wrap; }
+.anim-binding-submit .anim-note { flex-basis: 100%; }
+
+/* The T10-M4 "new" chip beside a fresh take: a take-button-sized wrap so
+   the strip keeps one row's rhythm (the chip recipe carries the tone). */
+.anim-take-wrap { display: inline-flex; gap: 6px; align-items: center; }
+.anim-take-new { padding: 4px 8px; border-width: 1px; border-style: solid; border-radius: 6px; font-size: var(--text-sm); cursor: pointer; }
+
+/* The key-candidates strip (Fix 1): the inspector's card shape, the
+   candidates as thumbnails with their origin and explicit select action. */
+.anim-key-candidates { display: grid; gap: 12px; max-width: 88ch; justify-self: start; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-key-candidates header { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.anim-key-candidates header strong { font-size: var(--text-md); }
+.anim-key-candidate-strip { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.anim-key-candidate { display: grid; gap: 6px; justify-items: start; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.anim-key-candidate[data-anim-key-candidate-selected='true'] { border-color: var(--accent); }
+.anim-key-candidate img { width: 96px; height: 96px; object-fit: contain; border-radius: 6px; background: var(--surface); }
+.anim-key-candidate-placeholder { display: grid; place-items: center; width: 96px; height: 96px; padding: 6px; border: 1px dashed var(--line); border-radius: 6px; color: var(--muted); font-size: var(--text-sm); text-align: center; }
+.anim-key-import { display: grid; gap: 8px; justify-items: start; }
+.anim-key-import-assets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

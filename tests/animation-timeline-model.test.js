@@ -254,6 +254,49 @@ test('deriveReviewPosition: a ready attempt whose decision is made steps aside (
   assert.equal(deriveReviewPosition(bodyOf([keyA, keyB], [theSpan]), [heroResolved]), null, 'a hero landing into an already-selected slot is resolved')
 })
 
+// T10-M4 (wave 2b): an EXPLICIT review position sticks when a re-roll of the
+// reviewed step LANDS. The document-truth signature of "a re-roll landed on
+// this span" is a step slot holding MORE THAN ONE take — the rule never keys
+// on the new take's outcome, so a FAILED re-roll holds the position too
+// (today the position dissolves under the reviewer: the steal). Key-grain
+// positions need no rule — a hero/sequence re-roll targets the SAME key, so
+// §7.4 already resolves to the same id or dissolves without moving. Every
+// two-argument call (all the §7.4 pins above) is untouched by construction.
+test('deriveReviewPosition: an explicit position sticks when a re-roll lands on its span (T10-M4, wave 2b)', () => {
+  const keyA = keySlot(0)
+  const keyB = keySlot(1)
+  const stepOne = stepSlot()
+  const theSpan = spanOf(keyA.id, keyB.id, { stepSlots: [stepOne] })
+  const body = bodyOf([keyA, keyB], [theSpan])
+  const explicit = { kind: 'span', id: theSpan.id }
+  // The reviewer reviewed take one: the frame selection made, the decision closed.
+  const takeOne = { attemptId: uuid(), tool: 'tween', targetId: stepOne.id, execution: 'ready' }
+  stepOne.selectedRollingReference = { attemptId: takeOne.attemptId, frameIndex: 4 }
+  stepOne.attempts = [takeOne.attemptId]
+  // No re-roll yet — nothing sticks: the resolved tween is null with or
+  // without the explicit position (rule 0 needs a MULTI-take slot).
+  assert.equal(deriveReviewPosition(body, [takeOne]), null, '§7.4 alone: a resolved single-take tween is null (unchanged)')
+  assert.equal(deriveReviewPosition(body, [takeOne], explicit), null, 'an explicit position does not stick without a re-roll — §7.4 rules stand')
+  // The re-roll LANDS: a second take on the slot. The position holds.
+  const takeTwo = { attemptId: uuid(), tool: 'tween', targetId: stepOne.id, execution: 'ready' }
+  stepOne.attempts = [takeOne.attemptId, takeTwo.attemptId]
+  assert.deepEqual(deriveReviewPosition(body, [takeOne, takeTwo], explicit), explicit, 'a re-roll landing holds the explicit position')
+  // The FAILED re-roll holds it too — the rule reads the document (two
+  // takes), never the landing's outcome.
+  assert.deepEqual(deriveReviewPosition(body, [takeOne, { ...takeTwo, execution: 'failed' }], explicit), explicit, 'a failed re-roll landing holds the position as well')
+  // The stick is the re-rolled span's OWN explicit position: an explicit
+  // naming another span does not stick here — §7.4 resolves (null).
+  assert.equal(deriveReviewPosition(body, [takeOne, takeTwo], { kind: 'span', id: uuid() }), null, 'another span\'s explicit never sticks this span')
+  // A key-grain explicit never arms rule 0 — the span rule is span-only.
+  assert.equal(deriveReviewPosition(body, [takeOne, takeTwo], { kind: 'key', id: keyA.id }), null, 'a key-grain explicit does not stick a span position')
+  // A FIRST take on an untouched span: rule 0 does not fire (one take) —
+  // §7.4's open decision is the position, exactly as before wave 2b.
+  const fresh = spanOf(keyA.id, keyB.id)
+  const freshBody = bodyOf([keyA, keyB], [fresh])
+  const firstTake = { attemptId: uuid(), tool: 'tween', targetId: fresh.stepSlots[0].id, execution: 'ready' }
+  assert.deepEqual(deriveReviewPosition(freshBody, [firstTake], { kind: 'span', id: fresh.id }), { kind: 'span', id: fresh.id }, 'a first take on an untouched span stays §7.4\'s open decision')
+})
+
 // Task 11 — the hero lane's review-position facts (§5.2's proposed slot +
 // the ordering matrix T10-M3 left unpinned): an in-flight hero render
 // targets a slot that materializes only at LANDING, so before that the

@@ -1819,14 +1819,19 @@ test('a re-roll adds an alternative take without replacing the selection (review
     }, { timeout: 30_000 }).toBe(2)
     const both = await readAnimationDocument(request, seeded.documentId)
     const takeTwo = both.document.attempts.find((entry) => entry.targetId === seeded.stepSlotId && entry.attemptId !== takeOne.attemptId)!.attemptId
-    // The panel's subject follows the NEWEST take to its own Ready state,
-    // and the take strip lists BOTH with take 1 still the selected one.
-    await expect(panel).toHaveAttribute('data-anim-review-attempt', takeTwo)
-    await expect(panel).toHaveAttribute('data-anim-review-state', 'ready', { timeout: 30_000 })
+    // T10-M4: the re-roll landing does NOT steal the review — the panel's
+    // subject STICKS to take 1 (the reviewer held it), the fresh take is
+    // ANNOUNCED with a "new" chip instead of auto-selected (§8.2: nothing
+    // selects but the user), and the strip lists BOTH takes with take 1
+    // still the selected one.
+    await expect(panel).toHaveAttribute('data-anim-review-attempt', takeOne.attemptId)
+    await expect(panel).toHaveAttribute('data-anim-review-state', 'ready')
     const takes = panel.locator('[data-anim-review-take]')
     await expect(takes).toHaveCount(2)
     await expect(panel.locator(`[data-anim-review-take="${takeOne.attemptId}"]`)).toHaveAttribute('data-anim-take-selected', 'true')
     await expect(panel.locator(`[data-anim-review-take="${takeTwo}"]`)).toHaveAttribute('data-anim-take-selected', 'false')
+    await expect(panel.locator(`[data-anim-take-new="${takeTwo}"]`)).toHaveCount(1)
+    await expect(panel.locator(`[data-anim-take-new="${takeOne.attemptId}"]`)).toHaveCount(0)
     // The DOCUMENT truth: the selection still names take 1 (§8.2 — the
     // landing never replaced it), while the slot holds both takes.
     const rolled = await readAnimationDocument(request, seeded.documentId)
@@ -1834,10 +1839,13 @@ test('a re-roll adds an alternative take without replacing the selection (review
     expect(rolledSlot.attempts).toEqual([takeOne.attemptId, takeTwo])
     expect(rolledSlot.selectedRollingReference).toEqual({ attemptId: takeOne.attemptId, frameIndex: 3, poseDescription: null, facing: null })
 
-    // Switching takes is an EXPLICIT user act: reviewing take 2 and choosing
-    // frame 8 moves the selection — the user did it, not the system.
+    // Switching takes is an EXPLICIT user act: reviewing take 2 moves the
+    // subject (and clears the "new" marker — the reviewer has now seen it),
+    // and choosing frame 8 moves the selection — the user did it, not the
+    // system.
     await panel.locator(`[data-anim-review-take="${takeTwo}"]`).click()
     await expect(panel).toHaveAttribute('data-anim-review-attempt', takeTwo)
+    await expect(panel.locator('[data-anim-take-new]')).toHaveCount(0)
     await panel.locator('[data-anim-review-frame="8"]').click()
     await expect(panel.locator('[data-anim-review-frame="8"]')).toHaveAttribute('data-anim-frame-selected', 'true')
     const switched = await readAnimationDocument(request, seeded.documentId)
@@ -2010,7 +2018,22 @@ test('the §5.2 hero slice — generate the next key, accept a frame explicitly,
     const rolledSlot = rolledView.document.body.keys.find((entry) => entry.id === proposedSlot.id)!
     expect(rolledSlot.selectedCandidateId).toBe(acceptedSlot.selectedCandidateId, 'the re-roll never replaced the acceptance (§8.2)')
     expect(rolledSlot.candidates.length).toBeGreaterThanOrEqual(3, 'the second clip landed as a retained alternative')
+    // T10-M4: the landing does not steal the review — the hero subject
+    // STICKS to take 1, the fresh take is ANNOUNCED with a "new" chip on the
+    // strip, and the strip lists BOTH takes.
     await expect(review).toHaveAttribute('data-anim-review-state', 'ready', { timeout: 30_000 })
+    await expect(review).toHaveAttribute('data-anim-review-attempt', heroAttemptId)
+    const heroTakes = review.locator('[data-anim-review-take]')
+    await expect(heroTakes).toHaveCount(2)
+    const takeTwoId = rolledView.document.attempts.find((entry) => entry.tool === 'hero' && entry.targetId === proposedSlot.id && entry.attemptId !== heroAttemptId)!.attemptId
+    await expect(review.locator(`[data-anim-take-new="${takeTwoId}"]`)).toHaveCount(1)
+    await expect(review.locator(`[data-anim-take-new="${heroAttemptId}"]`)).toHaveCount(0)
+    // Reviewing take 2 is the reviewer's explicit act — it moves the subject
+    // and clears the marker (the acceptance block below works from THIS
+    // take, so the provenance assert names the re-rolled source).
+    await review.locator(`[data-anim-review-take="${takeTwoId}"]`).click()
+    await expect(review).toHaveAttribute('data-anim-review-attempt', takeTwoId)
+    await expect(review.locator('[data-anim-take-new]')).toHaveCount(0)
     // (d) LOCK enforcement: the locked key refuses the frame acceptance
     // (§7.2.1 — the server's rule, named here before the doomed command).
     const lockChip = proposedCard.locator('[data-anim-key-lock]')
@@ -2301,12 +2324,18 @@ test('the §5.2 sequence slice — pick the window explicitly, render it, review
     const rolledSlot = rolled.document.body.keys.find((entry) => entry.id === seeded.startKeyId)!
     expect(rolledSlot.candidates).toHaveLength(1, 'the re-roll landed no candidate into the body either')
     expect(rolledSlot.selectedCandidateId).toBe(landed.document.body.keys.find((entry) => entry.id === seeded.startKeyId)!.selectedCandidateId, 'the re-roll never moved a selection (§8.2)')
-    // The strip lists BOTH takes of this window; the subject follows the
-    // newest; switching back to take 1 is the reviewer's explicit view act.
+    // T10-M4: the subject STICKS at take 1 (the reviewer held it) and the
+    // fresh take is ANNOUNCED with a "new" chip; the strip lists BOTH takes.
     await expect(review).toHaveAttribute('data-anim-review-state', 'ready', { timeout: 30_000 })
+    await expect(review).toHaveAttribute('data-anim-review-attempt', sequenceAttemptId)
     const takes = review.locator('[data-anim-review-take]')
     await expect(takes).toHaveCount(2)
-    const firstTake = rolled.document.attempts.filter((entry) => entry.tool === 'sequence')[0]!
+    const windowTakes = rolled.document.attempts.filter((entry) => entry.tool === 'sequence')
+    const secondTake = windowTakes.find((entry) => entry.attemptId !== sequenceAttemptId)!.attemptId
+    await expect(review.locator(`[data-anim-take-new="${secondTake}"]`)).toHaveCount(1)
+    // Switching takes is the reviewer's explicit act — here a no-op
+    // re-select of the already-pinned take 1, and the assert still holds.
+    const firstTake = windowTakes[0]!
     await review.locator(`[data-anim-review-take="${firstTake.attemptId}"]`).click()
     await expect(review).toHaveAttribute('data-anim-review-attempt', firstTake.attemptId)
     await expect(review.locator('[data-anim-review-caption-text]')).toContainText(`Action: ${SEQUENCE_BEATS.join('; ')}`)
@@ -2867,6 +2896,182 @@ test('the sequence re-roll refuses while the same window renders — the per-win
       const view = await readAnimationDocument(request, document.id)
       return view.document.attempts.filter((entry) => entry.tool === 'sequence').length
     }, { timeout: 10_000 }).toBe(2)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+// ---------------------------------------------------------------------------
+// Wave 2b (k2q0n9s, the post-review program): Fix 1 — the bound-session key
+// import (§5.3's two-command idiom at the key slot: importing ADDS an
+// alternative candidate and NEVER moves the selection; choosing is the
+// explicit select command) and the explicit "Update character binding"
+// action (§4.2's version append — immutable history, stale 'binding' marks,
+// prior takes preserved); Fix 2 — T7-M1: the bound description renders
+// READ-ONLY verbatim with the source named, and "Edit session copy"
+// unlatches a LABELED session-local override.
+// ---------------------------------------------------------------------------
+
+test('an import-only user builds two keys through the candidate strip — imports never select (candidates)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  // NO API seeding: the bogus id lands in the selection state, the creation
+  // arm makes the empty session, and everything after binds through the UI.
+  await page.goto(`/?images=1&view=animation&project=${projectId}&document=${uuid()}`)
+  await page.locator('[data-anim-new-document]').click()
+  const bindPanel = page.locator("[data-anim-binding='bind']")
+  await expect(bindPanel).toBeVisible({ timeout: 15_000 })
+  await bindPanel.locator('[data-anim-binding-description]').fill('a courier built entirely from imports')
+  await bindPanel.locator('[data-anim-binding-files]').setInputFiles({ name: 'import-only.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') })
+  await expect(bindPanel.locator('[data-anim-binding-pool] [data-anim-pool-image]')).toHaveCount(1)
+  await bindPanel.locator('[data-anim-binding-medium]').getByRole('radio', { name: 'clean line on white' }).click()
+  await bindPanel.locator('[data-anim-pool-initial-key]').click()
+  await bindPanel.locator('[data-anim-binding-submit]').click()
+  await expect(page.locator('[data-anim-bound-version]')).toBeVisible()
+  // The bound-but-empty timeline: seed the initial key slot (the binding's
+  // explicit affordance), then select the key — the candidate strip mounts.
+  await page.locator('[data-anim-seed-initial]').click()
+  const cards = page.locator('[data-anim-key]')
+  await expect(cards).toHaveCount(1)
+  await cards.first().click()
+  await expect(cards.first()).toHaveAttribute('data-anim-selected', 'true')
+  const strip = page.locator('[data-anim-key-candidates]')
+  await expect(strip).toBeVisible()
+  await expect(strip.locator('[data-anim-key-candidate]')).toHaveCount(1)
+  await expect(strip).toContainText('adds an alternative')
+
+  // IMPORT a file (default destination: into THIS key) — the strip grows to
+  // two candidates and the selection NEVER moves (§5.3's two commands).
+  await page.locator('[data-anim-key-import-files]').setInputFiles({ name: 'candidate-two.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') })
+  await expect(strip.locator('[data-anim-key-candidate]')).toHaveCount(2)
+  await expect(page.locator('[data-anim-command-error]')).toHaveCount(0)
+  const documentId = new URL(page.url()).searchParams.get('document')!
+  expect(documentId, 'the creation arm opened a real document').toBeTruthy()
+  const afterImport = await readAnimationDocument(request, documentId)
+  const keyOne = afterImport.document.body.keys[0]!
+  expect(keyOne.candidates).toHaveLength(2)
+  expect(keyOne.candidates[0]!.origin).toBe('project-asset', 'the seeded candidate kept its seed origin')
+  expect(keyOne.candidates[1]!.origin).toBe('import')
+  expect(keyOne.selectedCandidateId).toBe(keyOne.candidates[0]!.id, 'the import never moved the selection (§5.3)')
+  await expect(strip.locator(`[data-anim-key-candidate="${keyOne.candidates[0]!.id}"]`)).toHaveAttribute('data-anim-key-candidate-selected', 'true')
+  await expect(strip.locator(`[data-anim-key-candidate="${keyOne.candidates[1]!.id}"]`)).toHaveAttribute('data-anim-key-candidate-selected', 'false')
+
+  // The OTHER destination: "As a new key" — the store materializes a fresh
+  // slot (selection null) and the strip keeps serving key #1.
+  await page.locator('[data-anim-key-import-destination]').getByRole('radio', { name: 'As a new key' }).click()
+  await page.locator('[data-anim-key-import-files]').setInputFiles({ name: 'candidate-new-key.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') })
+  await expect(cards).toHaveCount(2, { timeout: 15_000 })
+  const afterNewKey = await readAnimationDocument(request, documentId)
+  const keyTwo = afterNewKey.document.body.keys.find((entry) => entry.id !== keyOne.id)!
+  expect(keyTwo.candidates).toHaveLength(1)
+  expect(keyTwo.candidates[0]!.origin).toBe('import')
+  expect(keyTwo.selectedCandidateId, 'the new key materialized unselected').toBeNull()
+  expect(afterNewKey.document.body.keys.find((entry) => entry.id === keyOne.id)!.candidates).toHaveLength(2, 'key #1 untouched by the new-key import')
+
+  // The explicit select (§5.3's second command) on the NEW key.
+  await cards.nth(1).click()
+  const stripTwo = page.locator('[data-anim-key-candidates]')
+  await expect(stripTwo).toHaveAttribute('data-anim-key-candidates-key', keyTwo.id)
+  await stripTwo.locator(`[data-anim-key-candidate-select="${keyTwo.candidates[0]!.id}"]`).click()
+  const selected = await readAnimationDocument(request, documentId)
+  const selectedTwo = selected.document.body.keys.find((entry) => entry.id === keyTwo.id)!
+  expect(selectedTwo.selectedCandidateId).toBe(keyTwo.candidates[0]!.id, 'the select command is the user’s explicit act')
+  expect(selected.document.body.keys.every((entry) => entry.selectedCandidateId !== null), 'both keys are selected').toBe(true)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('a bound session updates its binding through the UI — read-only description, the override latch, version 2 (binding, wave 2b Fix 1 + T7-M1)', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Update binding')
+    // Take 1 lands; frame 3 becomes the rolling reference — the review
+    // truth the binding update must PRESERVE (§8.3).
+    const submitted = await request.post('/api/lan/animation/attempts', { data: tweenDraftBody(seeded.documentId, seeded.stepSlotId, `anim-e2e-upd-${Date.now()}`) })
+    expect(submitted.ok(), `take 1 submits (${await submitted.text()})`).toBe(true)
+    const takeOne = ((await submitted.json()) as { attemptId: string }).attemptId
+    await expect.poll(async () => {
+      const view = await readAttemptView(request, takeOne)
+      return view.attempt.execution === 'ready' && view.attempt.candidate !== null
+    }, { timeout: 30_000 }).toBe(true)
+    const landed = await readAnimationDocument(request, seeded.documentId)
+    const selected = await request.post('/api/lan/animation/select/rolling-reference', {
+      data: { documentId: seeded.documentId, spanId: seeded.spanId, attemptId: takeOne, frameIndex: 3, expectedRevision: landed.document.revision },
+    })
+    expect(selected.ok(), `the rolling reference selects (${await selected.text()})`).toBe(true)
+
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+    await page.goto(animationUrl)
+    await expect(page.locator('[data-anim-timeline]')).toBeVisible({ timeout: 15_000 })
+
+    // Fix 1: the bound header carries the explicit update action —
+    // discoverable where the binding lives.
+    await page.locator('[data-anim-bound-update]').click()
+    const panel = page.locator("[data-anim-binding='update']")
+    await expect(panel).toBeVisible()
+
+    // T7-M1: the description renders READ-ONLY verbatim, the bound source
+    // NAMED; the textarea is gone; the override action stands.
+    const locked = panel.locator('[data-anim-binding-description-locked]')
+    await expect(locked).toBeVisible()
+    await expect(locked).toContainText('a lanky courier in a long coat')
+    await expect(locked).toContainText('the bound version 1')
+    await expect(panel.locator('[data-anim-binding-description]')).toHaveCount(0)
+    await expect(panel.locator('[data-anim-binding-override]')).toBeVisible()
+    // The write is NAMED before it happens: the version-append label plus
+    // the note stating the stale marks and the preserved takes (§8.3).
+    const submit = panel.getByRole('button', { name: 'Append binding version 2' })
+    await expect(submit).toBeVisible()
+    await expect(submit).toBeEnabled()
+    await expect(panel.locator('[data-anim-binding-update-note]')).toContainText('stale')
+    await expect(panel.locator('[data-anim-binding-update-note]')).toContainText('preserved')
+    await expect(panel.locator('[data-anim-binding-dismiss]')).toBeVisible()
+
+    // The override latch: one explicit click reveals the LABELED textarea.
+    await panel.locator('[data-anim-binding-override]').click()
+    const description = panel.locator('[data-anim-binding-description]')
+    await expect(description).toHaveValue('a lanky courier in a long coat')
+    const label = panel.locator('[data-anim-binding-override-label]')
+    await expect(label).toContainText('session-local override')
+    await expect(label).toContainText('binding versions')
+    await description.fill('a lanky courier in a long coat, now wearing a travel cloak')
+    await submit.click()
+
+    // The panel collapses on success; the header names version 2 verbatim.
+    await expect(panel).toHaveCount(0)
+    const bound = page.locator('[data-anim-bound-version]')
+    await expect(bound).toHaveAttribute('data-anim-bound-version-n', '2')
+    await expect(page.locator('[data-anim-bound-description]')).toHaveText('a lanky courier in a long coat, now wearing a travel cloak')
+
+    // DOCUMENT truth: immutable history + stale 'binding' marks + prior
+    // takes preserved — and the review selection rides through untouched.
+    const updated = (await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json()) as {
+      document: {
+        body: {
+          bindingHistory: Array<{ version: number; characterDescription: string }>
+          activeBindingVersion: number
+          keys: Array<{ id: string; selectedCandidateId: string | null; candidates: Array<{ id: string }> }>
+          spans: Array<{ id: string; stale: boolean; staleReasons: string[]; stepSlots: Array<{ id: string; attempts: string[]; selectedRollingReference: { attemptId: string; frameIndex: number; poseDescription: string | null; facing: string | null } | null }> }>
+        }
+      }
+    }
+    const truth = updated.document.body
+    expect(truth.bindingHistory).toHaveLength(2)
+    expect(truth.activeBindingVersion).toBe(2)
+    expect(truth.bindingHistory[0]!.characterDescription).toBe('a lanky courier in a long coat', 'version 1 is preserved verbatim')
+    expect(truth.bindingHistory[1]!.characterDescription).toBe('a lanky courier in a long coat, now wearing a travel cloak')
+    const span = truth.spans.find((entry) => entry.id === seeded.spanId)!
+    expect(span.stale).toBe(true)
+    expect(span.staleReasons).toContain('binding')
+    expect(span.stepSlots[0]!.attempts).toEqual([takeOne], 'prior takes are preserved (§8.3)')
+    expect(span.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId: takeOne, frameIndex: 3, poseDescription: null, facing: null }, 'the selection pointer rides through the update untouched')
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
     await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)

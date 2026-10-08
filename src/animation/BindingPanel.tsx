@@ -18,9 +18,20 @@
  * The image handle is the blob relPath everywhere (content-addressed, the
  * same handle the binding's reference ids carry); previews resolve through
  * documentsApi.blobFileUrl.
+ *
+ * Wave 2b (Fix 2, T7-M1): when a bound source exists — a picked character
+ * in bind mode, the active binding version in UPDATE mode — the description
+ * renders READ-ONLY verbatim with the source NAMED, and an explicit "Edit
+ * session copy" action unlatches a labeled session-local override (the
+ * edits ride the session's binding versions, never the source character).
+ * No source (the empty session, nothing picked) stays editable as before.
+ * Wave 2b (Fix 1): `mode="update"` prefills from the active binding and
+ * frames the write for what it is — appending an immutable BindingVersion
+ * that marks spans stale 'binding' and preserves prior takes — mounted from
+ * the bound header's "Update character binding" action.
  */
 import { useMemo, useRef, useState } from 'react'
-import { ImagePlus } from 'lucide-react'
+import { ImagePlus, Pencil } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Chip, ChipGroup } from '../ui/Chip'
 import { Field } from '../ui/Field'
@@ -36,6 +47,10 @@ export type BindingErrors = Partial<Record<'characterDescription' | 'referenceAs
 
 export type BindingPanelProps = {
   document: AnimationDocumentView
+  /** `bind` (default) — the empty session's binding card; `update` — the
+   *  bound session's explicit update flow (prefilled from the active
+   *  binding, the write named as a version append). */
+  mode?: 'bind' | 'update'
   /** The prepared characters from the global asset store (state.ts loads
    *  them; empty when none exist or the load failed — `assetsFailed` names
    *  the failure). */
@@ -45,6 +60,8 @@ export type BindingPanelProps = {
    *  (state.ts) and hands back the imported handles. */
   onImportFiles(files: File[]): Promise<Array<{ assetId: string; relPath: string }>>
   onSubmitBinding(binding: BindingInput): Promise<boolean>
+  /** Update mode only — collapses the panel (the shell unmounts it). */
+  onDismiss?(): void
   busy: boolean
   errors?: BindingErrors
 }
@@ -52,16 +69,32 @@ export type BindingPanelProps = {
 /** One picked image in the panel's pool. */
 type PoolImage = { assetId: string; relPath: string; source: string | null }
 
-export function BindingPanel({ document, assets, assetsFailed, onImportFiles, onSubmitBinding, busy, errors }: BindingPanelProps) {
+export function BindingPanel({ document, mode = 'bind', assets, assetsFailed, onImportFiles, onSubmitBinding, onDismiss, busy, errors }: BindingPanelProps) {
   const fileInput = useRef<HTMLInputElement>(null)
-  const [pool, setPool] = useState<PoolImage[]>([])
-  const [description, setDescription] = useState('')
+  const activeBinding = document.body.bindingHistory.find((entry) => entry.version === document.body.activeBindingVersion) ?? null
+  // Update mode prefills from the active binding (the panel mounts fresh —
+  // the shell unmounts it between opens, so lazy initializers are the seed).
+  const [pool, setPool] = useState<PoolImage[]>(() => (mode === 'update' && activeBinding !== null
+    ? activeBinding.referenceAssetIds.map((assetId) => ({ assetId, relPath: assetId, source: null }))
+    : []))
+  const [description, setDescription] = useState(() => (mode === 'update' && activeBinding !== null ? activeBinding.characterDescription : ''))
   const [sourceName, setSourceName] = useState<string | null>(null)
-  const [references, setReferences] = useState<string[]>([])
-  const [initialKey, setInitialKey] = useState<string | null>(null)
-  const [medium, setMedium] = useState<MediumString | null>(null)
+  const [references, setReferences] = useState<string[]>(() => (mode === 'update' && activeBinding !== null ? [...activeBinding.referenceAssetIds] : []))
+  const [initialKey, setInitialKey] = useState<string | null>(() => (mode === 'update' && activeBinding !== null ? activeBinding.initialKeyAssetId : null))
+  const [medium, setMedium] = useState<MediumString | null>(() => (mode === 'update' && activeBinding !== null ? activeBinding.medium : null))
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  // T7-M1: the override latch — one-way, session-local. Latched, the
+  // description textarea is editable and carries the labeled override note.
+  const [overrideUnlocked, setOverrideUnlocked] = useState(false)
+
+  // The description's SOURCE (the T7-M1 gate): a picked character in bind
+  // mode; in update mode the bound version itself always is the source —
+  // its text renders verbatim until explicitly overridden.
+  const boundSource = mode === 'update'
+    ? (activeBinding === null ? null : `the bound version ${activeBinding.version}`)
+    : sourceName
+  const descriptionLocked = boundSource !== null && !overrideUnlocked
 
   const addImages = (images: Array<{ assetId: string; relPath: string }>, source: string | null) => {
     setPool((current) => {
@@ -73,8 +106,15 @@ export function BindingPanel({ document, assets, assetsFailed, onImportFiles, on
   /** A prepared character (§4.1's "existing project assets"): its curated
    *  set becomes the reference set and its description is retained
    *  VERBATIM (§4.2 — the session stores the exact version used; editing
-   *  the source character later never silently changes a bound session). */
+   *  the source character later never silently changes a bound session).
+   *  UPDATE mode adds the character's images to the pool ONLY — an update
+   *  never clobbers the bound description or reference set by side effect;
+   *  the reviewer adds references by explicit toggles. */
   const pickCharacter = (asset: AnimationAssetPick) => {
+    if (mode === 'update') {
+      addImages(asset.images, asset.name)
+      return
+    }
     addImages(asset.images, asset.name)
     setReferences(asset.images.map((image) => image.assetId))
     setDescription(asset.description)
@@ -130,15 +170,61 @@ export function BindingPanel({ document, assets, assetsFailed, onImportFiles, on
 
   const mediumValue = useMemo(() => (medium === null ? null : mediumChipId(medium)), [medium])
 
+  const descriptionField = descriptionLocked ? (
+    <div className="anim-binding-locked" data-anim-binding-description-locked>
+      <span className="anim-binding-label">Locked character description</span>
+      <p className="anim-binding-locked-text">{description}</p>
+      <p className="anim-note">From {boundSource}, retained verbatim (§4.2) — the session stores this exact version{mode === 'bind' ? '; editing the source later never silently changes a bound session' : ''}.</p>
+      <Button
+        variant="secondary"
+        icon={<Pencil size={12} />}
+        onClick={() => setOverrideUnlocked(true)}
+        data-anim-binding-override
+        title="Unlatch a session-local copy of the description and edit it"
+      >
+        Edit session copy
+      </Button>
+    </div>
+  ) : (
+    <>
+      <Field
+        label="Locked character description"
+        htmlFor="anim-binding-description"
+        hint={boundSource !== null
+          ? `Session-local override of ${boundSource} — the edited text is what the next binding version stores.`
+          : 'Retained verbatim — the session stores the exact version used (§4.2).'}
+        error={errors?.characterDescription}
+      >
+        <textarea
+          id="anim-binding-description"
+          className="anim-binding-description"
+          data-anim-binding-description
+          rows={3}
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+        />
+      </Field>
+      {overrideUnlocked && (
+        <p className="anim-note anim-binding-override-label" role="note" data-anim-binding-override-label>
+          session-local override — edits stay in this session&apos;s binding versions
+        </p>
+      )}
+    </>
+  )
+
   return (
-    <section className="anim-binding" data-anim-binding aria-labelledby="anim-binding-title">
-      <h3 id="anim-binding-title">Bind the session — {document.name}</h3>
-      <p className="anim-binding-lede">Pick the prepared character material and the first pose; the medium is a session setting, not a character attribute (§4.1).</p>
+    <section className="anim-binding" data-anim-binding={mode} aria-labelledby="anim-binding-title">
+      <h3 id="anim-binding-title">{mode === 'update' ? 'Update the character binding' : 'Bind the session'} — {document.name}</h3>
+      <p className="anim-binding-lede">
+        {mode === 'update'
+          ? 'Append the next binding version: same session, new reference material or description (§4.2).'
+          : 'Pick the prepared character material and the first pose; the medium is a session setting, not a character attribute (§4.1).'}
+      </p>
 
       {missing.length > 0 && (
         <Refusal
-          title="The session is not bound yet"
-          reason={`Still missing: ${missing.join(', ')}. Rendering stays gated until the session is bound.`}
+          title={mode === 'update' ? 'The update is incomplete' : 'The session is not bound yet'}
+          reason={`Still missing: ${missing.join(', ')}.${mode === 'update' ? ' The current binding stands until a complete version is appended.' : ' Rendering stays gated until the session is bound.'}`}
         />
       )}
 
@@ -154,7 +240,7 @@ export function BindingPanel({ document, assets, assetsFailed, onImportFiles, on
               className="anim-asset-pick"
               data-anim-asset-pick={asset.id}
               onClick={() => pickCharacter(asset)}
-              title="Use this character's reference set and its description verbatim"
+              title={mode === 'update' ? "Add this character's reference images to the pool" : "Use this character's reference set and its description verbatim"}
             >
               {asset.name} — {asset.images.length} refs
             </button>
@@ -192,23 +278,7 @@ export function BindingPanel({ document, assets, assetsFailed, onImportFiles, on
           {errors?.referenceAssetIds && <p className="anim-binding-error" role="alert">{errors.referenceAssetIds}</p>}
         </div>
 
-        <Field
-          label="Locked character description"
-          htmlFor="anim-binding-description"
-          hint={sourceName
-            ? `From ${sourceName}, retained verbatim — the session stores this exact version (§4.2); editing the source later never silently changes a bound session.`
-            : 'Retained verbatim — the session stores the exact version used (§4.2).'}
-          error={errors?.characterDescription}
-        >
-          <textarea
-            id="anim-binding-description"
-            className="anim-binding-description"
-            data-anim-binding-description
-            rows={3}
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-        </Field>
+        {descriptionField}
 
         <Field
           label="Medium"
@@ -236,8 +306,16 @@ export function BindingPanel({ document, assets, assetsFailed, onImportFiles, on
       {errors?.submit && <p className="anim-binding-error" role="alert">{errors.submit}</p>}
       <div className="anim-binding-submit">
         <Button variant="primary" busy={busy} disabled={!canSubmit} onClick={() => void submit()} data-anim-binding-submit>
-          Bind the session
+          {mode === 'update' ? `Append binding version ${document.body.activeBindingVersion + 1}` : 'Bind the session'}
         </Button>
+        {mode === 'update' && (
+          <p className="anim-note" role="note" data-anim-binding-update-note>
+            Appends an immutable binding version — every span marks stale (binding) and prior takes are preserved (§8.3); nothing is re-rendered or deleted.
+          </p>
+        )}
+        {mode === 'update' && onDismiss && (
+          <Button variant="secondary" onClick={onDismiss} data-anim-binding-dismiss>Close without updating</Button>
+        )}
       </div>
     </section>
   )

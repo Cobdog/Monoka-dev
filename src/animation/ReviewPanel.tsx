@@ -35,11 +35,31 @@
  *     explicit retry, which never re-renders.
  */
 import { Button } from '../ui/Button'
+import { Chip } from '../ui/Chip'
 import { Refusal } from '../ui/Refusal'
 import { documentsApi } from '../canvas/api'
 import type { Span } from '../../shared/animation/types'
 import { IN_FLIGHT, REVIEW_STATUS } from './reviewStatus'
 import type { AttemptStateView } from './client'
+
+/** The T10-M4 "new take" indicator (wave 2b), shared by all three review
+ *  lanes' take strips: a kit Chip BESIDE the fresh take's button (never
+ *  inside — a chip is itself a button). Clicking it dismisses the marker;
+ *  selecting the take clears it through the shell. Announce, never
+ *  auto-select (§8.2). */
+export function TakeNewChip({ attemptId, onDismiss }: { attemptId: string; onDismiss(attemptId: string): void }) {
+  return (
+    <Chip
+      variant="toggle"
+      className="anim-take-new"
+      data-anim-take-new={attemptId}
+      title="A newer take landed — review it, or dismiss this marker"
+      onClick={() => onDismiss(attemptId)}
+    >
+      new
+    </Chip>
+  )
+}
 
 export type ReviewPanelProps = {
   /** The attempt under review (the document view's row — live through the
@@ -71,9 +91,15 @@ export type ReviewPanelProps = {
   /** §11.4's explicit preparation retry — re-prepares the proposed frame
    *  WITHOUT re-rendering. */
   onRetryPreparation(): void
+  /** T10-M4 (wave 2b): the strip's LAST take when it is fresher than the
+   *  subject — announced with a "new" chip, never auto-selected (§8.2). */
+  newTakeAttemptId?: string | null
+  /** Dismisses the "new" marker (the chip's own click; selecting the take
+   *  clears it through the shell). */
+  onDismissNewTake(attemptId: string): void
 }
 
-export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, busy, onSelectTake, onSelectFrame, onContinue, onReroll, onRetryPreparation }: ReviewPanelProps) {
+export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, busy, onSelectTake, onSelectFrame, onContinue, onReroll, onRetryPreparation, newTakeAttemptId = null, onDismissNewTake }: ReviewPanelProps) {
   const status = REVIEW_STATUS[attempt.execution]
   const candidate = attempt.candidate
   const proposedFrame = attempt.preparation.proposedFrameIndex
@@ -161,22 +187,29 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
       )}
 
       {/* The takes (re-roll alternatives, §8.2): switching the SUBJECT is a
-          view act; the SELECTED marker follows the durable slot selection. */}
+          view act; the SELECTED marker follows the durable slot selection.
+          T10-M4: the fresh take carries the "new" chip (announce, never
+          auto-select) — a sibling of the take button, never a child (both
+          are buttons). */}
       {takes.length > 1 && (
         <div className="anim-review-takes" data-anim-review-takes role="group" aria-label="Takes for this step">
           {takes.map((take, index) => (
-            <button
-              key={take.attemptId}
-              type="button"
-              className="anim-review-take"
-              data-anim-review-take={take.attemptId}
-              data-anim-take-selected={slotSelection?.attemptId === take.attemptId ? 'true' : 'false'}
-              disabled={busy}
-              title={slotSelection?.attemptId === take.attemptId ? 'The selected take — its frame is the rolling reference' : 'Review this take (the selection stays until you choose a frame from another take)'}
-              onClick={() => { if (take.attemptId !== attempt.attemptId) onSelectTake(take.attemptId) }}
-            >
-              take {index + 1}
-            </button>
+            <span key={take.attemptId} className="anim-take-wrap">
+              <button
+                type="button"
+                className="anim-review-take"
+                data-anim-review-take={take.attemptId}
+                data-anim-take-selected={slotSelection?.attemptId === take.attemptId ? 'true' : 'false'}
+                disabled={busy}
+                title={slotSelection?.attemptId === take.attemptId ? 'The selected take — its frame is the rolling reference' : 'Review this take (the selection stays until you choose a frame from another take)'}
+                onClick={() => { if (take.attemptId !== attempt.attemptId) onSelectTake(take.attemptId) }}
+              >
+                take {index + 1}
+              </button>
+              {newTakeAttemptId === take.attemptId && onDismissNewTake !== undefined && (
+                <TakeNewChip attemptId={take.attemptId} onDismiss={onDismissNewTake} />
+              )}
+            </span>
           ))}
         </div>
       )}

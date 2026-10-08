@@ -105,6 +105,17 @@
   verify a free port (freePort pattern in test-storage/test-realtime).
 - **zsh + the repo path contains a space** — always quote
   `"/home/agent/work/VS Proj/MINIMAX-DESKTOP"`.
+- **React: sibling JSX slots sharing one `key` corrupt the reconciler** —
+  prod build, NO console warning. Observed (wave 2b, AnimationApp's stage):
+  three siblings keyed by the same `selectedKey.id`; on every commit React
+  mounted a FRESH pair of panels, appended the DOM, and never removed the
+  old — fiber tree held 4 live copies while `memoizedProps.children` held 1
+  (diagnosed via in-page MutationObserver + insertBefore monkey-patch +
+  fiber walk from `__reactFiber$`). Distinct per-surface key prefixes
+  (`candidates-${id}`, `hero-${id}`, `sequence-${id}`) fix it while keeping
+  the remount-on-key-switch semantics. When a strict-mode locator resolves
+  to N>1 "impossible" duplicates, count `document.querySelectorAll` for the
+  component's root attr BEFORE suspecting the test.
 
 ## Vendor / licensing doctrine (short form; full policy in LICENSES.md)
 

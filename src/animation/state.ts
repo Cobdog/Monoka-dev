@@ -104,6 +104,13 @@
  * edit: a partial patch merged over the live pointer, parked behind a busy
  * store, so the inspector's debounced pose settle and the facing chips both
  * serialize instead of clobbering each other.
+ *
+ * What wave 2b adds (Fix 1, §5.3/§7.2.1): the key-candidates strip's
+ * commands — `importKeyCandidate` (the bound key's "Import candidate…":
+ * an ingested image lands as an ALTERNATIVE candidate of an existing or
+ * fresh key, never touching the selection — the add half of the two-command
+ * idiom) and `selectKeyCandidate` (the explicit choice, lock-guarded
+ * client-side, a genuine no-op on the already-selected candidate).
  */
 import { useEffect } from 'react'
 import { create } from 'zustand'
@@ -177,6 +184,19 @@ type AnimationSessionState = {
   refresh(): Promise<void>
   updateBinding(binding: BindingInput): Promise<boolean>
   importImages(files: File[]): Promise<AnimationImportedImage[]>
+  /** Wave 2b (Fix 1) — the bound key's "Import candidate…" action: ingests
+   *  an image into a KEY SLOT as an ALTERNATIVE (§5.3's add half — it never
+   *  selects; choosing the candidate is the explicit selectKeyCandidate
+   *  command). The destination is either an existing key (which may also be
+   *  a not-yet-materialized id — the store mints the slot, order max+1,
+   *  selection null) or a fresh key. `origin` names where the image came
+   *  from; the provenance carries the asset id. */
+  importKeyCandidate(destination: { keyId: string } | { asNewKey: true }, image: AnimationImportedImage, origin: 'import' | 'project-asset'): Promise<boolean>
+  /** Wave 2b (Fix 1) — the explicit candidate choice (§7.2.1's select
+   *  command through the key-candidates strip). Lock-guarded client-side
+   *  (the server enforces it regardless); re-selecting the already-selected
+   *  candidate is a genuine no-op (true, no write). */
+  selectKeyCandidate(keyId: string, candidateId: string): Promise<boolean>
   /** Task 8 — the timeline's commands. */
   /** Materializes the initial key slot from the active binding's
    *  initialKeyAssetId (add-candidate, then the explicit selection — two
@@ -664,6 +684,69 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
       imported.push({ assetId: ingested.blob.relPath, relPath: ingested.blob.relPath })
     }
     return imported
+  },
+
+  importKeyCandidate: async (destination, image, origin) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    // The destination resolves NOW: an existing key keeps its id, a new key
+    // mints one — the store materializes unknown slots (order max+1,
+    // selection null), so "into key #N" and "as a new key" ride the same
+    // add-candidate command (§5.3: membership grows, selection stays null).
+    const keyId = 'asNewKey' in destination ? crypto.randomUUID() : destination.keyId
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // The add half ONLY — the selection is never touched here (§5.3's
+      // two-command split; choosing the candidate is selectKeyCandidate).
+      const view = await animationApi.keyCommand(current.id, 'add-candidate', {
+        keyId,
+        candidate: {
+          id: crypto.randomUUID(),
+          assetReference: { assetId: image.assetId, relPath: isPathLikeHandle(image.assetId) ? image.relPath : null, kind: 'image' },
+          origin,
+          provenance: { assetId: image.assetId },
+          poseDescription: null,
+          facing: null,
+        },
+      }, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  selectKeyCandidate: async (keyId, candidateId) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const slot = current.body.keys.find((entry) => entry.id === keyId) ?? null
+    if (slot === null) {
+      set({ commandError: 'That key slot no longer exists — reload picked up a change.' })
+      return false
+    }
+    if (!slot.candidates.some((entry) => entry.id === candidateId)) {
+      set({ commandError: `That candidate is no longer part of key ${slot.order} — reload picked up a change.` })
+      return false
+    }
+    // The server enforces the same refusals (§7.2.1) — naming them here
+    // keeps the strip's affordance honest instead of firing a doomed command.
+    if (slot.lock) {
+      set({ commandError: `Key ${slot.order} is locked — unlock it before changing its selection.` })
+      return false
+    }
+    if (slot.selectedCandidateId === candidateId) return true
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      const view = await animationApi.selectKeyCandidate(current.id, keyId, candidateId, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
   },
 
   seedInitialKey: async () => {
@@ -1485,6 +1568,8 @@ export function useAnimationDocument(documentId: string, projectId = '') {
     commands: {
       updateBinding: session.updateBinding,
       importImages: session.importImages,
+      importKeyCandidate: session.importKeyCandidate,
+      selectKeyCandidate: session.selectKeyCandidate,
       seedInitialKey: session.seedInitialKey,
       toggleKeyLock: session.toggleKeyLock,
       updateSpanIntent: session.updateSpanIntent,
