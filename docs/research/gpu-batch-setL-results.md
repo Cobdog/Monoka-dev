@@ -362,3 +362,13 @@ wins-at-variations → ship under that meaning; neither → defer.
   7f tail trim; the direct latent wire inside the mctx graph; arm 4 at
   the Set-K sampler point (the pack prescribes none). The on-twos
   signature metric fires zero everywhere (recorded honestly in §3.5).
+
+## The eye verdict (the maintainer's blind calls, 2026-10-08 22:47–23:00; key reconciled)
+
+- **p01 NULL: tie** — the instrument held.
+- **Motion Context wins EVERY pair it appears in: 9/9 across all three seeds** (p02, p03, p05, p06, p07, p09, p10, p11, p13), judged on motion advancement first — the decision criterion. The p02 note names the pattern: "Left follows the prompt of the arm lowering. Her arms remain frozen in the air on the right clip" (mctx vs tween).
+- **tween: 1 win / 5 losses** — the hold basin eye-confirmed ("frozen in the air"; "does not follow the prompt past the arm lowering"); its sole win is over single on seed 421777.
+- **single: 2 wins / 4 losses** — beats tween on 2/3 seeds for MOTION, but the ending degeneration is eye-confirmed: "the background turns black however. If this is intentional this is fine" (p04, called single anyway) — and it loses to tween on 421777. Real value, unreliable ending.
+- **setk: 0 wins / 3 losses** — dominated by mctx on every appearance. As a CONTINUATION mechanism it loses; per the strategic review's rule, its residual meaning is the variation/refinement recipe (state-preserving re-noising), not temporal extension.
+
+**DECISION (the strategic review's rule, tail conditioning wins): the continuation lane gets spec'd on Motion Context tail conditioning** — narrow, explicit-review, one validated overlap recipe, immutable checkpoints. The measured caveats become the spec's engineering targets: the near-stop just after each join (tunable via the pack's continuation modes — spec must investigate), 1.9× cost per delivered frame, conditioning-collision surfacing, overlap budgeting in generated AND delivered time. The single-generation lane records as a cheap-motion finding with a known ending-degeneration limitation (unfixed, unexplained — a follow-up question, not a lane). Set K re-noising records as the variation recipe it is.
