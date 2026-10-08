@@ -50,6 +50,9 @@ const tweenCtx = () => ({
     pose: { poseDescription: 'settled onto the heel, arms at the sides', facing: 'screen-right' },
   },
   movementStep: 'she shifts her weight onto the heel, hips following',
+  // The span's authored hold (v2): the STATIC section appends it after the
+  // fixed phrase — the live review's own typed text.
+  preservation: 'The gold earring and both hands remain still.',
   overrides: { medium: 'flat black-and-white animatic' },
 })
 
@@ -91,7 +94,7 @@ test('hero caption: SCENE / MOVEMENT / STATIC in order, medium verbatim, Referen
   assert.ok(caption.includes('low wide') && caption.includes('establishes the alley'), 'camera carries its reason clause')
   assert.ok(caption.includes('framing and ground'), 'STATIC ends on the framing+ground hold')
   assert.deepEqual(hints, [], 'a clean fixture compiles without hints')
-  assert.equal(compilerVersion, '1')
+  assert.equal(compilerVersion, '2')
 })
 
 // --- tween ------------------------------------------------------------------
@@ -109,7 +112,53 @@ test('tween caption: five sections in order; FIRST FRAME is the ROLLING referenc
   assert.ok(caption.includes('facing screen-right'), 'facing rendered for the target frame')
   assert.ok(caption.includes(tweenCtx().movementStep), 'the movement step appears verbatim')
   assert.deepEqual(hints, [], 'a clean fixture compiles without hints')
-  assert.equal(compilerVersion, '1')
+  assert.equal(compilerVersion, '2')
+})
+
+// --- tween v2: the authored preservation appends to STATIC (wave 2a, the
+// maintainer's 2026-10-07 ruling — the live review's #3) ---------------------
+
+/** The v1 tween caption over the tween fixture — the byte-identical shape an
+ *  EMPTY authored preservation must keep (the replay pin: nothing about the
+ *  fixed hold changed). */
+const V1_TWEEN_CAPTION = [
+  'SCENE: flat black-and-white animatic.',
+  'FIRST FRAME (Reference 1): weight forward over the planted left foot, facing screen-left',
+  'TARGET END FRAME (Reference 2): settled onto the heel, arms at the sides, facing screen-right',
+  'MOVEMENT: she shifts her weight onto the heel, hips following',
+  'STATIC: identity, wardrobe, and proportions stay consistent; framing and ground plane stay fixed',
+].join('\n')
+
+test('tween v2: authored preservation appends to STATIC after the fixed hold; empty keeps the v1 line byte-identical', () => {
+  const authored = compileTweenCaption(tweenCtx())
+  assert.equal(
+    authored.caption.split('\n')[4],
+    'STATIC: identity, wardrobe, and proportions stay consistent; framing and ground plane stay fixed. The gold earring and both hands remain still.',
+    'the authored sentence follows the unchanged fixed hold after a full stop',
+  )
+  assert.ok(authored.caption.endsWith('The gold earring and both hands remain still.'), 'the authored text is the caption\'s last byte — nothing appended after it')
+  assert.ok(authored.caption.includes('framing and ground plane stay fixed'), 'the measured fixed hold phrase stays')
+  assert.equal(authored.compilerVersion, '2', 'the append is a compiler-versioned change')
+  // Whitespace-only authored text is "not authored": the v1 line, byte for
+  // byte — the fixed hold phrase never grew a trailing sentence.
+  for (const empty of ['', '   ', '\t\n ']) {
+    const { caption, hints } = compileTweenCaption({ ...tweenCtx(), preservation: empty })
+    assert.equal(caption, V1_TWEEN_CAPTION, `preservation ${JSON.stringify(empty)} keeps the v1 caption byte-identical`)
+    assert.deepEqual(hints, [], 'empty text hints nothing')
+  }
+  // Edges trim: the authored sentence lands without surrounding whitespace.
+  const padded = compileTweenCaption({ ...tweenCtx(), preservation: '  The gold earring and both hands remain still.  ' })
+  assert.ok(padded.caption.endsWith('The gold earring and both hands remain still.'), 'leading/trailing whitespace trims, the text itself verbatim')
+  // Hero is unchanged by construction: it carries no preservation field, and
+  // its STATIC line stays the bare fixed hold.
+  const hero = compileHeroCaption(heroCtx())
+  assert.equal(hero.caption.split('\n')[3], 'STATIC: identity, wardrobe, and proportions stay consistent; framing and ground plane stay fixed', 'hero keeps the bare hold — no appended sentence exists in its template')
+})
+
+test('tween v2: negation in the authored preservation is flagged, never rewritten', () => {
+  const flagged = compileTweenCaption({ ...tweenCtx(), preservation: 'the hands never drift and the scarf does not move' })
+  assert.ok(hintKinds(flagged.hints).includes('negation'), 'negation in the authored hold is noted')
+  assert.ok(flagged.caption.includes('the hands never drift and the scarf does not move'), 'the offending text rides the caption verbatim')
 })
 
 // --- sequence ---------------------------------------------------------------
@@ -127,7 +176,7 @@ test('sequence caption: alignment line first, Subject on twos, actions in beat o
   assert.ok(caption.indexOf('Action:') < caption.indexOf('Preserve:'), 'Action precedes Preserve')
   assert.ok(caption.endsWith('Preserve: coat hem stays consistent; the rhythm stays even'), 'Preserve is the last section, verbatim')
   assert.deepEqual(hints, [], 'a clean fixture compiles without hints')
-  assert.equal(compilerVersion, '1')
+  assert.equal(compilerVersion, '2')
 
   // A degenerate empty action list omits the Action section; Preserve stays last.
   const empty = compileSequenceCaption({ ...sequenceCtx(), orderedActions: [] })
@@ -209,10 +258,10 @@ test('negation in movement or preservation text is flagged and kept verbatim', (
 // --- the mechanical vocabulary guards -----------------------------------------
 
 test('every return carries the compiler version', () => {
-  assert.equal(COMPILER_VERSION, '1')
-  assert.equal(compileHeroCaption(heroCtx()).compilerVersion, '1')
-  assert.equal(compileTweenCaption(tweenCtx()).compilerVersion, '1')
-  assert.equal(compileSequenceCaption(sequenceCtx()).compilerVersion, '1')
+  assert.equal(COMPILER_VERSION, '2')
+  assert.equal(compileHeroCaption(heroCtx()).compilerVersion, '2')
+  assert.equal(compileTweenCaption(tweenCtx()).compilerVersion, '2')
+  assert.equal(compileSequenceCaption(sequenceCtx()).compilerVersion, '2')
 })
 
 test('an unsupported medium string is rejected at runtime by every entry point', () => {

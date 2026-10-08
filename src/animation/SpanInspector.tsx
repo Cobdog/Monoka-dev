@@ -20,9 +20,10 @@
  *   MOVEMENT + PRESERVATION — free text; the movement is the tween caption's
  *   MOVEMENT line verbatim, debounced into the durable span intent (§7.4's
  *   future-motion drafts) and recompiled into the preview after the same
- *   debounce. Authored preservation persists with the span; the tween
- *   template's STATIC line is the dialect's fixed hold (the compiler embeds
- *   no authored hold text in a tween context) — the field says so.
+ *   debounce. Authored preservation persists with the span AND compiles
+ *   (compiler v2, the maintainer's 2026-10-07 ruling): the tween STATIC
+ *   section carries it appended after the dialect's fixed hold phrase —
+ *   a field in the motion authoring inspector has an honest effect.
  *
  *   OVERRIDES — medium/scene/camera: the medium inherits from the bound
  *   session by default, a different chip is this span's override; scene and
@@ -286,13 +287,18 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
           rollingReference: { assetReference: preview.rollingReference.assetReference, pose: preview.rollingReference.pose },
           farReference: { assetReference: preview.farReference.assetReference, pose: preview.farReference.pose },
           movementStep: committed.movement,
+          // The compiler v2 STATIC append: the preview compiles the SAME
+          // settled preservation the server reads from the span intent (the
+          // submit flushes the draft into the intent first, so preview and
+          // frozen caption stay byte-identical).
+          preservation: committed.preservation,
           overrides,
         }),
       }
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }
-  }, [preview.rollingReference, preview.farReference, toKey, committed.movement, overrides])
+  }, [preview.rollingReference, preview.farReference, toKey, committed.movement, committed.preservation, overrides])
 
   const canSubmit = !busy
     && committed.movement.trim() !== ''
@@ -449,7 +455,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
         <Field
           label="What stays fixed"
           htmlFor="anim-inspector-preservation"
-          hint="Persisted with the span as the authored hold intent. The tween caption's STATIC line is the dialect's fixed hold — authored preservation rides the session's identity constraints, not the tween template."
+          hint="Persisted with the span as the authored hold intent and compiled into this span's captions: the STATIC line carries it after the dialect's fixed hold. Empty leaves the fixed hold alone."
         >
           <textarea
             id="anim-inspector-preservation"

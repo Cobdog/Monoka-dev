@@ -849,7 +849,7 @@ test('editing the movement text recompiles the caption preview and persists the 
   await expect(caption).toContainText('TARGET END FRAME (Reference 2): turned farther than the start, head past the shoulder line, facing toward camera')
   await expect(caption).toContainText('MOVEMENT: she pushes off the back foot into a full stride')
   await expect(caption).toContainText('SCENE: clean line on white.')
-  await expect(page.locator('[data-anim-caption-compiler]')).toHaveText('v1')
+  await expect(page.locator('[data-anim-caption-compiler]')).toHaveText('v2')
   // Edit the movement: the preview recomputes on the settle (the bounded
   // named-condition wait — the debounce's commit IS the condition).
   const MOVEMENT = 'the lead foot plants and the weight transfers through the hip'
@@ -945,7 +945,7 @@ test('submitting freezes the previewed caption verbatim (inspector)', async ({ p
     const settled = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { revision: number; attempts: Array<{ tool: string; targetId: string; caption: string; compilerVersion: string }> } }
     const attempt = settled.document.attempts.find((entry) => entry.tool === 'tween' && entry.targetId === seeded.stepSlotId)!
     expect(attempt.caption).toBe(previewed)
-    expect(attempt.compilerVersion).toBe('1')
+    expect(attempt.compilerVersion).toBe('2')
     expect(settled.document.revision).toBe(seeded.revision)
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
@@ -1386,10 +1386,22 @@ test('annotating the rolling reference recompiles the preview and freezes verbat
     expect(annotatedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 3, poseDescription: POSE, facing: 'screen-left' })
     await expect(page.locator(`[data-anim-span="${seeded.spanId}"]`)).toHaveAttribute('data-anim-span-stale', 'true')
 
+    // The authored preservation (wave 2a's second fix, the live review's #3):
+    // the seeded span's "What stays fixed" text rides the STATIC section after
+    // the fixed hold — and EDITING it recomputes the preview on the same
+    // settle, so the field has an honest effect at the caption the next
+    // submission freezes.
+    const HOLD = 'STATIC: identity, wardrobe, and proportions stay consistent; framing and ground plane stay fixed'
+    await expect(caption).toContainText(`${HOLD}. coat hem and scarf stay consistent`, { timeout: 5_000 })
+    const PRESERVATION = 'The gold earring and both hands remain still.'
+    await page.locator('[data-anim-inspector-preservation]').fill(PRESERVATION)
+    await expect(caption).toContainText(`${HOLD}. ${PRESERVATION}`, { timeout: 5_000 })
+
     // The submission freezes the PREVIEWED caption byte-identically (the
-    // byte-identity pin, promoted-frame + annotation edition).
+    // byte-identity pin — the annotated + preservation edition).
     const previewed = await caption.textContent()
     expect(previewed, 'the previewed caption is the real compiled text').toContain(`FIRST FRAME (Reference 1): ${POSE}, facing screen-left`)
+    expect(previewed, 'the previewed caption carries the authored hold').toContain(`${HOLD}. ${PRESERVATION}`)
     await page.locator('[data-anim-inspector-submit]').click()
     await expect.poll(async () => {
       const view = await readAnimationDocument(request, seeded.documentId)
@@ -1399,7 +1411,7 @@ test('annotating the rolling reference recompiles the preview and freezes verbat
     const settled = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { attempts: Array<{ tool: string; targetId: string; caption: string; compilerVersion: string }> } }
     const stepTwo = settled.document.attempts.find((entry) => entry.tool === 'tween' && entry.targetId !== seeded.stepSlotId)!
     expect(stepTwo.caption).toBe(previewed)
-    expect(stepTwo.compilerVersion).toBe('1')
+    expect(stepTwo.compilerVersion).toBe('2')
     await expect(page.locator('[data-anim-command-error]')).toHaveCount(0)
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
