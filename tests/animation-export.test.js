@@ -27,6 +27,11 @@
 //       (428 + the stale list) and records stale in the manifest;
 //   (d) task 13's carried M2 — reorder/remove are assembly decisions:
 //       staleReasons stay byte-identical through them.
+//   (a—i8)/(e) Codex batch B: I8 — the SPANLESS (sequence) lane derives
+//       staleness from freeze-time drift (binding version / output settings
+//       / window-endpoint drawings) instead of bypassing it: pure-gate pins
+//       per drift class + the clean + pre-wave-1 cases, and the end-to-end
+//       428-then-manifest leg over HTTP.
 //
 // ffmpeg is required on PATH (the datasets suite's standing assumption).
 // Scratch homes through the Wave 4 ledger; ports through the allocator.
@@ -707,4 +712,151 @@ test("(d) task 13's M2 — reorder and remove are assembly decisions: staleness 
       assert.equal(putBack.status, 200, 'the removed contribution returns')
     }
   }
+})
+
+// ---------------------------------------------------------------------------
+// (a—i8) Codex batch B: I8 — the SPANLESS (sequence) lane derives staleness
+//        from freeze-time drift (binding / settings / endpoint drawings);
+//        the clean case and pre-wave-1 rows stay clean
+// ---------------------------------------------------------------------------
+
+/** A sequence attempt whose frozen snapshot carries the wave-1 execution
+ *  stamps and RESOLVED window-endpoint references — the drift comparison's
+ *  inputs. The synthetic document's key-a selects asset 'a' and key-b
+ *  selects asset 'b', so the defaults describe the clean case. */
+function frozenSequenceAttempt({ settings = {}, startAsset = 'a', endAsset = 'b', earlierRevision = false } = {}) {
+  return {
+    id: 'att-seq',
+    tool: 'sequence',
+    idempotencyKey: 'idem-att-seq',
+    inputHash: 'i'.repeat(64),
+    targetId: 'key-a',
+    snapshot: {
+      tool: 'sequence',
+      targetId: 'key-a',
+      references: [
+        { role: 'window-start', assetReference: { assetId: startAsset, relPath: `canvas-blobs/aa/${startAsset}`, kind: 'image' }, poseDescription: null, facing: null },
+        { role: 'window-end', assetReference: { assetId: endAsset, relPath: `canvas-blobs/bb/${endAsset}`, kind: 'image' }, poseDescription: null, facing: null },
+      ],
+      caption: 'c',
+      compilerVersion: '2',
+      settings,
+      documentRevision: 1,
+      sequence: { windowStartKeyId: 'key-a', windowEndKeyId: 'key-b', orderedActions: ['rises'], preservation: 'coat', overrides: { medium: 'clean line on white' } },
+    },
+    execution: { state: 'ready' },
+    result: { candidate: { id: null, assetReference: videoRef(), frameCount: 22, earlierRevision } },
+  }
+}
+
+const i8Editorial = [{ id: 'contrib-i8', spanId: null, attemptId: 'att-seq', inFrame: 0, outFrame: 8, holdDuration: 0 }]
+const i8FrozenStamps = { bindingVersion: 1, width: 1344, height: 768, steps: 30, fps: 24 }
+const bindingV2 = (body) => syntheticDocument({ body: {
+  ...body,
+  bindingHistory: [
+    { version: 1, characterDescription: 'a courier', referenceAssetIds: ['r1'], medium: 'clean line on white', initialKeyAssetId: 'r0', boundAt: 1 },
+    { version: 2, characterDescription: 'the same courier, older', referenceAssetIds: ['r1'], medium: 'clean line on white', initialKeyAssetId: 'r0', boundAt: 2 },
+  ],
+  activeBindingVersion: 2,
+} })
+
+test('(a) Codex I8 — spanless staleness derives from binding, settings, and endpoint drift at freeze time; clean stays clean', () => {
+  // CLEAN: the frozen stamps describe the document as it stands.
+  const clean = deriveExportPlan(syntheticDocument({ body: { editorial: i8Editorial } }), [frozenSequenceAttempt({ settings: i8FrozenStamps })], resolveEverything)
+  assert.deepEqual(clean.refusals, [])
+  assert.deepEqual(clean.stale, [], 'a spanless take whose inputs still stand marks nothing stale')
+  assert.equal(clean.segments[0].stale, false)
+
+  // BINDING drift: the take froze binding v1; the document re-bound to v2.
+  const binding = deriveExportPlan(bindingV2({ editorial: i8Editorial }), [frozenSequenceAttempt({ settings: i8FrozenStamps })], resolveEverything)
+  assert.equal(binding.refusals.length, 0, 'drift is stale-but-usable — the 428 gate owns it, not a refusal')
+  assert.deepEqual(binding.stale[0].reasons, ['binding'], 'the binding drift names the store\'s own vocabulary')
+  assert.deepEqual(binding.segments[0].staleReasons, ['binding'], 'the segment carries the reason for the manifest')
+
+  // SETTINGS drift: the document's output settings moved off the frozen ones.
+  const settings = deriveExportPlan(
+    syntheticDocument({ body: { editorial: i8Editorial, settings: { outputWidth: 640, outputHeight: 360, fps: 24, steps: 12 } } }),
+    [frozenSequenceAttempt({ settings: i8FrozenStamps })],
+    resolveEverything,
+  )
+  assert.deepEqual(settings.stale[0].reasons, ['settings'])
+
+  // ENDPOINT drift: key-b now selects a DIFFERENT drawing than the one the
+  // window froze as its end — the 'pose' vocabulary a key-selection change
+  // marks a span with.
+  const endpoint = deriveExportPlan(
+    syntheticDocument({ body: {
+      editorial: i8Editorial,
+      keys: [
+        { id: 'key-a', order: 0, selectedCandidateId: 'cand-a', candidates: [{ id: 'cand-a', assetReference: { assetId: 'a', relPath: 'canvas-blobs/aa/a', kind: 'image' }, origin: 'import', provenance: { assetId: 'a' }, poseDescription: null, facing: null }], lock: false },
+        { id: 'key-b', order: 1, selectedCandidateId: 'cand-b2', candidates: [
+          { id: 'cand-b', assetReference: { assetId: 'b', relPath: 'canvas-blobs/bb/b', kind: 'image' }, origin: 'import', provenance: { assetId: 'b' }, poseDescription: null, facing: null },
+          { id: 'cand-b2', assetReference: { assetId: 'b2', relPath: 'canvas-blobs/b2/b2', kind: 'image' }, origin: 'import', provenance: { assetId: 'b2' }, poseDescription: null, facing: null },
+        ], lock: false },
+      ],
+    } }),
+    [frozenSequenceAttempt({ settings: i8FrozenStamps })],
+    resolveEverything,
+  )
+  assert.deepEqual(endpoint.stale[0].reasons, ['pose'])
+
+  // PRE-WAVE-1 rows froze none of the stamps — a missing stamp compares
+  // nothing (the landing's earlierRevision flag still speaks for its race).
+  const legacy = deriveExportPlan(bindingV2({ editorial: i8Editorial }), [frozenSequenceAttempt({ settings: {} })], resolveEverything)
+  assert.deepEqual(legacy.stale, [], 'a row without the frozen stamps drift-compares nothing')
+
+  // The manifest records the drift reasons verbatim (§11.3 "recorded as
+  // stale in the manifest").
+  const manifest = buildManifest({
+    document: bindingV2({ editorial: i8Editorial }),
+    attempts: [frozenSequenceAttempt({ settings: i8FrozenStamps })],
+    plan: binding,
+    videoSha256: 'v'.repeat(64),
+    videoFrameCount: binding.totalFrames,
+    sourceHashes: new Map([['att-seq', 's'.repeat(64)]]),
+    frozenAt: 1,
+    staleAcknowledged: true,
+  })
+  assert.deepEqual(manifest.contributions[0].stale, { stale: true, reasons: ['binding'] })
+})
+
+// ---------------------------------------------------------------------------
+// (e) Codex I8 end to end — a spanless contribution whose binding moved
+//     refuses 428 until acknowledged; the acknowledged manifest records it
+// ---------------------------------------------------------------------------
+
+test('(e) a spanless contribution drifts stale through a binding update — 428, then the acknowledged export records the reason', async () => {
+  const document = await seedSpanDocument('I8 spanless')
+  const sequence = await submitSequence(document.documentId, document.keyOne, document.keyTwo, 'i8')
+  assert.equal(sequence.status, 200, `the sequence submits (${sequence.body.error ?? ''})`)
+  await attemptReady(sequence.body.attemptId)
+  let revision = (await api.get(`/api/lan/animation/document?id=${document.documentId}`)).body.document.revision
+
+  const contributed = await contribute(document.documentId, revision, { spanId: null, attemptId: sequence.body.attemptId, inFrame: 0, outFrame: 4, holdDuration: 0 })
+  assert.equal(contributed.status, 200, `the spanless contribution lands (${contributed.body.error ?? ''})`)
+  revision = contributed.body.document.revision
+
+  // CLEAN first: the take's frozen inputs still stand — no acknowledgment
+  // is asked for (Codex's repro shape: this is where the pre-fix build said
+  // stale:[] for everything, drift included).
+  const clean = await api.export(document.documentId, false)
+  assert.equal(clean.status, 200, `the clean spanless export sails without acknowledgment (${clean.body?.error ?? 'zip bytes'})`)
+
+  // The binding moves (v2) — the spanless lane has no span to mark, so the
+  // drift is derived at the export gate.
+  const moved = await api.post('/api/lan/animation/binding', { documentId: document.documentId, binding: makeBinding(), expectedRevision: revision })
+  assert.equal(moved.status, 200, `the binding update lands (${moved.body.error ?? ''})`)
+  assert.equal(moved.body.document.body.activeBindingVersion, 2)
+
+  const refused = await api.export(document.documentId, false)
+  assert.equal(refused.status, 428, 'the drifted spanless contribution gates on the acknowledgment')
+  assert.equal(refused.body.staleSelections.length, 1)
+  assert.ok(refused.body.staleSelections[0].reasons.includes('binding'), `the binding drift is named (${JSON.stringify(refused.body.staleSelections[0].reasons)})`)
+
+  const acknowledged = await api.export(document.documentId, true)
+  assert.equal(acknowledged.status, 200, `the acknowledged export ships (${acknowledged.body?.error ? JSON.stringify(acknowledged.body.error) : 'zip bytes'})`)
+  const { manifest } = unpackExport(acknowledged.archive)
+  assert.equal(manifest.staleAcknowledged, true)
+  assert.equal(manifest.contributions[0].stale.stale, true, 'the manifest records the drift (§11.3)')
+  assert.deepEqual(manifest.contributions[0].stale.reasons, ['binding'])
 })

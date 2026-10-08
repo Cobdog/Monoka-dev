@@ -148,22 +148,83 @@ export type ExportAttemptFacts = Pick<AnimationAttemptRow, 'id' | 'tool' | 'targ
 }
 
 /** The stale reasons of ONE contribution, resolved from the frozen truth:
- *  a tween lane rides its span's staleness marking (§8.3), and BOTH lanes
- *  honor §8.2's earlierRevision flag — the LANDING's own verdict, computed
- *  against the revision that stood when the take landed. Deliberately NOT
- *  the freeze-time revision drift: revisions move for unrelated reasons
- *  (assembly decisions themselves bump them — §9), so drift alone would
- *  mark every take stale after any edit; the flag captures exactly the
- *  race it names (the document moved between the render's submission and
- *  its landing). */
+ *  a tween lane rides its span's staleness marking (§8.3), a SPANLESS
+ *  (sequence) lane derives its staleness from drift at freeze time (Codex
+ *  I8 — the spanless selection has no span to carry marks, so binding,
+ *  settings, and endpoint drift are computed HERE, against the frozen
+ *  document), and BOTH lanes honor §8.2's earlierRevision flag — the
+ *  LANDING's own verdict, computed against the revision that stood when the
+ *  take landed. Deliberately NOT freeze-time REVISION drift on either lane:
+ *  revisions move for unrelated reasons (assembly decisions themselves bump
+ *  them — §9), so drift alone would mark every take stale after any edit;
+ *  the flag captures exactly the race it names (the document moved between
+ *  the render's submission and its landing), and the spanless drift checks
+ *  name the INPUTS a render consumed (binding version, output settings,
+ *  endpoint drawings), not the revision counter. */
 function staleReasonsOf(entry: AnimationDocumentBody['editorial'][number], attempt: ExportAttemptFacts, document: AnimationDocumentRow): string[] {
   const reasons: string[] = []
   if (entry.spanId !== null) {
     const span = document.body.spans.find((candidate) => candidate.id === entry.spanId)
     if (span?.stale) reasons.push(...span.staleReasons.length > 0 ? span.staleReasons : ['stale'])
+  } else {
+    reasons.push(...spanlessDriftReasons(attempt, document))
   }
   if (attempt.result?.candidate.earlierRevision === true) reasons.push('earlier-revision')
   return [...new Set(reasons)]
+}
+
+/** The spanless (sequence) lane's staleness (Codex I8): drift between the
+ *  contribution's frozen attempt and the frozen document, in the store's
+ *  own staleness vocabulary —
+ *    · 'binding' — the attempt froze bindingVersion v, the document's
+ *      active version moved past it (the binding re-anchored identity);
+ *    · 'settings' — the attempt froze width/height/steps/fps (wave 1's
+ *      frozen execution config) that differ from the document's current
+ *      output settings (the operating point every render promised);
+ *    · 'pose' — a window endpoint key's CURRENT selected candidate is no
+ *      longer the drawing the attempt froze as that endpoint's reference
+ *      (the same vocabulary a key-selection change marks a span with).
+ *  Pre-wave-1 rows froze none of these values — a missing stamp compares
+ *  nothing (the row's truth is simply older than the stamp; §8.2's
+ *  earlierRevision flag still speaks for the landing race). */
+function spanlessDriftReasons(attempt: ExportAttemptFacts, document: AnimationDocumentRow): string[] {
+  const reasons: string[] = []
+  const frozen = isRecord(attempt.snapshot.settings) ? attempt.snapshot.settings : {}
+  if (typeof frozen.bindingVersion === 'number' && Number.isInteger(frozen.bindingVersion) && frozen.bindingVersion !== document.body.activeBindingVersion) {
+    reasons.push('binding')
+  }
+  const settingsPairs = [['width', 'outputWidth'], ['height', 'outputHeight'], ['steps', 'steps'], ['fps', 'fps']] as const
+  for (const [frozenKey, documentKey] of settingsPairs) {
+    const value = frozen[frozenKey]
+    if (typeof value === 'number' && Number.isInteger(value) && value > 0 && value !== document.body.settings[documentKey]) {
+      reasons.push('settings')
+      break
+    }
+  }
+  const sequence = attempt.snapshot.sequence
+  if (sequence !== undefined) {
+    for (const [role, keyId] of [['window-start', sequence.windowStartKeyId], ['window-end', sequence.windowEndKeyId]] as const) {
+      const slot = document.body.keys.find((candidate) => candidate.id === keyId)
+      const selected = slot !== undefined && slot.selectedCandidateId !== null
+        ? slot.candidates.find((candidate) => candidate.id === slot.selectedCandidateId)
+        : undefined
+      const frozenReference = attempt.snapshot.references.find((reference) => reference.role === role)
+      // A row that froze no reference for the role compares nothing on that
+      // endpoint (every real submission freezes the full window pair — the
+      // submit seam's validation enforces the role set — so an absent one is
+      // a pre-validation-era shape, the same tolerance missing stamps get).
+      if (frozenReference === undefined) continue
+      if (selected === undefined || frozenReference.assetReference.assetId !== selected.assetReference.assetId) {
+        reasons.push('pose')
+        break
+      }
+    }
+  }
+  return reasons
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /** The human label the stale prompt and the manifest share (the preview's
