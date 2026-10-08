@@ -46,11 +46,12 @@
  *     the "new animation document" creation arm (task 7's Minor-2).
  */
 import { useEffect, useMemo, useState } from 'react'
-import { Clapperboard, FilePlus2, LoaderCircle } from 'lucide-react'
+import { Clapperboard, FilePlus2, LoaderCircle, RefreshCw } from 'lucide-react'
 import { SurfaceSwitcher } from '../surfaces/SurfaceSwitcher'
 import { Button } from '../ui/Button'
 import { animationHref } from './client'
 import { BindingPanel } from './BindingPanel'
+import { KeyCandidates, type KeyImportDestination } from './KeyCandidates'
 import { Timeline } from './Timeline'
 import { SpanInspector } from './SpanInspector'
 import { ReviewPanel } from './ReviewPanel'
@@ -61,7 +62,7 @@ import { SequenceReview } from './SequenceReview'
 import { EditorialPanel } from './EditorialPanel'
 import { ExportPanel } from './ExportPanel'
 import { IN_FLIGHT } from './reviewStatus'
-import { deriveAssembledSequence, deriveContributableClips, deriveReviewPosition, deriveTimeline } from './timelineModel'
+import { deriveAssembledSequence, deriveContributableClips, deriveReviewPosition, deriveTimeline, type TimelineReviewPosition } from './timelineModel'
 import { deriveHeroPreview, deriveTweenPreview, useAnimationDocument } from './state'
 import './animation.css'
 
@@ -93,6 +94,15 @@ export function AnimationApp() {
   // null follows the newest take. Switching windows clears the take override
   // so the picked window's newest take becomes the subject.
   const [sequenceWindow, setSequenceWindow] = useState<{ keyId: string; windowEndKeyId: string } | null>(null)
+  // T10-M4 (wave 2b): the "new take" markers the reviewer dismissed — the
+  // chip is announce-only; its dismissal is view state (a reload returns to
+  // the plain §7.4 truth). Selecting the take clears the marker naturally:
+  // the subject then IS the newest, so no derivation below names it.
+  const [dismissedNewTakes, setDismissedNewTakes] = useState<string[]>([])
+  // Wave 2b (Fix 1): the bound session's explicit "Update character
+  // binding" action opens the update-mode binding panel beneath the bound
+  // header — discoverable in the bound state, not buried in a drawer.
+  const [updateOpen, setUpdateOpen] = useState(false)
   const session = useAnimationDocument(params.documentId, params.projectId)
   const { phase, errorDetail, document, projectDocuments, assets, assetsFailed, conflict, busy, commandError, refreshFailed } = session
 
@@ -100,9 +110,18 @@ export function AnimationApp() {
     ? (document.body.bindingHistory.find((entry) => entry.version === document.body.activeBindingVersion) ?? null)
     : null
   const timeline = useMemo(() => (document === null ? null : deriveTimeline(document.body)), [document])
+  // The EXPLICIT review position (T10-M4): the selection, when it names a
+  // live span or key. Nothing selected (or a stale id) ⇒ null ⇒ the pure
+  // §7.4 rules resolve untouched — every pre-wave-2b behavior stands.
+  const explicitPosition = useMemo<TimelineReviewPosition>(() => {
+    if (timeline === null || selectedId === null) return null
+    if (timeline.spans.some((span) => span.id === selectedId)) return { kind: 'span', id: selectedId }
+    if (timeline.keys.some((key) => key.id === selectedId)) return { kind: 'key', id: selectedId }
+    return null
+  }, [timeline, selectedId])
   const playhead = useMemo(
-    () => (document === null ? null : deriveReviewPosition(document.body, document.attempts)),
-    [document],
+    () => (document === null ? null : deriveReviewPosition(document.body, document.attempts, explicitPosition)),
+    [document, explicitPosition],
   )
   // §7.4's restored session (task 10): with nothing explicitly selected, the
   // review position IS the selection — returning to a document with a
@@ -150,8 +169,14 @@ export function AnimationApp() {
     const slotIndex = selectedSpan.stepSlots.findIndex((slot) => slot.id === subject.targetId)
     if (slotIndex < 0) return null
     const slot = selectedSpan.stepSlots[slotIndex]!
-    return { subject, stepIndex: slotIndex + 1, slotSelection: slot.selectedRollingReference, takes: slot.attempts.map((attemptId) => ({ attemptId })) }
-  }, [document, selectedSpan, reviewTake])
+    // T10-M4: the newest take announced while the reviewer holds an older
+    // one — a "new" chip on the strip, never an auto-switch (§8.2).
+    const newest = spanAttempts[spanAttempts.length - 1]!
+    const newTakeAttemptId = subject.attemptId !== newest.attemptId && !dismissedNewTakes.includes(newest.attemptId)
+      ? newest.attemptId
+      : null
+    return { subject, stepIndex: slotIndex + 1, slotSelection: slot.selectedRollingReference, takes: slot.attempts.map((attemptId) => ({ attemptId })), newTakeAttemptId }
+  }, [document, selectedSpan, reviewTake, dismissedNewTakes])
   // The selected KEY's hero surfaces (task 11, §5.2): the review of the hero
   // takes that targeted it (the newest, or the reviewer's explicit take) and
   // the authoring panel sourcing it as the current key of the NEXT
@@ -169,8 +194,14 @@ export function AnimationApp() {
       ? heroTakes.find((entry) => entry.attemptId === heroTake.attemptId) ?? null
       : null
     const subject = chosen ?? heroTakes[heroTakes.length - 1]!
-    return { subject, takes: heroTakes.map((entry) => ({ attemptId: entry.attemptId })) }
-  }, [document, selectedKey, heroTake])
+    // T10-M4: the newest take announced while the reviewer holds an older
+    // one — the same doctrine as the tween strip.
+    const newest = heroTakes[heroTakes.length - 1]!
+    const newTakeAttemptId = subject.attemptId !== newest.attemptId && !dismissedNewTakes.includes(newest.attemptId)
+      ? newest.attemptId
+      : null
+    return { subject, takes: heroTakes.map((entry) => ({ attemptId: entry.attemptId })), newTakeAttemptId }
+  }, [document, selectedKey, heroTake, dismissedNewTakes])
   const inFlightHeroFromKey = useMemo(() => {
     if (document === null || selectedKey === null) return null
     return document.attempts.find((entry) => entry.tool === 'hero' && entry.sourceKeyId === selectedKey.id && IN_FLIGHT.has(entry.execution)) ?? null
@@ -203,11 +234,22 @@ export function AnimationApp() {
     const subject = chosen !== null && chosen.windowEndKeyId === activeEnd
       ? chosen
       : ofWindow[ofWindow.length - 1] ?? windowTakes[windowTakes.length - 1]!
+    // T10-M4: the window's newest take announced while the reviewer holds
+    // an older one — the same doctrine as the other two strips.
+    const windowNewest = ofWindow[ofWindow.length - 1] ?? null
+    const newTakeAttemptId = windowNewest !== null && subject.attemptId !== windowNewest.attemptId && !dismissedNewTakes.includes(windowNewest.attemptId)
+      ? windowNewest.attemptId
+      : null
     const endKey = activeEnd === undefined
       ? null
       : timeline.keys.find((key) => key.id === activeEnd) ?? null
-    return { subject, takes: ofWindow.map((entry) => ({ attemptId: entry.attemptId })), endKey, windowEndKeyId: activeEnd ?? null }
-  }, [document, selectedKey, sequenceTake, sequenceWindow, timeline])
+    return { subject, takes: ofWindow.map((entry) => ({ attemptId: entry.attemptId })), endKey, windowEndKeyId: activeEnd ?? null, newTakeAttemptId }
+  }, [document, selectedKey, sequenceTake, sequenceWindow, timeline, dismissedNewTakes])
+  // T10-M4: the chip's own dismissal (view state; selecting the take clears
+  // the marker by making it the subject).
+  const dismissNewTake = (attemptId: string) => {
+    setDismissedNewTakes((current) => (current.includes(attemptId) ? current : [...current, attemptId]))
+  }
   // The start key's DISTINCT windows, newest first — the review's chip group
   // (rendered only when more than one exists).
   const sequenceWindows = useMemo(() => {
@@ -340,15 +382,51 @@ export function AnimationApp() {
           <>
             {/* The versioned binding summary (§4.2): the description is
                 retained VERBATIM — editing the source character later never
-                silently changes a bound session. */}
+                silently changes a bound session. Wave 2b (Fix 1): the bound
+                state carries its explicit update action here — discoverable
+                where the binding lives, not buried in a settings drawer. */}
             <section className="anim-bound" data-anim-bound-version data-anim-bound-version-n={activeBinding.version} aria-label="The bound session">
               <header>
                 <strong>Bound — version {activeBinding.version}</strong>
                 <span>{activeBinding.medium}</span>
                 <span>{activeBinding.referenceAssetIds.length} {activeBinding.referenceAssetIds.length === 1 ? 'reference' : 'references'}</span>
+                <span className="anim-bound-actions">
+                  <Button
+                    variant="secondary"
+                    icon={<RefreshCw size={12} />}
+                    busy={busy}
+                    onClick={() => setUpdateOpen((open) => !open)}
+                    data-anim-bound-update
+                    title="Append the next binding version — new references or a session-copy description edit (§4.2)"
+                  >
+                    Update character binding
+                  </Button>
+                </span>
               </header>
               <p data-anim-bound-description>{activeBinding.characterDescription}</p>
             </section>
+            {/* The update surface (Fix 1 + Fix 2, T7-M1): prefilled from the
+                active binding, the description read-only until "Edit session
+                copy" unlatches the labeled override, and the submit named
+                for what it does — appending an immutable binding version
+                (spans mark stale 'binding'; prior takes are preserved). */}
+            {updateOpen && (
+              <BindingPanel
+                mode="update"
+                document={document!}
+                assets={assets}
+                assetsFailed={assetsFailed}
+                onImportFiles={session.commands.importImages}
+                onSubmitBinding={async (binding) => {
+                  const ok = await session.commands.updateBinding(binding)
+                  if (ok) setUpdateOpen(false)
+                  return ok
+                }}
+                onDismiss={() => setUpdateOpen(false)}
+                busy={busy}
+                errors={commandError ? { submit: commandError } : undefined}
+              />
+            )}
             {/* The timeline (task 8): keys, spans, nested step slots, the
                 playhead — the shell owns only the document + event plumbing;
                 every connection rides the adapter's command bag. The
@@ -399,8 +477,17 @@ export function AnimationApp() {
                   onSelectTake={(attemptId) => setReviewTake({ spanId: selectedSpan.id, attemptId })}
                   onSelectFrame={(frameIndex) => void session.commands.selectReferenceFrame(selectedSpan.id, reviewPanel.subject.attemptId, frameIndex)}
                   onContinue={() => void session.commands.continueChain(selectedSpan.id)}
-                  onReroll={() => void session.commands.rerollStep(selectedSpan.id, reviewPanel.subject.targetId)}
+                  onReroll={() => {
+                    // T10-M4: the re-roll pins the CURRENT subject first —
+                    // the landing lands beside it as an announced alternative
+                    // and never steals the review (§8.2: selection truth is
+                    // untouched; the pin is view state).
+                    setReviewTake({ spanId: selectedSpan.id, attemptId: reviewPanel.subject.attemptId })
+                    void session.commands.rerollStep(selectedSpan.id, reviewPanel.subject.targetId)
+                  }}
                   onRetryPreparation={() => void session.commands.retryPreparation(reviewPanel.subject.attemptId)}
+                  newTakeAttemptId={reviewPanel.newTakeAttemptId}
+                  onDismissNewTake={dismissNewTake}
                 />
               )}
               {/* The hero surfaces (task 11, §5.2): a selected KEY reviews the
@@ -417,7 +504,12 @@ export function AnimationApp() {
                   busy={busy}
                   onSelectTake={(attemptId) => setHeroTake({ keyId: selectedKey.id, attemptId })}
                   onAcceptFrame={(frameIndex) => void session.commands.acceptHeroFrame(selectedKey.id, heroReview.subject.attemptId, frameIndex)}
-                  onReroll={() => void session.commands.rerollHero(selectedKey.id)}
+                  onReroll={() => {
+                    // T10-M4: the re-roll pins the CURRENT subject first —
+                    // the fresh take lands announced, never auto-selected.
+                    setHeroTake({ keyId: selectedKey.id, attemptId: heroReview.subject.attemptId })
+                    void session.commands.rerollHero(selectedKey.id)
+                  }}
                   onOpenSpan={() => {
                     const subject = heroReview.subject
                     // §5.2 (c): the span binds this take's SOURCE key → this
@@ -429,11 +521,32 @@ export function AnimationApp() {
                     })
                   }}
                   onRetryPreparation={() => void session.commands.retryPreparation(heroReview.subject.attemptId)}
+                  newTakeAttemptId={heroReview.newTakeAttemptId}
+                  onDismissNewTake={dismissNewTake}
+                />
+              )}
+              {/* The key's candidate strip (wave 2b, Fix 1): the selected
+                  key's alternatives — importing lands an ALTERNATIVE
+                  candidate (never a selection change, §5.3); choosing is the
+                  explicit select command. The per-surface key PREFIXES matter:
+                  all three key-selected panels would otherwise share the bare
+                  selectedKey.id, and duplicate sibling keys corrupt the
+                  reconciler (observed: fresh mounts appended on every commit,
+                  old DOM never removed). */}
+              {selectedKey !== null && (
+                <KeyCandidates
+                  key={`candidates-${selectedKey.id}`}
+                  keyEntity={selectedKey}
+                  busy={busy}
+                  assets={assets}
+                  onImportFiles={session.commands.importImages}
+                  onImport={(destination: KeyImportDestination, image, origin) => session.commands.importKeyCandidate(destination, image, origin)}
+                  onSelect={(candidateId) => void session.commands.selectKeyCandidate(selectedKey.id, candidateId)}
                 />
               )}
               {heroPanel !== null && (
                 <HeroPanel
-                  key={heroPanel.keyEntity.id}
+                  key={`hero-${heroPanel.keyEntity.id}`}
                   keyEntity={heroPanel.keyEntity}
                   preview={heroPanel.preview}
                   binding={activeBinding}
@@ -460,13 +573,20 @@ export function AnimationApp() {
                     setSequenceWindow({ keyId: selectedKey.id, windowEndKeyId })
                     setSequenceTake(null)
                   }}
-                  onReroll={() => void session.commands.rerollSequence(selectedKey.id, sequenceReview.subject.windowEndKeyId)}
+                  onReroll={() => {
+                    // T10-M4: the re-roll pins the CURRENT subject first —
+                    // the fresh take lands announced, never auto-selected.
+                    setSequenceTake({ keyId: selectedKey.id, attemptId: sequenceReview.subject.attemptId })
+                    void session.commands.rerollSequence(selectedKey.id, sequenceReview.subject.windowEndKeyId)
+                  }}
                   onRetryPreparation={() => void session.commands.retryPreparation(sequenceReview.subject.attemptId)}
+                  newTakeAttemptId={sequenceReview.newTakeAttemptId}
+                  onDismissNewTake={dismissNewTake}
                 />
               )}
               {selectedKey !== null && timeline !== null && (
                 <SequencePanel
-                  key={selectedKey.id}
+                  key={`sequence-${selectedKey.id}`}
                   keyEntity={selectedKey}
                   keys={timeline.keys}
                   binding={activeBinding}

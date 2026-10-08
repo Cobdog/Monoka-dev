@@ -127,8 +127,26 @@ export function deriveTimeline(body: AnimationDocumentBody): TimelineModel {
  *    attaches the running attempt to the relevant span";
  *    rule 3 — else null (the marker is absent, never a lying position).
  *  Completion advancing the marker is NOT automatic progress: rule 1 marks
- *  what the USER must decide, and the user's own selection dissolves it. */
-export function deriveReviewPosition(body: AnimationDocumentBody, attempts: ReadonlyArray<TimelineAttemptSummary>): TimelineReviewPosition {
+ *  what the USER must decide, and the user's own selection dissolves it.
+ *
+ *  T10-M4 (wave 2b) adds rule 0 for the EXPLICIT position: when the caller
+ *  holds one (the shell's selection) and the span it names owns a tween
+ *  step slot holding MORE THAN ONE take — the document-truth signature of
+ *  a re-roll landing there, whatever the new take's outcome — the position
+ *  STICKS instead of re-resolving over the landing (which, for a step
+ *  whose decision was already made, dissolves to null: the position the
+ *  reviewer held evaporates under them, failed re-roll included). Key-
+ *  grain positions need no rule — a hero/sequence re-roll targets the SAME
+ *  key, so §7.4 already resolves to the same id or dissolves without ever
+ *  moving an existing selection. Nothing explicit ⇒ rules 1–3 stand
+ *  untouched: every two-argument call behaves exactly as before. */
+export function deriveReviewPosition(body: AnimationDocumentBody, attempts: ReadonlyArray<TimelineAttemptSummary>, explicit?: TimelineReviewPosition): TimelineReviewPosition {
+  // Rule 0 — T10-M4: a re-roll landing does not steal the explicit position.
+  if (explicit !== undefined && explicit !== null && explicit.kind === 'span'
+    && body.spans.some((span) => span.id === explicit.id
+      && span.stepSlots.some((slot) => slot.attempts.length > 1))) {
+    return explicit
+  }
   // Rule 1 — the open review decision (§7.4's return-and-highlight).
   for (let index = attempts.length - 1; index >= 0; index -= 1) {
     const attempt = attempts[index]!
