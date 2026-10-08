@@ -2078,22 +2078,25 @@ export const SCENARIOS: VisionScenario[] = [
   },
 
   {
-    // The animation-authoring module (k2q0n9s round, task 16): the timeline +
-    // span inspector at the Workbench SUBVIEW route ?images=1&view=animation
-    // — the AUTHORING state only. The vision project boots NO engine, so no
-    // takes land and no playhead exists; a queued chip would take a stub
-    // engine — out of the honest scope here (the rubric blesses the
-    // no-attempts state instead). Seeded through the HTTP API in the e2e
-    // animation suite's shapes (bound document → two selected imported keys
-    // → one authored span, whose insert creates the single tween step slot),
-    // with fixture key frames drawn by keyFramePng — then DOM-TRUTH asserts
-    // BEFORE the capture (the pin doctrine: the seeded numbers are the
-    // asserted numbers, and the images are proven to render before the
-    // shutter — the rubric's "key card with no image" defect class is
-    // pre-empted, not hoped away). One checkpoint; the judge step is
-    // elsewhere (JUDGE.md).
+    // The animation-authoring module (k2q0n9s round, task 16; wave 3 reworked
+    // the checkpoints for the desktop STAGE layout): the timeline + span
+    // inspector at the Workbench SUBVIEW route ?images=1&view=animation. The
+    // vision project boots NO engine, so no takes land and no playhead
+    // exists; a queued chip would take a stub engine — out of the honest
+    // scope here (the rubrics bless the no-attempts state instead). Seeded
+    // through the HTTP API in the e2e animation suite's shapes (bound
+    // document → two selected imported keys → one authored span, whose
+    // insert creates the single tween step slot), with fixture key frames
+    // drawn by keyFramePng — then DOM-TRUTH asserts BEFORE each capture (the
+    // pin doctrine: the seeded numbers are the asserted numbers, and the
+    // images are proven to render before the shutter). Wave 3 (the live
+    // review's #7): FIVE checkpoints — the wide two-pane stage at 1080p (the
+    // creative loop side by side, the timeline retained, the sticky submit),
+    // the caption disclosure open, the key-selected HERO tool, the explicit
+    // SEQUENCE tool switch (one tool presented), and the deliberate
+    // 1280x800 stacked collapse (the review's second viewport).
     id: 'animation-timeline',
-    label: 'Animation authoring — timeline + span inspector (bound session) at 1080p',
+    label: 'Animation authoring — the desktop stage (timeline + review/inspector panes), one tool, and the 1280x800 collapse',
     run: async (page) => {
       const projectId = `anim-vision-${Date.now()}`
       const ingest = async (name: string, data: string) => {
@@ -2182,17 +2185,111 @@ export const SCENARIOS: VisionScenario[] = [
       await expect(inspector.locator('[data-anim-inspector-movement]')).toHaveValue('she pushes off the back foot into a full stride')
       await expect(inspector.locator('[data-anim-caption-preview] summary')).toBeVisible()
       await expect(inspector.locator('[data-anim-caption-text]')).toBeHidden()
+      // Wave 3: the wide stage is TWO PANES side by side with the timeline
+      // band above them — the DOM truth the rubrics below judge.
+      const stage = page.locator('[data-anim-stage]')
+      await expect(stage).toHaveAttribute('data-anim-stage-mode', 'wide')
+      const reviewPane = page.locator('[data-anim-stage-review]')
+      const inspectorPane = page.locator('[data-anim-stage-inspector]')
+      const reviewBox = await reviewPane.boundingBox()
+      const inspectorBox = await inspectorPane.boundingBox()
+      expect(reviewBox && inspectorBox, 'the stage panes exist').toBeTruthy()
+      expect(inspectorBox!.x, 'the inspector pane sits right of the review pane').toBeGreaterThan(reviewBox!.x + reviewBox!.width - 2)
+      await expect(page.locator('[data-anim-inspector-submit]')).toBeVisible()
       await page.waitForTimeout(400)
     },
     checkpoints: [
       {
-        id: 'animation-timeline-1080p',
-        label: 'Animation authoring — timeline + span inspector (bound session)',
+        id: 'animation-stage-1080p',
+        label: 'Animation authoring — the wide stage: timeline band + review pane + inspector pane (span selected)',
         rubric: [
           'Context: a dark-theme desktop studio app at 1920x1080 on the route /?images=1&view=animation — the ANIMATION AUTHORING surface, a full-screen Workbench SUBVIEW (it rides the images registry entry, so the shared surface-switcher highlights "images" — that is the design, not a wrong highlight). It is NOT the canvas (no dotted-grid infinite canvas) and NOT the image editor (no mode rail). The slim titlebar reads: the surface-switcher pill group (canvas / datasets / images / gallery, images highlighted), then a small clapperboard icon + "Animation" brand, the document name "Walk cycle — courier", a muted "rev N" chip, and a small "workbench" back link at the right.',
-          'Below the titlebar, one authored COLUMN anchored to the LEFT edge (it ends around x=810); the right two-thirds of the frame is intentionally empty — a dense workbench column, not a broken center. From the top: (1) a bound-session card reading "Bound — version 1", the medium "clean line on white", a reference count, and the verbatim character description "a lanky courier in a long coat"; (2) the TIMELINE: two image-backed key cards side by side — bordered cards each holding a small structured key drawing (a stick figure over a horizon band — the seeded fixture), a small pill lock chip reading "unlocked", a tiny muted "import" origin badge, and "#0" / "#1" order marks; a rounded SPAN BAR (a pill) spans the two cards reading the authored movement "she pushes off the back foot into a full stride" with a small nested "step 1" slot chip — only two keys are authored, so empty track to the right of the second card is correct, not missing content; (3) the SPAN INSPECTOR (the span is selected): a bordered panel whose lede states the caption contract, then TWO endpoint frame cards side by side — the first-frame card (labeled as key #0\'s selected image) and the target-end-frame card — each with the fixture image, its pose text, and a FACING chip row; then the MOVEMENT textarea (the movement text verbatim) and the PRESERVATION textarea, both fully in frame; below them the override fields (a medium chip row, then scene and camera inputs) run past the 1080px fold — only their tops show, and the collapsed "View caption" disclosure plus the "Submit step 1" button sit just below the fold: their absence from this capture is correct (the DOM asserts prove they exist); judge only what is in frame.',
-          'Blessings: dense 9-11px labels and small muted sub-labels are the design language, not contrast defects; the caption preview is COLLAPSED by default — only its summary row would show, and that closed state is correct; the fixture key art is deliberately simple structured geometry (not photographic stills); NO playhead, take chips, or queued-attempt status appear anywhere — the session holds no landed or in-flight attempts, and their absence is the honest authoring state, never missing chrome.',
-          'Defects to flag: a key card or endpoint frame with NO image (an empty dashed placeholder or a raw asset-id string where the drawing should be), overlapping panels, text clipped mid-glyph by a card edge, a color that reads as outside the studio\'s token palette (off-brand neon, pure white panels), the span bar missing its "step 1" slot, the span bar or movement field disagreeing with the movement text quoted above.',
+          'Below the titlebar: (1) a bound-session card reading "Bound — version 1", the medium "clean line on white", a reference count, the verbatim character description "a lanky courier in a long coat", and an "Update character binding" button; (2) the TIMELINE BAND spanning the full width: two image-backed key cards side by side — bordered cards each holding a small structured key drawing (a stick figure over a horizon band — the seeded fixture), a small pill lock chip reading "unlocked", a tiny muted "import" origin badge, and "#0" / "#1" order marks — with a rounded SPAN BAR (a pill) between them reading the authored movement "she pushes off the back foot into a full stride" and a small nested "step 1" slot chip; empty track right of the second card is correct, not missing content.',
+          '(3) THE CREATIVE LOOP fills the remaining frame as TWO PANE COLUMNS side by side (the wave-3 desktop layout — the old single left-anchored column with an empty right two-thirds is GONE): the LEFT REVIEW pane (~55%) holds a dashed honest empty-state card ("Nothing to review yet" — no renders exist, so no clip stands there); the RIGHT INSPECTOR pane (~45%) holds the SPAN INSPECTOR: a bordered panel with a short lede, TWO endpoint frame cards side by side (the first-frame card labeled as key #0\'s selected image, the target-end-frame card) each carrying the fixture image, its pose text, and a FACING chip row, then the MOVEMENT textarea (the movement text verbatim) and the PRESERVATION textarea, a medium chip row, and scene/camera inputs as the form descends. The inspector pane SCROLLS INTERNALLY — its lower fields may run past the pane\'s foot, but the pane\'s bottom edge carries a PINNED action bar (a solid strip with a top hairline) holding the "Submit step 1" button: the primary action stays in frame at the bottom of the inspector column, never buried.',
+          '(4) At the stage\'s foot, a collapsed ASSEMBLY row: a bordered strip reading "Assembly & export" with a muted "nothing assembled yet" note — a closed disclosure, correct and intended.',
+          'Blessings: dense 9-11px labels and small muted sub-labels are the design language, not contrast defects; the caption preview is COLLAPSED by default; the fixture key art is deliberately simple structured geometry; NO playhead, take chips, or queued-attempt status appear anywhere — no attempts exist, and their absence is the honest authoring state; the empty dashed review card is the intended empty state, never missing content; each pane may show its own scrollbar track — intended.',
+          'Defects to flag: the two panes OVERLAPPING or one painting over the other\'s text, a key card or endpoint frame with NO image (an empty dashed placeholder or a raw asset-id string where the drawing should be), text clipped mid-glyph by a pane or card edge, the submit button NOT visible in frame, a color outside the studio\'s token palette (off-brand neon, pure white panels), the span bar missing its "step 1" slot, the span bar or movement field disagreeing with the movement text quoted above, the frame reverting to one left-anchored column with a large empty right region.',
+        ].join(' '),
+      },
+      {
+        id: 'animation-caption-1080p',
+        label: 'Animation authoring — the caption disclosure open, the sticky submit still pinned',
+        drive: async (page) => {
+          await page.locator('[data-anim-caption-preview] summary').click()
+          const caption = page.locator('[data-anim-caption-text]')
+          await expect(caption).toBeVisible()
+          await expect(caption).toContainText('MOVEMENT: she pushes off the back foot into a full stride')
+          await caption.evaluate((element) => element.scrollIntoView({ block: 'center' }))
+          await expect(page.locator('[data-anim-inspector-submit]')).toBeVisible()
+          await page.waitForTimeout(300)
+        },
+        rubric: [
+          'Context: the same wide animation stage at 1920x1080, the span inspector pane scrolled so the OPEN caption disclosure sits mid-pane: a bordered inset holding the compiled caption TEXT block (an indented pre with uppercase section leads — "MOVEMENT:" followed by the authored movement "she pushes off the back foot into a full stride", a STATIC hold line, and the reference/subject lines) and, if present, a muted advisory hint row with a left accent rail.',
+          'The pane\'s foot still carries the pinned action bar with the "Submit step 1" button — open disclosure or not, the primary action stays in frame.',
+          'Blessings: dense 9-10px caption text is the design language; the caption\'s dialect phrasing is generated copy, judge only its rendering; the review pane\'s dashed empty state may be partially scrolled out of frame above.',
+          'Defects to flag: the caption block empty or clipped mid-line at the pane edge, the submit button pushed out of frame by the open disclosure, overlapping text rows, a smeared/ghosted caption line.',
+        ].join(' '),
+      },
+      {
+        id: 'animation-key-hero-1080p',
+        label: 'Animation authoring — a selected key: the candidate strip + ONE tool (hero), the review pane\'s empty state',
+        drive: async (page) => {
+          const timeline = page.locator('[data-anim-timeline]')
+          await timeline.locator('[data-anim-key]').first().click()
+          await expect(page.locator('[data-anim-key-candidates]')).toBeVisible()
+          const heroPanel = page.locator('[data-anim-hero-panel]')
+          await expect(heroPanel).toBeVisible()
+          await expect(page.locator('[data-anim-seq-panel]')).toBeHidden()
+          await expect(page.locator('[data-anim-key-tool="hero"]')).toHaveAttribute('aria-checked', 'true')
+          await expect(page.locator('[data-anim-review-lane="hero"] [data-anim-review-empty]')).toBeVisible()
+          await page.waitForTimeout(300)
+        },
+        rubric: [
+          'Context: the same wide animation stage at 1920x1080 with KEY #0 selected on the timeline (its card border highlighted): the inspector pane now leads with a compact TOOL BAR — a bordered strip reading "Key #0 — author with" beside a two-chip pill row with "Hero — next key" checked (accent) and "Sequence — window" muted; beneath it the HERO authoring panel (a bordered inspector: a short lede, the current-key frame card with the fixture drawing, its pose text and facing chips, a MOVEMENT ARC textarea, a medium chip row, scene/camera inputs), and below that the CANDIDATE STRIP: a bordered panel listing the key\'s candidate thumbnails (one fixture image with an "import" origin label and a small "Selected" button) plus an import affordance (destination chips "Into key #0" / "As a new key" and an "Import candidate…" button).',
+          'The review pane holds the dashed empty state for the hero lane ("No next-key renders yet"). The SEQUENCE panel is ABSENT — one chosen tool, never stacked (its hidden mount is the design; nothing renders half-clipped).',
+          'Blessings: dense small labels are the design language; the tool chips are a radiogroup — exactly one checked; the candidate thumbnail is the simple fixture geometry; the timeline band stays above with key #0 highlighted.',
+          'Defects to flag: BOTH the hero and sequence panels visibly rendered at once, the tool bar missing its chips or with two checked chips, a candidate row with no image, text clipped mid-glyph, the pinned submit bar ("Generate the next key") not visible at the inspector pane\'s foot, overlapping panels.',
+        ].join(' '),
+      },
+      {
+        id: 'animation-key-sequence-1080p',
+        label: 'Animation authoring — the explicit tool switch: the sequence panel alone',
+        drive: async (page) => {
+          await page.locator('[data-anim-key-tool="sequence"]').click()
+          const seqPanel = page.locator('[data-anim-seq-panel]')
+          await expect(seqPanel).toBeVisible()
+          await expect(page.locator('[data-anim-hero-panel]')).toBeHidden()
+          await expect(page.locator('[data-anim-key-tool="sequence"]')).toHaveAttribute('aria-checked', 'true')
+          await page.waitForTimeout(300)
+        },
+        rubric: [
+          'Context: the same stage, the tool bar switched — "Sequence — window" now the checked chip, "Hero — next key" muted. The inspector pane shows the SEQUENCE authoring panel alone: a short lede, TWO endpoint frame cards side by side (the window-start card with key #0\'s fixture drawing; the window-end card naming "no key picked yet" with a "key #1" pick chip row), an ORDERED ACTIONS textarea, a WHAT STAYS FIXED textarea, a medium chip row, scene/camera inputs. The candidate strip stays below it. The hero panel is GONE from view (one tool presented).',
+          'The review pane keeps its dashed empty state (no window renders yet).',
+          'Blessings: the same dense-label language; the end card\'s honest "no key picked yet" text is the intended empty pick, not an error.',
+          'Defects to flag: the hero panel still visible beside the sequence panel, the window-start card missing its image, two checked tool chips, clipped text, the pinned submit bar ("Render the window") not visible at the pane foot.',
+        ].join(' '),
+      },
+      {
+        id: 'animation-stage-1280x800',
+        label: 'Animation authoring — the deliberate 1280x800 collapse: the panes stack, the timeline retained',
+        drive: async (page) => {
+          await page.setViewportSize({ width: 1280, height: 800 })
+          const stage = page.locator('[data-anim-stage]')
+          await expect(stage).toHaveAttribute('data-anim-stage-mode', 'stacked')
+          const reviewPane = page.locator('[data-anim-stage-review]')
+          const inspectorPane = page.locator('[data-anim-stage-inspector]')
+          const reviewBox = await reviewPane.boundingBox()
+          const inspectorBox = await inspectorPane.boundingBox()
+          expect(reviewBox && inspectorBox).toBeTruthy()
+          expect(inspectorBox!.y, 'the inspector stacks below the review pane at 1280x800').toBeGreaterThanOrEqual(reviewBox!.y + reviewBox!.height - 2)
+          await expect(page.locator('[data-anim-timeline]')).toBeVisible()
+          await page.waitForTimeout(400)
+        },
+        rubric: [
+          'Context: the same animation surface at 1280x800 — the review\'s second viewport, where the two-pane stage DELIBERATELY COLLAPSES to the stacked column: the bound card, then the TIMELINE (both key cards and the span bar in frame — the timeline is retained at the narrow width), then the review lane (the sequence tool\'s dashed empty state), then the inspector column (the tool bar with "Sequence — window" checked, the sequence panel\'s lede and endpoint cards descending, the candidate strip below), the page scrolling vertically as one column.',
+          'The frame is a coherent single-column workbench at the narrower width — the stack is the DESIGN, never a broken layout. The pinned submit bar rides at the VIEWPORT\'s foot while the inspector column crosses it.',
+          'Blessings: the horizontal scrollbar absence at exactly 1280 is not asserted — minor horizontal overflow of the timeline track scrolls within its own band; dense labels as ever; the empty review state above the inspector is intended.',
+          'Defects to flag: the two panes still side by side at 1280 (overlapping or squeezed into unreadable columns), the timeline MISSING from the initial frame, text clipped mid-glyph, the tool chips rendering on two overlapping rows.',
         ].join(' '),
       },
     ],

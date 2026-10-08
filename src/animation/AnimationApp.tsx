@@ -44,11 +44,24 @@
  *   - the conflict rebase notice (a 409 is never silent) and the failed
  *     silent-refresh notice, both role=status; the selection state carries
  *     the "new animation document" creation arm (task 7's Minor-2).
+ *
+ * Wave 3 (the live review's #7): the stage is a SIDE-BY-SIDE creative loop
+ * at wide viewports — a persistent TIMELINE BAND above [review/preview
+ * pane | active inspector pane], the two panes scrolling independently so
+ * the timeline and the tool's primary action stay reachable while
+ * authoring; below the breakpoint the panes stack (the deliberate 1280x800
+ * collapse). A selected KEY presents ONE chosen tool — the hero and
+ * sequence panels never stack together; the switch is an explicit chip
+ * choice, and the inactive lane stays mounted but hidden so a half-typed
+ * draft survives the round trip. The editorial + export surfaces moved
+ * behind the assembly disclosure at the stage's foot — reachable, no
+ * longer permanently mounted in the loop.
  */
 import { useEffect, useMemo, useState } from 'react'
 import { Clapperboard, FilePlus2, LoaderCircle, RefreshCw } from 'lucide-react'
 import { SurfaceSwitcher } from '../surfaces/SurfaceSwitcher'
 import { Button } from '../ui/Button'
+import { Chip, ChipGroup } from '../ui/Chip'
 import { animationHref } from './client'
 import { BindingPanel } from './BindingPanel'
 import { KeyCandidates, type KeyImportDestination } from './KeyCandidates'
@@ -103,6 +116,22 @@ export function AnimationApp() {
   // binding" action opens the update-mode binding panel beneath the bound
   // header — discoverable in the bound state, not buried in a drawer.
   const [updateOpen, setUpdateOpen] = useState(false)
+  // Wave 3 (the live review's #7): a selected key presents ONE tool. The
+  // switch is an EXPLICIT choice — this override holds while the same key
+  // stays selected; switching keys (or a reload) falls back to the derived
+  // default below. Keyed by key id so a stale pick never leaks across keys.
+  const [keyTool, setKeyTool] = useState<{ keyId: string; tool: 'hero' | 'sequence' } | null>(null)
+  // The stage's responsive mode. The 1440px literal MIRRORS the media query
+  // in animation.css (.anim-stage-panes' two-column rule) — one breakpoint,
+  // two homes, because a CSS media query cannot read a var and JS cannot
+  // read the cascade. Change them together.
+  const [stageMode, setStageMode] = useState<'wide' | 'stacked'>(() => (window.matchMedia('(min-width: 1440px)').matches ? 'wide' : 'stacked'))
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1440px)')
+    const listener = (event: MediaQueryListEvent) => setStageMode(event.matches ? 'wide' : 'stacked')
+    query.addEventListener('change', listener)
+    return () => query.removeEventListener('change', listener)
+  }, [])
   const session = useAnimationDocument(params.documentId, params.projectId)
   const { phase, errorDetail, document, projectDocuments, assets, assetsFailed, conflict, busy, commandError, refreshFailed } = session
 
@@ -268,6 +297,21 @@ export function AnimationApp() {
     if (document === null || selectedKey === null) return []
     return document.attempts.filter((entry) => entry.tool === 'sequence' && entry.targetId === selectedKey.id && IN_FLIGHT.has(entry.execution))
   }, [document, selectedKey])
+  // Wave 3: the key tool's DERIVED default — the newest take targeting this
+  // key names its own lane (a key that just received a hero clip opens the
+  // hero review; a window start with landed takes opens the sequence
+  // review), else hero. The reviewer's explicit chip pick above overrides
+  // it while the same key stays selected.
+  const keyToolDefault = useMemo<'hero' | 'sequence'>(() => {
+    if (document === null || selectedKey === null) return 'hero'
+    for (let index = document.attempts.length - 1; index >= 0; index -= 1) {
+      const entry = document.attempts[index]!
+      if (entry.targetId !== selectedKey.id) continue
+      if (entry.tool === 'hero' || entry.tool === 'sequence') return entry.tool
+    }
+    return 'hero'
+  }, [document, selectedKey])
+  const activeKeyTool = keyTool !== null && keyTool.keyId === selectedKey?.id ? keyTool.tool : keyToolDefault
   // The editorial surface (task 13, §9): the landed clips that can contribute
   // and what the ordered contribution list assembles to — both pure
   // derivations over the live document (timelineModel).
@@ -363,7 +407,7 @@ export function AnimationApp() {
         <span className="anim-revision" data-anim-revision title="The authored revision — every command is expectedRevision-gated against it">rev {document!.revision}</span>
         <a className="anim-back" href="/?images=1" data-anim-back>workbench</a>
       </header>
-      <main className="anim-body">
+      <main className={activeBinding ? 'anim-body anim-body--stage' : 'anim-body'}>
         {refreshFailed && (
           <p className="anim-note" role="status" data-anim-refresh-failed>This document changed but the fresh read failed — the view may be stale until the next event or reload.</p>
         )}
@@ -427,204 +471,269 @@ export function AnimationApp() {
                 errors={commandError ? { submit: commandError } : undefined}
               />
             )}
-            {/* The timeline (task 8): keys, spans, nested step slots, the
-                playhead — the shell owns only the document + event plumbing;
-                every connection rides the adapter's command bag. The
-                selection the timeline renders is the EFFECTIVE one (an
-                explicit click, else §7.4's restored review position). */}
-            <section className="anim-stage" data-anim-stage>
-              <Timeline
-                timeline={timeline!}
-                binding={activeBinding}
-                selectedId={selectedId}
-                playhead={playhead}
-                busy={busy}
-                onSelectKey={setSelectedId}
-                onSelectSpan={setSelectedId}
-                onToggleLock={(keyId, locked) => void session.commands.toggleKeyLock(keyId, locked)}
-                onSeedInitialKey={() => void session.commands.seedInitialKey()}
-              />
-              {/* The span inspector (task 9, §6.1): keyed by span id — the
-                  authoring draft seeds per span and survives document
-                  refreshes; selecting a different span is a fresh mount. */}
-              {spanInspector !== null && (
-                <SpanInspector
-                  key={spanInspector.span.id}
-                  span={spanInspector.span}
-                  fromKey={spanInspector.fromKey}
-                  toKey={spanInspector.toKey}
-                  preview={spanInspector.preview}
+            {/* The stage (wave 3, the live review's #7): the timeline band
+                PERSISTS above the two panes — the creative loop (see the
+                motion → adjust the intent → generate) side by side at wide
+                viewports, stacked below the breakpoint. The mode attribute is
+                the DOM truth the layout pins read. */}
+            <section className="anim-stage" data-anim-stage data-anim-stage-mode={stageMode}>
+              <div className="anim-stage-timeline" data-anim-stage-timeline>
+                <Timeline
+                  timeline={timeline!}
                   binding={activeBinding}
+                  selectedId={selectedId}
+                  playhead={playhead}
                   busy={busy}
-                  onIntentChange={session.commands.updateSpanIntent}
-                  onFacingChange={session.commands.setKeyFacing}
-                  onAnnotateRolling={session.commands.annotateRollingReference}
-                  onSubmit={session.commands.submitTweenStep}
+                  onSelectKey={setSelectedId}
+                  onSelectSpan={setSelectedId}
+                  onToggleLock={(keyId, locked) => void session.commands.toggleKeyLock(keyId, locked)}
+                  onSeedInitialKey={() => void session.commands.seedInitialKey()}
                 />
+              </div>
+              {(spanInspector !== null || selectedKey !== null) && (
+                <div className="anim-stage-panes" data-anim-stage-panes>
+                  {/* The review/preview pane — the selected surface's landed
+                      (or in-flight) takes; an honest empty state names the
+                      way in when nothing has rendered yet. */}
+                  <div className="anim-stage-pane anim-stage-review" data-anim-stage-review>
+                    {selectedSpan !== null && (
+                      reviewPanel !== null ? (
+                        <ReviewPanel
+                          attempt={reviewPanel.subject}
+                          span={selectedSpan}
+                          stepIndex={reviewPanel.stepIndex}
+                          slotSelection={reviewPanel.slotSelection}
+                          takes={reviewPanel.takes}
+                          busy={busy}
+                          onSelectTake={(attemptId) => setReviewTake({ spanId: selectedSpan.id, attemptId })}
+                          onSelectFrame={(frameIndex) => void session.commands.selectReferenceFrame(selectedSpan.id, reviewPanel.subject.attemptId, frameIndex)}
+                          onContinue={() => void session.commands.continueChain(selectedSpan.id)}
+                          onReroll={() => {
+                            // T10-M4: the re-roll pins the CURRENT subject first —
+                            // the landing lands beside it as an announced alternative
+                            // and never steals the review (§8.2: selection truth is
+                            // untouched; the pin is view state).
+                            setReviewTake({ spanId: selectedSpan.id, attemptId: reviewPanel.subject.attemptId })
+                            void session.commands.rerollStep(selectedSpan.id, reviewPanel.subject.targetId)
+                          }}
+                          onRetryPreparation={() => void session.commands.retryPreparation(reviewPanel.subject.attemptId)}
+                          newTakeAttemptId={reviewPanel.newTakeAttemptId}
+                          onDismissNewTake={dismissNewTake}
+                        />
+                      ) : (
+                        <div className="anim-stage-empty" data-anim-review-empty>
+                          <strong>Nothing to review yet</strong>
+                          <span>Submit a step from the inspector — its render lands here for review.</span>
+                        </div>
+                      )
+                    )}
+                    {selectedKey !== null && (
+                      <>
+                        {/* One chosen tool: the inactive lane stays MOUNTED but
+                            hidden, so a half-typed draft survives the round
+                            trip. */}
+                        <div data-anim-review-lane="hero" hidden={activeKeyTool !== 'hero'}>
+                          {heroReview !== null ? (
+                            <HeroReview
+                              attempt={heroReview.subject}
+                              keyEntity={selectedKey}
+                              takes={heroReview.takes}
+                              busy={busy}
+                              onSelectTake={(attemptId) => setHeroTake({ keyId: selectedKey.id, attemptId })}
+                              onAcceptFrame={(frameIndex) => void session.commands.acceptHeroFrame(selectedKey.id, heroReview.subject.attemptId, frameIndex)}
+                              onReroll={() => {
+                                // T10-M4: the re-roll pins the CURRENT subject first —
+                                // the fresh take lands announced, never auto-selected.
+                                setHeroTake({ keyId: selectedKey.id, attemptId: heroReview.subject.attemptId })
+                                void session.commands.rerollHero(selectedKey.id)
+                              }}
+                              onOpenSpan={() => {
+                                const subject = heroReview.subject
+                                // §5.2 (c): the span binds this take's SOURCE key → this
+                                // key; the hero arc seeds its movement draft. The shell
+                                // selects the minted span so the inspector opens on it.
+                                if (subject.sourceKeyId === undefined || subject.movementArc === undefined) return
+                                void session.commands.openSpanIntoKey(subject.sourceKeyId, selectedKey.id, subject.movementArc).then((spanId) => {
+                                  if (spanId !== null) setSelectedId(spanId)
+                                })
+                              }}
+                              onRetryPreparation={() => void session.commands.retryPreparation(heroReview.subject.attemptId)}
+                              newTakeAttemptId={heroReview.newTakeAttemptId}
+                              onDismissNewTake={dismissNewTake}
+                            />
+                          ) : (
+                            <div className="anim-stage-empty" data-anim-review-empty>
+                              <strong>No next-key renders yet</strong>
+                              <span>Generate the next key from the inspector — its clip lands here for review.</span>
+                            </div>
+                          )}
+                        </div>
+                        <div data-anim-review-lane="sequence" hidden={activeKeyTool !== 'sequence'}>
+                          {sequenceReview !== null ? (
+                            <SequenceReview
+                              attempt={sequenceReview.subject}
+                              keyEntity={selectedKey}
+                              endKey={sequenceReview.endKey}
+                              takes={sequenceReview.takes}
+                              windows={sequenceWindows}
+                              activeWindowEndKeyId={sequenceReview.windowEndKeyId}
+                              busy={busy}
+                              onSelectTake={(attemptId) => setSequenceTake({ keyId: selectedKey.id, attemptId })}
+                              onSelectWindow={(windowEndKeyId) => {
+                                setSequenceWindow({ keyId: selectedKey.id, windowEndKeyId })
+                                setSequenceTake(null)
+                              }}
+                              onReroll={() => {
+                                // T10-M4: the re-roll pins the CURRENT subject first —
+                                // the fresh take lands announced, never auto-selected.
+                                setSequenceTake({ keyId: selectedKey.id, attemptId: sequenceReview.subject.attemptId })
+                                void session.commands.rerollSequence(selectedKey.id, sequenceReview.subject.windowEndKeyId)
+                              }}
+                              onRetryPreparation={() => void session.commands.retryPreparation(sequenceReview.subject.attemptId)}
+                              newTakeAttemptId={sequenceReview.newTakeAttemptId}
+                              onDismissNewTake={dismissNewTake}
+                            />
+                          ) : (
+                            <div className="anim-stage-empty" data-anim-review-empty>
+                              <strong>No window renders yet</strong>
+                              <span>Render a window from the inspector — its clip lands here for review.</span>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {/* The active inspector pane — the authoring surface for
+                      the selection. A selected key carries the explicit TOOL
+                      SWITCH above exactly one tool's panel (the prescription:
+                      hero and sequence never stack), with the candidate
+                      strip beneath; a selected span carries the tween
+                      inspector. */}
+                  <div className="anim-stage-pane anim-stage-inspector" data-anim-stage-inspector>
+                    {selectedKey !== null && (
+                      <div className="anim-stage-tools" data-anim-key-tools-label>
+                        <span className="anim-stage-tools-label">Key #{selectedKey.order} — author with</span>
+                        <ChipGroup
+                          id="anim-key-tools"
+                          className="anim-mediums"
+                          data-anim-key-tools
+                          exclusive
+                          aria-label="The key's authoring tool"
+                          value={`anim-key-tool-${activeKeyTool}`}
+                          onChange={(next) => {
+                            const picked = (next as string) === 'anim-key-tool-sequence' ? 'sequence' : 'hero'
+                            setKeyTool({ keyId: selectedKey.id, tool: picked })
+                          }}
+                        >
+                          <Chip id="anim-key-tool-hero" variant="radio" className="anim-chip" data-anim-key-tool="hero">Hero — next key</Chip>
+                          <Chip id="anim-key-tool-sequence" variant="radio" className="anim-chip" data-anim-key-tool="sequence">Sequence — window</Chip>
+                        </ChipGroup>
+                      </div>
+                    )}
+                    {spanInspector !== null && (
+                      <SpanInspector
+                        key={spanInspector.span.id}
+                        span={spanInspector.span}
+                        fromKey={spanInspector.fromKey}
+                        toKey={spanInspector.toKey}
+                        preview={spanInspector.preview}
+                        binding={activeBinding}
+                        busy={busy}
+                        onIntentChange={session.commands.updateSpanIntent}
+                        onFacingChange={session.commands.setKeyFacing}
+                        onAnnotateRolling={session.commands.annotateRollingReference}
+                        onSubmit={session.commands.submitTweenStep}
+                      />
+                    )}
+                    {/* One chosen tool — the inactive pane stays mounted but
+                        hidden (the draft survives the switch). The per-surface
+                        key PREFIXES matter: the key-selected panels would
+                        otherwise share the bare selectedKey.id, and duplicate
+                        sibling keys corrupt the reconciler (observed: fresh
+                        mounts appended on every commit, old DOM never
+                        removed). */}
+                    {heroPanel !== null && (
+                      <div data-anim-tool-pane="hero" hidden={activeKeyTool !== 'hero'}>
+                        <HeroPanel
+                          key={`hero-${heroPanel.keyEntity.id}`}
+                          keyEntity={heroPanel.keyEntity}
+                          preview={heroPanel.preview}
+                          binding={activeBinding}
+                          inFlightAttempt={inFlightHeroFromKey}
+                          busy={busy}
+                          onFacingChange={session.commands.setKeyFacing}
+                          onSubmit={session.commands.submitHero}
+                        />
+                      </div>
+                    )}
+                    {selectedKey !== null && timeline !== null && (
+                      <div data-anim-tool-pane="sequence" hidden={activeKeyTool !== 'sequence'}>
+                        <SequencePanel
+                          key={`sequence-${selectedKey.id}`}
+                          keyEntity={selectedKey}
+                          keys={timeline.keys}
+                          binding={activeBinding}
+                          inFlightAttempts={inFlightSequenceFromKey}
+                          busy={busy}
+                          onFacingChange={session.commands.setKeyFacing}
+                          onSubmit={session.commands.submitSequence}
+                        />
+                      </div>
+                    )}
+                    {/* The key's candidate strip (wave 2b, Fix 1): the selected
+                        key's alternatives — importing lands an ALTERNATIVE
+                        candidate (never a selection change, §5.3); choosing is
+                        the explicit select command. Presented under either
+                        tool. */}
+                    {selectedKey !== null && (
+                      <KeyCandidates
+                        key={`candidates-${selectedKey.id}`}
+                        keyEntity={selectedKey}
+                        busy={busy}
+                        assets={assets}
+                        onImportFiles={session.commands.importImages}
+                        onImport={(destination: KeyImportDestination, image, origin) => session.commands.importKeyCandidate(destination, image, origin)}
+                        onSelect={(candidateId) => void session.commands.selectKeyCandidate(selectedKey.id, candidateId)}
+                      />
+                    )}
+                  </div>
+                </div>
               )}
-              {/* The review panel (task 10, §7.3): the selected span's tween
-                  attempts — the newest (or the reviewer's explicit take) under
-                  review: status vocabulary, the clip, the proposed frame,
-                  explicit selection, the continue / re-roll actions. */}
-              {reviewPanel !== null && selectedSpan !== null && (
-                <ReviewPanel
-                  attempt={reviewPanel.subject}
-                  span={selectedSpan}
-                  stepIndex={reviewPanel.stepIndex}
-                  slotSelection={reviewPanel.slotSelection}
-                  takes={reviewPanel.takes}
-                  busy={busy}
-                  onSelectTake={(attemptId) => setReviewTake({ spanId: selectedSpan.id, attemptId })}
-                  onSelectFrame={(frameIndex) => void session.commands.selectReferenceFrame(selectedSpan.id, reviewPanel.subject.attemptId, frameIndex)}
-                  onContinue={() => void session.commands.continueChain(selectedSpan.id)}
-                  onReroll={() => {
-                    // T10-M4: the re-roll pins the CURRENT subject first —
-                    // the landing lands beside it as an announced alternative
-                    // and never steals the review (§8.2: selection truth is
-                    // untouched; the pin is view state).
-                    setReviewTake({ spanId: selectedSpan.id, attemptId: reviewPanel.subject.attemptId })
-                    void session.commands.rerollStep(selectedSpan.id, reviewPanel.subject.targetId)
-                  }}
-                  onRetryPreparation={() => void session.commands.retryPreparation(reviewPanel.subject.attemptId)}
-                  newTakeAttemptId={reviewPanel.newTakeAttemptId}
-                  onDismissNewTake={dismissNewTake}
-                />
-              )}
-              {/* The hero surfaces (task 11, §5.2): a selected KEY reviews the
-                  hero takes that targeted it (the newest, or the reviewer's
-                  explicit take) — the clip, the frame strip, the EXPLICIT
-                  acceptance that establishes the key, the far-reference span
-                  action — and below it, the authoring panel that sources the
-                  NEXT generation from this key's selection. */}
-              {heroReview !== null && selectedKey !== null && (
-                <HeroReview
-                  attempt={heroReview.subject}
-                  keyEntity={selectedKey}
-                  takes={heroReview.takes}
-                  busy={busy}
-                  onSelectTake={(attemptId) => setHeroTake({ keyId: selectedKey.id, attemptId })}
-                  onAcceptFrame={(frameIndex) => void session.commands.acceptHeroFrame(selectedKey.id, heroReview.subject.attemptId, frameIndex)}
-                  onReroll={() => {
-                    // T10-M4: the re-roll pins the CURRENT subject first —
-                    // the fresh take lands announced, never auto-selected.
-                    setHeroTake({ keyId: selectedKey.id, attemptId: heroReview.subject.attemptId })
-                    void session.commands.rerollHero(selectedKey.id)
-                  }}
-                  onOpenSpan={() => {
-                    const subject = heroReview.subject
-                    // §5.2 (c): the span binds this take's SOURCE key → this
-                    // key; the hero arc seeds its movement draft. The shell
-                    // selects the minted span so the inspector opens on it.
-                    if (subject.sourceKeyId === undefined || subject.movementArc === undefined) return
-                    void session.commands.openSpanIntoKey(subject.sourceKeyId, selectedKey.id, subject.movementArc).then((spanId) => {
-                      if (spanId !== null) setSelectedId(spanId)
-                    })
-                  }}
-                  onRetryPreparation={() => void session.commands.retryPreparation(heroReview.subject.attemptId)}
-                  newTakeAttemptId={heroReview.newTakeAttemptId}
-                  onDismissNewTake={dismissNewTake}
-                />
-              )}
-              {/* The key's candidate strip (wave 2b, Fix 1): the selected
-                  key's alternatives — importing lands an ALTERNATIVE
-                  candidate (never a selection change, §5.3); choosing is the
-                  explicit select command. The per-surface key PREFIXES matter:
-                  all three key-selected panels would otherwise share the bare
-                  selectedKey.id, and duplicate sibling keys corrupt the
-                  reconciler (observed: fresh mounts appended on every commit,
-                  old DOM never removed). */}
-              {selectedKey !== null && (
-                <KeyCandidates
-                  key={`candidates-${selectedKey.id}`}
-                  keyEntity={selectedKey}
-                  busy={busy}
-                  assets={assets}
-                  onImportFiles={session.commands.importImages}
-                  onImport={(destination: KeyImportDestination, image, origin) => session.commands.importKeyCandidate(destination, image, origin)}
-                  onSelect={(candidateId) => void session.commands.selectKeyCandidate(selectedKey.id, candidateId)}
-                />
-              )}
-              {heroPanel !== null && (
-                <HeroPanel
-                  key={`hero-${heroPanel.keyEntity.id}`}
-                  keyEntity={heroPanel.keyEntity}
-                  preview={heroPanel.preview}
-                  binding={activeBinding}
-                  inFlightAttempt={inFlightHeroFromKey}
-                  busy={busy}
-                  onFacingChange={session.commands.setKeyFacing}
-                  onSubmit={session.commands.submitHero}
-                />
-              )}
-              {/* The sequence surfaces (task 12, §5.2/§11.2): the selected key
-                  is a WINDOW START — its window takes' review above the
-                  authoring panel whose explicit pick is the window's end. */}
-              {sequenceReview !== null && selectedKey !== null && (
-                <SequenceReview
-                  attempt={sequenceReview.subject}
-                  keyEntity={selectedKey}
-                  endKey={sequenceReview.endKey}
-                  takes={sequenceReview.takes}
-                  windows={sequenceWindows}
-                  activeWindowEndKeyId={sequenceReview.windowEndKeyId}
-                  busy={busy}
-                  onSelectTake={(attemptId) => setSequenceTake({ keyId: selectedKey.id, attemptId })}
-                  onSelectWindow={(windowEndKeyId) => {
-                    setSequenceWindow({ keyId: selectedKey.id, windowEndKeyId })
-                    setSequenceTake(null)
-                  }}
-                  onReroll={() => {
-                    // T10-M4: the re-roll pins the CURRENT subject first —
-                    // the fresh take lands announced, never auto-selected.
-                    setSequenceTake({ keyId: selectedKey.id, attemptId: sequenceReview.subject.attemptId })
-                    void session.commands.rerollSequence(selectedKey.id, sequenceReview.subject.windowEndKeyId)
-                  }}
-                  onRetryPreparation={() => void session.commands.retryPreparation(sequenceReview.subject.attemptId)}
-                  newTakeAttemptId={sequenceReview.newTakeAttemptId}
-                  onDismissNewTake={dismissNewTake}
-                />
-              )}
-              {selectedKey !== null && timeline !== null && (
-                <SequencePanel
-                  key={`sequence-${selectedKey.id}`}
-                  keyEntity={selectedKey}
-                  keys={timeline.keys}
-                  binding={activeBinding}
-                  inFlightAttempts={inFlightSequenceFromKey}
-                  busy={busy}
-                  onFacingChange={session.commands.setKeyFacing}
-                  onSubmit={session.commands.submitSequence}
-                />
-              )}
-              {/* The editorial surface (task 13, §9): the assembly layer —
-                  which portions of the landed clips contribute, the holds,
-                  the order, and the assembled-sequence preview. Always
-                  mounted for a bound document (the empty state names the way
-                  in). */}
+              {/* The assembly + delivery surfaces (tasks 13/14, §9/§11.3):
+                  behind an explicit disclosure at the stage's foot —
+                  reachable from the loop, no longer permanently mounted in
+                  it. The summary carries the live totals so the closed state
+                  still reports what stands assembled. */}
               {assembledSequence !== null && (
-                <EditorialPanel
-                  clips={editorialClips}
-                  assembled={assembledSequence}
-                  busy={busy}
-                  onContribute={(spanId, attemptId, inFrame, outFrame, holdDuration) =>
-                    void session.commands.contributeClip(spanId, attemptId, inFrame, outFrame, holdDuration)}
-                  onReorder={(orderedIds) => void session.commands.reorderContributions(orderedIds)}
-                  onRemove={(contributionId) => void session.commands.removeContribution(contributionId)}
-                />
-              )}
-              {/* The delivery surface (task 14, §11.3): the review package —
-                  sequence.mp4 + manifest.json in one ZIP, assembled from a
-                  FROZEN snapshot (edits during export are safe by design),
-                  stale selections acknowledged explicitly. */}
-              {assembledSequence !== null && (
-                <ExportPanel
-                  assembled={assembledSequence}
-                  exportPhase={session.exportPhase}
-                  exportError={session.exportError}
-                  exportStale={session.exportStale}
-                  lastExportName={session.lastExportName}
-                  onExport={(acknowledgeStale) => void session.commands.exportSequence(acknowledgeStale)}
-                />
+                <details className="anim-assembly" data-anim-assembly>
+                  <summary data-anim-assembly-summary>
+                    <strong>Assembly &amp; export</strong>
+                    <span className="anim-assembly-summary-note" data-anim-assembly-total>
+                      {assembledSequence.contributions.length === 0
+                        ? 'nothing assembled yet'
+                        : `${assembledSequence.contributions.length} ${assembledSequence.contributions.length === 1 ? 'contribution' : 'contributions'} — ${assembledSequence.totalFrames} frames · ${(assembledSequence.totalFrames / assembledSequence.fps).toFixed(1)} s`}
+                    </span>
+                  </summary>
+                  <div className="anim-assembly-body">
+                    <EditorialPanel
+                      clips={editorialClips}
+                      assembled={assembledSequence}
+                      busy={busy}
+                      onContribute={(spanId, attemptId, inFrame, outFrame, holdDuration) =>
+                        void session.commands.contributeClip(spanId, attemptId, inFrame, outFrame, holdDuration)}
+                      onReorder={(orderedIds) => void session.commands.reorderContributions(orderedIds)}
+                      onRemove={(contributionId) => void session.commands.removeContribution(contributionId)}
+                    />
+                    <ExportPanel
+                      assembled={assembledSequence}
+                      exportPhase={session.exportPhase}
+                      exportError={session.exportError}
+                      exportStale={session.exportStale}
+                      lastExportName={session.lastExportName}
+                      onExport={(acknowledgeStale) => void session.commands.exportSequence(acknowledgeStale)}
+                    />
+                  </div>
+                </details>
               )}
             </section>
           </>
