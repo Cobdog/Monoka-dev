@@ -27,10 +27,13 @@ exactly like any render. Identity continues to come from image references;
 the tail supplies the motion.
 
 This is an **experimental v1**: the carried state is an owned,
-content-addressed artifact registered at landing (§7 — cross-submission
-by construction, the engine cache never the source of truth); v1.1's
-increment hardens the Save/Load seam (the audit's receipt/recovery
-probes) and adds mid-render restart reconciliation.
+content-addressed artifact persisted by the source render and registered
+at landing (§7 — cross-submission by construction, the engine cache
+never the source of truth). Because v1 depends on saved artifacts,
+**Save/Load parity, receipt discovery, and continuation after a
+completed-source restart gate v1 itself** (§7's acceptance); v1.1 adds
+the broader mid-render restart recovery hardening, with explicit failure
+behavior.
 
 ## 2. Architectural identity
 
@@ -51,9 +54,9 @@ and collision refusals (§10); the join recipe from the tuning probe (§9);
 the adapter scope is the tween lane only (Set L's tested conditioning —
 hero/sequence need adapter-specific probes first, per the audit).
 
-**Out (v1):** restart-durable continuation (v1.1: the checkpoint binding +
-the two adapted probes — carried-latent persistence and receipt/recovery —
-gate that increment); Set-K-style re-noising as a variation feature (its
+**Out (v1):** mid-render restart recovery hardening (v1.1, with explicit
+failure behavior — the completed-source restart case is IN v1, §7);
+Set-K-style re-noising as a variation feature (its
 own named lane if ever); frame-specific latent continuation (blocked
 pending a temporal-slicing probe); auto-chaining (every extension is an
 explicit user action); audio in delivered output.
@@ -90,16 +93,29 @@ contributions remain the §9 assembly layer's own commands).
 - **Selection** is a new explicit command in the module's selection family
   (`selectWindowCandidate`, expectedRevision-gated, lock-guarded) — never
   implicit in landing.
-- **Ancestor changes never rebind descendants.** Descendants remain bound
-  to their frozen source attempts; replacing an ancestor's selection (or
-  re-rolling it into new alternatives) marks affected descendants stale
-  with the named reason, preserving their takes — the module's §8.3
-  doctrine extended to chains. Nothing silently follows a moved ancestor.
+- **Ancestor changes never rebind descendants — and alternatives never
+  invalidate anyone.** Descendants are bound to their frozen source
+  ATTEMPTS, which a sibling alternative cannot touch: adding an
+  unselected alternative to an ancestor slot marks nothing stale. A
+  descendant goes stale only when its relevant SELECTED ancestry changes
+  or its own authored inputs change — the module's §5.3/§8.3 separation
+  (alternatives vs selection) extended to chains. Nothing silently
+  follows a moved ancestor; prior takes are always preserved.
 - **Branches are explicit and legal.** Extending an unselected alternative
   creates a branch rooted at that alternative's attempt — the re-roll
-  shape applied to chains. The assembled preview follows ONE path: the
-  selected window candidate per slot, in slot order. Editorial selection
-  remains a separate layer over delivered clips.
+  shape applied to chains.
+- **Assembled-preview traversal follows explicit source-attempt edges.**
+  Each window's recorded frozen source defines the path, not slot
+  selections alone: the preview walks window slots in order, following
+  each window's own recorded source attempt backward. If a slot's
+  current selection is NOT the attempt its selected descendant was
+  conditioned on (B extends A1; the ancestor slot now selects A2), the
+  path is a **named stale/mismatch state** — surfaced, never silently
+  assembled from unrelated ancestry. The resolution is the explicit
+  binding change (§5): reselect the compatible ancestry, or explicitly
+  rebind the descendant (its own revision-gated mutation, with staleness
+  propagated). Locks protect selections exactly as elsewhere; a lock
+  never hides a mismatch — the state is named regardless.
 - **Motion authoring for the new time**: the extension draft owns the new
   window's motion intent — movement + preservation text authored against
   the window's time base, compiled through the tween dialect with the
@@ -192,13 +208,27 @@ therefore be an explicit, owned artifact — never an engine-cache
 assumption.
 
 **The contract:**
-- **Producer**: the completion owner, at the source attempt's landing,
-  materializes the carried tail state through the pack's documented
-  cross-run mechanism (its Save path) and registers the result in the
-  studio's blob store as a **continuation artifact** — content-addressed,
-  exactly like every landed asset. Landing is incomplete until the
-  artifact registers (its preparation retries without re-rendering, the
-  frame-preparation pattern).
+- **Engine production — inside the source graph.** The Save node needs
+  the sampler's live AV tensor, so it executes INSIDE the source render
+  graph: the engine writes the carry file during the source render
+  itself. The completion owner does NOT materialize the carry post-hoc.
+- **Server registration — after the render.** The completion owner
+  subsequently DISCOVERS the saved file, VERIFIES it (digest), and
+  REGISTERS it in the studio's blob store as the continuation artifact.
+- **The receipt mechanism is a required v1 contract.** The Save node
+  returns its path as an execution output without a history-UI receipt —
+  exactly the gap the audit flagged. v1 ships a receipt path that makes
+  the saved file discoverable by the studio (the probe's accepted
+  mechanism), or the lane does not ship.
+- **Independent readiness at landing**: media landing establishes
+  **playable** readiness; artifact registration establishes
+  **continuation** readiness. A carry failure never holds the playable
+  clip hostage. Two retry shapes: when the FILE EXISTS but registration
+  failed, preparation retries verification/registration (no re-render —
+  the frame-preparation pattern); when NO FILE was produced (the in-graph
+  Save failed), continuation-readiness is unreachable for that attempt —
+  the named condition, the clip playable, a new alternative (explicitly
+  re-rolled) the user's path.
 - **The carry handle**: the binding's artifact identity (§5) — the
   content-addressed digest handle. Opaque: no engine slot paths, no cache
   keys, nothing the engine's internal lifecycle can invalidate.
@@ -220,15 +250,22 @@ reachable only by genuine artifact loss — disk loss, manual removal):
   history (§5's metadata-vs-availability separation).
 - **Never** silently reconstruct state, substitute another source or
   window, or re-render to regenerate the carry. The user's explicit
-  options are to re-land the source chain or wait for v1.1.
+  options are to re-land the source chain or accept the v1.1 recovery
+  behavior when it lands.
 
-**Acceptance must prove the handoff**: render → review → a SEPARATE
-Extend submission carrying from the registered artifact, including the
-eviction case — the artifact removed between preflight and dispatch, the
-dispatch refusing by name, the clip playable throughout. **v1.1's
-durability increment** narrows accordingly: the audit's receipt/recovery
-probes hardening the Save/Load seam plus mid-render restart
-reconciliation for continuation attempts.
+**v1 acceptance gates the seam itself**: Save/Load parity (the saved
+artifact reloaded into a second submission reproduces the carry the
+in-graph connection gave Set L, within the probe's tolerance);
+**receipt discovery** (the studio finds and registers the saved file
+through the accepted receipt mechanism — the audit's probe);
+**continuation after a completed-source restart** (engine and studio
+restarted between the source's landing and the Extend submission — the
+carry still works from the registered artifact). Broader mid-render
+recovery (an engine death DURING a continuation attempt) is v1.1, with
+explicit failure behavior specified there. The handoff test stands:
+render → review → a SEPARATE Extend submission, including the eviction
+case (the artifact removed between preflight and dispatch — the dispatch
+refuses by name, the clip playable throughout).
 
 ## 8. The two-readiness lifecycle
 
@@ -288,10 +325,10 @@ in this lane degrades into a log line.
 | Decision | Ruling |
 |---|---|
 | Mechanism | Motion Context tail conditioning (Set L, 9/9 — three seeds, one character/arc, motion-advancement judged; long-chain quality, endpoint arrival, and cadence unestablished) |
-| The carry | An owned, content-addressed continuation artifact registered at landing (§7) — cross-submission by construction; the engine cache is never the source of truth |
-| Durability | v1.1 = the audit's receipt/recovery probes on the Save/Load seam + mid-render restart reconciliation |
+| The carry | Produced by the in-graph Save (the engine, during the source render); discovered, verified, and registered by the completion owner (§7) — an owned content-addressed artifact; the engine cache is never the source of truth; playable and continuation readiness land independently |
+| Durability | Save/Load parity + receipt discovery + continuation-after-completed-source-restart GATE v1; mid-render restart recovery hardening is v1.1 with explicit failure behavior |
 | The join | Probe + tune (correctly-attributed candidates, §9); SHIP ONLY ON the maintainer's explicit acceptance over the named axes |
-| Selection semantics | The source is an attempt/window, never a frame; trims don't move it; window slots hold their own selection truth; ancestors never silently rebind descendants; branches are explicit |
+| Selection semantics | The source is an attempt/window, never a frame; trims don't move it; window slots hold their own selection truth; alternatives never invalidate; ancestors never silently rebind descendants; preview traversal follows source-attempt edges with the named mismatch state; branches are explicit |
 | Re-rolls | Retry (identical, idempotent) ≠ new alternative (explicitly changed, newly frozen seed) |
 | Source vs target length | Separate checks (§6): the source fingerprint fail-closed; the target validated against the overlap recipe; the full generated/trim/delivered coordinate mapping frozen; second-extension acceptance required |
 | Model identity | Content identities (digests), not filenames; missing identity evidence is a named refusal; the target's resolved configuration is compared against the binding's frozen identities |
@@ -314,7 +351,7 @@ The v1.1 durability increment gets its own probe-gated cycle when called.
 | mctx wins 9/9 on motion advancement (Set L) | The lane's mechanism |
 | Near-stop after joins; dE ~1.7 seams; 1.9× per-frame cost (Set L) | The join probe's target; cost recorded in the UI's overlap math |
 | The hold basin on tween chains (Set L, eye-confirmed) | Why extension exists — more tween steps do not buy advancement |
-| Motion Context's cache does not survive restarts | §7's named condition; v1.1's reason |
+| Motion Context's cache does not survive restarts | The carry is never the cache (the registered artifact is); restart-after-completed-source is v1-gated; mid-render deaths are v1.1's explicit failure behavior |
 | Prompt times refer to the sampled window (strategic review) | The carry preview's time-shift disclosure |
 | The node drops pinned-region anchors silently (strategic review) | §10's preflight refusal |
 | Context must be shorter than generation; the head is trimmed | §6's target-length validation; the delivered-count freeze |
