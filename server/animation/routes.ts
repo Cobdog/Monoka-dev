@@ -48,7 +48,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CanvasSchemaVersionError } from '../documents'
-import { AnimationConflictError, AnimationRuleError, type AnimationDocumentRow, type AnimationStore } from './store'
+import { AnimationConflictError, AnimationRuleError, type AnimationAttemptRow, type AnimationDocumentRow, type AnimationStore } from './store'
 import type { AnimationRenderingService } from './rendering'
 import type { AnimationExportService } from './export'
 import { AnimationExportStaleError } from './export'
@@ -493,6 +493,76 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
     }
   }
 
+  /** Canonical JSON for the peek's draft-block comparison (the shared
+   *  module's canonicalJson shape, local here): objects with recursively
+   *  sorted keys, arrays in order — so key order can never decide identity. */
+  function stableJson(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
+    if (isRecord(value)) {
+      return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`
+    }
+    return JSON.stringify(value) ?? 'null'
+  }
+
+  /** §7.2.2's peek, the COMPILER-INDEPENDENT half (Codex I7): what the user
+   *  actually sent, compared against the row's durably frozen DRAFT — never
+   *  what the CURRENT compiler would produce. The full-input-hash peek above
+   *  answers same-compiler retries; a retry of a submission an OLDER
+   *  compiler froze (the response was lost, the build moved to a new
+   *  compilerVersion) can never hash-match a recompiled snapshot even when
+   *  the client resends the byte-identical body, so the identity comparison
+   *  carries §7.2.2's letter across a compiler bump: the draft block, the
+   *  RESOLVED references (role → assetId), the document revision, and the
+   *  explicit seed when the request carries one. The derived seed is never
+   *  re-derived — identities compare, and the row's frozen seed stands.
+   *
+   *  The TWEEN narrowing, deliberate: a tween draft's movement text has no
+   *  durable compiler-independent home in the frozen snapshot (it lives
+   *  only inside the compiled caption), so a cross-version same-key TWEEN
+   *  retry cannot be proven identical and falls through to the full-hash
+   *  comparison's honest 409 — never a false idempotent return for an
+   *  operation this build cannot verify. Hero and sequence freeze their
+   *  draft blocks (§8.1) and verify in full. */
+  function sameSubmissionIdentity(
+    row: AnimationAttemptRow,
+    parts: {
+      tool: AnimationTool
+      targetId: string
+      document: AnimationDocumentRow
+      references: FrozenAttemptSnapshot['references']
+      hero?: FrozenAttemptSnapshot['hero']
+      sequence?: FrozenAttemptSnapshot['sequence']
+      seed: unknown
+    },
+  ): boolean {
+    if (row.documentId !== parts.document.id) return false
+    if (row.tool !== parts.tool || row.targetId !== parts.targetId) return false
+    if (row.snapshot.documentRevision !== parts.document.revision) return false
+    // The resolved references must BE the row's frozen ones, role → assetId
+    // (a promoted near rides the ROW's extracted asset — content addressing
+    // makes that pointer's extraction deterministic, and the identity above
+    // already pinned the document to the row's revision).
+    const frozenByRole = new Map(row.snapshot.references.map((entry) => [entry.role, entry.assetReference.assetId]))
+    if (frozenByRole.size !== parts.references.length) return false
+    for (const reference of parts.references) {
+      if (frozenByRole.get(reference.role) !== reference.assetReference.assetId) return false
+    }
+    // The explicit seed when the request carries one; a derived seed is the
+    // identity's own function (same key + same inputs ⇒ same derivation).
+    if (parts.seed !== undefined) {
+      const frozenSeed = isRecord(row.snapshot.settings) ? row.snapshot.settings.seed : undefined
+      if (typeof frozenSeed !== 'number' || frozenSeed !== parts.seed) return false
+    }
+    // The draft block, per tool — the authored inputs, compiler-independently.
+    if (parts.tool === 'hero') {
+      return stableJson(row.snapshot.hero) === stableJson(parts.hero)
+    }
+    if (parts.tool === 'sequence') {
+      return stableJson(row.snapshot.sequence) === stableJson(parts.sequence)
+    }
+    return false // tween — the narrowing above
+  }
+
   async function submitAttempt(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const body = await readJson(request, 500_000)
     // Submissions serialize behind the boot reconcile sweep — the ready flag.
@@ -583,6 +653,17 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
           : undefined
         if (promotedNear === undefined || rowNear !== undefined) {
           if (animationInputHash(freeze(rowNear)) === existing.inputHash) {
+            return sendJson(response, 200, { attemptId: existing.id, created: false })
+          }
+          // The compiler-independent identity (Codex I7): the row above
+          // hash-missed, but a row an OLDER compiler froze can never
+          // hash-match a recompiled snapshot — the byte-identical retry of a
+          // cross-compiler submission answers through IDENTITY instead, and
+          // only a genuinely different draft falls through to the 409.
+          const identityReferences = promotedNear !== undefined && rowNear !== undefined
+            ? resolved.references.map((entry) => (entry.role === 'rolling-near' ? { ...entry, assetReference: rowNear } : entry))
+            : resolved.references
+          if (sameSubmissionIdentity(existing, { tool, targetId, document, references: identityReferences, hero, sequence, seed: body.seed })) {
             return sendJson(response, 200, { attemptId: existing.id, created: false })
           }
         }

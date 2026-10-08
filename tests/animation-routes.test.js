@@ -73,6 +73,12 @@
 //       landing behind the submission's held enumeration await changes
 //       NOTHING the row freezes: the frozen documentRevision and the
 //       bindingVersion/settings stamps all describe the ENTRY revision
+//   (o) the compiler-independent peek (Codex I7) — a v1-era submission's
+//       byte-identical retry through the public handler answers
+//       { created: false } with the ORIGINAL attempt id (the draft block,
+//       resolved references, revision, and seed compare — never the current
+//       compiler's output); a genuinely different draft on the same key
+//       still answers the 409
 //
 // Run after `pnpm build` (the server + web dist boot from dist-server).
 // Scratch homes through the Wave 4 ledger; ports through the allocator.
@@ -80,6 +86,7 @@ import { test, beforeAll, afterAll } from 'vitest'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { engineInputName } from '../shared/animation/graphs'
+import { animationInputHash } from '../shared/animation/types'
 
 const require = createRequire(import.meta.url)
 const __dirname = require('node:path').dirname(fileURLToPath(import.meta.url))
@@ -1728,4 +1735,68 @@ test('(n) a binding update mid-submission leaves the frozen row at the ENTRY rev
   const live = (await apiE.get(`/api/lan/animation/document?id=${documentId}`)).body.document
   assert.equal(live.body.activeBindingVersion, 2, 'the live document really did move (the freeze ignored it)')
   assert.equal(live.revision, entryRevision + 1)
+})
+
+// ---------------------------------------------------------------------------
+// (o) the compiler-INDEPENDENT peek (Codex batch B: I7) — a v1-era
+//     submission's byte-identical retry through the public handler answers
+//     { created: false } with the ORIGINAL attempt id; a genuinely different
+//     draft on the same key still conflicts
+// ---------------------------------------------------------------------------
+
+test('(o) a v1-era same-key retry resolves idempotently through the ROUTE; a different draft on the key 409s', async () => {
+  const created = await apiE.post('/api/lan/animation/documents', { projectId, name: 'Oscar', binding: makeBinding() })
+  assert.equal(created.status, 200)
+  const documentId = created.body.document.id
+  const key = await makeSelectedKey(apiE, documentId, created.body.document.revision, 'o1')
+  const current = (await apiE.get(`/api/lan/animation/document?id=${documentId}`)).body.document
+  const selectedCandidate = current.body.keys.find((entry) => entry.id === key.keyId).candidates.find((entry) => entry.id === key.candidateId)
+  assert.ok(selectedCandidate, 'the selected candidate is resolvable')
+
+  // The v1-era row: the client submitted this exact draft + idempotency key
+  // while compiler 1 built captions, the response was lost, and the build
+  // has since moved to compiler 2. Its frozen caption is v1-shaped — this
+  // build's compiler will never reproduce it byte-for-byte, so the
+  // full-input-hash peek can never match the retry.
+  const targetId = uuid()
+  const draft = heroDraft(key.keyId)
+  const v1Snapshot = {
+    tool: 'hero',
+    targetId,
+    references: [{ role: 'current-key', assetReference: selectedCandidate.assetReference, poseDescription: selectedCandidate.poseDescription, facing: selectedCandidate.facing }],
+    caption: 'Scene: a rain-slick street at dusk.\nMOVEMENT: she plants the forward foot and pushes through into a full stride, arms swinging down to the hips',
+    compilerVersion: '1',
+    settings: { seed: 97531 },
+    documentRevision: current.revision,
+    hero: { sourceKeyId: key.keyId, movementArc: draft.movementArc, overrides: draft.overrides },
+  }
+  const v1AttemptId = uuid()
+  const external = new Database(path.join(home, 'studio.db'))
+  try {
+    external.prepare(
+      "INSERT INTO animation_attempt (id, document_id, tool, target_id, idempotency_key, input_hash, snapshot_json, engine_job_id, execution_json, preparation_json, result_json, own_revision, created_at, updated_at) VALUES (?, ?, 'hero', ?, 'idem-o-v1', ?, ?, NULL, '{\"state\":\"ready\"}', '{\"state\":\"done\"}', NULL, 0, 1, 1)",
+    ).run(v1AttemptId, documentId, targetId, animationInputHash(v1Snapshot), JSON.stringify(v1Snapshot))
+  } finally {
+    external.close()
+  }
+
+  // The byte-identical retry (same body, same key, unchanged document):
+  // pre-fix the route recompiled with compiler 2, hashed a snapshot the
+  // stored v1 row could never equal, and answered 409 for the retry.
+  const countBefore = await engineRecordCount()
+  const retry = await apiE.post('/api/lan/animation/attempts', { documentId, tool: 'hero', targetId, idempotencyKey: 'idem-o-v1', draft })
+  assert.equal(retry.status, 200, `the v1-era retry resolves idempotently (${JSON.stringify(retry.body)})`)
+  assert.equal(retry.body.created, false)
+  assert.equal(retry.body.attemptId, v1AttemptId, 'the original attempt id answers — the already-persisted attempt, not a new one')
+  assert.equal(await engineRecordCount(), countBefore, 'no engine work for the idempotent retry')
+
+  // A genuinely different draft on the same key: the identity comparison
+  // must refuse it (the hero block differs) and the existing 409 answers.
+  const conflict = await apiE.post('/api/lan/animation/attempts', {
+    documentId, tool: 'hero', targetId, idempotencyKey: 'idem-o-v1',
+    draft: { ...draft, movementArc: `${draft.movementArc}, then a beat` },
+  })
+  assert.equal(conflict.status, 409)
+  assert.match(conflict.body.error, /different inputs/)
+  assert.equal(await engineRecordCount(), countBefore, 'the conflicting submit reached no engine')
 })
