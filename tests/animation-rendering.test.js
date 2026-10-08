@@ -127,6 +127,14 @@
 //       world (k) covers) no longer fails frame extraction: the transport
 //       failure falls to the DURABLE registered clip; only both paths dead
 //       refuses, naming both causes in separate sentences
+//   (t) the batch A review's riders — the REAL /queue item tuples (I-A:
+//       pinned inside (q)'s pending leg), the REAL error-record completion
+//       shape (M-1: completed:false + the execution_error message pair),
+//       and the moved-pending→running depose interleave (M-3: the gated
+//       dequeue holds until the foreign completion promotes the victim, so
+//       the delete no-ops against a running id and the NEXT round's
+//       interrupt must catch the mover — the loop terminates, cancelled
+//       settles)
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -1756,18 +1764,35 @@ test('(q) the real /interrupt serves an EMPTY 200; the canonical interrupted rec
   const victim = await submitHero(doc, uuid(), 'idem-q-victim')
   const victimJob = anim.getAttempt(victim.attemptId).engineJobId
   assert.notEqual(victimJob, foreignJob)
-  const queueBefore = await engineFetch('/queue').then((r) => r.json())
-  assert.ok(queueBefore.queue_running.includes(foreignJob), 'the foreign job holds the execution slot')
-  assert.ok(queueBefore.queue_pending.includes(victimJob), 'the victim sits in queue_pending behind it')
+
+  // ---- I-A's wire pin: the REAL /queue shape (server.py:1072-1078, devdocs
+  // §2). Both lists carry the item TUPLES [number, prompt_id, prompt,
+  // extra_data, outputs_to_execute] — the id at index 1 — never bare ids
+  // (the pre-review mirror's flattened form left the production tuple
+  // branch CI-dead: a future narrowing would have made queuedJobIds()
+  // always empty against a real engine, and a pending job would render
+  // despite the user's Stop).
+  const queueListOf = () => engineFetch('/queue').then((r) => r.json())
+  const queueLists = (queue) => queue.queue_running.every((entry) => Array.isArray(entry)) && queue.queue_pending.every((entry) => Array.isArray(entry))
+  const listedIn = (queue, jobId) => [...queue.queue_running, ...queue.queue_pending].some((entry) => entry[1] === jobId)
+  const queueBefore = await queueListOf()
+  assert.ok(queueLists(queueBefore), 'both /queue lists carry item tuples, never bare ids')
+  const runningTuple = queueBefore.queue_running.find((entry) => entry[1] === foreignJob)
+  assert.ok(runningTuple, 'the foreign job holds the execution slot')
+  assert.equal(runningTuple.length, 5, 'the tuple is [number, prompt_id, prompt, extra_data, outputs_to_execute]')
+  assert.equal(typeof runningTuple[0], 'number', 'the queue number at index 0')
+  assert.ok(runningTuple[2] && typeof runningTuple[2] === 'object', 'the prompt graph at index 2')
+  assert.equal(runningTuple[3].attempt_id, foreign.attemptId, 'extra_data rides at index 3 — the attempt marker the queue tuples carry')
+  assert.ok(Array.isArray(runningTuple[4]), 'outputs_to_execute at index 4')
+  assert.ok(queueBefore.queue_pending.some((entry) => entry[1] === victimJob), 'the victim sits in queue_pending behind it')
 
   await service.cancel(victim.attemptId)
   const victimRow = await waitAttemptState(victim.attemptId, ['cancelled'], 'the pending job settling cancelled through the dequeue')
   assert.equal(victimRow.result, null, 'nothing landed for the never-rendered job')
   assert.equal(victimRow.execution.failureReason, undefined)
-  const queueAfter = await engineFetch('/queue').then((r) => r.json())
-  assert.ok(!queueAfter.queue_pending.includes(victimJob), 'the queue no longer lists the cancelled job')
-  assert.ok(!queueAfter.queue_running.includes(victimJob), 'it never ran')
-  assert.ok(queueAfter.queue_running.includes(foreignJob), "the foreign job is untouched by the victim's cancellation")
+  const queueAfter = await queueListOf()
+  assert.ok(!listedIn(queueAfter, victimJob), 'the queue no longer lists the cancelled job anywhere')
+  assert.ok(queueAfter.queue_running.some((entry) => entry[1] === foreignJob), "the foreign job is untouched by the victim's cancellation")
 
   // The foreign render finishes on its own; the victim NEVER renders.
   await waitAttemptState(foreign.attemptId, ['ready'], 'the foreign render landing')
@@ -1783,33 +1808,41 @@ test('(q) the real /interrupt serves an EMPTY 200; the canonical interrupted rec
 //     dispatch is never resurrected into engine work
 // ---------------------------------------------------------------------------
 
+/** A wrapper port gating ONE dep seam until released — the suite's
+ *  prepareFrame-override pattern applied to the engine dep: everything
+ *  else passes straight through to the production port. Shared by (r)'s
+ *  dispatch gates and (t)'s depose-interleave pin. */
+function gatedEnginePort(gateDep) {
+  const port = {
+    submitGraph: (graph, attemptId) => engineClient.submitGraph(graph, attemptId),
+    interrupt: (engineJobId) => engineClient.interrupt(engineJobId),
+    dequeue: (engineJobId) => engineClient.dequeue(engineJobId),
+    history: (engineJobId) => engineClient.history(engineJobId),
+    view: (engineJobId, frameIndex) => engineClient.view(engineJobId, frameIndex),
+    findJobByAttempt: (attemptId) => engineClient.findJobByAttempt(attemptId),
+    queuedJobIds: () => engineClient.queuedJobIds(),
+    uploadReference: (assetId, bytes) => engineClient.uploadReference(assetId, bytes),
+    modelEnumerations: (options) => engineClient.modelEnumerations(options),
+  }
+  gateDep(port)
+  return port
+}
+
+/** An owner + rendering service pair over a gated port, sharing the suite's
+ *  store/sink/preparer (the cancel/observe paths run production code). */
+function gatedServiceFor(port) {
+  const gatedEvents = []
+  const gatedOwner = createCompletionOwner({ store: anim, engine: port, emit: (type, payload) => gatedEvents.push({ type, payload }), prepareFrame: productionPreparer, pollMs: 60 })
+  const gatedServiceInstance = createAnimationRenderingService({
+    store: anim, engine: port, owner: gatedOwner, blobs: sink, ffmpegPath: () => 'ffmpeg',
+    compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
+    emit: (type, payload) => gatedEvents.push({ type, payload }),
+  })
+  return { owner: gatedOwner, service: gatedServiceInstance, events: gatedEvents }
+}
+
 test('(r) a cancel during the held reference upload submits NOTHING; a cancel racing the send keeps the row terminal and deposes the orphan', async () => {
   const doc = anim.createDocument({ projectId, name: 'Romeo', binding: makeBinding() })
-  const compileSeam = { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption }
-  /** A wrapper port gating ONE dep seam until released — the suite's
-   *  prepareFrame-override pattern applied to the engine dep: everything
-   *  else passes straight through to the production port. */
-  const gatedPort = (gateDep) => {
-    const port = {
-      submitGraph: (graph, attemptId) => engineClient.submitGraph(graph, attemptId),
-      interrupt: (engineJobId) => engineClient.interrupt(engineJobId),
-      dequeue: (engineJobId) => engineClient.dequeue(engineJobId),
-      history: (engineJobId) => engineClient.history(engineJobId),
-      view: (engineJobId, frameIndex) => engineClient.view(engineJobId, frameIndex),
-      findJobByAttempt: (attemptId) => engineClient.findJobByAttempt(attemptId),
-      queuedJobIds: () => engineClient.queuedJobIds(),
-      uploadReference: (assetId, bytes) => engineClient.uploadReference(assetId, bytes),
-      modelEnumerations: (options) => engineClient.modelEnumerations(options),
-    }
-    gateDep(port)
-    return port
-  }
-  const gatedService = (port) => {
-    const sink2 = []
-    const owner2 = createCompletionOwner({ store: anim, engine: port, emit: (type, payload) => sink2.push({ type, payload }), prepareFrame: productionPreparer, pollMs: 60 })
-    const service2 = createAnimationRenderingService({ store: anim, engine: port, owner: owner2, blobs: sink, ffmpegPath: () => 'ffmpeg', compile: compileSeam, emit: (type, payload) => sink2.push({ type, payload }) })
-    return { owner: owner2, service: service2, events: sink2 }
-  }
   const submitOn = (service2, keyId, idem) => service2.submit(
     { documentId: doc.id, tool: 'hero', targetId: keyId, snapshot: makeHeroSnapshot(keyId, anim.getDocument(doc.id).revision) },
     idem,
@@ -1824,14 +1857,14 @@ test('(r) a cancel during the held reference upload submits NOTHING; a cancel ra
     let release = null
     const gate = new Promise((resolve) => { release = resolve })
     let heldUploads = 0
-    const port = gatedPort((p) => {
+    const port = gatedEnginePort((p) => {
       p.uploadReference = async (assetId, bytes) => {
         heldUploads += 1
         await gate
         return engineClient.uploadReference(assetId, bytes)
       }
     })
-    const held = gatedService(port)
+    const held = gatedServiceFor(port)
     const countBefore = await engineRecordCount()
     const submitted = submitOn(held.service, uuid(), 'idem-r-upload')
     await waitUntil(() => anim.attemptByIdempotencyKey('idem-r-upload') !== null, 10_000, 'the attempt persisting ahead of the held upload')
@@ -1860,7 +1893,7 @@ test('(r) a cancel during the held reference upload submits NOTHING; a cancel ra
     let release = null
     const gate = new Promise((resolve) => { release = resolve })
     let sendEntered = false
-    const port = gatedPort((p) => {
+    const port = gatedEnginePort((p) => {
       p.submitGraph = async (graph, attemptId) => {
         sendEntered = true
         const result = await engineClient.submitGraph(graph, attemptId)
@@ -1868,7 +1901,7 @@ test('(r) a cancel during the held reference upload submits NOTHING; a cancel ra
         return result
       }
     })
-    const held = gatedService(port)
+    const held = gatedServiceFor(port)
     const countBefore = await engineRecordCount()
     const submitted = submitOn(held.service, uuid(), 'idem-r-send')
     await waitUntil(() => sendEntered, 10_000, 'the dispatch reaching the /prompt send')
@@ -1888,7 +1921,8 @@ test('(r) a cancel during the held reference upload submits NOTHING; a cancel ra
     assert.equal(orphanRecords[0].status.status_str, 'error', 'the orphan was deposed — the canonical interrupted record, not a completed render')
     assert.ok((orphanRecords[0].status.messages ?? []).some((entry) => Array.isArray(entry) && entry[0] === 'execution_interrupted'))
     const queueAfter = await engineFetch('/queue').then((r) => r.json())
-    assert.ok(!queueAfter.queue_running.includes(orphanRecords[0].prompt[1]) && !queueAfter.queue_pending.includes(orphanRecords[0].prompt[1]), 'the orphan is neither running nor queued')
+    const orphanId = orphanRecords[0].prompt[1]
+    assert.ok(![...queueAfter.queue_running, ...queueAfter.queue_pending].some((entry) => entry[1] === orphanId), 'the orphan is neither running nor queued')
     assert.equal((await engineRecordCount()) - countBefore, 1, 'exactly the one raced send ever reached the engine')
     held.owner.stopObserving()
     await engineControl({ stepDelayMs: 40 })
@@ -1931,14 +1965,97 @@ test('(s) an unreachable engine no longer blocks frame extraction — the durabl
   assert.equal(retried.execution.state, 'ready', 'the landed clip was never at risk')
 
   // BOTH paths dead: the registered clip's bytes leave the store too — the
-  // named refusal honestly carries BOTH causes, separate sentences.
+  // named refusal honestly carries BOTH causes, separate sentences. The
+  // engine sentence states the HONEST class (review M-4: "could not serve
+  // its output listing" — the raw fetch error names the transport — never
+  // "unreachable" for what might be a refusal).
   fs.rmSync(path.join(home, landed.result.candidate.assetReference.relPath))
   await assert.rejects(
     () => service.extractFrame(landed.id, 8),
     (err) => err instanceof AnimationRuleError && err.status === 400
-      && /unreachable/.test(err.message)
+      && /could not serve its output listing/.test(err.message)
       && /fetch failed/.test(err.message)
       && /not readable from the store/.test(err.message),
-    'the both-dead refusal names the unreachable engine AND the unreadable clip, separately',
+    'the both-dead refusal names the unservable listing AND the unreadable clip, separately',
   )
+})
+
+// ---------------------------------------------------------------------------
+// (t) the batch A review's riders — M-1 the real error-record shape, M-3
+//     the moved-pending→running depose interleave (I-A's tuple wire pin
+//     lives in (q)'s pending leg)
+// ---------------------------------------------------------------------------
+
+test('(t) the error record carries the real completion shape; a job moving pending→running between interrupt and dequeue is caught next round', async () => {
+  const doc = anim.createDocument({ projectId, name: 'Tango', binding: makeBinding() })
+  // (s) ends with the engine down — bring it back (the restart shape).
+  await restartEngine()
+
+  // ---- M-1: the REAL error record (main.py:377 `completed = e.success` +
+  // execution.py:712's message pair): an error is completed FALSE and
+  // carries the ('execution_error', {...}) tuple — never the invented
+  // completed:true with empty messages. (The success record's
+  // execution_success pair rides the same finishRecord.)
+  await engineControl({ failMode: 'error' })
+  try {
+    const failing = await submitHero(doc, uuid(), 'idem-t-error')
+    const failingJob = anim.getAttempt(failing.attemptId).engineJobId
+    await waitAttemptState(failing.attemptId, ['failed'], 'the error attempt failing')
+    const errorRecord = await engineRecord(failingJob)
+    assert.ok(errorRecord, 'the engine remembers the failed run')
+    assert.equal(errorRecord.status.status_str, 'error')
+    assert.equal(errorRecord.status.completed, false, 'the real error record is completed:false (success follows completion; error does not)')
+    const errorMessage = (errorRecord.status.messages ?? []).find((entry) => Array.isArray(entry) && entry[0] === 'execution_error')
+    assert.ok(errorMessage, 'the execution_error message pair rides the record')
+    assert.equal(errorMessage[1].exception_type, 'OOM', 'the pair carries the engine\'s own failure detail')
+    assert.ok(!(errorRecord.status.messages ?? []).some((entry) => Array.isArray(entry) && entry[0] === 'execution_interrupted'), 'an error is not an interrupt — the marker stays exclusive')
+  } finally {
+    await engineControl({ failMode: null })
+  }
+
+  // ---- M-3: the interleave the depose loop guards by construction, now
+  // PINNED. The victim PENDS behind the foreign job; the cancel's FIRST
+  // interrupt no-ops its pending id; the gated dequeue then holds until the
+  // foreign completion PROMOTES the victim to running — so the delete no-ops
+  // against a running id exactly like the real engine's pending-heap walk.
+  // The loop must NOT stop there (the queue still lists the mover): the
+  // NEXT round's interrupt catches it running, the loop terminates, and the
+  // settle lands cancelled.
+  await engineControl({ stepDelayMs: 400 })
+  const foreign = await submitHero(doc, uuid(), 'idem-t-foreign')
+  const foreignJob = anim.getAttempt(foreign.attemptId).engineJobId
+  const victim = await submitHero(doc, uuid(), 'idem-t-victim')
+  const victimJob = anim.getAttempt(victim.attemptId).engineJobId
+  assert.notEqual(victimJob, foreignJob)
+  const queueBefore = await engineFetch('/queue').then((r) => r.json())
+  assert.ok(queueBefore.queue_running.some((entry) => entry[1] === foreignJob) && queueBefore.queue_pending.some((entry) => entry[1] === victimJob), 'the foreign job runs, the victim pends')
+
+  let heldDequeues = 0
+  const port = gatedEnginePort((p) => {
+    p.dequeue = async (engineJobId) => {
+      heldDequeues += 1
+      if (heldDequeues === 1) {
+        // Hold the FIRST dequeue until the foreign job completed — the
+        // mirror promotes the victim at that completion, so the delete
+        // that follows no-ops against a RUNNING id.
+        await waitUntil(async () => (await engineRecord(foreignJob)) !== null, 10_000, 'the foreign job completing inside the dequeue window')
+      }
+      return engineClient.dequeue(engineJobId)
+    }
+  })
+  const gated = gatedServiceFor(port)
+  await gated.service.cancel(victim.attemptId)
+  const victimRow = await waitAttemptState(victim.attemptId, ['cancelled'], "the mover settling cancelled through the next round's interrupt")
+  assert.equal(victimRow.result, null)
+  assert.equal(victimRow.execution.failureReason, undefined)
+  assert.equal(heldDequeues, 1, 'exactly one dequeue call — it no-op’d against the promoted id, and the loop did not need another')
+  // The victim RAN (promoted mid-cancel) and was stopped as a running job:
+  // the canonical interrupted record proves the second-round interrupt —
+  // the pending-only delete could never have produced it.
+  const victimRecords = Object.values(await engineHistoryAll()).filter((record) => record.prompt?.[3]?.attempt_id === victim.attemptId)
+  assert.equal(victimRecords.length, 1, 'the engine holds exactly the victim’s own record')
+  assert.equal(victimRecords[0].status.status_str, 'error')
+  assert.ok((victimRecords[0].status.messages ?? []).some((entry) => Array.isArray(entry) && entry[0] === 'execution_interrupted'), 'the mover was interrupted mid-run — caught as RUNNING, not dequeued as pending')
+  await waitAttemptState(foreign.attemptId, ['ready'], 'the foreign render landing on its own')
+  await engineControl({ stepDelayMs: 40 })
 })
