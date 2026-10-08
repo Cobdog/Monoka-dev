@@ -26,9 +26,11 @@ blind comparison on motion advancement, 9/9 across all seeds), reviewed
 exactly like any render. Identity continues to come from image references;
 the tail supplies the motion.
 
-This is an **experimental v1**, session-scoped by ruling: it ships the
-creative value first; restart durability is v1.1's increment, gated by the
-audit's adapted probes.
+This is an **experimental v1**: the carried state is an owned,
+content-addressed artifact registered at landing (§7 — cross-submission
+by construction, the engine cache never the source of truth); v1.1's
+increment hardens the Save/Load seam (the audit's receipt/recovery
+probes) and adds mid-render restart reconciliation.
 
 ## 2. Architectural identity
 
@@ -75,15 +77,43 @@ take, beside the standing actions — never a timeline drag, never automatic.
 
 **The submission** is a continuation attempt: it freezes the full record
 (§5) and dispatches like any attempt. **The review** lands the extension
-as a new take on the same chain — the timeline presents the chain's window
-sequence (source, extensions in order), each window reviewable, the
-assembled delivery previewable. Nothing auto-selects; the assembled view
-is a preview, not an editorial truth (editorial contributions remain the
-§9 assembly layer's own commands).
+as a new take on the chain's window slot. Nothing auto-selects; the
+assembled view is a preview, not an editorial truth (editorial
+contributions remain the §9 assembly layer's own commands).
 
-**Re-rolling an extension** re-rolls that window under the same frozen
-recipe (a new alternative on the window's slot, §5.3 semantics) — it never
-silently re-picks the source.
+**The document model (windows, branching, selection):**
+- **Extend creates a window slot** on the extension chain rooted at the
+  source attempt. The chain record owns an ordered window-slot list; each
+  slot holds attempt alternatives and its own selected-candidate pointer —
+  the key-slot pattern applied to windows (one selection truth per slot,
+  server-enforced, lockable by the same lock class).
+- **Selection** is a new explicit command in the module's selection family
+  (`selectWindowCandidate`, expectedRevision-gated, lock-guarded) — never
+  implicit in landing.
+- **Ancestor changes never rebind descendants.** Descendants remain bound
+  to their frozen source attempts; replacing an ancestor's selection (or
+  re-rolling it into new alternatives) marks affected descendants stale
+  with the named reason, preserving their takes — the module's §8.3
+  doctrine extended to chains. Nothing silently follows a moved ancestor.
+- **Branches are explicit and legal.** Extending an unselected alternative
+  creates a branch rooted at that alternative's attempt — the re-roll
+  shape applied to chains. The assembled preview follows ONE path: the
+  selected window candidate per slot, in slot order. Editorial selection
+  remains a separate layer over delivered clips.
+- **Motion authoring for the new time**: the extension draft owns the new
+  window's motion intent — movement + preservation text authored against
+  the window's time base, compiled through the tween dialect with the
+  prompt-time shift the carry preview discloses. The compiled caption
+  freezes into the attempt (compiler version frozen with it, as ever).
+
+**Re-rolls are two distinct actions, never conflated:**
+- **Retry** — the identical attempt, every frozen field including the
+  seed; the §7.2.2 idempotency semantics (a lost response, not a new
+  take).
+- **New alternative** — an explicitly changed, newly frozen seed (and
+  optionally other re-authored draft fields); a deliberate action the UI
+  names as such. The seed change is part of the alternative-creation
+  command, never an implicit re-roll behavior.
 
 ## 5. The continuation binding (the frozen record)
 
@@ -98,9 +128,12 @@ Every continuation attempt freezes, verbatim:
 - **The recipe and version** — the continuation mode, overlap sizing,
   schedule, steps, seed, and the recipe's version string; recipe changes
   are version changes.
-- **The resolved model fingerprints** — the exact resolved base, adapter,
-  VAE, and encoder names the window will run on (the module's wave-1
-  resolution machinery supplies them).
+- **The resolved model content identities** — not filenames: the
+  content-addressed identities (digests) of the exact weights the window
+  will run on — base, adapter, VAE, encoder. Filenames alias; weights
+  replaced under an unchanged name must fail the check. Where digest
+  evidence is unavailable for a resolved artifact, that absence is a
+  **named refusal** (identity evidence missing), never a name-only pass.
 - **The conditioning inputs** — the image references in force (unchanged
   §2 contracts) and the caption as compiled for the sampled window.
 
@@ -117,10 +150,16 @@ truthful even when the carried state it names is gone (§7).
 Two separate checks, deliberately unequal:
 
 - **The source fingerprint** — fail-closed over the SOURCE window's
-  layout, geometry, and length, plus the resolved model fingerprints, the
-  latent/state convention (terminal-zero), and the adapter identity. A
-  source that does not match its own recorded fingerprint is not
-  extendable (the named refusal says what drifted).
+  layout, geometry, and length, plus the resolved model content
+  identities, the latent/state convention (terminal-zero), and the
+  adapter identity.
+- **The target-execution comparison** — the check that matters at
+  dispatch: the TARGET's freshly resolved execution configuration (its
+  own content identities, layout, and state convention) must MATCH the
+  binding's frozen source identities and the recipe's requirements.
+  Checking only that the source matches its own record is insufficient —
+  a source rendered under weights since replaced must refuse here, by
+  name, naming the drifted artifact.
 - **The target length** — validated against the **overlap recipe**, not
   against the source's length: the target window must be a legal 17k+5
   length that satisfies the recipe's overlap and phase requirements (the
@@ -130,25 +169,66 @@ Two separate checks, deliberately unequal:
   identical lengths would prevent exactly the extension this lane exists
   for.
 
-**Both frame counts freeze at submission**: the generated count and the
-delivered count (after trim) are recorded on the attempt; recovery and
-replay use the frozen pair, never recomputed geometry.
+**Both frame counts freeze at submission, with the full coordinate
+mapping**: the attempt records the GENERATED coordinates (the raw
+window's frame range on the 17k+5 grid), the HEAD-TRIM count, and the
+DELIVERED coordinates, plus their explicit mapping (delivered frame d ↔
+generated frame d + trim). Subsequent extensions refer to the **raw
+latent's geometry and phase** (generated coordinates — the latent's own
+world) while the UI shows the corresponding **delivered-tail range**
+(the user's world). Editorial trims live entirely outside this mapping —
+they cut delivered time and never touch generated coordinates, the trim
+count, or the binding. Recovery and replay use the frozen mapping, never
+recomputed geometry. **Acceptance requires a second extension from an
+extension** — the chained handoff (generated → trim → delivered → next
+window's generated reference) proven twice, not only the first handoff.
 
-## 7. Session-scoped carried state — the named unavailable condition (ruling 2)
+## 7. The carried state — the cross-submission contract
 
-v1's carried state lives in the session: the engine's cache and the
-studio's in-memory continuation state. **When that state is lost** — an
-engine restart, a studio restart, cache eviction — the affected bindings
-enter a named condition: **continuation unavailable**.
+Set L proved the carry inside ONE graph (a direct connection that
+explicitly bypassed the pack's Save/Load). The lane's normal flow is
+**separate submissions**: render, review, extend later. The carry must
+therefore be an explicit, owned artifact — never an engine-cache
+assumption.
 
-The condition's contract:
+**The contract:**
+- **Producer**: the completion owner, at the source attempt's landing,
+  materializes the carried tail state through the pack's documented
+  cross-run mechanism (its Save path) and registers the result in the
+  studio's blob store as a **continuation artifact** — content-addressed,
+  exactly like every landed asset. Landing is incomplete until the
+  artifact registers (its preparation retries without re-rendering, the
+  frame-preparation pattern).
+- **The carry handle**: the binding's artifact identity (§5) — the
+  content-addressed digest handle. Opaque: no engine slot paths, no cache
+  keys, nothing the engine's internal lifecycle can invalidate.
+- **Consumer**: the Extend submission's graph loads the registered
+  artifact (the pack's Load path) and conditions on it. The engine cache
+  may serve as a read-through optimization, never as the source of truth.
+- **Ownership and retention**: the artifact belongs to the source
+  attempt; **live bindings pin it** — retention never collects a
+  continuation artifact referenced by a live (non-replaced) binding.
+- **Availability check**: at preflight AND again at dispatch, the
+  artifact must resolve by digest. **A miss refuses** — the named
+  **continuation unavailable** condition — and never, under any
+  circumstance, executes the source graph again to regenerate the carry.
+
+**The unavailable condition's contract** (unchanged in spirit, now
+reachable only by genuine artifact loss — disk loss, manual removal):
 - The clip **stays playable** — editorial and export never regress.
 - The binding **stays preserved** — the frozen record remains truthful
   history (§5's metadata-vs-availability separation).
 - **Never** silently reconstruct state, substitute another source or
-  window, or re-render to regenerate the carry. The unavailable state is
-  surfaced, not papered over; the user's explicit options are to re-land
-  the source chain or wait for v1.1's durable checkpoint binding.
+  window, or re-render to regenerate the carry. The user's explicit
+  options are to re-land the source chain or wait for v1.1.
+
+**Acceptance must prove the handoff**: render → review → a SEPARATE
+Extend submission carrying from the registered artifact, including the
+eviction case — the artifact removed between preflight and dispatch, the
+dispatch refusing by name, the clip playable throughout. **v1.1's
+durability increment** narrows accordingly: the audit's receipt/recovery
+probes hardening the Save/Load seam plus mid-render restart
+reconciliation for continuation attempts.
 
 ## 8. The two-readiness lifecycle
 
@@ -168,14 +248,27 @@ base (ref2va int8 + tween adapter, euler/simple, no CFG, shift 12/3,
 1344×768) plus the installed pack's conditioning nodes per their
 documented conventions (22f tail context, prompt-time shift, 24 fps).
 
-**The join recipe** — continuation mode (five_frame_anchor default vs
-latent_overlap), overlap sizing, and any stall-mitigation the probe finds
-— is **provisional until the tuning probe lands**. Set L measured a
-near-stop just after each join (alongside dE ~1.7 seams); the probe's
-measured target is the least post-join speed dip at acceptable seam and
-cost. v1 ships the honestly tuned recipe with its measured stall
-documented; the spec's acceptance claims over the join wait for the
-probe's numbers.
+**The join recipe** — **provisional until the tuning probe lands, with
+the candidates correctly attributed**: the node Set L used
+(ComfyUI-H3-Motion-Context) exposes context lengths and accepts carried
+LATENT or PIXEL context — its tuning axes are context-length sweeps and
+the latent-vs-pixel conditioning choice. The `five_frame_anchor` /
+`latent_overlap` modes named in the prior draft belong to
+**ComfyUI-Viggle-Animate-H3's chunked sampler**, a different pack: testing
+its five-frame pixel anchoring against Motion Context's latent-tail
+conditioning is a legitimate RECIPE comparison (different graphs, pack
+versions recorded), not a dropdown change on the tested node. The probe
+identifies its candidate graphs and pack versions explicitly. Set L
+measured a near-stop just after each join (alongside dE ~1.7 seams); the
+probe's measured target is the least post-join speed dip at acceptable
+seam and cost.
+
+**The release gate is an explicit maintainer acceptance, not a shipped
+measurement**: after the tuning probe, the maintainer accepts or rejects
+the tuned recipe on named axes — motion advancement, join stall,
+identity/style hold, endpoint limitations, and cost — and v1 ships what
+was accepted, with the measured record attached. "Ship the measured
+stall" means ship the stall the maintainer accepted, no more.
 
 **The single-generation lane** stays out of this spec (a recorded
 cheap-motion finding with a known ending limitation; the ending probe's
@@ -194,11 +287,14 @@ in this lane degrades into a log line.
 
 | Decision | Ruling |
 |---|---|
-| Mechanism | Motion Context tail conditioning (Set L, 9/9) |
-| v1 durability | Session-scoped; the named unavailable condition (§7); durable checkpoints are v1.1, probe-gated |
-| The join | Probe + tune in v1; ship the measured, documented stall |
-| Selection semantics | The source is an attempt/window, never a frame; trims don't move it |
-| Source vs target length | Separate checks (§6); both counts frozen |
+| Mechanism | Motion Context tail conditioning (Set L, 9/9 — three seeds, one character/arc, motion-advancement judged; long-chain quality, endpoint arrival, and cadence unestablished) |
+| The carry | An owned, content-addressed continuation artifact registered at landing (§7) — cross-submission by construction; the engine cache is never the source of truth |
+| Durability | v1.1 = the audit's receipt/recovery probes on the Save/Load seam + mid-render restart reconciliation |
+| The join | Probe + tune (correctly-attributed candidates, §9); SHIP ONLY ON the maintainer's explicit acceptance over the named axes |
+| Selection semantics | The source is an attempt/window, never a frame; trims don't move it; window slots hold their own selection truth; ancestors never silently rebind descendants; branches are explicit |
+| Re-rolls | Retry (identical, idempotent) ≠ new alternative (explicitly changed, newly frozen seed) |
+| Source vs target length | Separate checks (§6): the source fingerprint fail-closed; the target validated against the overlap recipe; the full generated/trim/delivered coordinate mapping frozen; second-extension acceptance required |
+| Model identity | Content identities (digests), not filenames; missing identity evidence is a named refusal; the target's resolved configuration is compared against the binding's frozen identities |
 | Adapter scope | Tween lane only, pending adapter-specific probes |
 | Single-lane | Out of the spec; its ending probe is research follow-up |
 | Set-K re-noising | Out; a possible separately-named variation feature |
