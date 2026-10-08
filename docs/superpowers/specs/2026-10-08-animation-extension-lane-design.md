@@ -45,7 +45,7 @@ where the lane attaches (a discriminated binding, not a widened reference).
 ## 3. Scope
 
 **In (v1):** the Extend action on landed tween-lane clips; the continuation
-binding (§5); session-scoped carried state with the named unavailable
+binding (§5); the owned carry artifact with the named unavailable
 condition (§7); the two-readiness lifecycle (§8); preflight compatibility
 and collision refusals (§10); the join recipe from the tuning probe (§9);
 the adapter scope is the tween lane only (Set L's tested conditioning —
