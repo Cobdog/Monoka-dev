@@ -215,11 +215,14 @@ type AnimationSessionState = {
   /** A corrected facing for a key's selected image (§5.1: facing follows the
    *  candidate — the clone-and-select authoring path, lock-guarded). */
   setKeyFacing(keyId: string, facing: FacingTerm | null): Promise<boolean>
-  /** Submits one tween step: flushes the intent, resolves the target step
-   *  slot from the live document (the named slot when `targetStepSlotId` is
-   *  given, else the span's last), submits the draft (a fresh idempotency
-   *  key per deliberate click). Null = the failure surface already names
-   *  it. */
+  /** Submits one tween step: SERIALIZES behind any command in flight (the
+   *  intent persist's park doctrine — review I-1: never a silent
+   *  busy-refusal of the primary action), flushes the intent, resolves the
+   *  target step slot from the live document (the named slot when
+   *  `targetStepSlotId` is given, else the span's last), submits the draft
+   *  (a fresh idempotency key per deliberate click). Null = the failure
+   *  surface already names it (or the session moved on — the open-race
+   *  ticket guard). */
   submitTweenStep(spanId: string, draft: { movement: string; preservation: string; overrides: SessionOverrideInput }, targetStepSlotId?: string): Promise<{ attemptId: string } | null>
   /** Task 10 — the review panel's commands. */
   /** The EXPLICIT reference-frame selection (§7.2.1 command 2). A frame
@@ -889,10 +892,27 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
   },
 
   submitTweenStep: async (spanId, draft, targetStepSlotId) => {
-    const current = get().document
-    if (!current || get().busy) return null
+    const ticket = openTicket
     if (!draft.movement.trim()) {
       set({ commandError: 'The movement step needs text before submission.' })
+      return null
+    }
+    // The click SERIALIZES behind any command in flight — the intent
+    // persist's own park doctrine, never a silent busy-refusal (review I-1):
+    // the I10 pose flush leaves an await between the click and this entry,
+    // and the movement settle timer's PARKED persist can wake in the
+    // microtask gap between the flush annotate's busy-clear and this call,
+    // grab busy, and turn the old `get().busy` guard into a silent null —
+    // pose and intent persisted, the primary action dropped with no named
+    // error anywhere. Parking means the submit runs once the chain drains
+    // (the wire order annotate → intent-persist → submit, each awaited);
+    // a superseded ticket (the session moved on) still reports nothing,
+    // and a submit that cannot run after draining answers a NAMED error.
+    while (get().busy && ticket === openTicket) await whenIdle()
+    if (ticket !== openTicket) return null
+    const current = get().document
+    if (current === null) {
+      set({ commandError: 'The animation document is no longer open — the submission stopped. Reopen it and submit again.' })
       return null
     }
     // The flush: the span's DURABLE intent catches up to the submitted draft
@@ -911,7 +931,6 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
       set({ commandError: preview.problems.join(' ') || 'The tween references are not resolvable.' })
       return null
     }
-    const ticket = openTicket
     set({ busy: true, commandError: null })
     try {
       // A fresh idempotency key per deliberate click — §7.2.2's retry key
