@@ -587,7 +587,7 @@ test('(g) selectRollingReference sets the step slot pointer and never creates a 
   // Command 2 — selectRollingReference: the step slot's pointer, nothing else.
   row = anim.selectRollingReference(docG.id, spanG.id, attemptG1.attempt.id, 11, row.revision)
   spanG = row.body.spans[0]
-  assert.deepEqual(spanG.stepSlots[0].selectedRollingReference, { attemptId: attemptG1.attempt.id, frameIndex: 11 })
+  assert.deepEqual(spanG.stepSlots[0].selectedRollingReference, { attemptId: attemptG1.attempt.id, frameIndex: 11, poseDescription: null, facing: null })
   assert.equal(row.body.keys.length, 2, 'selecting a rolling reference never creates a key')
   assert.equal(row.body.keys.find((k) => k.id === keyP).selectedCandidateId, cP.id)
   assert.equal(row.body.keys.find((k) => k.id === keyQ).selectedCandidateId, cQ.id)
@@ -772,6 +772,100 @@ test('(g2) the spanless sequence lane, reorderEditorial, and removeContribution 
 })
 
 // ---------------------------------------------------------------------------
+// (g3) wave 2a — the rolling-reference annotation (§6.4's
+//      inspectable-and-correctable ruling): one {poseDescription, facing}
+//      riding the step slot's selection pointer, revision-gated and
+//      transactional like every authoring command, staleness-propagating
+//      with the 'pose' reason, and bound to a LIVE selection.
+// ---------------------------------------------------------------------------
+
+test('(g3) annotateRollingReference — transactional, pointer-bound, pose-stale; selection reset clears', () => {
+  docG = anim.createDocument({ projectId, name: 'Golf-annotation', binding: makeBinding() })
+  const cP = makeCandidate()
+  const cQ = makeCandidate()
+  let row = anim.addKeyCandidate(docG.id, keyP, cP, 0)
+  row = anim.addKeyCandidate(docG.id, keyQ, cQ, row.revision)
+  row = anim.selectKeyCandidate(docG.id, keyP, cP.id, row.revision)
+  row = anim.selectKeyCandidate(docG.id, keyQ, cQ.id, row.revision)
+  row = anim.insertSpan(docG.id, { fromKeyId: keyP, toKeyId: keyQ, intent: { movement: 'walks two steps', preservation: 'silhouette intact' } }, row.revision)
+  const span = row.body.spans[0]
+  const step = span.stepSlots[0].id
+
+  // Two landed takes on the slot — the annotation's subject and the reset's.
+  const takeOne = recordAttemptSimple(anim, docG.id, 'tween', step, 'idem-g3-a', { documentRevision: row.revision })
+  anim.landCandidate(takeOne.attempt.id, { assetReference: { assetId: 'clip-g3-a', relPath: 'takes/clip-g3-a.mp4', kind: 'video' }, frameCount: 22, earlierRevision: false })
+  const takeTwo = recordAttemptSimple(anim, docG.id, 'tween', step, 'idem-g3-b', { documentRevision: row.revision })
+  anim.landCandidate(takeTwo.attempt.id, { assetReference: { assetId: 'clip-g3-b', relPath: null, kind: 'video' }, frameCount: 22, earlierRevision: false })
+  row = anim.getDocument(docG.id)
+
+  // No pointer yet: the annotation is bound to a LIVE selection — a 400.
+  assert.throws(
+    () => anim.annotateRollingReference(docG.id, span.id, step, { poseDescription: 'weight forward', facing: 'screen-left' }, row.revision),
+    (err) => err instanceof AnimationRuleError && err.status === 400 && /no selected rolling reference/.test(err.message),
+    'annotating a slot with no selection is a state refusal',
+  )
+
+  // Select, then annotate in place — correctable, exactly as the ruling says.
+  row = anim.selectRollingReference(docG.id, span.id, takeOne.attempt.id, 11, row.revision)
+  row = anim.annotateRollingReference(docG.id, span.id, step, { poseDescription: 'weight forward over the planted left foot', facing: 'screen-left' }, row.revision)
+  assert.deepEqual(
+    row.body.spans[0].stepSlots[0].selectedRollingReference,
+    { attemptId: takeOne.attempt.id, frameIndex: 11, poseDescription: 'weight forward over the planted left foot', facing: 'screen-left' },
+    'the annotation rides the selection pointer',
+  )
+  assert.equal(row.body.spans[0].stale, true, 'the annotation marks the span stale')
+  assert.ok(row.body.spans[0].staleReasons.includes('pose'), 'with the pose reason — the same class as a key-candidate pose change')
+  // The command's own book: the revision gate held (one bump), and nothing
+  // outside the pointer moved — no keys, candidates, selections, or attempts.
+  assert.equal(row.revision, anim.getDocument(docG.id).revision)
+  assert.equal(row.body.keys.length, 2)
+  assert.equal(row.body.keys.find((k) => k.id === keyP).candidates.length, 1)
+  assert.equal(row.body.keys.find((k) => k.id === keyP).selectedCandidateId, cP.id)
+  assert.deepEqual(row.body.spans[0].stepSlots[0].attempts, [takeOne.attempt.id, takeTwo.attempt.id], 'the landed takes are untouched (§8.3)')
+
+  // Correctable in place: a second annotation UPDATES, and clearing works.
+  row = anim.annotateRollingReference(docG.id, span.id, step, { poseDescription: null, facing: 'back to camera' }, row.revision)
+  assert.deepEqual(
+    row.body.spans[0].stepSlots[0].selectedRollingReference,
+    { attemptId: takeOne.attempt.id, frameIndex: 11, poseDescription: null, facing: 'back to camera' },
+    'a re-annotation corrects in place (null clears the pose)',
+  )
+
+  // The transactional gate: a stale expectedRevision loses to the current row.
+  assert.throws(
+    () => anim.annotateRollingReference(docG.id, span.id, step, { poseDescription: 'stale write', facing: null }, row.revision - 1),
+    (err) => err instanceof AnimationConflictError && err.currentRevision === row.revision,
+    'a stale expectedRevision is a conflict carrying the current document',
+  )
+  assert.equal(
+    anim.getDocument(docG.id).body.spans[0].stepSlots[0].selectedRollingReference.poseDescription,
+    null,
+    'the refused write persisted nothing',
+  )
+
+  // Refusals with their statuses: a missing span/slot is a 404; a facing
+  // outside the vocabulary and a non-string pose are 400s.
+  assert.throws(() => anim.annotateRollingReference(docG.id, uuid(), step, { poseDescription: null, facing: null }, row.revision), (err) => err.status === 404, 'an unknown span is a 404')
+  assert.throws(() => anim.annotateRollingReference(docG.id, span.id, uuid(), { poseDescription: null, facing: null }, row.revision), (err) => err.status === 404, 'an unknown step slot is a 404')
+  assert.throws(() => anim.annotateRollingReference(docG.id, span.id, step, { poseDescription: null, facing: 'leftward' }, row.revision), (err) => err.status === 400, 'a non-vocabulary facing is a 400')
+  assert.throws(() => anim.annotateRollingReference(docG.id, span.id, step, { poseDescription: 7, facing: null }, row.revision), (err) => err.status === 400, 'a non-string pose is a 400')
+
+  // The selection reset: re-selecting the SAME frame keeps the authored
+  // annotation (an idempotent re-click must not destroy authored work)…
+  row = anim.selectRollingReference(docG.id, span.id, takeOne.attempt.id, 11, row.revision)
+  assert.equal(row.body.spans[0].stepSlots[0].selectedRollingReference.facing, 'back to camera', 'the same-pointer re-select keeps the annotation')
+  // …while selecting a DIFFERENT rolling reference starts unannotated — the
+  // new frame's pose is unknown until authored.
+  row = anim.selectRollingReference(docG.id, span.id, takeTwo.attempt.id, 3, row.revision)
+  assert.deepEqual(
+    row.body.spans[0].stepSlots[0].selectedRollingReference,
+    { attemptId: takeTwo.attempt.id, frameIndex: 3, poseDescription: null, facing: null },
+    'a different rolling reference resets the annotation to nulls',
+  )
+})
+
+
+// ---------------------------------------------------------------------------
 // (h) the project-archive round-trip (spec §11.3 scope: ordinary project
 //     preservation must include the animation records + referenced blobs)
 // ---------------------------------------------------------------------------
@@ -806,17 +900,17 @@ test('(h) project archive round-trips animation documents, attempts, and referen
   assert.ok(landed.attempt.result, 'the sequence landing persists its result (clips surface through editorial selection)')
 
   const { archive, manifest } = exportProjectArchive(documentStore, projectId)
-  assert.equal(manifest.counts.animationDocuments, 7, 'all seven authored documents ride the archive')
-  assert.equal(manifest.counts.animationAttempts, 7, 'all seven attempts ride the archive')
+  assert.equal(manifest.counts.animationDocuments, 8, 'all eight authored documents ride the archive (g3 added the annotation document)')
+  assert.equal(manifest.counts.animationAttempts, 9, 'all nine attempts ride the archive (g3 added two tween takes)')
   assert.ok(manifest.blobs.some((b) => b.path === registered.relPath && b.hash === registered.hash), 'the referenced blob rides the archive')
-  // The three fabricated engine-output relPaths (gen-d1/gen-e1/clip-g1) were
-  // never registered as blobs — the archive records them as VISIBLE missing
-  // entries (the §7 idiom: never a silent omission while counts claim full
-  // coverage). In production the completion owner registers real outputs
+  // The four fabricated engine-output relPaths (gen-d1/gen-e1/clip-g1/clip-g3-a)
+  // were never registered as blobs — the archive records them as VISIBLE
+  // missing entries (the §7 idiom: never a silent omission while counts claim
+  // full coverage). In production the completion owner registers real outputs
   // before landing (task 4).
   assert.deepEqual(
     manifest.missingBlobs.map((b) => b.path).sort(),
-    ['takes/clip-g1.mp4', 'takes/gen-d1.mp4', 'takes/gen-e1.mp4'],
+    ['takes/clip-g1.mp4', 'takes/clip-g3-a.mp4', 'takes/gen-d1.mp4', 'takes/gen-e1.mp4'],
     'unregistered referenced paths are visible, never silently dropped',
   )
 

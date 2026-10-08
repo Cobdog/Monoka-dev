@@ -266,6 +266,13 @@ export const animationApi = {
   selectRollingReference: (documentId: string, spanId: string, attemptId: string, frameIndex: number, expectedRevision: number) =>
     post<{ document: unknown }>('/api/lan/animation/select/rolling-reference', { documentId, spanId, attemptId, frameIndex, expectedRevision }).then(documentOf),
 
+  /** Wave 2a (§6.4's inspectable-and-correctable ruling): the image-bound
+   *  annotation for a step slot's SELECTED rolling reference — the full
+   *  {poseDescription, facing} rides the wire (the adapter merges a partial
+   *  patch over the live pointer before calling). Null fields clear. */
+  annotateRollingReference: (documentId: string, spanId: string, stepSlotId: string, annotation: { poseDescription: string | null; facing: FacingTerm | null }, expectedRevision: number) =>
+    post<{ document: unknown }>('/api/lan/animation/annotate/rolling-reference', { documentId, spanId, stepSlotId, annotation, expectedRevision }).then(documentOf),
+
   /** The editorial contribution selection (§7.2.1 command 3, task 13): a
    *  TWEEN clip contributes through its span; `spanId: null` names the
    *  SPANLESS lane (a sequence window take, §11.2). One contribution per

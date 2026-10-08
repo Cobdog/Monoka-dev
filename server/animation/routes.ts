@@ -10,9 +10,11 @@
  *      durable, not callback-changed), the versioned binding update, the
  *      key and span command routes (discriminated by `op`, every branch
  *      expectedRevision-gated through the store's transactions), the THREE
- *      selection commands as distinct routes (§7.2.1), and the attempt
- *      surface (submit / state / cancel / extract-frame / retry-preparation)
- *      delegating to the rendering service. The failure mapping is the
+ *      selection commands as distinct routes (§7.2.1) plus the wave-2a
+ *      rolling-reference annotation route in the same shape (§6.4), and
+ *      the attempt surface (submit / state / cancel / extract-frame /
+ *      retry-preparation) delegating to the rendering service. The failure
+ *      mapping is the
  *      documents block's:
  *      AnimationConflictError → 409 WITH the current document (the rebase
  *      surface), AnimationRuleError → 400/404 with the reason,
@@ -56,6 +58,7 @@ import {
   ANIMATION_MEDIA,
   FACING_TERMS,
   animationInputHash,
+  isFacingTerm,
   isMediumString,
   isUuid,
   type AnimationTool,
@@ -405,8 +408,12 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       // The ACTUAL current rolling reference (§6.4): the promoted frame from
       // the last landed step before this one — falling back to the span's
       // start key while the chain has landed nothing. The promoted frame's
-      // pose belongs to the frame, not the document: it carries none, and
-      // the compiler flags that honestly as a hint. The promoted frame rides
+      // pose belongs to the frame, not the document: wave 2a binds it to the
+      // selection pointer as the authorable ANNOTATION (§6.4's
+      // inspectable-and-correctable ruling), and this resolution reads it —
+      // so a reviewed frame's authored pose/facing reach every later step's
+      // caption. An UNANNOTATED pointer still carries nulls, and the
+      // compiler flags that honestly as a hint. The promoted frame rides
       // as the marker (promotedNear) — the submission resolves it to the
       // EXTRACTED frame image before freezing (the task-15 flip: the frozen
       // reference is an image asset whether the engine lists decoded frames
@@ -419,7 +426,7 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
         if (!rolling) continue
         const attempt = store.getAttempt(rolling.attemptId)
         if (!attempt?.result) throw new AnimationRuleError(`The rolling reference attempt ${rolling.attemptId} holds no landed clip.`, 400)
-        near = { assetReference: attempt.result.candidate.assetReference, pose: { poseDescription: null, facing: null } }
+        near = { assetReference: attempt.result.candidate.assetReference, pose: { poseDescription: rolling.poseDescription, facing: rolling.facing } }
         promotedNear = rolling
         break
       }
@@ -734,6 +741,32 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
         const frameIndex = body.frameIndex
         if (!isNonNegativeInt(frameIndex)) throw new AnimationRuleError('frameIndex must be a non-negative integer.', 400)
         return store.selectRollingReference(documentIdFrom(body), uuidField(body, 'spanId'), uuidField(body, 'attemptId'), frameIndex, expectedRevision)
+      })
+    }
+
+    if (pathname === '/api/lan/animation/annotate/rolling-reference' && request.method === 'POST') {
+      // Wave 2a (§6.4, the 2026-10-07 ruling): the annotation is an explicit,
+      // inspectable, correctable document mutation — the same command shape
+      // as the three selection commands (distinct route, expectedRevision,
+      // document-changed), bound to the step slot's LIVE selection pointer.
+      return authoring(response, request, 'annotate.rolling-reference', (body, expectedRevision) => {
+        const annotation = recordField(body, 'annotation', 'The annotation needs a pose description (text or null) and a facing (a vocabulary term or null).')
+        const { poseDescription, facing } = annotation
+        if (poseDescription !== undefined && poseDescription !== null && (typeof poseDescription !== 'string' || poseDescription.length > TEXT_LIMIT)) {
+          throw new AnimationRuleError(`The pose description must be text of at most ${TEXT_LIMIT} characters (or null to clear it).`, 400)
+        }
+        if (facing !== undefined && facing !== null && !isFacingTerm(facing)) {
+          throw new AnimationRuleError('The facing must be one of: toward camera / back to camera / screen-left / screen-right (or null to clear it).', 400)
+        }
+        // An explicitly empty pose description IS a clear — the annotation's
+        // null and its empty string name the same truth (no description).
+        return store.annotateRollingReference(
+          documentIdFrom(body),
+          uuidField(body, 'spanId'),
+          uuidField(body, 'stepSlotId'),
+          { poseDescription: poseDescription === undefined || poseDescription === '' ? null : poseDescription, facing: facing === undefined ? null : facing },
+          expectedRevision,
+        )
       })
     }
 

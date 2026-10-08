@@ -8,7 +8,12 @@
  *   FIRST FRAME card — the ACTUAL current rolling reference (§6.4: the last
  *   landed step's promoted frame once the chain rolls, else the start key's
  *   selected image; never a frozen copy of the span's original endpoint).
- *   The source is LABELED, because the distinction is the point.
+ *   The source is LABELED, because the distinction is the point. A promoted
+ *   frame's pose/facing author right here (wave 2a): the §6.4 image-bound
+ *   ANNOTATION rides the step slot's selection pointer — a debounced pose
+ *   draft (the movement draft's settle doctrine, pointer-scoped) plus the
+ *   endpoint pickers' facing chip pattern — while the start key's pose
+ *   stays candidate-bound and read-only (§5.1).
  *   TARGET END FRAME card — the destination key's selected image, pose
  *   verbatim (§5.1: the description follows the image candidate).
  *
@@ -100,6 +105,11 @@ export type SpanInspectorProps = {
   /** A facing correction for a key's selected image — the adapter's
    *  clone-and-select command (§5.1: facing follows the candidate). */
   onFacingChange(keyId: string, facing: FacingTerm | null): Promise<boolean>
+  /** Wave 2a (§6.4): the image-bound annotation for the step slot's
+   *  SELECTED rolling reference — a partial patch merged over the live
+   *  pointer by the adapter, so a pose settle and a facing flip never
+   *  clobber each other. */
+  onAnnotateRolling(spanId: string, stepSlotId: string, patch: { poseDescription?: string | null; facing?: FacingTerm | null }): Promise<boolean>
   onSubmit(spanId: string, draft: SpanInspectorSubmitDraft): Promise<{ attemptId: string } | null>
   busy: boolean
 }
@@ -152,7 +162,7 @@ export function FacingPicker({ keyEntity, busy, onChange, id, group }: { keyEnti
   )
 }
 
-export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntentChange, onFacingChange, onSubmit, busy }: SpanInspectorProps) {
+export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntentChange, onFacingChange, onAnnotateRolling, onSubmit, busy }: SpanInspectorProps) {
   // The authoring draft — seeded once per span (the shell keys the mount by
   // span id); `committed` is the debounced projection the preview compiles.
   const [draft, setDraft] = useState(() => ({ movement: span.intent.movement, preservation: span.intent.preservation }))
@@ -165,6 +175,11 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
   // stale seeded draft; a naive "persisted ⇒ follow again" fix clobbered
   // them with the user's own persisted words one refresh later).
   const [userTyped, setUserTyped] = useState(false)
+  // The rolling-reference annotation draft (wave 2a, §6.4): bound to the
+  // SELECTION POINTER, not the span — a different promoted frame re-seeds
+  // the editor from the document's (null) annotation, and selecting a frame
+  // behind the page's back resets it through the same rule.
+  const [poseDraft, setPoseDraft] = useState<{ pointer: string; text: string } | null>(null)
   // Span-scoped overrides: a null medium inherits the bound session's.
   const [mediumOverride, setMediumOverride] = useState<MediumString | null>(span.overrides.medium ?? null)
   const [scene, setScene] = useState(span.overrides.scene ?? '')
@@ -201,6 +216,52 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
     }, DRAFT_SETTLE_MS)
     return () => window.clearTimeout(timer)
   }, [userTyped, draft.movement, draft.preservation, span.id, span.intent.movement, span.intent.preservation, onIntentChange])
+
+  // ---- the rolling-reference annotation (wave 2a, §6.4) ----------------------
+  //
+  // The promoted frame's pose/facing ride the step slot's selection pointer
+  // as an IMAGE-BOUND ANNOTATION — inspectable and correctable right here,
+  // the same authority the key-bound poses have through their pickers. The
+  // editor exists ONLY for a promoted frame: the start key's pose belongs to
+  // its selected candidate (§5.1) and keeps its read-only display.
+  const nearForAnnotation = preview.rollingReference
+  const rollingSource = nearForAnnotation.ok && nearForAnnotation.source.kind === 'promoted-frame' ? nearForAnnotation.source : null
+  const rollingPointerKey = rollingSource === null
+    ? null
+    : `${rollingSource.stepSlotId}:${rollingSource.attemptId}:${rollingSource.frameIndex}`
+  const rollingPose = rollingSource !== null && nearForAnnotation.ok ? nearForAnnotation.pose.poseDescription : null
+  const rollingFacing = rollingSource !== null && nearForAnnotation.ok ? nearForAnnotation.pose.facing : null
+
+  // The editor follows the SELECTION POINTER: a different promoted frame (or
+  // the chain falling back to the start key) re-seeds the draft from the
+  // document's annotation — the new selection's pose is unknown until
+  // authored, and the reset the selection command writes must reach the
+  // editor. The SAME pointer keeps the user's draft: neither the command's
+  // own landing nor an external refresh may re-arm over authored text (the
+  // intent draft's doctrine, scoped to the pointer).
+  useEffect(() => {
+    setPoseDraft((current) => {
+      if (rollingPointerKey === null) return null
+      if (current !== null && current.pointer === rollingPointerKey) return current
+      return { pointer: rollingPointerKey, text: rollingPose ?? '' }
+    })
+  }, [rollingPointerKey, rollingPose])
+  const poseDraftText = poseDraft !== null && poseDraft.pointer === rollingPointerKey ? poseDraft.text : rollingPose ?? ''
+
+  // The annotation settle: 400ms after the last keystroke the pose persists
+  // through the annotate command (the adapter parks it behind a busy
+  // store), and the refreshed document's pointer recompiles the preview —
+  // every later step's caption freezes the authored pose. Empty text IS a
+  // clear (null).
+  useEffect(() => {
+    if (rollingSource === null) return
+    if (poseDraftText === (rollingPose ?? '')) return
+    const stepSlotId = rollingSource.stepSlotId
+    const timer = window.setTimeout(() => {
+      void onAnnotateRolling(span.id, stepSlotId, { poseDescription: poseDraftText.trim() === '' ? null : poseDraftText })
+    }, DRAFT_SETTLE_MS)
+    return () => window.clearTimeout(timer)
+  }, [rollingSource, poseDraftText, rollingPose, span.id, onAnnotateRolling])
 
   /** The compile overrides the preview AND the submission share — one object,
    *  so the frozen caption is byte-identical to the previewed one. Empty
@@ -281,19 +342,66 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
                 assetId={near.assetReference.assetId}
                 alt="The rolling reference image"
               />
-              {near.pose.poseDescription !== null ? (
-                <p className="anim-frame-pose" data-anim-frame-pose>{near.pose.poseDescription}</p>
+              {near.source.kind === 'promoted-frame' ? (
+                <div className="anim-rolling-annotation" data-anim-rolling-annotation>
+                  <Field
+                    label="Pose description"
+                    htmlFor="anim-inspector-pose"
+                    hint="Bound to the selected rolling frame (§6.4): it compiles into the FIRST FRAME line of every later step's caption and persists as you settle. Until authored, the caption states the frame's reference only and flags the missing facing."
+                  >
+                    <textarea
+                      id="anim-inspector-pose"
+                      className="anim-inspector-text"
+                      data-anim-inspector-pose
+                      rows={2}
+                      value={poseDraftText}
+                      onChange={(event) => {
+                        if (rollingPointerKey === null) return
+                        setPoseDraft({ pointer: rollingPointerKey, text: event.target.value })
+                      }}
+                    />
+                  </Field>
+                  <Field
+                    label="Facing"
+                    htmlFor="anim-inspector-facing-rolling"
+                    hint="The closed dialect vocabulary for this frame; click the checked chip to clear it (a frame with no facing is hint-noted, never refused)."
+                  >
+                    <ChipGroup
+                      id="anim-inspector-facing-rolling"
+                      className="anim-facings"
+                      data-anim-rolling-facing
+                      exclusive
+                      aria-label="Facing for the rolling reference"
+                      value={rollingFacing !== null ? facingChipId(rollingFacing, 'rolling') : null}
+                      onChange={(next) => {
+                        if (rollingSource === null) return
+                        const picked = next as string
+                        const current = rollingFacing !== null ? facingChipId(rollingFacing, 'rolling') : null
+                        if (current !== null && picked === current) {
+                          void onAnnotateRolling(span.id, rollingSource.stepSlotId, { facing: null })
+                          return
+                        }
+                        const term = facingFromChipId(picked, 'rolling')
+                        if (term !== null) void onAnnotateRolling(span.id, rollingSource.stepSlotId, { facing: term })
+                      }}
+                    >
+                      {FACING_TERMS.map((term) => (
+                        <Chip key={term} id={facingChipId(term, 'rolling')} variant="radio" className="anim-chip" disabled={busy}>{term}</Chip>
+                      ))}
+                    </ChipGroup>
+                  </Field>
+                </div>
               ) : (
-                <p className="anim-frame-pose anim-frame-pose-empty" data-anim-frame-pose-empty>
-                  {near.source.kind === 'promoted-frame'
-                    ? 'The promoted frame carries no pose description in this build — the caption states its reference only, and flags the missing facing.'
-                    : 'This image carries no pose description yet.'}
-                </p>
-              )}
-              {near.source.kind === 'start-key' && fromKey !== null ? (
-                <FacingPicker keyEntity={fromKey} busy={busy} id="anim-inspector-facing-first" group="first" onChange={(facing) => { void onFacingChange(fromKey.id, facing) }} />
-              ) : (
-                <p className="anim-frame-source">Facing: none — a promoted frame carries none in this build; the caption hint notes it.</p>
+                <>
+                  {near.pose.poseDescription !== null ? (
+                    <p className="anim-frame-pose" data-anim-frame-pose>{near.pose.poseDescription}</p>
+                  ) : (
+                    <p className="anim-frame-pose anim-frame-pose-empty" data-anim-frame-pose-empty>This image carries no pose description yet.</p>
+                  )}
+                  {fromKey !== null ? (
+                    <FacingPicker keyEntity={fromKey} busy={busy} id="anim-inspector-facing-first" group="first" onChange={(facing) => { void onFacingChange(fromKey.id, facing) }} />
+                  ) : null}
+                </>
               )}
             </>
           ) : (

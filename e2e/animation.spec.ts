@@ -1063,7 +1063,7 @@ type SliceDocument = {
           provenance: { sourceTake?: string; sourceFrame?: number; generatingOp?: string }
         }>
       }>
-      spans: Array<{ id: string; fromKeyId: string; toKeyId: string; intent: { movement: string; preservation: string }; stepSlots: Array<{ id: string; attempts: string[]; selectedRollingReference: { attemptId: string; frameIndex: number } | null }> }>
+      spans: Array<{ id: string; fromKeyId: string; toKeyId: string; intent: { movement: string; preservation: string }; stepSlots: Array<{ id: string; attempts: string[]; selectedRollingReference: { attemptId: string; frameIndex: number; poseDescription: string | null; facing: string | null } | null }> }>
       editorial: Array<{ id: string; spanId: string | null; attemptId: string; inFrame: number; outFrame: number; holdDuration: number }>
     }
     attempts: Array<{ attemptId: string; tool: string; targetId: string; execution: string }>
@@ -1194,7 +1194,7 @@ test('the §12.2 vertical slice — leave, land, return, review, select, continu
     // near reference).
     const selected = await readAnimationDocument(request, seeded.documentId)
     const selectedSpan = selected.document.body.spans.find((entry) => entry.id === seeded.spanId)!
-    expect(selectedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 5 })
+    expect(selectedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 5, poseDescription: null, facing: null })
     expect(selected.document.revision).toBe(seeded.revision + 1)
     await expect(page.locator(`[data-anim-span="${seeded.spanId}"]`)).toHaveAttribute('data-anim-span-stale', 'true')
 
@@ -1219,7 +1219,7 @@ test('the §12.2 vertical slice — leave, land, return, review, select, continu
     const continued = await readAnimationDocument(request, seeded.documentId)
     const continuedSpan = continued.document.body.spans.find((entry) => entry.id === seeded.spanId)!
     expect(continuedSpan.stepSlots).toHaveLength(2)
-    expect(continuedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 5 })
+    expect(continuedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 5, poseDescription: null, facing: null })
     const stepTwoAttempt = continued.document.attempts.find((entry) => continuedSpan.stepSlots[1]!.attempts.includes(entry.attemptId))!
     await expect(back).toHaveAttribute('data-anim-review-attempt', stepTwoAttempt.attemptId, { timeout: 15_000 })
     await expect(back).toContainText('step 2')
@@ -1306,6 +1306,100 @@ test('a trailing empty step slot receives the continuation — no second hole, t
     expect(span.stepSlots).toHaveLength(2)
     expect(span.stepSlots[1]!.id).toBe(stepTwoId)
     expect(Object.keys(await engine.historyAll())).toHaveLength(2)
+    await expect(page.locator('[data-anim-command-error]')).toHaveCount(0)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  // The fake-engine child actually exited — never orphaned.
+  expect(engineExited).toBe(true)
+})
+
+// Wave 2a (the live review's #4, §6.4's ruling): the promoted frame's pose
+// and facing are AUTHORABLE — the image-bound annotation rides the step
+// slot's selection pointer, edits through the inspector's FIRST FRAME card,
+// and recompiles the caption preview; the next submission freezes it
+// byte-identically.
+test('annotating the rolling reference recompiles the preview and freezes verbatim (inspector)', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  await engine.control({ steps: 6, stepDelayMs: 150 })
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Rolling annotation')
+
+    // Step 1 lands; the reviewer selects frame 3 (the pointer), and the chain
+    // appends step 2 — the submission target whose near reference IS that
+    // annotated frame.
+    const first = await request.post('/api/lan/animation/attempts', { data: tweenDraftBody(seeded.documentId, seeded.stepSlotId, `anim-e2e-ann-1-${Date.now()}`) })
+    expect(first.ok(), `step 1 submits (${await first.text()})`).toBe(true)
+    const attemptId = ((await first.json()) as { attemptId: string }).attemptId
+    await expect.poll(async () => {
+      const view = await readAttemptView(request, attemptId)
+      return view.attempt.execution === 'ready' && view.attempt.candidate !== null
+    }, { timeout: 30_000 }).toBe(true)
+    const landed = await readAnimationDocument(request, seeded.documentId)
+    const selected = await request.post('/api/lan/animation/select/rolling-reference', {
+      data: { documentId: seeded.documentId, spanId: seeded.spanId, attemptId, frameIndex: 3, expectedRevision: landed.document.revision },
+    })
+    expect(selected.ok(), `the rolling reference selects (${await selected.text()})`).toBe(true)
+    const appended = await request.post('/api/lan/animation/spans', {
+      data: { op: 'append-step-slot', documentId: seeded.documentId, spanId: seeded.spanId, expectedRevision: landed.document.revision + 1 },
+    })
+    expect(appended.ok(), `the step slot appends (${await appended.text()})`).toBe(true)
+
+    // The inspector's FIRST FRAME card names the promoted source and carries
+    // the annotation editor (the start-key arm keeps its read-only pose).
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+    await page.goto(animationUrl)
+    await page.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    await expect(page.locator('[data-anim-inspector]')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('[data-anim-frame-source="promoted-frame"]')).toBeVisible()
+    await expect(page.locator('[data-anim-rolling-annotation]')).toBeVisible()
+    await expect(page.locator('[data-anim-frame="first"] [data-anim-frame-pose]')).toHaveCount(0, 'the promoted-frame card carries the EDITOR, not a read-only pose paragraph')
+    await page.locator('[data-anim-caption-preview] summary').click()
+    const caption = page.locator('[data-anim-caption-text]')
+    await expect(caption).toBeVisible()
+    // Unannotated: the rolling frame carries no facing — the honest hint.
+    await expect(page.locator('[data-anim-caption-hint="missing-facing"]')).toBeVisible()
+
+    // Type the pose: the settle persists the annotation, the fabric refresh
+    // lands it, and the preview recomputes — FIRST FRAME carries the authored
+    // text (within the debounced wait).
+    const POSE = 'weight settled low over the balls of the feet'
+    await page.locator('[data-anim-inspector-pose]').fill(POSE)
+    await expect(caption).toContainText(`FIRST FRAME (Reference 1): ${POSE}`, { timeout: 10_000 })
+
+    // Flip the facing chip: the term lands in the SAME line, and the
+    // missing-facing hint leaves — the frame states its facing now.
+    await page.locator('#anim-facing-rolling-screen-left').click()
+    await expect(caption).toContainText(`FIRST FRAME (Reference 1): ${POSE}, facing screen-left`, { timeout: 10_000 })
+    await expect(page.locator('[data-anim-caption-hint="missing-facing"]')).toHaveCount(0, { timeout: 10_000 })
+    // The document's pointer carries the annotation (durable truth), and the
+    // annotation marked the span stale 'pose' (§6.4's reference state).
+    const annotated = await readAnimationDocument(request, seeded.documentId)
+    const annotatedSpan = annotated.document.body.spans.find((entry) => entry.id === seeded.spanId)!
+    expect(annotatedSpan.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId, frameIndex: 3, poseDescription: POSE, facing: 'screen-left' })
+    await expect(page.locator(`[data-anim-span="${seeded.spanId}"]`)).toHaveAttribute('data-anim-span-stale', 'true')
+
+    // The submission freezes the PREVIEWED caption byte-identically (the
+    // byte-identity pin, promoted-frame + annotation edition).
+    const previewed = await caption.textContent()
+    expect(previewed, 'the previewed caption is the real compiled text').toContain(`FIRST FRAME (Reference 1): ${POSE}, facing screen-left`)
+    await page.locator('[data-anim-inspector-submit]').click()
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      const span = view.document.body.spans.find((entry) => entry.id === seeded.spanId)!
+      return span.stepSlots[1]!.attempts.length
+    }, { timeout: 45_000 }).toBe(1)
+    const settled = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { attempts: Array<{ tool: string; targetId: string; caption: string; compilerVersion: string }> } }
+    const stepTwo = settled.document.attempts.find((entry) => entry.tool === 'tween' && entry.targetId !== seeded.stepSlotId)!
+    expect(stepTwo.caption).toBe(previewed)
+    expect(stepTwo.compilerVersion).toBe('1')
     await expect(page.locator('[data-anim-command-error]')).toHaveCount(0)
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
@@ -1639,7 +1733,7 @@ test('a re-roll adds an alternative take without replacing the selection (review
     const rolled = await readAnimationDocument(request, seeded.documentId)
     const rolledSlot = rolled.document.body.spans.find((entry) => entry.id === seeded.spanId)!.stepSlots[0]!
     expect(rolledSlot.attempts).toEqual([takeOne.attemptId, takeTwo])
-    expect(rolledSlot.selectedRollingReference).toEqual({ attemptId: takeOne.attemptId, frameIndex: 3 })
+    expect(rolledSlot.selectedRollingReference).toEqual({ attemptId: takeOne.attemptId, frameIndex: 3, poseDescription: null, facing: null })
 
     // Switching takes is an EXPLICIT user act: reviewing take 2 and choosing
     // frame 8 moves the selection — the user did it, not the system.
@@ -1648,7 +1742,7 @@ test('a re-roll adds an alternative take without replacing the selection (review
     await panel.locator('[data-anim-review-frame="8"]').click()
     await expect(panel.locator('[data-anim-review-frame="8"]')).toHaveAttribute('data-anim-frame-selected', 'true')
     const switched = await readAnimationDocument(request, seeded.documentId)
-    expect(switched.document.body.spans.find((entry) => entry.id === seeded.spanId)!.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId: takeTwo, frameIndex: 8 })
+    expect(switched.document.body.spans.find((entry) => entry.id === seeded.spanId)!.stepSlots[0]!.selectedRollingReference).toEqual({ attemptId: takeTwo, frameIndex: 8, poseDescription: null, facing: null })
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
     await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)

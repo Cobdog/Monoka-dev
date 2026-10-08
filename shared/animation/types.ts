@@ -53,7 +53,15 @@ export type KeyCandidate = {
 
 export type KeySlot = { id: string; order: number; selectedCandidateId: string | null; candidates: KeyCandidate[]; lock: boolean }
 
-export type TweenStepSlot = { id: string; attempts: string[]; selectedRollingReference: { attemptId: string; frameIndex: number } | null }
+/** One tween step slot (§5.2/§6.4): its landed attempt alternatives plus the
+ *  EXPLICITLY selected rolling reference — a frame of one of its landed
+ *  takes. Wave 2a (2026-10-07 ruling) widened the pointer with the frame's
+ *  IMAGE-BOUND ANNOTATION (§6.4 "inspectable and correctable"): one
+ *  {poseDescription, facing} per selected frame, correctable in place,
+ *  reset to nulls by selecting a different rolling reference — the promoted
+ *  frame's pose belongs to the frame, so it rides the only pointer that
+ *  names it. Key-candidate pose/facing stays candidate-bound (§5.1). */
+export type TweenStepSlot = { id: string; attempts: string[]; selectedRollingReference: { attemptId: string; frameIndex: number; poseDescription: string | null; facing: FacingTerm | null } | null }
 
 export type SessionOverrides = { medium?: MediumString; scene?: string; camera?: { description: string; reason: string } }
 
@@ -295,11 +303,18 @@ function parseTweenStepSlot(value: unknown): TweenStepSlot | null {
   let rolling: TweenStepSlot['selectedRollingReference'] = null
   if (selectedRollingReference !== null) {
     if (!isRecord(selectedRollingReference)) return null
-    const { attemptId, frameIndex } = selectedRollingReference
+    const { attemptId, frameIndex, poseDescription, facing } = selectedRollingReference
     if (!isUuid(attemptId)) return null
     if (!isNonNegativeInt(frameIndex)) return null
     if (!parsedAttempts.includes(attemptId)) return null
-    rolling = { attemptId, frameIndex }
+    // The annotation fields are NULLABLE; an ABSENT field is the pre-wave-2a
+    // wire shape and reads as null — the one deliberate normalization in this
+    // parser (a widening read, never a downgrade): rows the older build wrote
+    // must keep parsing or their whole document would become unservable, and
+    // "unannotated" is exactly what a missing annotation means.
+    if (poseDescription !== undefined && poseDescription !== null && typeof poseDescription !== 'string') return null
+    if (facing !== undefined && facing !== null && !isFacingTerm(facing)) return null
+    rolling = { attemptId, frameIndex, poseDescription: poseDescription ?? null, facing: facing ?? null }
   }
   return { id, attempts: parsedAttempts, selectedRollingReference: rolling }
 }
