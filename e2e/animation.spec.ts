@@ -1601,11 +1601,16 @@ test('a failed preparation recovers through the panel retry action (review)', as
       return view.attempt.execution === 'ready' && view.attempt.preparation.state === 'proposed'
     }, { timeout: 30_000 }).toBe(true)
 
-    // §11.4's preparation-failure class after F1: a masked history record no
-    // longer starves preparation (the DURABLE registered clip answers), so
-    // the honest remaining failure is the engine being UNREACHABLE. Kill it;
-    // the retry's bounded attempts exhaust against the dead port —
-    // preparation FAILED, the clip PRESERVED.
+    // §11.4's preparation-failure class after F1 + Codex I9: neither a
+    // masked history record NOR an unreachable engine can starve
+    // preparation any more (the DURABLE registered clip answers both — the
+    // pre-I9 version of this test injected the failure by killing the
+    // engine; that now SUCCEEDS by design). The honest remaining failure is
+    // the DECODER itself: point ffmpeg at a bogus binary AND kill the
+    // engine — the retry's bounded attempts exhaust against the undecodable
+    // clip, preparation FAILED, the clip PRESERVED (the refusal names both
+    // causes: the engine is unreachable and the decode failed).
+    await request.post('/api/lan/settings', { data: { settings: { ...originalSettings, comfyUrl: `http://127.0.0.1:${engine.port}`, ffmpegPath: '/nonexistent/ffmpeg-prep-failure-e2e' } } }).catch(() => undefined)
     expect(await engine.kill()).toBe(true)
     await request.post('/api/lan/animation/attempt/retry-preparation', { data: { attemptId: submitted.attemptId } })
     const failed = await readAttemptView(request, submitted.attemptId)
@@ -1621,15 +1626,18 @@ test('a failed preparation recovers through the panel retry action (review)', as
     await expect(panel.locator('[data-anim-review-clip]')).toBeVisible()
     await expect(panel.locator('[data-anim-review-status]')).toHaveText('Ready to review')
 
-    // The engine RETURNS — restarted on the same port with EMPTY history
-    // (the routine-restart shape). The panel's retry wires the client's
-    // retryPreparation, and the proposal returns through the DURABLE clip
-    // (F1: history gone is no longer a preparation failure) — WITHOUT any
-    // new engine work: the restarted engine still holds zero records.
-    engine = await startFakeEngine(engine.port)
+    // The DECODER returns (the ffmpeg seam re-resolves per call) and the
+    // panel's retry wires the client's retryPreparation — which now recovers
+    // through the DURABLE clip with the engine STILL DOWN (I9's pin: the
+    // transport failure falls to the registered clip; no engine fact is
+    // needed). Then the engine RETURNS — restarted on the same port with
+    // EMPTY history — and zero records proves the recovery spent no new
+    // engine work.
+    await request.post('/api/lan/settings', { data: { settings: { ...originalSettings, comfyUrl: `http://127.0.0.1:${engine.port}` } } }).catch(() => undefined)
     await panel.locator('[data-refusal-satisfy]').click()
     await expect(panel).toHaveAttribute('data-anim-review-preparation', 'proposed', { timeout: 15_000 })
     await expect(panel.locator('[data-anim-review-frame="11"]')).toHaveAttribute('data-anim-frame-proposed', 'true')
+    engine = await startFakeEngine(engine.port)
     expect(Object.keys(await engine.historyAll()).length).toBe(0)
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
