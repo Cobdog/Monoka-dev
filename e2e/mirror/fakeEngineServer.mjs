@@ -308,29 +308,49 @@ function graphClipLength(graph) {
  *  plus everything waiting behind it (the real engine's queue_updated). */
 const queueRemaining = () => (running ? 1 : 0) + pending.length
 
+/** The save-tail node ids a graph will execute — the engine's own
+ *  outputs_to_execute, carried by BOTH the queue tuples and the history
+ *  tuple (docs/devdocs/comfyui-api §2/§3). */
+const outputsToExecuteOf = (graph) => Object.entries(graph ?? {})
+  .filter(([, node]) => node && typeof node === 'object' && (node.class_type === 'SaveVideo' || node.class_type === 'SaveImage'))
+  .map(([id]) => id)
+
 /** Starts the next PENDING job the moment the slot frees (completion,
  *  error, interrupt) — the queue semantics a real ComfyUI serves. */
 function startNextPending() {
   if (running || pending.length === 0) return
-  const next = pending.shift()
-  runPrompt(next.promptId, next.graph, next.extraData, next.queueNumber)
+  runPrompt(pending.shift())
 }
 
-function runPrompt(promptId, graph, extraData, queueNumber) {
-  // The REAL history tuple (docs/devdocs/comfyui-api §3):
-  // [number, prompt_id, prompt_graph, extra_data, outputs_to_execute] — the
-  // save-tail node ids as the engine's queue records them.
-  const outputsToExecute = Object.entries(graph ?? {})
-    .filter(([, node]) => node && typeof node === 'object' && (node.class_type === 'SaveVideo' || node.class_type === 'SaveImage'))
-    .map(([id]) => id)
-  const my = { promptId, graph, extraData, queueNumber, outputsToExecute, timer: null, interrupted: false }
+function runPrompt(job) {
+  const { promptId, graph, extraData, queueNumber, outputsToExecute } = job
+  const my = { ...job, timer: null, interrupted: false }
   running = my
   const tick = (fn, delay) => { my.timer = setTimeout(fn, delay) }
+  // The REAL completion statuses (main.py:375-379 + execution.py:682/712/
+  // 824): completed follows success — an ERROR record is completed:false —
+  // and the status messages carry the (event, data) pairs add_message
+  // appended: execution_start, then execution_success | execution_error.
+  // (The interrupt path writes its own canonical record — see
+  // interruptRunning.)
   const finishRecord = (images, status) => {
+    const messages = [['execution_start', { prompt_id: promptId }]]
+    if (status === 'success') messages.push(['execution_success', { prompt_id: promptId }])
+    else messages.push(['execution_error', {
+      prompt_id: promptId,
+      node_id: 'sampler',
+      node_type: 'MiniMaxH3ImageToVideo',
+      executed: [],
+      exception_type: 'OOM',
+      exception_message: 'CUDA out of memory. Tried to allocate 2.34 GiB (GPU 0; 23.99 GiB total capacity)',
+      traceback: 'fake traceback',
+      current_inputs: {},
+      current_outputs: [],
+    }])
     const write = () => histories.set(promptId, {
       prompt: [queueNumber, promptId, graph, extraData, outputsToExecute],
       outputs: { final: { images } },
-      status: { status_str: status, completed: true, messages: [] },
+      status: { status_str: status, completed: status === 'success', messages },
     })
     if (state.historyLagMs > 0) setTimeout(write, state.historyLagMs)
     else write()
@@ -515,15 +535,28 @@ async function handle(req, res) {
       // A prompt submitted while another renders QUEUES (the real engine's
       // queue_pending) — the single execution slot frees at completion,
       // error, or interrupt.
-      if (running) pending.push({ promptId, graph: body.prompt ?? {}, extraData: body.extra_data ?? '', queueNumber: jobCounter })
-      else runPrompt(promptId, body.prompt ?? {}, body.extra_data ?? '', jobCounter)
+      const job = {
+        promptId,
+        graph: body.prompt ?? {},
+        extraData: body.extra_data ?? '',
+        queueNumber: jobCounter,
+        outputsToExecute: outputsToExecuteOf(body.prompt ?? {}),
+      }
+      if (running) pending.push(job)
+      else runPrompt(job)
       return json(res, 200, { prompt_id: promptId, number: jobCounter, node_errors: {} })
     }
 
     if (url.pathname === '/queue' && req.method === 'GET') {
+      // The REAL shape (server.py:1072-1078, devdocs §2): both lists carry
+      // the item TUPLES [number, prompt_id, prompt, extra_data,
+      // outputs_to_execute] (sensitive keys stripped — only auth/api keys
+      // ever are; attempt_id rides). Never bare ids — a flattened form here
+      // once left the production tuple branch CI-dead (review I-A).
+      const queueItem = (job) => [job.queueNumber, job.promptId, job.graph, job.extraData, job.outputsToExecute]
       return json(res, 200, {
-        queue_running: running ? [running.promptId] : [],
-        queue_pending: pending.map((job) => job.promptId),
+        queue_running: running ? [queueItem(running)] : [],
+        queue_pending: pending.map(queueItem),
       })
     }
     if (url.pathname === '/queue' && req.method === 'POST') {

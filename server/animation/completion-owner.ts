@@ -95,11 +95,32 @@ export function createCompletionOwner(deps: {
     return Math.max(0, Math.floor(frameCount / 2))
   }
 
+  /** The lost-with-known-causality settle (review M-2): the engine neither
+   *  queues nor remembers the job AND a user cancel is in the causal chain
+   *  — the post-depose read, or the settle losing the record mid-cancel.
+   *  Whatever already landed stays landed (ready); a job that never
+   *  rendered settles CANCELLED — the user's own Stop is the whole truth —
+   *  never the interrupted + explicit-retry vocabulary a recovery-time loss
+   *  (no user action in the causal chain) earns. */
+  function settleCancelLost(attemptId: string): void {
+    const fresh = store.getAttempt(attemptId)
+    if (!fresh || TERMINAL_STATES.has(fresh.execution.state)) return
+    if (fresh.result) {
+      // The output landed before the engine forgot the job — preserved.
+      setExecution(fresh, 'ready')
+      return
+    }
+    setExecution(fresh, 'cancelled')
+    emit('animation.attempt.cancelled', { attemptId, documentId: fresh.documentId })
+  }
+
   /** §8.2 landing + §11.4 preparation, from engine truth. Idempotent at
    *  every step: a landed attempt is returned untouched (duplicate
    *  completion), preparation resumes when it never finished. Returns the
-   *  engine status observed (the caller decides whether to keep watching). */
-  async function resolveFromEngine(attemptId: string): Promise<EngineJobStatus['status'] | 'untouched' | 'reconciling'> {
+   *  engine status observed (the caller decides whether to keep watching).
+   *  `cause: 'cancel'` re-reads a LOST verdict through the user's Stop
+   *  (settleCancelLost) instead of the recovery-time interrupted fence. */
+  async function resolveFromEngine(attemptId: string, cause?: 'cancel'): Promise<EngineJobStatus['status'] | 'untouched' | 'reconciling'> {
     let attempt = store.getAttempt(attemptId)
     if (!attempt) return 'untouched'
     if (TERMINAL_STATES.has(attempt.execution.state)) {
@@ -132,6 +153,12 @@ export function createCompletionOwner(deps: {
       return 'running'
     }
     if (status.status === 'lost') {
+      if (cause === 'cancel') {
+        // The record vanished under a USER CANCEL (the known-causality
+        // world — review M-2's consistency with the post-depose branch).
+        settleCancelLost(attemptId)
+        return 'lost'
+      }
       setExecution(attempt, 'interrupted') // confirmed lost — explicit retry only (§11.4)
       emit('animation.attempt.lost', { attemptId: attempt.id, documentId: attempt.documentId })
       return 'lost'
@@ -238,8 +265,10 @@ export function createCompletionOwner(deps: {
   /** Bounded wait for the engine's history to reflect the announced
    *  terminal status, then the history-driven resolution. The wait is the
    *  settle-or-poll convention: a genuine failure (the engine never records
-   *  the completion) still resolves from whatever history DOES hold. */
-  async function settleAndResolve(attemptId: string, wanted: ReadonlyArray<EngineJobStatus['status']>): Promise<void> {
+   *  the completion) still resolves from whatever history DOES hold.
+   *  `cause: 'cancel'` (the cancel path only) settles a LOST verdict as the
+   *  user's Stop, not the recovery-time interrupted fence (M-2). */
+  async function settleAndResolve(attemptId: string, wanted: ReadonlyArray<EngineJobStatus['status']>, cause?: 'cancel'): Promise<void> {
     const deadline = Date.now() + 2000
     for (;;) {
       let status: EngineJobStatus | null = null
@@ -255,7 +284,7 @@ export function createCompletionOwner(deps: {
       await new Promise((resolve) => setTimeout(resolve, 25))
     }
     try {
-      await resolveFromEngine(attemptId)
+      await resolveFromEngine(attemptId, cause)
     } catch (failure) {
       // A landing failure is never a drop: the attempt stays in flight and
       // the next observation/reconciliation retries it (idempotently).
@@ -452,15 +481,7 @@ export function createCompletionOwner(deps: {
         throw new Error(`the engine became unreachable while the cancellation resolved the job (${failure instanceof Error ? failure.message : String(failure)})`)
       }
       if (remembered.status === 'lost') {
-        const fresh = store.getAttempt(attemptId)
-        if (!fresh || TERMINAL_STATES.has(fresh.execution.state)) return
-        if (fresh.result) {
-          // The output landed before the engine forgot the job — preserved.
-          setExecution(fresh, 'ready')
-          return
-        }
-        setExecution(fresh, 'cancelled')
-        emit('animation.attempt.cancelled', { attemptId, documentId: fresh.documentId })
+        settleCancelLost(attemptId)
         return
       }
     } catch (failure) {
@@ -470,7 +491,10 @@ export function createCompletionOwner(deps: {
       emit('animation.attempt.cancel-error', { attemptId, error: failure instanceof Error ? failure.message : String(failure) })
       return
     }
-    await settleAndResolve(attemptId, ['interrupted', 'done', 'error', 'lost'])
+    // The cause rides the settle too (M-2): if the engine loses the record
+    // between the direct read above and this poll, the settle's lost arm
+    // settles the SAME cancel-time truth — cancelled, never interrupted.
+    await settleAndResolve(attemptId, ['interrupted', 'done', 'error', 'lost'], 'cancel')
   }
 
   /** The explicit preparation retry (§11.4): re-prepares the proposed frame

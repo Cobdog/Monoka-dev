@@ -497,10 +497,14 @@ enumerationTtlMs?: number }): EnginePort {
       const entries = queue[key]
       if (!Array.isArray(entries)) continue
       for (const entry of entries) {
-        // Both serving shapes: bare prompt ids (v0.34+) and the older
-        // [number, prompt_id, …] tuples.
-        if (typeof entry === 'string') ids.add(entry)
-        else if (Array.isArray(entry) && typeof entry[1] === 'string') ids.add(entry[1])
+        // The canonical (and, at the pinned revision, ONLY) serving shape:
+        // the item tuple [number, prompt_id, prompt, extra_data,
+        // outputs_to_execute] (server.py:1072-1078, devdocs §2) — the id
+        // lives at index 1. The same tuple-only reading core.ts's own
+        // queue check makes; the mirror serves the same tuples, so this
+        // branch is exercised on every suite run (review I-A — a
+        // flattened-id tolerance here once left the real branch CI-dead).
+        if (Array.isArray(entry) && typeof entry[1] === 'string') ids.add(entry[1])
       }
     }
     return ids
@@ -791,20 +795,21 @@ async function resolveFrameAsset(deps: FrameResolutionDeps, attemptId: string, f
     throw new Error(`Attempt ${attemptId} has no landed clip to resolve a frame from.`)
   }
   // The engine is asked FIRST (the cheap listing path for the hot case) —
-  // but for RESOLUTION purposes an UNREACHABLE engine is
-  // indistinguishable-from-empty (Codex I9): its history is volatile
-  // anyway, the DURABLE registered clip holds every needed byte, and the
-  // transport failure must not fail extraction, hero acceptance,
-  // retry-preparation, or dependent submissions that need no engine fact.
-  // Only the queue/history OBSERVATION paths keep their unreachable
-  // semantics (reconciling) — resolution changes and nothing else.
+  // but for RESOLUTION purposes an engine that cannot SERVE its history —
+  // unreachable or refusing — is indistinguishable-from-empty (Codex I9):
+  // its history is volatile anyway, the DURABLE registered clip holds
+  // every needed byte, and the history failure must not fail extraction,
+  // hero acceptance, retry-preparation, or dependent submissions that need
+  // no engine fact. Only the queue/history OBSERVATION paths keep their
+  // unreachable semantics (reconciling) — resolution changes and nothing
+  // else.
   let outputs: NonNullable<EngineJobStatus['outputs']> | null = null
-  let engineUnreachable = ''
+  let historyFailure = ''
   try {
     const status = await deps.engine.history(attempt.engineJobId)
     outputs = status.outputs ?? []
   } catch (failure) {
-    engineUnreachable = failure instanceof Error ? failure.message : String(failure)
+    historyFailure = failure instanceof Error ? failure.message : String(failure)
   }
   if (outputs === null || outputs.length === 0) {
     // The engine's history holds nothing usable — the restart/eviction
@@ -815,22 +820,24 @@ async function resolveFrameAsset(deps: FrameResolutionDeps, attemptId: string, f
     // branch performs (same asset for the same (attempt, frame) — content
     // addressing proves the path equivalence), same named beyond-range
     // refusal from the decoder. Refusing needs BOTH paths dead, and the
-    // refusal then names both causes in separate sentences.
+    // refusal then names both causes in separate sentences — the engine
+    // sentence states the honest class ("could not serve", the raw message
+    // naming which), never "unreachable" for a refused/5xx answer.
     const clipRelPath = attempt.result.candidate.assetReference.relPath
-    const unreachableSentence = outputs === null
-      ? `The animation engine is unreachable, so its output listing could not be read for this attempt (${engineUnreachable}).`
+    const listingFailedSentence = outputs === null
+      ? `The animation engine could not serve its output listing for this attempt (${historyFailure}), so the durable clip was consulted instead.`
       : null
     if (clipRelPath === null) {
       throw new Error([
-        ...(unreachableSentence !== null ? [unreachableSentence] : []),
+        ...(listingFailedSentence !== null ? [listingFailedSentence] : []),
         `The engine holds no outputs for attempt ${attemptId} and its landed candidate carries no registered clip path — the frame cannot be resolved.`,
       ].join(' '))
     }
     try {
       return await decodeFrameFromRegisteredClip(deps, attemptId, clipRelPath, frameIndex)
     } catch (failure) {
-      if (unreachableSentence !== null) {
-        throw new Error(`${unreachableSentence} ${failure instanceof Error ? failure.message : String(failure)}`)
+      if (listingFailedSentence !== null) {
+        throw new Error(`${listingFailedSentence} ${failure instanceof Error ? failure.message : String(failure)}`)
       }
       throw failure
     }
