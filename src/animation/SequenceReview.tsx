@@ -94,7 +94,7 @@ export function SequenceReview({ attempt, keyEntity, endKey, takes, windows, act
         <h3 id="anim-seq-review-title">Sequence review — the window from key #{keyEntity.order}</h3>
         <span className="anim-review-status" data-anim-review-status={status.key}>{status.label}</span>
         {attempt.progress && (
-          <span className="anim-review-progress" data-anim-review-progress title="Observed engine progress — no fixed countdowns (§7.3)">
+          <span className="anim-review-progress" data-anim-review-progress title="Observed engine progress">
             {attempt.progress.value}/{attempt.progress.max}
           </span>
         )}
@@ -118,7 +118,7 @@ export function SequenceReview({ attempt, keyEntity, endKey, takes, windows, act
       )}
       {candidate?.earlierRevision === true && (
         <p className="anim-note" role="status" data-anim-review-earlier>
-          Generated from an earlier version of this document — it changed while this render ran; the result keeps its original provenance (§8.2).
+          Generated from an earlier version of this document — it changed while this render ran.
         </p>
       )}
 
@@ -193,7 +193,7 @@ export function SequenceReview({ attempt, keyEntity, endKey, takes, windows, act
         </div>
       )}
       <p className="anim-note" data-anim-seq-review-note>
-        Each take is retained as an alternative — a window render changes no selection (§8.2). Choosing the portions that contribute to the assembled sequence is the editorial timing surface (§9).
+        Each take is kept as an alternative — nothing is replaced. Choose contributing portions under Assembly &amp; export below.
       </p>
 
       {/* §11.4's preparation failure: the clip is PRESERVED, the explicit
@@ -208,7 +208,7 @@ export function SequenceReview({ attempt, keyEntity, endKey, takes, windows, act
 
       <div className="anim-review-actions">
         <Button
-          variant="secondary"
+          variant="secondary" className="anim-btn"
           busy={busy}
           disabled={inFlight}
           data-anim-review-reroll
@@ -226,7 +226,7 @@ export function SequenceReview({ attempt, keyEntity, endKey, takes, windows, act
         <div className="anim-caption-body">
           <pre className="anim-caption-text" data-anim-review-caption-text>{attempt.caption}</pre>
           <p className="anim-note">
-            Frozen at submission with the shared caption compiler <span data-anim-review-compiler>v{attempt.compilerVersion}</span> — the sequence template aligns the two window references, orders the action beats, and closes on the preservation line (§6.2).
+            Caption compiler <span data-anim-review-compiler>v{attempt.compilerVersion}</span>, frozen at submission — the window, beats, and preservation as submitted.
           </p>
         </div>
       </details>

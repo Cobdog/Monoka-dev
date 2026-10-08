@@ -95,10 +95,10 @@ function SeedCard({ binding, busy, onSeed }: { binding: BindingVersion; busy: bo
       <div className="anim-seed-body">
         <SeedPreview assetId={binding.initialKeyAssetId} />
         <div className="anim-seed-actions">
-          <Button variant="primary" busy={busy} disabled={busy} icon={<Sprout size={12} />} onClick={onSeed} data-anim-seed-initial>
+          <Button variant="primary" className="anim-btn" busy={busy} disabled={busy} icon={<Sprout size={12} />} onClick={onSeed} data-anim-seed-initial>
             Seed the initial key slot
           </Button>
-          <span className="anim-note">One explicit act (§5.3): the slot materializes with the bound image and selects it.</span>
+          <span className="anim-note">One explicit act — the slot materializes with the bound image and selects it.</span>
         </div>
       </div>
     </div>

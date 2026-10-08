@@ -176,7 +176,7 @@ export function SequencePanel({ keyEntity, keys, binding, inFlightAttempts, onFa
     <section className="anim-inspector" data-anim-seq-panel data-anim-seq-panel-key={keyEntity.id} aria-labelledby="anim-seq-title">
       <h3 id="anim-seq-title">Sequence — surface the held window from key #{keyEntity.order}</h3>
       <p className="anim-inspector-lede">
-        Two references, no new mapping (§5.2): the window&apos;s first drawing and its own natural end — the held animation already in the base distribution, made consistent. The caption aligns the two references, orders the action beats, and states what stays fixed; the render returns one held clip for review.
+        Pick the window&apos;s end key and write the beats in order — the render returns one held clip for review.
       </p>
 
       {!start.ok && (
@@ -273,7 +273,7 @@ export function SequencePanel({ keyEntity, keys, binding, inFlightAttempts, onFa
         <Field
           label="Ordered actions"
           htmlFor="anim-seq-actions"
-          hint="One beat per line, in order — the caption's Action line joins them with ';' in exactly this order; each beat rides VERBATIM. Positive phrasing: the compiler flags negation, it never rewrites."
+          hint="One beat per line, in order — each rides verbatim into the caption. Positive phrasing: negation is flagged, never rewritten."
         >
           <textarea
             id="anim-seq-actions"
@@ -287,7 +287,7 @@ export function SequencePanel({ keyEntity, keys, binding, inFlightAttempts, onFa
         <Field
           label="What stays fixed"
           htmlFor="anim-seq-preservation"
-          hint="The no-drift axes and the rhythm — the caption's Preserve line carries it VERBATIM and it closes the caption."
+          hint="The no-drift axes and the rhythm — carried verbatim, closing the caption."
         >
           <textarea
             id="anim-seq-preservation"
@@ -303,8 +303,8 @@ export function SequencePanel({ keyEntity, keys, binding, inFlightAttempts, onFa
           label="Medium"
           htmlFor="anim-seq-medium"
           hint={mediumOverride === null
-            ? `Inherited from the bound session (version ${binding.version}) — picking another chip overrides it for this window's render.`
-            : 'An override for this window\'s render — it compiles into the caption and freezes with the attempt.'}
+            ? `Inherited from the bound session — picking another chip overrides it for this window's render.`
+            : 'An override for this window\'s render — it freezes with the attempt.'}
         >
           <ChipGroup
             id="anim-seq-medium"
@@ -333,7 +333,7 @@ export function SequencePanel({ keyEntity, keys, binding, inFlightAttempts, onFa
           <Field label="Camera description" htmlFor="anim-seq-camera" hint="The camera move, phrased as part of the shot.">
             <input id="anim-seq-camera" className="anim-inspector-input" data-anim-seq-camera type="text" value={cameraDescription} onChange={(event) => setCameraDescription(event.target.value)} />
           </Field>
-          <Field label="Camera reason" htmlFor="anim-seq-camera-reason" hint="Why the camera does this (§6.3 — the dialect's reason clause rides every camera statement).">
+          <Field label="Camera reason" htmlFor="anim-seq-camera-reason" hint="Why the camera does this — the reason rides every camera statement.">
             <input id="anim-seq-camera-reason" className="anim-inspector-input" data-anim-seq-camera-reason type="text" value={cameraReason} onChange={(event) => setCameraReason(event.target.value)} />
           </Field>
         </div>
@@ -341,7 +341,7 @@ export function SequencePanel({ keyEntity, keys, binding, inFlightAttempts, onFa
             its description — the coupling is named, never a silent drop. */}
         {cameraReason.trim() !== '' && cameraDescription.trim() === '' && (
           <p className="anim-note" role="status" data-anim-seq-camera-reason-inert>
-            The camera reason rides the caption only with its description — describe the move for the reason to compile (§6.3 pairs them).
+            The camera reason rides the caption only with its description — describe the move for the reason to compile.
           </p>
         )}
       </div>
@@ -365,10 +365,10 @@ export function SequencePanel({ keyEntity, keys, binding, inFlightAttempts, onFa
                   ))}
                 </ul>
               ) : (
-                <p className="anim-note" data-anim-caption-nohints>No advisory hints — the compiler flags a missing facing, comparative end poses, contradictions, and negation; it never rewrites.</p>
+                <p className="anim-note" data-anim-caption-nohints>No advisory hints — the compiler advises, it never rewrites.</p>
               )}
               <p className="anim-note">
-                Compiled in this browser with the shared caption compiler <span data-anim-caption-compiler>v{compiled.result.compilerVersion}</span> — submission freezes exactly this text (the server recompiles authoritatively; its word wins).
+                Caption compiler <span data-anim-caption-compiler>v{compiled.result.compilerVersion}</span> — the preview and the submission freeze the same text.
               </p>
             </>
           )}
@@ -376,15 +376,15 @@ export function SequencePanel({ keyEntity, keys, binding, inFlightAttempts, onFa
       </details>
 
       <div className="anim-inspector-submit">
-        <Button variant="primary" busy={busy} disabled={!canSubmit} onClick={() => void submit()} data-anim-seq-submit>
+        <Button variant="primary" className="anim-btn" busy={busy} disabled={!canSubmit} onClick={() => void submit()} data-anim-seq-submit>
           Render the window
         </Button>
         {inFlightAttempt !== null ? (
           <span className="anim-note" role="status" data-anim-seq-inflight>
-            A render of this window is in flight — the timeline marks its start key; the landing opens its review. Nothing else to do here until it lands.
+            A render of this window is in flight — its review opens when it lands.
           </span>
         ) : (
-          <span className="anim-note">The attempt targets this selected key window (§11.2) — the two endpoint keys, the beats, and the preservation freeze with it. The clip lands as a retained take; re-rolls add alternatives beside it.</span>
+          <span className="anim-note">The window's two endpoint keys, the beats, and the preservation freeze with the render. The clip lands as a retained take; re-rolls add alternatives.</span>
         )}
       </div>
     </section>

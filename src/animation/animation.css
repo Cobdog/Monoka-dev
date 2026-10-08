@@ -255,6 +255,14 @@
 .anim-take-wrap { display: inline-flex; gap: 6px; align-items: center; }
 .anim-take-new { padding: 4px 8px; border-width: 1px; border-style: solid; border-radius: 6px; font-size: var(--text-sm); cursor: pointer; }
 
+/* Wave 3 (k2q0n9s, the live review's #8) — the module's button GEOMETRY
+   class (the kit's P06 doctrine: .btn carries tone/state, the consuming
+   surface composes geometry last). The values mirror the gallery reference
+   (.gallery-btn) at the module's type scale; EVERY kit Button in the module
+   composes it — the primary actions render with the app's rounded geometry,
+   never the native rectangle. */
+.anim-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 5px 12px; border-width: 1px; border-style: solid; border-radius: 8px; cursor: pointer; font-size: var(--text-sm); }
+
 /* The key-candidates strip (Fix 1): the inspector's card shape, the
    candidates as thumbnails with their origin and explicit select action. */
 .anim-key-candidates { display: grid; gap: 12px; max-width: 88ch; justify-self: start; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }

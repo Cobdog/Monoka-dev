@@ -97,7 +97,7 @@ export function HeroReview({ attempt, keyEntity, takes, busy, onSelectTake, onAc
         <h3 id="anim-hero-review-title">Hero review — key #{keyEntity.order}</h3>
         <span className="anim-review-status" data-anim-review-status={status.key}>{status.label}</span>
         {attempt.progress && (
-          <span className="anim-review-progress" data-anim-review-progress title="Observed engine progress — no fixed countdowns (§7.3)">
+          <span className="anim-review-progress" data-anim-review-progress title="Observed engine progress">
             {attempt.progress.value}/{attempt.progress.max}
           </span>
         )}
@@ -116,7 +116,7 @@ export function HeroReview({ attempt, keyEntity, takes, busy, onSelectTake, onAc
       )}
       {candidate?.earlierRevision === true && (
         <p className="anim-note" role="status" data-anim-review-earlier>
-          Generated from an earlier version of this document — it changed while this render ran; the result keeps its original provenance (§8.2).
+          Generated from an earlier version of this document — it changed while this render ran.
         </p>
       )}
 
@@ -173,7 +173,7 @@ export function HeroReview({ attempt, keyEntity, takes, busy, onSelectTake, onAc
       {readyToReview && (
         <div className="anim-review-frames-block">
           <p className="anim-review-frames-lede">
-            Accept the frame that becomes this key — your choice, extracted and written to the document (§5.2). The dashed frame is the system&apos;s proposal; it accepted nothing.
+            Click the frame that becomes this key — the dashed frame is a suggestion; nothing is accepted until you click.
           </p>
           <div className="anim-review-frames" data-anim-hero-frames role="group" aria-label="Hero candidate frames">
             {Array.from({ length: candidate!.frameCount }, (_, frameIndex) => (
@@ -214,19 +214,19 @@ export function HeroReview({ attempt, keyEntity, takes, busy, onSelectTake, onAc
 
       <div className="anim-review-actions">
         <Button
-          variant="primary"
+          variant="primary" className="anim-btn"
           busy={busy}
           disabled={!hasSelection}
           data-anim-hero-open-span
           title={hasSelection
-            ? 'Creates the tween span from this take\'s source key into this key — its fixed far reference (§5.2) — and opens the inspector'
-            : 'Accept a frame first — the span into this key binds the accepted image as its far reference (§5.2)'}
+            ? 'Creates the tween span from this take\'s source key into this key — its fixed far reference — and opens the inspector'
+            : 'Accept a frame first — the span into this key binds the accepted image as its far reference'}
           onClick={onOpenSpan}
         >
           Open the tween span into this key
         </Button>
         <Button
-          variant="secondary"
+          variant="secondary" className="anim-btn"
           busy={busy}
           disabled={inFlight}
           data-anim-review-reroll
@@ -244,7 +244,7 @@ export function HeroReview({ attempt, keyEntity, takes, busy, onSelectTake, onAc
         <div className="anim-caption-body">
           <pre className="anim-caption-text" data-anim-review-caption-text>{attempt.caption}</pre>
           <p className="anim-note">
-            Frozen at submission with the shared caption compiler <span data-anim-review-compiler>v{attempt.compilerVersion}</span> — the hero template states the current key and the full arc, with no destination section (§6.2).
+            Caption compiler <span data-anim-review-compiler>v{attempt.compilerVersion}</span>, frozen at submission — the current key and the full arc as submitted.
           </p>
         </div>
       </details>

@@ -151,7 +151,7 @@ export function EditorialPanel({ clips, assembled, busy, onContribute, onReorder
         </span>
       </header>
       <p className="anim-inspector-lede">
-        Which portions of the landed clips contribute, how long each hold lasts, and the order they assemble in — assembly decisions only (§9): nothing here re-renders or marks anything stale.
+        Choose which portions of the landed clips contribute, set each hold, and order the assembly — nothing here re-renders or marks anything stale.
       </p>
 
       {/* The assembled-sequence preview: one block per contribution, sized by
@@ -234,7 +234,7 @@ export function EditorialPanel({ clips, assembled, busy, onContribute, onReorder
                   variant="secondary"
                   busy={busy}
                   disabled={busy || parsed === null}
-                  className="anim-editorial-add"
+                  className="anim-btn"
                   data-anim-editorial-add={clip.attemptId}
                   title={clip.contributionId !== null
                     ? 'Re-choose this clip\'s portion (the existing row updates)'
@@ -286,7 +286,7 @@ function EditorialRow({ entry, index, count, busy, draft, onDraft, onApply, onMo
       <div className="anim-editorial-row-fields">
         <FramesFields draft={draft} onChange={onDraft} disabled={busy} />
         <Button
-          variant="primary"
+          variant="primary" className="anim-btn"
           busy={busy}
           disabled={busy || parsed === null || !differs}
           data-anim-editorial-apply={entry.contributionId}
@@ -303,7 +303,7 @@ function EditorialRow({ entry, index, count, busy, draft, onDraft, onApply, onMo
       </div>
       {degenerate && (
         <p className="anim-note" role="status" data-anim-editorial-degenerate>
-          A degenerate range (out ≤ in) contributes no clip frames — only the hold: a held drawing (§11.3).
+          A degenerate range (out ≤ in) contributes no clip frames — only the hold: a held drawing.
         </p>
       )}
     </li>

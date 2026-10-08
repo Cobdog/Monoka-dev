@@ -49,9 +49,16 @@ export function ExportPanel({ assembled, exportPhase, exportError, exportStale, 
           {empty ? 'nothing assembled' : `${assembled.totalFrames} frames — ${(assembled.totalFrames / assembled.fps).toFixed(1)} s at ${assembled.fps} fps`}
         </span>
       </header>
-      <p className="anim-inspector-lede">
-        One ZIP: <code>sequence.mp4</code> (silent H.264, constant 24 fps, the document&rsquo;s output dimensions) plus <code>manifest.json</code> (the versioned assembly recipe with sources, hashes, and lineage). The document is frozen the moment the export starts — edits during assembly cannot change the package.
-      </p>
+      <p className="anim-inspector-lede">One ZIP: <code>sequence.mp4</code> + <code>manifest.json</code>.</p>
+      {/* The freeze/lifecycle detail folds away (the live review's #9): the
+          surface states WHAT ships; HOW it ships is the disclosure's. */}
+      <details className="anim-caption" data-anim-export-details>
+        <summary>How the export works</summary>
+        <div className="anim-caption-body">
+          <p className="anim-note"><code>sequence.mp4</code> is silent H.264 at a constant 24 fps at the document&rsquo;s output dimensions; <code>manifest.json</code> is the versioned assembly recipe — sources, hashes, and lineage.</p>
+          <p className="anim-note">The document freezes the moment the export starts — edits during assembly cannot change the package.</p>
+        </div>
+      </details>
 
       {empty && (
         <p className="anim-note" data-anim-export-empty>Nothing is assembled yet — contribute landed clips above before exporting.</p>
@@ -91,10 +98,9 @@ export function ExportPanel({ assembled, exportPhase, exportError, exportStale, 
 
       <div className="anim-export-actions">
         <Button
-          variant="primary"
+          variant="primary" className="anim-btn"
           busy={running}
           disabled={running || empty || assembled.problems.length > 0}
-          className="anim-export-button"
           data-anim-export-submit
           title="Assemble the review package (sequence.mp4 + manifest.json in one ZIP) and download it"
           onClick={() => onExport(false)}
@@ -106,9 +112,9 @@ export function ExportPanel({ assembled, exportPhase, exportError, exportStale, 
             variant="secondary"
             busy={running}
             disabled={running || !acknowledge}
-            className="anim-export-button"
+            className="anim-btn"
             data-anim-export-submit-ack
-            title="Export anyway, recording the acknowledged stale selections in the manifest (§11.3)"
+            title="Export anyway, recording the acknowledged stale selections in the manifest"
             onClick={() => onExport(true)}
           >
             Export with acknowledgment

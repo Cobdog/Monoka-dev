@@ -174,9 +174,9 @@ export function BindingPanel({ document, mode = 'bind', assets, assetsFailed, on
     <div className="anim-binding-locked" data-anim-binding-description-locked>
       <span className="anim-binding-label">Locked character description</span>
       <p className="anim-binding-locked-text">{description}</p>
-      <p className="anim-note">From {boundSource}, retained verbatim (§4.2) — the session stores this exact version{mode === 'bind' ? '; editing the source later never silently changes a bound session' : ''}.</p>
+      <p className="anim-note">From {boundSource}, verbatim — the session stores this exact text{mode === 'bind' ? '; editing the source later never changes a bound session' : ''}.</p>
       <Button
-        variant="secondary"
+        variant="secondary" className="anim-btn"
         icon={<Pencil size={12} />}
         onClick={() => setOverrideUnlocked(true)}
         data-anim-binding-override
@@ -192,7 +192,7 @@ export function BindingPanel({ document, mode = 'bind', assets, assetsFailed, on
         htmlFor="anim-binding-description"
         hint={boundSource !== null
           ? `Session-local override of ${boundSource} — the edited text is what the next binding version stores.`
-          : 'Retained verbatim — the session stores the exact version used (§4.2).'}
+          : 'Verbatim — the session stores the exact text used.'}
         error={errors?.characterDescription}
       >
         <textarea
@@ -217,8 +217,8 @@ export function BindingPanel({ document, mode = 'bind', assets, assetsFailed, on
       <h3 id="anim-binding-title">{mode === 'update' ? 'Update the character binding' : 'Bind the session'} — {document.name}</h3>
       <p className="anim-binding-lede">
         {mode === 'update'
-          ? 'Append the next binding version: same session, new reference material or description (§4.2).'
-          : 'Pick the prepared character material and the first pose; the medium is a session setting, not a character attribute (§4.1).'}
+          ? 'Append the next binding version — new references or an edited description.'
+          : 'Pick the character material and the first pose; the medium is a session setting.'}
       </p>
 
       {missing.length > 0 && (
@@ -251,7 +251,7 @@ export function BindingPanel({ document, mode = 'bind', assets, assetsFailed, on
           <span className="anim-binding-label">Reference images</span>
           <div className="anim-binding-add">
             <input ref={fileInput} type="file" accept="image/*" multiple className="anim-file-input" data-anim-binding-files onChange={(event) => { const files = [...(event.target.files ?? [])]; event.target.value = ''; void importFiles(files) }} />
-            <Button variant="secondary" busy={importing} icon={<ImagePlus size={12} />} onClick={() => fileInput.current?.click()}>Add image files</Button>
+            <Button variant="secondary" className="anim-btn" busy={importing} icon={<ImagePlus size={12} />} onClick={() => fileInput.current?.click()}>Add image files</Button>
           </div>
           {importError && <p className="anim-binding-error" role="alert">The import failed: {importError}</p>}
           {pool.length === 0 && <p className="anim-note">No images picked yet — a prepared character or the files above feed this pool.</p>}
@@ -305,16 +305,16 @@ export function BindingPanel({ document, mode = 'bind', assets, assetsFailed, on
       {errors?.initialKeyAssetId && <p className="anim-binding-error" role="alert">{errors.initialKeyAssetId}</p>}
       {errors?.submit && <p className="anim-binding-error" role="alert">{errors.submit}</p>}
       <div className="anim-binding-submit">
-        <Button variant="primary" busy={busy} disabled={!canSubmit} onClick={() => void submit()} data-anim-binding-submit>
+        <Button variant="primary" className="anim-btn" busy={busy} disabled={!canSubmit} onClick={() => void submit()} data-anim-binding-submit>
           {mode === 'update' ? `Append binding version ${document.body.activeBindingVersion + 1}` : 'Bind the session'}
         </Button>
         {mode === 'update' && (
           <p className="anim-note" role="note" data-anim-binding-update-note>
-            Appends an immutable binding version — every span marks stale (binding) and prior takes are preserved (§8.3); nothing is re-rendered or deleted.
+            Appends an immutable binding version — prior takes are preserved; spans mark stale until re-rendered; nothing is deleted.
           </p>
         )}
         {mode === 'update' && onDismiss && (
-          <Button variant="secondary" onClick={onDismiss} data-anim-binding-dismiss>Close without updating</Button>
+          <Button variant="secondary" className="anim-btn" onClick={onDismiss} data-anim-binding-dismiss>Close without updating</Button>
         )}
       </div>
     </section>
