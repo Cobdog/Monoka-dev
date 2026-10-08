@@ -608,7 +608,7 @@ export function createStudioServer(paths: StudioServerPaths) {
     // arm calls through this forward-declared thunk — assigned once the
     // service exists below. Until then it answers null (the pre-wave-1
     // interrupted verdict), which no sweep can observe before boot anyway.
-    let animationRedispatch: (attemptId: string) => Promise<'submitted' | 'failed' | 'uncertain' | null> = async () => null
+    let animationRedispatch: (attemptId: string) => Promise<'submitted' | 'failed' | 'uncertain' | 'aborted' | null> = async () => null
     const owner = createCompletionOwner({
       store,
       engine,

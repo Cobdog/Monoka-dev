@@ -52,9 +52,11 @@ export function createCompletionOwner(deps: {
   prepareFrame: (attemptId: string, frameIndex: number) => Promise<AssetReference>
   /** The rendering service's queue-semantic redispatch (wave 1): the sweep's
    *  PROVEN-never-landed arm dispatches the frozen attempt through it instead
-   *  of stranding the user's submission as interrupted. Absent (older
-   *  constructions) the arm keeps the pre-wave-1 interrupted verdict. */
-  redispatch?: (attemptId: string) => Promise<'submitted' | 'failed' | 'uncertain' | null>
+   *  of stranding the user's submission as interrupted. 'aborted' (I1's
+   *  gate) means the row went terminal mid-redispatch — nothing to do.
+   *  Absent (older constructions) the arm keeps the pre-wave-1 interrupted
+   *  verdict. */
+  redispatch?: (attemptId: string) => Promise<'submitted' | 'failed' | 'uncertain' | 'aborted' | null>
   /** Bounded auto-retries AFTER the first preparation try (default 2 — a
    *  rejecting preparer gets 3 chances before preparation is marked failed). */
   maxAutoPrepRetries?: number
@@ -378,7 +380,7 @@ export function createCompletionOwner(deps: {
           //     verdict existed), which is the pre-wave-1 verdict exactly.
           if (redispatch && fresh.execution.dispatchVerdict === 'never-delivered') {
             const outcome = await redispatch(fresh.id)
-            if (outcome !== null) continue // submitted, failed (named), or left pending
+            if (outcome !== null) continue // submitted, failed (named), aborted (went terminal mid-redispatch), or left pending
           }
           setExecution(fresh, 'interrupted')
           emit('animation.attempt.lost', { attemptId: fresh.id, documentId: fresh.documentId, reason: 'dispatch-never-landed' })

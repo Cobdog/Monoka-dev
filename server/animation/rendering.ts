@@ -203,9 +203,11 @@ export type AnimationRenderingService = {
   /** The boot reconcile's redispatch arm (wave 1's queue semantics): a
    *  persisted attempt whose dispatch PROVABLY never landed dispatches from
    *  its frozen snapshot — the service the owner calls. 'uncertain' leaves
-   *  the attempt reconciliation-pending; null means the row was not the
+   *  the attempt reconciliation-pending; 'aborted' means the row went
+   *  terminal (cancelled/failed) while the redispatch was in flight (I1's
+   *  gate — nothing was submitted for it); null means the row was not the
    *  sweep's to redispatch. */
-  redispatchAttempt(attemptId: string): Promise<'submitted' | 'failed' | 'uncertain' | null>
+  redispatchAttempt(attemptId: string): Promise<'submitted' | 'failed' | 'uncertain' | 'aborted' | null>
   /** §11.4's explicit preparation retry (the foundation contract review's
    *  F3) — the owner's recovery action behind the service facade (the
    *  cancel idiom): re-prepare the proposed frame of a LANDED clip without
@@ -836,6 +838,13 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0
 }
 
+/** Terminal execution states (the owner's own set, mirrored so the
+ *  dispatch path never second-guesses it): a dispatch that re-reads one of
+ *  these after an await ABORTS — a terminal row is never resurrected into
+ *  engine work (Codex I1: the cancelled-before-dispatch attempt must not
+ *  render just because its reference upload finished). */
+const TERMINAL_EXECUTION_STATES: ReadonlySet<string> = new Set(['ready', 'failed', 'cancelled', 'interrupted'])
+
 export function createAnimationRenderingService(deps: {
   store: AnimationStore
   engine: EnginePort
@@ -918,6 +927,14 @@ export function createAnimationRenderingService(deps: {
         throw new AnimationRuleError(`The ${String(reference.role)} reference asset (${relPath}) is not present in the store.`, 400)
       }
     }
+  }
+
+  /** I1's gate: re-reads the row's TERMINAL truth — true when the attempt
+   *  is gone or settled (ready/failed/cancelled/interrupted), the states no
+   *  dispatch may resurrect. */
+  function abortIfTerminal(attemptId: string): boolean {
+    const row = store.getAttempt(attemptId)
+    return !row || TERMINAL_EXECUTION_STATES.has(row.execution.state)
   }
 
   /** The frozen snapshot AS PERSISTED (wave 1's Fix B): the received
@@ -1011,8 +1028,19 @@ export function createAnimationRenderingService(deps: {
    *  nothing and the sweep returns the row to interrupted + explicit
    *  retry. The dispatch path is the ONLY place that knows which side of
    *  the boundary a failure fell on, so the verdict is written here,
-   *  durably, at the moment of failure. */
-  async function dispatchAttempt(attemptId: string, snapshot: FrozenAttemptSnapshot, documentId: string): Promise<'submitted' | 'failed' | 'uncertain'> {
+   *  durably, at the moment of failure.
+   *
+   *  THE TERMINAL GATE (Codex I1): every await above the engine submission
+   *  is a cancellation window — an attempt persisted while its reference
+   *  upload was still awaiting could be cancelled (the owner writes
+   *  terminal cancelled) and then RESURRECTED by the dispatch completing
+   *  into a /prompt. The row is re-read after EVERY pre-send await (and
+   *  once more after the send itself): a terminal row aborts without
+   *  engine contact, keeps its terminal state, and emits nothing that
+   *  pretends anything rendered. Whichever side of the race wins, the
+   *  re-read is the authoritative gate. Outcomes gain 'aborted' for
+   *  exactly this case. */
+  async function dispatchAttempt(attemptId: string, snapshot: FrozenAttemptSnapshot, documentId: string): Promise<'submitted' | 'failed' | 'uncertain' | 'aborted'> {
     let sent = false
     try {
       // The reference uploads come BEFORE the deferred model resolution: a
@@ -1028,15 +1056,29 @@ export function createAnimationRenderingService(deps: {
         const bytes = blobs.readBlob((reference.assetReference as { relPath: string }).relPath)
         if (!bytes) throw new AnimationRuleError(`The ${String(reference.role)} reference asset (${(reference.assetReference as { relPath: string }).relPath}) is no longer readable from the store — the frozen reference cannot be uploaded. Re-import the reference asset and re-roll.`, 400)
         await engine.uploadReference(reference.assetReference.assetId, bytes)
+        // I1: the upload's await is the cancellation window — a row that
+        // went terminal behind it aborts WITHOUT engine contact.
+        if (abortIfTerminal(attemptId)) return 'aborted'
       }
       const models = modelsFromSnapshotSettings(snapshot.settings) ?? resolveAnimationModels({
         tool: snapshot.tool,
         enumerations: await engine.modelEnumerations({ force: true }),
         overrides: modelOverrides(snapshot.settings),
       })
+      if (abortIfTerminal(attemptId)) return 'aborted'
       const graph: AnimationGraph = buildAnimationGraph(snapshot, frozenBuildSettings(snapshot, models))
       sent = true // past this point the /prompt has left (or failed leaving) — the outcome is the engine's to know
       const { engineJobId } = await engine.submitGraph(graph, attemptId)
+      // The send itself raced a cancel (the row went terminal while /prompt
+      // was in flight): the re-read is the authoritative gate — the
+      // terminal state stands, nothing claims the job for the row, and the
+      // just-submitted orphan is deposed best-effort (an orphaned
+      // engine-side output never lands and never selects).
+      if (abortIfTerminal(attemptId)) {
+        await engine.interrupt(engineJobId).catch(() => undefined)
+        await engine.dequeue(engineJobId).catch(() => undefined)
+        return 'aborted'
+      }
       store.setAttemptExecution(attemptId, { state: 'queued', engineJobId })
       owner.observe(attemptId)
       emit('animation.attempt.submitted', { attemptId, documentId, engineJobId, tool: snapshot.tool })

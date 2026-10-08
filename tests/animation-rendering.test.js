@@ -116,6 +116,12 @@
 //       queue_pending behind a running foreign job DEQUEUES it (the real
 //       /interrupt deliberately no-ops a pending id) — no render fires,
 //       cancelled settles, the foreign job is untouched
+//   (r) the dispatch terminal gate (Codex I1) — a cancellation during the
+//       held reference upload (or during the /prompt send itself) is never
+//       resurrected: the dispatch re-reads the row after every pre-send
+//       await and ABORTS without engine contact; the send-race leg's
+//       just-submitted orphan is deposed best-effort and the row keeps its
+//       terminal cancelled, engine_job_id never claimed
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -1760,4 +1766,121 @@ test('(q) the real /interrupt serves an EMPTY 200; the canonical interrupted rec
   const foreignRecords = Object.values(await engineHistoryAll()).filter((record) => record.prompt?.[3]?.attempt_id === foreign.attemptId)
   assert.equal(foreignRecords.length, 1, 'exactly the foreign job ran')
   await engineControl({ stepDelayMs: 40 })
+})
+
+// ---------------------------------------------------------------------------
+// (r) the dispatch terminal gate (Codex I1) — a cancellation racing the
+//     dispatch is never resurrected into engine work
+// ---------------------------------------------------------------------------
+
+test('(r) a cancel during the held reference upload submits NOTHING; a cancel racing the send keeps the row terminal and deposes the orphan', async () => {
+  const doc = anim.createDocument({ projectId, name: 'Romeo', binding: makeBinding() })
+  const compileSeam = { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption }
+  /** A wrapper port gating ONE dep seam until released — the suite's
+   *  prepareFrame-override pattern applied to the engine dep: everything
+   *  else passes straight through to the production port. */
+  const gatedPort = (gateDep) => {
+    const port = {
+      submitGraph: (graph, attemptId) => engineClient.submitGraph(graph, attemptId),
+      interrupt: (engineJobId) => engineClient.interrupt(engineJobId),
+      dequeue: (engineJobId) => engineClient.dequeue(engineJobId),
+      history: (engineJobId) => engineClient.history(engineJobId),
+      view: (engineJobId, frameIndex) => engineClient.view(engineJobId, frameIndex),
+      findJobByAttempt: (attemptId) => engineClient.findJobByAttempt(attemptId),
+      queuedJobIds: () => engineClient.queuedJobIds(),
+      uploadReference: (assetId, bytes) => engineClient.uploadReference(assetId, bytes),
+      modelEnumerations: (options) => engineClient.modelEnumerations(options),
+    }
+    gateDep(port)
+    return port
+  }
+  const gatedService = (port) => {
+    const sink2 = []
+    const owner2 = createCompletionOwner({ store: anim, engine: port, emit: (type, payload) => sink2.push({ type, payload }), prepareFrame: productionPreparer, pollMs: 60 })
+    const service2 = createAnimationRenderingService({ store: anim, engine: port, owner: owner2, blobs: sink, ffmpegPath: () => 'ffmpeg', compile: compileSeam, emit: (type, payload) => sink2.push({ type, payload }) })
+    return { owner: owner2, service: service2, events: sink2 }
+  }
+  const submitOn = (service2, keyId, idem) => service2.submit(
+    { documentId: doc.id, tool: 'hero', targetId: keyId, snapshot: makeHeroSnapshot(keyId, anim.getDocument(doc.id).revision) },
+    idem,
+  )
+
+  // ---- Leg 1 — the I1 reproduction: the attempt persists, its reference
+  // upload AWAITS, the user cancels (engine_job_id null ⇒ terminal
+  // cancelled), THEN the upload completes. Pre-fix, dispatch submitted
+  // /prompt anyway — cancellation became rendering. The gate: the re-read
+  // after the upload aborts WITHOUT engine contact.
+  {
+    let release = null
+    const gate = new Promise((resolve) => { release = resolve })
+    let heldUploads = 0
+    const port = gatedPort((p) => {
+      p.uploadReference = async (assetId, bytes) => {
+        heldUploads += 1
+        await gate
+        return engineClient.uploadReference(assetId, bytes)
+      }
+    })
+    const held = gatedService(port)
+    const countBefore = await engineRecordCount()
+    const submitted = submitOn(held.service, uuid(), 'idem-r-upload')
+    await waitUntil(() => anim.attemptByIdempotencyKey('idem-r-upload') !== null, 10_000, 'the attempt persisting ahead of the held upload')
+    assert.equal(heldUploads, 1, 'the dispatch is holding inside the reference upload')
+    await held.service.cancel(anim.attemptByIdempotencyKey('idem-r-upload').id)
+    assert.equal(anim.attemptByIdempotencyKey('idem-r-upload').execution.state, 'cancelled', 'the pre-dispatch cancel settles terminal cancelled')
+
+    release() // the upload completes — the resurrection window opens
+    assert.deepEqual(await submitted, { attemptId: anim.attemptByIdempotencyKey('idem-r-upload').id, created: true })
+    const row = anim.attemptByIdempotencyKey('idem-r-upload')
+    assert.equal(row.execution.state, 'cancelled', 'the terminal state STANDS — the dispatch aborted at the gate')
+    assert.equal(row.engineJobId, null, 'no engine job was ever claimed')
+    assert.equal(await engineRecordCount(), countBefore, 'NO engine submission — the upload completing changed nothing')
+    assert.ok(!held.events.some((event) => event.type === 'animation.attempt.submitted'), 'no fabric event pretends anything rendered')
+    await sleep(300) // negative window: the aborted row stays cancelled
+    assert.equal(anim.getAttempt(row.id).execution.state, 'cancelled')
+    held.owner.stopObserving()
+  }
+
+  // ---- Leg 2 — the send itself races the cancel: /prompt is in flight
+  // when the user cancels, so the engine DOES hold the job. The post-send
+  // re-read keeps the row terminal, never claims the job id, and the
+  // just-submitted orphan is deposed best-effort (interrupt + dequeue).
+  {
+    await engineControl({ stepDelayMs: 400 }) // the orphan is still rendering when the depose lands
+    let release = null
+    const gate = new Promise((resolve) => { release = resolve })
+    let sendEntered = false
+    const port = gatedPort((p) => {
+      p.submitGraph = async (graph, attemptId) => {
+        sendEntered = true
+        const result = await engineClient.submitGraph(graph, attemptId)
+        await gate
+        return result
+      }
+    })
+    const held = gatedService(port)
+    const countBefore = await engineRecordCount()
+    const submitted = submitOn(held.service, uuid(), 'idem-r-send')
+    await waitUntil(() => sendEntered, 10_000, 'the dispatch reaching the /prompt send')
+    await held.service.cancel(anim.attemptByIdempotencyKey('idem-r-send').id)
+    assert.equal(anim.attemptByIdempotencyKey('idem-r-send').execution.state, 'cancelled')
+
+    release() // the send resolves — the engine already holds the orphan job
+    await submitted
+    const row = anim.attemptByIdempotencyKey('idem-r-send')
+    assert.equal(row.execution.state, 'cancelled', 'the send racing the cancel does not resurrect the row')
+    assert.equal(row.engineJobId, null, 'the orphan job id is never claimed for the row')
+    assert.ok(!held.events.some((event) => event.type === 'animation.attempt.submitted'), 'no submitted event for the aborted dispatch')
+    // The best-effort depose fired: the orphan's engine record carries the
+    // attempt marker AND the interrupted shape (the interrupt killed it).
+    const orphanRecords = Object.values(await engineHistoryAll()).filter((record) => record.prompt?.[3]?.attempt_id === row.id)
+    assert.equal(orphanRecords.length, 1, 'the engine holds exactly the orphaned job')
+    assert.equal(orphanRecords[0].status.status_str, 'error', 'the orphan was deposed — the canonical interrupted record, not a completed render')
+    assert.ok((orphanRecords[0].status.messages ?? []).some((entry) => Array.isArray(entry) && entry[0] === 'execution_interrupted'))
+    const queueAfter = await engineFetch('/queue').then((r) => r.json())
+    assert.ok(!queueAfter.queue_running.includes(orphanRecords[0].prompt[1]) && !queueAfter.queue_pending.includes(orphanRecords[0].prompt[1]), 'the orphan is neither running nor queued')
+    assert.equal((await engineRecordCount()) - countBefore, 1, 'exactly the one raced send ever reached the engine')
+    held.owner.stopObserving()
+    await engineControl({ stepDelayMs: 40 })
+  }
 })
