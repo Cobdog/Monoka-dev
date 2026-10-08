@@ -3240,6 +3240,15 @@ test('the stage splits the creative loop side by side at wide viewports and stac
   const submitBox = await submit.boundingBox()
   expect(submitBox!.y + submitBox!.height, 'the primary action is inside the 1080p viewport').toBeLessThanOrEqual(1080)
 
+  // The BREAKPOINT itself (the fix round's M-4): both pinned viewports sit
+  // far from 1440, so the boundary is walked explicitly — the attribute
+  // flips exactly at the CSS media query's edge (the unit suite pins the
+  // literal pair against drift).
+  await page.setViewportSize({ width: 1439, height: 900 })
+  await expect(stage).toHaveAttribute('data-anim-stage-mode', 'stacked')
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await expect(stage).toHaveAttribute('data-anim-stage-mode', 'wide')
+
   // 1280x800 — the review's second viewport: the deliberate collapse. The
   // panes stack (review above inspector), the timeline still in frame.
   await page.setViewportSize({ width: 1280, height: 800 })
@@ -3287,5 +3296,104 @@ test('every action button carries the kit geometry — no native rectangles (geo
     // mounted but hidden (its rect is 0 by design).
     if (row.height > 0) expect(row.height, `a real touch target: ${row.text}`).toBeGreaterThanOrEqual(20)
   }
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('a failing file mid-batch surfaces the named partial — never a silent drop (candidates, wave 3 fix round)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await createDocument(request, projectId, 'Batch partial')
+  const keyId = await makeSelectedKey(request, seeded.id, seeded.revision)
+  await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.id}`)
+  const timeline = page.locator('[data-anim-timeline]')
+  await expect(timeline).toBeVisible({ timeout: 15_000 })
+  await timeline.locator(`[data-anim-key="${keyId}"]`).click()
+  const strip = page.locator('[data-anim-key-candidates]')
+  await expect(strip).toBeVisible()
+  // The wire gate: the SECOND add-candidate of the batch dies at the network
+  // (a transient failure the server never sees), file 3 must never fire.
+  let keysCommands = 0
+  await page.route('**/api/lan/animation/keys', async (route) => {
+    keysCommands += 1
+    if (keysCommands === 2) { await route.abort('failed').catch(() => undefined); return }
+    await route.continue()
+  })
+  await page.locator('[data-anim-key-import-files]').setInputFiles([
+    { name: 'import-one.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') },
+    { name: 'import-two.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') },
+    { name: 'import-three.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') },
+  ])
+  // The strip names the honest partial: the count AND the failing file.
+  const partial = strip.locator('[data-anim-key-import-failure]')
+  await expect(partial).toBeVisible({ timeout: 15_000 })
+  await expect(partial).toContainText('1 of 3')
+  await expect(partial).toContainText('import-two.png')
+  // The shell's named reason stands beside it (the failed command's error —
+  // no later success cleared it, because the loop stopped).
+  await expect(page.locator('[data-anim-command-error]')).toBeVisible()
+  // The loop STOPPED: exactly two commands fired (file 1 landed, file 2
+  // failed, file 3 never sent) — the document matches the report.
+  await expect.poll(() => keysCommands, { timeout: 5_000 }).toBe(2)
+  const view = await readAnimationDocument(request, seeded.id)
+  const slot = view.document.body.keys.find((entry) => entry.id === keyId)!
+  expect(slot.candidates).toHaveLength(2, 'the seeded candidate + file 1 only')
+  expect(view.document.body.keys).toHaveLength(1, 'no scattered keys — the batch key is THIS key (into-key destination)')
+  // Recovery: a fresh import succeeds and clears the partial note.
+  await page.locator('[data-anim-key-import-files]').setInputFiles({ name: 'import-recovered.png', mimeType: 'image/png', buffer: Buffer.from(KEY_PNG, 'base64') })
+  await expect(strip.locator('[data-anim-key-import-failure]')).toHaveCount(0, { timeout: 15_000 })
+  await expect.poll(async () => (await readAnimationDocument(request, seeded.id)).document.body.keys.find((entry) => entry.id === keyId)!.candidates.length, { timeout: 15_000 }).toBe(3)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+test('a wide-but-short viewport with the update panel open keeps every surface reachable (layout, wave 3 fix round)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await createDocument(request, projectId, 'Escape valve')
+  await page.setViewportSize({ width: 1600, height: 600 })
+  await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.id}`)
+  await expect(page.locator('[data-anim-timeline]')).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('[data-anim-stage]')).toHaveAttribute('data-anim-stage-mode', 'wide')
+  // The reviewer's scenario: the update-binding form (measured ~800px)
+  // stacked above the stage on a wide-but-SHORT frame — the above-stage
+  // column exceeds the viewport by ~590px.
+  await page.locator('[data-anim-bound-update]').click()
+  const panel = page.locator("[data-anim-binding='update']")
+  await expect(panel).toBeVisible()
+  // THE VALVE, pinned as its two truths: (1) the wide body's overflow-y is
+  // AUTO — user-scrollable, never clipping (script scrolling works even
+  // under overflow:hidden, so reachability alone cannot pin this — the
+  // red-check proved that); (2) this state GENUINELY overflows, so the
+  // valve is load-bearing here, not vacuous.
+  const valve = await page.evaluate(() => {
+    const body = document.querySelector('.anim-body') as HTMLElement | null
+    return body === null ? null : { overflowY: getComputedStyle(body).overflowY, scrollHeight: body.scrollHeight, clientHeight: body.clientHeight }
+  })
+  expect(valve).not.toBeNull()
+  expect(valve!.overflowY, 'the wide body is user-scrollable, not clipping').toBe('auto')
+  expect(valve!.scrollHeight, 'the update-open column genuinely overflows the frame').toBeGreaterThan(valve!.clientHeight)
+  // And the overflowed surfaces are reachable — the assembly foot at the
+  // stage's end and the panel's own submit scroll into the frame.
+  const summary = page.locator('[data-anim-assembly-summary]')
+  await summary.scrollIntoViewIfNeeded()
+  // (1px epsilon: scrollIntoViewIfNeeded's alignment can round a third of a
+  // pixel past the boundary — reachability is the pin, not sub-pixel math.)
+  let box = await summary.boundingBox()
+  expect(box!.y + box!.height, 'the assembly summary scrolls into the frame').toBeLessThanOrEqual(601)
+  expect(box!.y).toBeGreaterThanOrEqual(-1)
+  const submit = panel.locator('[data-anim-binding-submit]')
+  await submit.scrollIntoViewIfNeeded()
+  box = await submit.boundingBox()
+  expect(box!.y + box!.height, 'the binding submit scrolls into the frame').toBeLessThanOrEqual(601)
+  expect(box!.y).toBeGreaterThanOrEqual(-1)
+  // Closing the panel restores the loop with no scrollbar debt — the
+  // timeline stands in the first frame again (this document holds no keys,
+  // so the seed card is the stage's content; the panes need a selection).
+  await panel.locator('[data-anim-binding-dismiss]').click()
+  await expect(panel).toHaveCount(0)
+  const seedCard = page.locator('[data-anim-seed-card]')
+  await seedCard.scrollIntoViewIfNeeded()
+  const seedBox = await seedCard.boundingBox()
+  expect(seedBox!.y).toBeGreaterThanOrEqual(-1)
+  expect(seedBox!.y + seedBox!.height).toBeLessThanOrEqual(601)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })

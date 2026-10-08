@@ -1031,7 +1031,7 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     if (!holdsPromotedReference) {
       // The panel disables the action — this guard keeps a stale click
       // honest, never a silent no-op.
-      set({ commandError: 'Choose a reference frame from a landed step before continuing — the next step needs its near reference (§7.1).' })
+      set({ commandError: 'Choose a reference frame from a landed step before continuing — the next step needs its near reference.' })
       return null
     }
     const lastSlot = span.stepSlots[span.stepSlots.length - 1] ?? null
