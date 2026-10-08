@@ -316,8 +316,27 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
 
   const submit = async () => {
     if (!canSubmit) return
+    // An explicit submission flushes EVERY pending draft for the span BEFORE
+    // the submit call (Codex I10): the pose draft's debounce exists for idle
+    // settles — a deliberate Submit waits for nothing. The annotate command
+    // fires NOW and is AWAITED, so the wire order is annotate-then-submit and
+    // the server freezes the caption the textarea showed (the adapter reads
+    // the fresh document after the settle, so the flush is what the frozen
+    // near pose rides). A failed flush ABORTS the submission — the adapter's
+    // command error already names the cause; never a silent skip that renders
+    // on the old pose and marks the span stale only afterward. The settle
+    // effect needs no manual disarm: once the flush lands, its own guard
+    // (draft text === the document's annotation) disarms the timer, and a
+    // timer that races the submit parks behind the busy store as a
+    // client-side no-op (equal annotation, no wire call).
+    if (rollingSource !== null && poseDraft !== null && poseDraft.pointer === rollingPointerKey && poseDraft.text !== (rollingPose ?? '')) {
+      const settled = await onAnnotateRolling(span.id, rollingSource.stepSlotId, { poseDescription: poseDraft.text.trim() === '' ? null : poseDraft.text })
+      if (!settled) return
+    }
     // Converge the preview on the live text BEFORE the frozen snapshot takes
-    // it — the byte-identity pin: what was previewed is what froze.
+    // it — the byte-identity pin: what was previewed is what froze. (The
+    // movement/preservation flush rides the submit adapter itself — it
+    // persists the intent before the attempt POST.)
     setCommitted({ movement: draft.movement, preservation: draft.preservation })
     await onSubmit(span.id, { movement: draft.movement, preservation: draft.preservation, overrides })
   }
