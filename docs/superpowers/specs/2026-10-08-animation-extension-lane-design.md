@@ -156,6 +156,10 @@ Every continuation attempt freezes, verbatim:
 **Binding semantics (ruling 3):** selecting a different source — or
 changing any frozen field — is an **explicit binding change**, a distinct
 document mutation with its own revision bump and descendant staleness.
+**Rebinding edits the document/draft and produces a NEW attempt; it never
+changes an existing attempt's frozen source, caption, recipe, or
+provenance** — the inherited frozen-attempt contract, restated where it
+binds this lane.
 **Editorial trims never modify the binding**: trimming what the timeline
 delivers does not move what the continuation extends. **Binding metadata
 is distinct from artifact availability**: the persisted record stays
