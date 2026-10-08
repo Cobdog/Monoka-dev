@@ -1437,6 +1437,92 @@ test('annotating the rolling reference recompiles the preview and freezes verbat
   expect(engineExited).toBe(true)
 })
 
+// Codex batch C, I10 — the submit button is an EXPLICIT action, so it waits
+// for nothing: typing a new rolling pose and clicking Submit INSIDE the
+// 400 ms annotation debounce must flush the draft BEFORE the submit call.
+// The pre-fix build submitted the OLD annotation and persisted the typed
+// one only after the debounce — the expensive render conditioned on a
+// different pose than the textarea showed, and the span went stale
+// post-render (the annotate landing after the freeze). The pin: the wire
+// order is annotate-then-submit, the frozen caption carries the TYPED pose,
+// and exactly ONE annotate ever fires (the explicit flush; a debounce
+// duplicate would have to race past the busy-gated submit and is a
+// client-side no-op by design).
+test('a submit inside the annotation debounce flushes the pose draft first — annotate lands before the submit (inspector, I10)', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  await engine.control({ steps: 6, stepDelayMs: 150 })
+  const originalSettings = await pointAtEngine(request, engine.port)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'Submit flushes the pose')
+    // Step 1 lands; frame 3 is selected as the rolling reference; step 2's
+    // slot appends — the submission target whose near reference IS that
+    // annotated frame (the same scaffolding as the annotation test above).
+    const first = await request.post('/api/lan/animation/attempts', { data: tweenDraftBody(seeded.documentId, seeded.stepSlotId, `anim-e2e-i10-1-${Date.now()}`) })
+    expect(first.ok(), `step 1 submits (${await first.text()})`).toBe(true)
+    const attemptId = ((await first.json()) as { attemptId: string }).attemptId
+    await expect.poll(async () => {
+      const view = await readAttemptView(request, attemptId)
+      return view.attempt.execution === 'ready' && view.attempt.candidate !== null
+    }, { timeout: 30_000 }).toBe(true)
+    const landed = await readAnimationDocument(request, seeded.documentId)
+    const selected = await request.post('/api/lan/animation/select/rolling-reference', {
+      data: { documentId: seeded.documentId, spanId: seeded.spanId, attemptId, frameIndex: 3, expectedRevision: landed.document.revision },
+    })
+    expect(selected.ok(), `the rolling reference selects (${await selected.text()})`).toBe(true)
+    const appended = await request.post('/api/lan/animation/spans', {
+      data: { op: 'append-step-slot', documentId: seeded.documentId, spanId: seeded.spanId, expectedRevision: landed.document.revision + 1 },
+    })
+    expect(appended.ok(), `the step slot appends (${await appended.text()})`).toBe(true)
+
+    const animationUrl = `/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`
+    await page.goto(animationUrl)
+    await page.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    await expect(page.locator('[data-anim-inspector]')).toBeVisible({ timeout: 15_000 })
+    await expect(page.locator('[data-anim-frame-source="promoted-frame"]')).toBeVisible()
+    await expect(page.locator('[data-anim-rolling-annotation]')).toBeVisible()
+
+    // The wire order, observed at the page: type a pose and click Submit
+    // IMMEDIATELY — inside the 400 ms annotation debounce window.
+    const wire: string[] = []
+    page.on('request', (route) => {
+      const url = route.url()
+      if (url.includes('/api/lan/animation/annotate/rolling-reference')) wire.push('annotate')
+      if (url.includes('/api/lan/animation/attempts')) wire.push('submit')
+    })
+    const POSE = 'coiled low, the back hand drawn to the hip'
+    await page.locator('[data-anim-inspector-pose]').fill(POSE)
+    await page.locator('[data-anim-inspector-submit]').click()
+
+    // The submission lands step 2 (the durable read is the settle point).
+    await expect.poll(async () => {
+      const view = await readAnimationDocument(request, seeded.documentId)
+      const span = view.document.body.spans.find((entry) => entry.id === seeded.spanId)!
+      return span.stepSlots[1]!.attempts.length
+    }, { timeout: 45_000 }).toBe(1)
+    // THE ORDER: the annotate POST preceded the submit POST, and no second
+    // annotate ever fired (the debounce disarms on the flushed equality;
+    // a racing timer parks behind the busy store as a client-side no-op).
+    expect(wire).toEqual(['annotate', 'submit'])
+    // The frozen caption carries the TYPED pose — the render conditioned on
+    // the pose the textarea showed (the pre-fix build froze the old
+    // annotation here).
+    const settled = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { attempts: Array<{ tool: string; targetId: string; caption: string }> } }
+    const stepTwo = settled.document.attempts.find((entry) => entry.tool === 'tween' && entry.targetId !== seeded.stepSlotId)!
+    expect(stepTwo.caption).toContain(`FIRST FRAME (Reference 1): ${POSE}`)
+    await expect(page.locator('[data-anim-command-error]')).toHaveCount(0)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  // The fake-engine child actually exited — never orphaned.
+  expect(engineExited).toBe(true)
+})
+
 // Wave 2a fix round I-1 (the blind review's mandatory finding): an IDLE,
 // never-typed inspector FOLLOWS an external annotation write — it never
 // reverts it. The pre-fix settle effect fired on ANY divergence between its
