@@ -395,10 +395,22 @@ export function createCompletionOwner(deps: {
     }
   }
 
-  /** Cancellation racing completion (§11.4): interrupt the engine job, then
+  /** Cancellation racing completion (§11.4): depose the engine job, then
    *  resolve from history — whatever finished is PRESERVED (landed, never
    *  auto-selected, per the store's contract), what did not finish is
-   *  cancelled. */
+   *  cancelled.
+   *
+   *  THE DEPOSE (Codex I3): the real /interrupt deliberately no-ops a
+   *  PENDING id (server.py:1176-1192 — it only interrupts currently-running
+   *  prompts), so interrupt alone cannot stop a queued job; it would render
+   *  and land despite the user's Stop. While the engine still lists the job,
+   *  the interrupt covers the running case and dequeue (the captured API's
+   *  queue-deletion op) removes the pending entry — a job that moves
+   *  pending→running between the calls is caught by the next round's
+   *  interrupt, so whichever side of the queue the job is on, one of the two
+   *  calls deposes it and the loop terminates. The bound only guards a
+   *  wedged engine: falling through leaves the attempt to the settle below
+   *  and the watcher/reconcile behind it — never a silent drop. */
   async function cancel(attemptId: string): Promise<void> {
     const attempt = attemptOrThrow(attemptId)
     if (TERMINAL_STATES.has(attempt.execution.state)) return
@@ -411,10 +423,46 @@ export function createCompletionOwner(deps: {
       emit('animation.attempt.cancelled', { attemptId, documentId: attempt.documentId })
       return
     }
+    const engineJobId = attempt.engineJobId
     try {
-      await engine.interrupt(attempt.engineJobId)
+      for (let round = 0; round < 5; round += 1) {
+        await engine.interrupt(engineJobId)
+        if (!(await engine.queuedJobIds()).includes(engineJobId)) break
+        await engine.dequeue(engineJobId)
+        if (!(await engine.queuedJobIds()).includes(engineJobId)) break
+      }
+      // The job is deposed from the queue. What the engine REMEMBERS decides
+      // the settle: a history record means the job genuinely ran — resolve
+      // from it (whatever finished preserved, §11.4); NO record anywhere
+      // means it never rendered — a pending id just dequeued, an interrupt
+      // the engine recorded before any output, or a job lost to a restart.
+      // The last is 'lost' by the port's settle-window convention; here it
+      // follows the CANCEL the user just issued, not the dispatch-outcome
+      // vocabulary: whatever already landed stays landed, the execution
+      // settles cancelled.
+      let remembered: EngineJobStatus
+      try {
+        remembered = await engine.history(engineJobId)
+      } catch (failure) {
+        // The engine went unreachable mid-cancel (history's own queue read
+        // is the reachability probe) — the reconciling branch below
+        // applies, carrying the real transport error.
+        throw new Error(`the engine became unreachable while the cancellation resolved the job (${failure instanceof Error ? failure.message : String(failure)})`)
+      }
+      if (remembered.status === 'lost') {
+        const fresh = store.getAttempt(attemptId)
+        if (!fresh || TERMINAL_STATES.has(fresh.execution.state)) return
+        if (fresh.result) {
+          // The output landed before the engine forgot the job — preserved.
+          setExecution(fresh, 'ready')
+          return
+        }
+        setExecution(fresh, 'cancelled')
+        emit('animation.attempt.cancelled', { attemptId, documentId: fresh.documentId })
+        return
+      }
     } catch (failure) {
-      // The interrupt itself failing (engine down) leaves the attempt
+      // The depose itself failing (engine down) leaves the attempt
       // in flight — reconciliation settles it later; never a silent drop.
       setExecution(attempt, 'reconciling')
       emit('animation.attempt.cancel-error', { attemptId, error: failure instanceof Error ? failure.message : String(failure) })
