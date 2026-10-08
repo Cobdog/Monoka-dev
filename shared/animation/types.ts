@@ -60,8 +60,15 @@ export type KeySlot = { id: string; order: number; selectedCandidateId: string |
  *  {poseDescription, facing} per selected frame, correctable in place,
  *  reset to nulls by selecting a different rolling reference — the promoted
  *  frame's pose belongs to the frame, so it rides the only pointer that
- *  names it. Key-candidate pose/facing stays candidate-bound (§5.1). */
-export type TweenStepSlot = { id: string; attempts: string[]; selectedRollingReference: { attemptId: string; frameIndex: number; poseDescription: string | null; facing: FacingTerm | null } | null }
+ *  names it. Key-candidate pose/facing stays candidate-bound (§5.1).
+ *  Codex batch C (I11) widened it again with the frame's OWN extracted
+ *  image (`frameAsset`): the selection command resolves the frame through
+ *  the §7.2.2 extraction seam and records the IMAGE asset beside its
+ *  pointer, so the inspector annotates pose/facing beside the actual
+ *  conditioning image instead of the clip's blob handle. The extraction is
+ *  content-addressed, so this is exactly the asset a later submission
+ *  freezes as the rolling-near reference. */
+export type TweenStepSlot = { id: string; attempts: string[]; selectedRollingReference: { attemptId: string; frameIndex: number; poseDescription: string | null; facing: FacingTerm | null; frameAsset: AssetReference | null } | null }
 
 export type SessionOverrides = { medium?: MediumString; scene?: string; camera?: { description: string; reason: string } }
 
@@ -303,18 +310,26 @@ function parseTweenStepSlot(value: unknown): TweenStepSlot | null {
   let rolling: TweenStepSlot['selectedRollingReference'] = null
   if (selectedRollingReference !== null) {
     if (!isRecord(selectedRollingReference)) return null
-    const { attemptId, frameIndex, poseDescription, facing } = selectedRollingReference
+    const { attemptId, frameIndex, poseDescription, facing, frameAsset } = selectedRollingReference
     if (!isUuid(attemptId)) return null
     if (!isNonNegativeInt(frameIndex)) return null
     if (!parsedAttempts.includes(attemptId)) return null
-    // The annotation fields are NULLABLE; an ABSENT field is the pre-wave-2a
-    // wire shape and reads as null — the one deliberate normalization in this
-    // parser (a widening read, never a downgrade): rows the older build wrote
-    // must keep parsing or their whole document would become unservable, and
-    // "unannotated" is exactly what a missing annotation means.
+    // The annotation fields and the frame asset are NULLABLE; an ABSENT
+    // field is the pre-widening wire shape and reads as null — the one
+    // deliberate normalization family in this parser (a widening read, never
+    // a downgrade): rows the older build wrote must keep parsing or their
+    // whole document would become unservable, and "unannotated"/"no recorded
+    // frame asset" is exactly what a missing field means (a pre-I11 pointer
+    // annotates beside the placeholder until its frame is re-selected).
     if (poseDescription !== undefined && poseDescription !== null && typeof poseDescription !== 'string') return null
     if (facing !== undefined && facing !== null && !isFacingTerm(facing)) return null
-    rolling = { attemptId, frameIndex, poseDescription: poseDescription ?? null, facing: facing ?? null }
+    if (frameAsset !== undefined && frameAsset !== null) {
+      const parsedFrameAsset = parseAssetReference(frameAsset)
+      if (!parsedFrameAsset) return null
+      rolling = { attemptId, frameIndex, poseDescription: poseDescription ?? null, facing: facing ?? null, frameAsset: parsedFrameAsset }
+    } else {
+      rolling = { attemptId, frameIndex, poseDescription: poseDescription ?? null, facing: facing ?? null, frameAsset: null }
+    }
   }
   return { id, attempts: parsedAttempts, selectedRollingReference: rolling }
 }

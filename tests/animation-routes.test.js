@@ -672,12 +672,24 @@ test('(c) submit emits attempt-state envelopes on the animation channel; the lan
   const tweenReady = fabric.envelopes.find((envelope) => envelope.ch === 'animation' && envelope.type === 'attempt-ready' && envelope.payload.attemptId === tweenAttemptC)
   assert.equal(tweenReady?.payload.candidateId, null, 'a tween landing mints no document candidate — candidateId is null, correlated by attemptId')
 
-  // The two span-anchored selection routes answer on the real document.
+  // The two span-anchored selection routes answer on the real document. The
+  // pointer records the frame's OWN extracted image (Codex I11): the route
+  // resolves frame 7 through the §7.2.2 seam itself, so the recorded asset is
+  // exactly what a later submission freezes — pinned here against the
+  // extract-frame endpoint's own answer for the same frame (content
+  // addressing: identical bytes, identical relPath).
   const rolling = await api.post('/api/lan/animation/select/rolling-reference', {
     documentId: docC.id, spanId: spanC.id, attemptId: tweenAttemptC, frameIndex: 7, expectedRevision: afterTween.body.document.revision,
   })
   assert.equal(rolling.status, 200, `the rolling reference selects (${rolling.body.error ?? ''})`)
-  assert.deepEqual(rolling.body.document.body.spans.find((span) => span.id === spanC.id).stepSlots[0].selectedRollingReference, { attemptId: tweenAttemptC, frameIndex: 7, poseDescription: null, facing: null })
+  const rollingPointer = rolling.body.document.body.spans.find((span) => span.id === spanC.id).stepSlots[0].selectedRollingReference
+  const frameSeven = await api.post('/api/lan/animation/attempt/extract-frame', { attemptId: tweenAttemptC, frameIndex: 7 })
+  assert.equal(frameSeven.status, 200, `frame 7 extracts (${frameSeven.body.error ?? ''})`)
+  assert.deepEqual(
+    rollingPointer,
+    { attemptId: tweenAttemptC, frameIndex: 7, poseDescription: null, facing: null, frameAsset: frameSeven.body.assetReference },
+    'the pointer carries the frame\'s extracted image — the extraction\'s own answer',
+  )
 
   const contribution = await api.post('/api/lan/animation/select/clip-contribution', {
     documentId: docC.id, spanId: spanC.id, attemptId: tweenAttemptC, inFrame: 2, outFrame: 15, holdDuration: 4, expectedRevision: rolling.body.document.revision,
@@ -1623,9 +1635,11 @@ test('(m) the annotate route lands the pointer annotation; the step-2 frozen cap
   const annotated = await annotate({ poseDescription: 'weight settled low over the balls of the feet', facing: 'screen-left' }, revision)
   assert.equal(annotated.status, 200, `the annotation lands (${annotated.body.error ?? ''})`)
   revision = annotated.body.document.revision
+  // The pointer's recorded frameAsset (I11) rides untouched by the
+  // annotation — carried forward from the selection response verbatim.
   assert.deepEqual(
     annotated.body.document.body.spans.find((entry) => entry.id === spanId).stepSlots[0].selectedRollingReference,
-    { attemptId: first.body.attemptId, frameIndex: 5, poseDescription: 'weight settled low over the balls of the feet', facing: 'screen-left' },
+    { attemptId: first.body.attemptId, frameIndex: 5, poseDescription: 'weight settled low over the balls of the feet', facing: 'screen-left', frameAsset: selected.body.document.body.spans.find((entry) => entry.id === spanId).stepSlots[0].selectedRollingReference.frameAsset },
     'the annotation rides the selection pointer',
   )
   const annotatedSpan = annotated.body.document.body.spans.find((entry) => entry.id === spanId)

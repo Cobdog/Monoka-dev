@@ -291,8 +291,12 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
 
   /** One revision-gated authoring command: run, emit document-changed, answer
    *  with the fresh view; mapped failures answer themselves, anything else
-   *  propagates to the structural 500 (the documents block's contract). */
-  async function authoring(response: ServerResponse, request: IncomingMessage, reason: string, run: (body: Record<string, unknown>, expectedRevision: number) => AnimationDocumentRow): Promise<void> {
+   *  propagates to the structural 500 (the documents block's contract). `run`
+   *  may await before its store write (the rolling-reference selection
+   *  resolves its frame first, I11) — the revision gate still fires inside
+   *  the store, so a document that moved during the resolution answers the
+   *  ordinary 409 rebase surface. */
+  async function authoring(response: ServerResponse, request: IncomingMessage, reason: string, run: (body: Record<string, unknown>, expectedRevision: number) => AnimationDocumentRow | Promise<AnimationDocumentRow>): Promise<void> {
     const body = await readJson(request, 2_000_000)
     // A non-integer expectedRevision reaches the store's own 400 (the gate is
     // one rule, stated once) — NaN fails its Number.isInteger check.
@@ -300,7 +304,7 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       ? body.expectedRevision
       : Number.NaN
     try {
-      const row = run(body, expectedRevision)
+      const row = await run(body, expectedRevision)
       emitDocumentChanged(row.id, row.revision, reason)
       sendJson(response, 200, { document: documentView(row) })
       return
@@ -836,10 +840,26 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
     }
 
     if (pathname === '/api/lan/animation/select/rolling-reference' && request.method === 'POST') {
-      return authoring(response, request, 'select.rolling-reference', (body, expectedRevision) => {
+      // Codex I11: the pointer records the frame's OWN extracted image, so
+      // the inspector annotates beside the actual conditioning image. The
+      // resolution is the route's job — the SAME §7.2.2 seam the submit and
+      // the hero acceptance use (idempotent, content-addressed, and durable
+      // against an offline engine since I9) — never a client-supplied
+      // handle: the durable document must carry server truth. The §7.2.2
+      // two paths unify here too: a selection is never written against a
+      // frame that could not be resolved (a named 400, the client-side
+      // on-demand extraction's own doctrine, now enforced at the seam).
+      return authoring(response, request, 'select.rolling-reference', async (body, expectedRevision) => {
         const frameIndex = body.frameIndex
         if (!isNonNegativeInt(frameIndex)) throw new AnimationRuleError('frameIndex must be a non-negative integer.', 400)
-        return store.selectRollingReference(documentIdFrom(body), uuidField(body, 'spanId'), uuidField(body, 'attemptId'), frameIndex, expectedRevision)
+        const attemptId = uuidField(body, 'attemptId')
+        let frameAsset: AssetReference
+        try {
+          frameAsset = await service.extractFrame(attemptId, frameIndex)
+        } catch (error) {
+          throw new AnimationRuleError(`The selected frame could not be resolved — nothing was selected: ${error instanceof Error ? error.message : String(error)}`, 400)
+        }
+        return store.selectRollingReference(documentIdFrom(body), uuidField(body, 'spanId'), attemptId, frameIndex, frameAsset, expectedRevision)
       })
     }
 

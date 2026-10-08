@@ -346,10 +346,15 @@ const isPathLikeHandle = (assetId: string): boolean => assetId.includes('/')
  *  rolling reference — never a frozen copy of the original endpoint). The
  *  promoted frame's source carries its OWN step slot id: the frame's pose
  *  annotation is bound to that slot's selection pointer (wave 2a), and the
- *  annotation editor addresses its command through it. */
+ *  annotation editor addresses its command through it. It also carries the
+ *  frame's OWN extracted image (Codex I11): the selection pointer's recorded
+ *  frameAsset — the actual conditioning image the card renders beside the
+ *  annotation editor, exactly what a later submission freezes as the
+ *  rolling-near reference. Null is the pre-widening pointer (the card falls
+ *  back to the honest placeholder until its frame is re-selected). */
 export type TweenRefSource =
   | { kind: 'start-key'; keyId: string; keyOrder: number }
-  | { kind: 'promoted-frame'; stepIndex: number; stepSlotId: string; attemptId: string; frameIndex: number }
+  | { kind: 'promoted-frame'; stepIndex: number; stepSlotId: string; attemptId: string; frameIndex: number; frameAsset: AssetReference | null }
 
 /** One resolved tween reference (the rolling-near or the fixed-far): ok
  *  carries the asset + pose the compile consumes; not-ok the NAMED problem
@@ -435,7 +440,7 @@ export function deriveTweenPreview(document: AnimationDocumentView, spanId: stri
       ok: true,
       assetReference: attempt.candidate.assetReference,
       pose: { poseDescription: selected.poseDescription, facing: selected.facing },
-      source: { kind: 'promoted-frame', stepIndex: index, stepSlotId: slot.id, attemptId: selected.attemptId, frameIndex: selected.frameIndex },
+      source: { kind: 'promoted-frame', stepIndex: index, stepSlotId: slot.id, attemptId: selected.attemptId, frameIndex: selected.frameIndex, frameAsset: selected.frameAsset },
     }
     break
   }
