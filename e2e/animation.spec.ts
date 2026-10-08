@@ -541,6 +541,21 @@ async function openTimeline(page: Page, projectId: string, documentId: string) {
   return timeline
 }
 
+/** Wave 3 (the live review's #7): the editorial + export surfaces live
+ *  behind the stage's ASSEMBLY DISCLOSURE — reachable, no longer
+ *  permanently mounted in the creative loop. Every flow that touches them
+ *  opens the disclosure first. */
+async function openAssembly(page: Page) {
+  await page.locator('[data-anim-assembly-summary]').click()
+  await expect(page.locator('[data-anim-editorial]')).toBeVisible({ timeout: 5_000 })
+}
+
+/** Wave 3: a selected key presents ONE tool — the hero and sequence panels
+ *  never stack; the switch is an explicit chip choice. */
+async function pickKeyTool(page: Page, tool: 'hero' | 'sequence') {
+  await page.locator(`[data-anim-key-tool="${tool}"]`).click()
+}
+
 test('keys render as image cards with lock chips and origin badges (timeline)', async ({ page, request }) => {
   const problems = await trackErrors(page)
   const projectId = `anim-e2e-${Date.now()}`
@@ -2222,14 +2237,18 @@ test('the §5.2 sequence slice — pick the window explicitly, render it, review
     await page.goto(animationUrl)
     const timeline = page.locator('[data-anim-timeline]')
     await expect(timeline).toBeVisible({ timeout: 15_000 })
-    // Selecting the START key opens the sequence panel beside the hero panel
-    // — one selection, two tools: the key sources the next hero generation
-    // AND opens as a window start.
+    // Selecting the START key opens ONE chosen tool (wave 3, the live
+    // review's #7): the hero lane is the default, the sequence panel mounts
+    // only through the EXPLICIT switch — the two never stack together.
     await timeline.locator(`[data-anim-key="${seeded.startKeyId}"]`).click()
+    await expect(page.locator('[data-anim-key-candidates]')).toBeVisible()
+    await expect(page.locator('[data-anim-hero-panel]')).toBeVisible()
+    await expect(page.locator('[data-anim-seq-panel]')).toBeHidden()
+    await pickKeyTool(page, 'sequence')
     const panel = page.locator('[data-anim-seq-panel]')
     await expect(panel).toBeVisible()
+    await expect(page.locator('[data-anim-hero-panel]')).toBeHidden()
     await expect(panel).toHaveAttribute('data-anim-seq-panel-key', seeded.startKeyId)
-    await expect(page.locator('[data-anim-hero-panel]')).toBeVisible()
     await expect(panel.locator('[data-anim-seq-start] img')).toBeVisible()
     // The window-end picker EXCLUDES the start key; the pick is the explicit
     // act this tool owns.
@@ -2365,6 +2384,7 @@ test('the window pick is explicit and bounded — gated submit, the distinct-end
   const timeline = page.locator('[data-anim-timeline]')
   await expect(timeline).toBeVisible({ timeout: 15_000 })
   await timeline.locator(`[data-anim-key="${seeded.startKeyId}"]`).click()
+  await pickKeyTool(page, 'sequence')
   const panel = page.locator('[data-anim-seq-panel]')
   await expect(panel).toBeVisible()
   // The submit gate is the honest one: no end picked, no beats, no
@@ -2459,13 +2479,17 @@ test('the §9 editorial slice — contribute a window take, hold, reorder, the w
     await page.goto(animationUrl)
     const timeline = page.locator('[data-anim-timeline]')
     await expect(timeline).toBeVisible({ timeout: 15_000 })
+    // Wave 3: the assembly surfaces sit behind the stage's disclosure.
+    await openAssembly(page)
     const panel = page.locator('[data-anim-editorial]')
     await expect(panel).toBeVisible()
     await expect(panel.locator('[data-anim-editorial-empty]')).toBeVisible()
     await expect(panel.locator('[data-anim-editorial-no-clips]')).toBeVisible()
 
-    // WINDOW ONE (key #0 → key #1) through the real panel.
+    // WINDOW ONE (key #0 → key #1) through the real panel (wave 3: the key
+    // presents one tool — switch to the sequence lane explicitly).
     await timeline.locator(`[data-anim-key="${startKey}"]`).click()
+    await pickKeyTool(page, 'sequence')
     await page.locator('[data-anim-seq-end]').getByRole('radio', { name: 'key #1' }).click()
     await page.locator('[data-anim-seq-actions]').fill(SEQUENCE_BEATS.join('\n'))
     await page.locator('[data-anim-seq-preservation]').fill(SEQUENCE_PRESERVATION)
@@ -2614,6 +2638,7 @@ test('the editorial preview names the gate refusal before any export — a degen
     // accepts it (length semantics are the GATE's, task 13's narrowing) —
     // and the PREVIEW must name the problem before any export attempt.
     await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    await openAssembly(page)
     const panel = page.locator('[data-anim-editorial]')
     await expect(panel).toBeVisible({ timeout: 15_000 })
     const clipRow = panel.locator(`[data-anim-editorial-clip="${submitted.attemptId}"]`)
@@ -2768,6 +2793,7 @@ test('the §11.3 export slice — the review package downloads, and stale select
 
     // The panel contributes the landed take, then exports.
     await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    await openAssembly(page)
     const panel = page.locator('[data-anim-editorial]')
     await expect(panel).toBeVisible({ timeout: 15_000 })
     const clipRow = panel.locator(`[data-anim-editorial-clip="${submitted.attemptId}"]`)
@@ -3078,4 +3104,59 @@ test('a bound session updates its binding through the UI — read-only descripti
     engineExited = await engine.kill()
   }
   expect(engineExited).toBe(true)
+})
+
+// ---------------------------------------------------------------------------
+// Wave 3 (k2q0n9s, the live review's #7/#8/#9 — the UX pass): the desktop
+// STAGE layout (the creative loop side by side, the timeline retained, the
+// deliberate 1280x800 collapse), the kit's button GEOMETRY on every primary
+// action, and the 2b review's fold-ins (the batch import semantics, the
+// chip's landed gating, the latch reset).
+// ---------------------------------------------------------------------------
+
+test('the stage splits the creative loop side by side at wide viewports and stacks deliberately at 1280x800 (layout, wave 3)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await seedInspectorDocument(request, projectId, 'Stage layout')
+  const timeline = await openTimeline(page, projectId, seeded.documentId)
+  // Selecting the span opens the loop: the review pane (its honest empty
+  // state — nothing has rendered) beside the inspector pane.
+  await timeline.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+  await expect(page.locator('[data-anim-inspector]')).toBeVisible()
+  await expect(page.locator('[data-anim-review-empty]')).toBeVisible()
+  const stage = page.locator('[data-anim-stage]')
+  const reviewPane = page.locator('[data-anim-stage-review]')
+  const inspectorPane = page.locator('[data-anim-stage-inspector]')
+  // The assembly surfaces sit BEHIND the disclosure — reachable, not
+  // permanently mounted in the loop (the closed default is the contract).
+  await expect(page.locator('[data-anim-assembly]')).toBeVisible()
+  await expect(page.locator('[data-anim-editorial]')).toBeHidden()
+  await expect(page.locator('[data-anim-export]')).toBeHidden()
+
+  // WIDE (the suite's 1920x1080 viewport): the panes sit side by side, the
+  // timeline band persists above them, and the tool's primary action is
+  // reachable without scrolling (the sticky submit row).
+  await expect(stage).toHaveAttribute('data-anim-stage-mode', 'wide')
+  await expect(page.locator('[data-anim-stage-timeline]')).toBeVisible()
+  const reviewBox = await reviewPane.boundingBox()
+  const inspectorBox = await inspectorPane.boundingBox()
+  expect(reviewBox && inspectorBox).toBeTruthy()
+  expect(inspectorBox!.x, 'the inspector pane starts right of the review pane').toBeGreaterThan(reviewBox!.x + reviewBox!.width - 2)
+  const timelineBox = await page.locator('[data-anim-stage-timeline]').boundingBox()
+  expect(timelineBox!.y + timelineBox!.height, 'the timeline band sits above the panes').toBeLessThanOrEqual(reviewBox!.y + 2)
+  const submit = page.locator('[data-anim-inspector-submit]')
+  await expect(submit).toBeVisible()
+  const submitBox = await submit.boundingBox()
+  expect(submitBox!.y + submitBox!.height, 'the primary action is inside the 1080p viewport').toBeLessThanOrEqual(1080)
+
+  // 1280x800 — the review's second viewport: the deliberate collapse. The
+  // panes stack (review above inspector), the timeline still in frame.
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await expect(stage).toHaveAttribute('data-anim-stage-mode', 'stacked')
+  const stackedReview = await reviewPane.boundingBox()
+  const stackedInspector = await inspectorPane.boundingBox()
+  expect(stackedReview && stackedInspector).toBeTruthy()
+  expect(stackedInspector!.y, 'the inspector stacks below the review pane').toBeGreaterThanOrEqual(stackedReview!.y + stackedReview!.height - 2)
+  await expect(page.locator('[data-anim-stage-timeline]')).toBeVisible()
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })

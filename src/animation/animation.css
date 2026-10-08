@@ -26,8 +26,47 @@
 /* The timeline's stage (task 8): the shell section the Timeline mounts in —
    no longer a dashed placeholder, the timeline's own classes below carry the
    geometry (grid placement arrives inline from the component; this sheet owns
-   the shapes). */
+   the shapes). Wave 3 (the live review's #7): the stage is the creative loop
+   — a persistent TIMELINE BAND above [review/preview pane | active inspector
+   pane] at wide viewports (the panes scroll independently, so the timeline
+   and each tool's primary action stay reachable while authoring), the
+   stacked column below the breakpoint (the deliberate 1280x800 collapse).
+   The 1440px literal MIRRORS the matchMedia in AnimationApp.tsx — one
+   breakpoint, two homes; change them together. */
 .anim-stage { display: grid; gap: 8px; align-content: start; }
+.anim-stage-panes { display: grid; gap: 12px; align-items: start; }
+.anim-stage-pane { display: grid; gap: 12px; min-width: 0; }
+.anim-stage-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-stage-tools-label { color: var(--muted); font-size: var(--text-sm); }
+.anim-stage-empty { display: grid; gap: 6px; justify-items: start; padding: 16px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: var(--text-md); }
+.anim-stage-empty strong { color: var(--text); font-size: var(--text-md); }
+.anim-assembly { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-assembly > summary { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; padding: 10px 14px; font-size: var(--text-md); color: var(--text); cursor: pointer; }
+.anim-assembly-summary-note { color: var(--muted); font-size: var(--text-sm); }
+.anim-assembly[open] > summary { border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.anim-assembly-body { display: grid; gap: 12px; padding: 0 14px 14px; }
+@media (min-width: 1440px) {
+  /* The body stops being the scroller: the stage fills the remaining
+     viewport height and the PANES scroll internally — the timeline band and
+     the assembly foot stay in frame while authoring. Scoped to the BOUND
+     arm's body (the unbound/error arms keep their centered card flow). */
+  .anim-body--stage { display: flex; flex-direction: column; overflow: hidden; }
+  .anim-body--stage .anim-stage { flex: 1; min-height: 0; align-content: stretch; grid-template-rows: auto minmax(0, 1fr) auto; }
+  /* The panes' single row must be BOUNDED (minmax(0,1fr) + stretch + hidden)
+     — the base rule's align-items:start would leave the panes content-sized
+     so they'd clip at the body instead of scrolling, defeating the sticky
+     submit. */
+  .anim-stage-panes { min-height: 0; align-items: stretch; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+  .anim-stage-pane { min-height: 0; overflow-y: auto; padding-right: 2px; }
+  /* An OPEN assembly may not consume the stage: capped, scrolling
+     internally — the creative loop keeps the majority of the frame at
+     every assembly size (the collapsed summary costs one row). */
+  .anim-body--stage .anim-assembly[open] { max-height: 55vh; overflow-y: auto; }
+  /* The 88ch column caps were the review's measured waste — inside a pane
+     the panels fill the pane (tool panes wrap the key panels, so the
+     selector reaches through them). */
+  .anim-stage-pane :is(.anim-inspector, .anim-review, .anim-key-candidates) { max-width: none; justify-self: stretch; }
+}
 
 /* The timeline grid: row 1 is the playhead ruler, then one row per nesting
    lane, then the key cards row. Columns alternate key/gap (inline counts). */
@@ -105,9 +144,10 @@
 .anim-review-failure { border-left: 3px solid var(--accent); padding-left: 10px; color: var(--text); }
 
 /* The span inspector (task 9, §6.1) — the .anim-select card shape again:
-   one authoring panel under the timeline, geometry only (tokens, the kit's
-   Field/Chip/Button recipes carry the rest). */
-.anim-inspector { display: grid; gap: 14px; max-width: 88ch; justify-self: start; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+   one authoring panel, geometry only (tokens, the kit's Field/Chip/Button
+   recipes carry the rest). Wave 3: the bottom inset moved onto the sticky
+   submit row so it can own the panel's foot. */
+.anim-inspector { display: grid; gap: 14px; max-width: 88ch; justify-self: start; padding: 16px 16px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .anim-inspector h3 { margin: 0; font-size: var(--text-lg); }
 .anim-inspector-lede { margin: 0; color: var(--muted); font-size: var(--text-md); line-height: 1.55; }
 .anim-inspector-frames { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
@@ -125,7 +165,12 @@
 .anim-inspector-input { width: 100%; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: var(--text-md); }
 .anim-inspector-overrides { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .anim-inspector-error { margin: 0; color: var(--danger); font-size: var(--text-md); line-height: 1.5; }
-.anim-inspector-submit { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; max-width: 72ch; }
+/* The submit row (wave 3, the live review's "submit below the fold"):
+   STICKY at the scrollport's foot for as long as its panel crosses it — the
+   tool's primary action is reachable without scrolling, whatever the form's
+   length. Full-bleed over the panel's padding so scrolled content never
+   peeks around it. */
+.anim-inspector-submit { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 -16px; padding: 10px 16px 14px; background: var(--surface); border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; }
 
 /* The caption preview (§6.3): a collapsed disclosure holding exactly what
    submission freezes plus the compiler's advisory hint rows. */
