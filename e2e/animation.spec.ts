@@ -3160,3 +3160,41 @@ test('the stage splits the creative loop side by side at wide viewports and stac
   await expect(page.locator('[data-anim-stage-timeline]')).toBeVisible()
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
+
+test('every action button carries the kit geometry — no native rectangles (geometry, wave 3)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const projectId = `anim-e2e-${Date.now()}`
+  const seeded = await seedInspectorDocument(request, projectId, 'Button geometry')
+  const timeline = await openTimeline(page, projectId, seeded.documentId)
+  // The span arm's primary action first — the review's measured offender
+  // (classes only `btn btn--primary`, 113.84x24, zero radius).
+  await timeline.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+  const submit = page.locator('[data-anim-inspector-submit]')
+  await expect(submit).toBeVisible()
+  const submitGeometry = await submit.evaluate((element) => ({ classes: element.className, radius: getComputedStyle(element).borderTopLeftRadius, font: getComputedStyle(element).fontSize, height: element.getBoundingClientRect().height }))
+  expect(submitGeometry.classes.split(/\s+/), 'the tween submit composes the geometry class').toContain('anim-btn')
+  expect(parseFloat(submitGeometry.radius), 'the tween submit is rounded, not a native rectangle').toBeGreaterThan(0)
+  expect(parseFloat(submitGeometry.font), 'the tween submit rides the app type scale (the review measured the native 16px)').toBeLessThan(12)
+  expect(submitGeometry.height, 'the tween submit is a real touch target').toBeGreaterThanOrEqual(20)
+  // Then the key arm (hero tool + candidate strip) with the assembly
+  // disclosure open — the editorial + export actions join the audit.
+  await timeline.locator('[data-anim-key]').first().click()
+  await expect(page.locator('[data-anim-hero-panel]')).toBeVisible()
+  await openAssembly(page)
+  const audit = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll('[data-anim-root] .btn')).map((element) => {
+      const el = element as HTMLElement
+      return { text: (el.textContent ?? '').slice(0, 40), classes: el.className, radius: getComputedStyle(el).borderTopLeftRadius, font: getComputedStyle(el).fontSize, height: el.getBoundingClientRect().height }
+    })
+  })
+  expect(audit.length, 'the audit saw real buttons').toBeGreaterThanOrEqual(6)
+  expect(audit.filter((row) => !row.classes.split(/\s+/).includes('anim-btn')), 'every kit Button composes the module geometry class').toEqual([])
+  for (const row of audit) {
+    expect(parseFloat(row.radius), `rounded: ${row.text}`).toBeGreaterThan(0)
+    expect(parseFloat(row.font), `the app type scale: ${row.text}`).toBeLessThan(12)
+    // Height only for the VISIBLE buttons — the inactive tool lane stays
+    // mounted but hidden (its rect is 0 by design).
+    if (row.height > 0) expect(row.height, `a real touch target: ${row.text}`).toBeGreaterThanOrEqual(20)
+  }
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})

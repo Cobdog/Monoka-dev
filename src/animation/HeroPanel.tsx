@@ -140,7 +140,7 @@ export function HeroPanel({ keyEntity, preview, binding, inFlightAttempt, onFaci
     <section className="anim-inspector" data-anim-hero-panel data-anim-hero-panel-key={keyEntity.id} aria-labelledby="anim-hero-title">
       <h3 id="anim-hero-title">Hero — generate the next key from key #{keyEntity.order}</h3>
       <p className="anim-inspector-lede">
-        One reference, the full arc (§5.2/§6.2): the caption states the current key and the movement it performs — start, path, and end — with no destination image. The render returns a 22-frame clip; you review it and accept the frame that becomes the <strong>next</strong> key.
+        Describe the full movement this key performs — start, path, and end. The render returns a 22-frame clip; review it and accept the frame that becomes the <strong>next</strong> key.
       </p>
 
       {!current.ok && (
@@ -173,7 +173,7 @@ export function HeroPanel({ keyEntity, preview, binding, inFlightAttempt, onFaci
         <Field
           label="Movement arc"
           htmlFor="anim-hero-arc"
-          hint="The full action from the current key — start, path, and end in one positive phrase. The caption's MOVEMENT line carries it VERBATIM; there is no destination section by design."
+          hint="The full action from this key — start, path, and end in one positive phrase. Carried verbatim into the caption."
         >
           <textarea
             id="anim-hero-arc"
@@ -189,8 +189,8 @@ export function HeroPanel({ keyEntity, preview, binding, inFlightAttempt, onFaci
           label="Medium"
           htmlFor="anim-hero-medium"
           hint={mediumOverride === null
-            ? `Inherited from the bound session (version ${binding.version}) — picking another chip overrides it for this generation.`
-            : 'An override for this generation — it compiles into the caption and freezes with the attempt.'}
+            ? `Inherited from the bound session — picking another chip overrides it for this generation.`
+            : 'An override for this generation — it freezes with the attempt.'}
         >
           <ChipGroup
             id="anim-hero-medium"
@@ -219,7 +219,7 @@ export function HeroPanel({ keyEntity, preview, binding, inFlightAttempt, onFaci
           <Field label="Camera description" htmlFor="anim-hero-camera" hint="The camera move, phrased as part of the shot.">
             <input id="anim-hero-camera" className="anim-inspector-input" data-anim-hero-camera type="text" value={cameraDescription} onChange={(event) => setCameraDescription(event.target.value)} />
           </Field>
-          <Field label="Camera reason" htmlFor="anim-hero-camera-reason" hint="Why the camera does this (§6.3 — the dialect's reason clause rides every camera statement).">
+          <Field label="Camera reason" htmlFor="anim-hero-camera-reason" hint="Why the camera does this — the reason rides every camera statement.">
             <input id="anim-hero-camera-reason" className="anim-inspector-input" data-anim-hero-camera-reason type="text" value={cameraReason} onChange={(event) => setCameraReason(event.target.value)} />
           </Field>
         </div>
@@ -227,7 +227,7 @@ export function HeroPanel({ keyEntity, preview, binding, inFlightAttempt, onFaci
             its description — the coupling is named, never a silent drop. */}
         {cameraReason.trim() !== '' && cameraDescription.trim() === '' && (
           <p className="anim-note" role="status" data-anim-hero-camera-reason-inert>
-            The camera reason rides the caption only with its description — describe the move for the reason to compile (§6.3 pairs them).
+            The camera reason rides the caption only with its description — describe the move for the reason to compile.
           </p>
         )}
       </div>
@@ -251,10 +251,10 @@ export function HeroPanel({ keyEntity, preview, binding, inFlightAttempt, onFaci
                   ))}
                 </ul>
               ) : (
-                <p className="anim-note" data-anim-caption-nohints>No advisory hints — the compiler flags a missing facing and negation; it never rewrites.</p>
+                <p className="anim-note" data-anim-caption-nohints>No advisory hints — the compiler advises, it never rewrites.</p>
               )}
               <p className="anim-note">
-                Compiled in this browser with the shared caption compiler <span data-anim-caption-compiler>v{compiled.result.compilerVersion}</span> — submission freezes exactly this text (the server recompiles authoritatively; its word wins).
+                Caption compiler <span data-anim-caption-compiler>v{compiled.result.compilerVersion}</span> — the preview and the submission freeze the same text.
               </p>
             </>
           )}
@@ -262,15 +262,15 @@ export function HeroPanel({ keyEntity, preview, binding, inFlightAttempt, onFaci
       </details>
 
       <div className="anim-inspector-submit">
-        <Button variant="primary" busy={busy} disabled={!canSubmit} onClick={() => void submit()} data-anim-hero-submit>
+        <Button variant="primary" className="anim-btn" busy={busy} disabled={!canSubmit} onClick={() => void submit()} data-anim-hero-submit>
           Generate the next key
         </Button>
         {inFlightAttempt !== null ? (
           <span className="anim-note" role="status" data-anim-hero-inflight>
-            A next-key render from this key is in flight — the timeline marks it; the landing opens its review. Nothing else to do here until it lands.
+            A next-key render from this key is in flight — its review opens when it lands.
           </span>
         ) : (
-          <span className="anim-note">The clip lands into a NEW proposed key slot beside this one — the hero generates the next key, never a re-roll of this one (§5.2).</span>
+          <span className="anim-note">The clip lands as a NEW key beside this one — the hero generates the next key, never a re-roll.</span>
         )}
       </div>
     </section>

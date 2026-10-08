@@ -332,7 +332,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
       <h3 id="anim-inspector-title">Tween span — from key #{fromKey?.order ?? '?'} to key #{toKey?.order ?? '?'}</h3>
       {span.stale && <p className="anim-note" role="status" data-anim-inspector-stale>This span is stale ({span.staleReasons.join(', ')}) — previous takes remain available; a new submission freezes fresh references.</p>}
       <p className="anim-inspector-lede">
-        The caption states the rolling first frame, the fixed destination, and one movement step (§6.2). The chain holds {preview.stepCount} {preview.stepCount === 1 ? 'step slot' : 'step slots'} — submission targets step {preview.stepCount}, the last slot; each render is one step, reviewed before the chain continues (§7.1).
+        Author step {preview.stepCount} of the movement from key #{fromKey?.order ?? '?'} to key #{toKey?.order ?? '?'}. Each render is one step — review it, then continue the chain.
       </p>
 
       {preview.problems.length > 0 && (
@@ -359,7 +359,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
                   <Field
                     label="Pose description"
                     htmlFor="anim-inspector-pose"
-                    hint="Bound to the selected rolling frame (§6.4): it compiles into the FIRST FRAME line of every later step's caption and persists as you settle. Until authored, the caption states the frame's reference only and flags the missing facing."
+                    hint="Bound to the selected rolling frame — it carries into every later step's caption and persists as you settle. Until authored, the caption flags the missing facing."
                   >
                     <textarea
                       id="anim-inspector-pose"
@@ -447,7 +447,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
         <Field
           label="Movement"
           htmlFor="anim-inspector-movement"
-          hint="The action and path of this span's step — the caption's MOVEMENT line carries it VERBATIM; the preview recompiles and the document persists it as you settle."
+          hint="The action and path of this step — carried verbatim into the caption; it persists as you settle."
         >
           <textarea
             id="anim-inspector-movement"
@@ -461,7 +461,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
         <Field
           label="What stays fixed"
           htmlFor="anim-inspector-preservation"
-          hint="Persisted with the span as the authored hold intent and compiled into this span's captions: the STATIC line carries it after the dialect's fixed hold. Empty leaves the fixed hold alone."
+          hint="What must not drift during the movement — it rides the caption's hold line. Empty leaves the standard hold."
         >
           <textarea
             id="anim-inspector-preservation"
@@ -477,8 +477,8 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
           label="Medium"
           htmlFor="anim-inspector-medium"
           hint={mediumOverride === null
-            ? `Inherited from the bound session (version ${binding.version}) — picking another chip overrides it for this span's submissions.`
-            : 'A span override — it compiles into this span\'s captions and freezes with each submitted attempt.'}
+            ? `Inherited from the bound session — picking another chip overrides it for this span.`
+            : 'An override for this span — it freezes with each submitted attempt.'}
         >
           <ChipGroup
             id="anim-inspector-medium"
@@ -507,7 +507,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
           <Field label="Camera description" htmlFor="anim-inspector-camera" hint="The camera move, phrased as part of the shot.">
             <input id="anim-inspector-camera" className="anim-inspector-input" data-anim-inspector-camera type="text" value={cameraDescription} onChange={(event) => setCameraDescription(event.target.value)} />
           </Field>
-          <Field label="Camera reason" htmlFor="anim-inspector-camera-reason" hint="Why the camera does this (§6.3 — the dialect's reason clause rides every camera statement).">
+          <Field label="Camera reason" htmlFor="anim-inspector-camera-reason" hint="Why the camera does this — the reason rides every camera statement.">
             <input id="anim-inspector-camera-reason" className="anim-inspector-input" data-anim-inspector-camera-reason type="text" value={cameraReason} onChange={(event) => setCameraReason(event.target.value)} />
           </Field>
         </div>
@@ -515,7 +515,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
             its description — the coupling is named, never a silent drop. */}
         {cameraReason.trim() !== '' && cameraDescription.trim() === '' && (
           <p className="anim-note" role="status" data-anim-inspector-camera-reason-inert>
-            The camera reason rides the caption only with its description — describe the move for the reason to compile (§6.3 pairs them).
+            The camera reason rides the caption only with its description — describe the move for the reason to compile.
           </p>
         )}
       </div>
@@ -539,10 +539,10 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
                   ))}
                 </ul>
               ) : (
-                <p className="anim-note" data-anim-caption-nohints>No advisory hints — the compiler flags comparative destination language, missing facings, contradictions, and negation; it never rewrites.</p>
+                <p className="anim-note" data-anim-caption-nohints>No advisory hints — the compiler advises, it never rewrites.</p>
               )}
               <p className="anim-note">
-                Compiled in this browser with the shared caption compiler <span data-anim-caption-compiler>v{compiled.result.compilerVersion}</span> — submission freezes exactly this text from the document&apos;s current truth (the server recompiles authoritatively; a change between preview and submit is the server&apos;s word that wins).
+                Caption compiler <span data-anim-caption-compiler>v{compiled.result.compilerVersion}</span> — the preview and the submission freeze the same text.
               </p>
             </>
           )}
@@ -550,10 +550,10 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
       </details>
 
       <div className="anim-inspector-submit">
-        <Button variant="primary" busy={busy} disabled={!canSubmit} onClick={() => void submit()} data-anim-inspector-submit>
+        <Button variant="primary" className="anim-btn" busy={busy} disabled={!canSubmit} onClick={() => void submit()} data-anim-inspector-submit>
           Submit step {preview.stepCount}
         </Button>
-        <span className="anim-note">One step at a time — explicit review before the chain continues (§7.1). No timing dials: the step-size vocabulary measured dead (§6.5).</span>
+        <span className="anim-note">One step per render — review it, then continue.</span>
       </div>
     </section>
   )

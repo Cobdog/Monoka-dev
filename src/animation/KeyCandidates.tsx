@@ -75,7 +75,7 @@ export function KeyCandidates({ keyEntity, busy, onImportFiles, onImport, onSele
         <strong>Key #{keyEntity.order} — candidate images</strong>
         {keyEntity.lock && <span className="anim-note">locked — the selection cannot change until unlocked</span>}
       </header>
-      <p className="anim-note">The key&apos;s image is one of these candidates. Importing adds an alternative — the selection never moves until you choose (§5.3).</p>
+      <p className="anim-note">Importing adds an alternative — the key&apos;s image changes only when you choose.</p>
       <ul className="anim-key-candidate-strip" data-anim-key-candidate-strip>
         {keyEntity.candidates.map((candidate) => {
           const selected = keyEntity.selectedCandidateId === candidate.id
@@ -87,7 +87,7 @@ export function KeyCandidates({ keyEntity, busy, onImportFiles, onImport, onSele
                 : <span className="anim-key-candidate-placeholder" aria-hidden="true">no preview</span>}
               <span className="anim-note">{candidate.origin}</span>
               <Button
-                variant="secondary"
+                variant="secondary" className="anim-btn"
                 busy={busy}
                 disabled={selected || keyEntity.lock}
                 onClick={() => onSelect(candidate.id)}
@@ -128,7 +128,7 @@ export function KeyCandidates({ keyEntity, busy, onImportFiles, onImport, onSele
               void importFiles(files)
             }}
           />
-          <Button variant="secondary" busy={importing || busy} icon={<ImagePlus size={12} />} onClick={() => fileInput.current?.click()} data-anim-key-import-button>
+          <Button variant="secondary" className="anim-btn" busy={importing || busy} icon={<ImagePlus size={12} />} onClick={() => fileInput.current?.click()} data-anim-key-import-button>
             Import candidate…
           </Button>
         </div>
@@ -139,7 +139,7 @@ export function KeyCandidates({ keyEntity, busy, onImportFiles, onImport, onSele
               asset.images.map((image) => (
                 <Button
                   key={`${asset.id}:${image.assetId}`}
-                  variant="secondary"
+                  variant="secondary" className="anim-btn"
                   busy={importing || busy}
                   onClick={() => void importImages([image], 'project-asset')}
                   data-anim-key-import-asset={image.assetId}

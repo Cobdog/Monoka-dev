@@ -135,7 +135,7 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
         <h3 id="anim-review-title">Review — step {stepIndex} of the tween span</h3>
         <span className="anim-review-status" data-anim-review-status={status.key}>{status.label}</span>
         {attempt.progress && (
-          <span className="anim-review-progress" data-anim-review-progress title="Observed engine progress — no fixed countdowns (§7.3)">
+          <span className="anim-review-progress" data-anim-review-progress title="Observed engine progress">
             {attempt.progress.value}/{attempt.progress.max}
           </span>
         )}
@@ -155,7 +155,7 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
       <p className="anim-note" data-anim-review-span>Span: {span.intent.movement}</p>
       {candidate?.earlierRevision === true && (
         <p className="anim-note" role="status" data-anim-review-earlier>
-          Generated from an earlier version of this span — the span changed while this render ran; the result keeps its original provenance (§8.2).
+          Generated from an earlier version of this span — it changed while this render ran.
         </p>
       )}
 
@@ -219,7 +219,7 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
       {readyToReview && (
         <div className="anim-review-frames-block">
           <p className="anim-review-frames-lede">
-            Choose the reference frame this step&apos;s result continues from — your choice, written to the document (§7.2.1). The dashed frame is the system&apos;s proposal; it selected nothing.
+            Pick the frame the next step continues from — the dashed frame is a suggestion; nothing is chosen until you click.
           </p>
           <div className="anim-review-frames" data-anim-review-frames role="group" aria-label="Reference frames">
             {Array.from({ length: candidate!.frameCount }, (_, frameIndex) => (
@@ -259,21 +259,21 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
 
       <div className="anim-review-actions">
         <Button
-          variant="primary"
+          variant="primary" className="anim-btn"
           busy={busy}
           disabled={!canContinue}
           data-anim-review-continue
           title={selectionIsThisTake
             ? (subjectIsFrontier
-                ? 'Submits the next step into the span’s trailing empty slot when one stands, else appends the next step slot and submits against it (§7.1 — dependent advancement is always your action)'
+                ? 'Submits the next step — the chain continues from this take’s chosen frame'
                 : 'The chain has already advanced past this step — its rolling reference is the latest landed step’s frame; continue from that step’s review')
-            : 'Choose a reference frame from this take first — the next step needs its near reference (§7.1)'}
+            : 'Choose a reference frame from this take first — the next step continues from it'}
           onClick={onContinue}
         >
           Generate next step
         </Button>
         <Button
-          variant="secondary"
+          variant="secondary" className="anim-btn"
           busy={busy}
           disabled={inFlight}
           data-anim-review-reroll
@@ -291,7 +291,7 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
         <div className="anim-caption-body">
           <pre className="anim-caption-text" data-anim-review-caption-text>{attempt.caption}</pre>
           <p className="anim-note">
-            Frozen at submission with the shared caption compiler <span data-anim-review-compiler>v{attempt.compilerVersion}</span> — edits to the span are the next draft, never this attempt&apos;s meaning (§8.1).
+            Caption compiler <span data-anim-review-compiler>v{attempt.compilerVersion}</span>, frozen at submission — later edits are the next draft, never this take&apos;s meaning.
           </p>
         </div>
       </details>

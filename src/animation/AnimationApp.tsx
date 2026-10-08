@@ -352,7 +352,7 @@ export function AnimationApp() {
                 pre-binding document in this project and opens it. */}
             <div className="anim-select-actions">
               <Button
-                variant="primary"
+                variant="primary" className="anim-btn"
                 busy={busy}
                 disabled={busy || !params.projectId}
                 icon={<FilePlus2 size={12} />}
@@ -390,7 +390,7 @@ export function AnimationApp() {
           <section className="anim-select" data-anim-error aria-labelledby="anim-error-title">
             <h2 id="anim-error-title">This animation document could not be opened</h2>
             <p>{errorDetail} — retrying the read never replaces anything.</p>
-            <button type="button" data-anim-retry onClick={() => void session.commands.retry()}>Retry the read</button>
+            <Button variant="secondary" className="anim-btn" onClick={() => void session.commands.retry()} data-anim-retry>Retry the read</Button>
             <a className="anim-back" href="/?images=1" data-anim-back>← Back to the image workbench</a>
           </section>
         </main>
@@ -404,7 +404,7 @@ export function AnimationApp() {
         <SurfaceSwitcher />
         <strong className="anim-brand"><Clapperboard size={14} /> Animation</strong>
         <span className="anim-doc-name" data-anim-document-name>{document!.name}</span>
-        <span className="anim-revision" data-anim-revision title="The authored revision — every command is expectedRevision-gated against it">rev {document!.revision}</span>
+        <span className="anim-revision" data-anim-revision title="The authored revision — every write is checked against it">rev {document!.revision}</span>
         <a className="anim-back" href="/?images=1" data-anim-back>workbench</a>
       </header>
       <main className={activeBinding ? 'anim-body anim-body--stage' : 'anim-body'}>
@@ -436,12 +436,12 @@ export function AnimationApp() {
                 <span>{activeBinding.referenceAssetIds.length} {activeBinding.referenceAssetIds.length === 1 ? 'reference' : 'references'}</span>
                 <span className="anim-bound-actions">
                   <Button
-                    variant="secondary"
+                    variant="secondary" className="anim-btn"
                     icon={<RefreshCw size={12} />}
                     busy={busy}
                     onClick={() => setUpdateOpen((open) => !open)}
                     data-anim-bound-update
-                    title="Append the next binding version — new references or a session-copy description edit (§4.2)"
+                    title="Append the next binding version — new references or a session-copy description edit"
                   >
                     Update character binding
                   </Button>
