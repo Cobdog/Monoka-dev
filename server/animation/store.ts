@@ -47,9 +47,11 @@
  * produces the next attempt's binding through the next submission — a
  * frozen attempt's source, caption, recipe, or provenance NEVER change),
  * staleness marks are the span machinery's own shape with the chain's own
- * vocabulary ('ancestry' / 'intent'), and the mismatch state is DERIVED
- * (chainMismatch in the shared types) — surfaced, never written, never
- * silent.
+ * vocabulary ('ancestry' — the chain's own reason; 'intent' / 'binding' /
+ * 'settings' — the span vocabulary's authored-input reasons, the
+ * document-global legs marking every window exactly as they mark every
+ * span), and the mismatch state is DERIVED (chainMismatch in the shared
+ * types) — surfaced, never written, never silent.
  */
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
@@ -181,11 +183,18 @@ type StaleReason = 'binding' | 'pose' | 'intent' | 'settings'
  *  selected ancestry moved (a reselected ancestor window displacing the
  *  attempt a descendant was conditioned on, or an explicit rebind);
  *  'intent' — an authored-input change on the span whose take roots the
- *  chain. Alternatives NEVER carry a mark — adding an unselected
- *  alternative invalidates no one. Marks are monotonic like the span's
- *  (§8.3: mark, never delete; takes preserved); the DERIVED mismatch
- *  (chainMismatch, shared types) is the live truth a mark prompts about. */
-type WindowStaleReason = 'ancestry' | 'intent'
+ *  chain (span-SCOPED: the extension draft owns each window's own motion,
+ *  so a branch chain rides its parent chain's marks there — the pinned
+ *  residual); 'binding' / 'settings' — the DOCUMENT-GLOBAL authored inputs
+ *  (identity from the binding's references; the operating point), the span
+ *  vocabulary's own reasons marking every window exactly as they mark every
+ *  span, root chain or branch (§8.3's own sentence: "staleness is not
+ *  limited to image replacement" — the fix round's I-1). Alternatives
+ *  NEVER carry a mark — adding an unselected alternative invalidates no
+ *  one. Marks are monotonic like the span's (§8.3: mark, never delete;
+ *  takes preserved); the DERIVED mismatch (chainMismatch, shared types) is
+ *  the live truth a mark prompts about. */
+type WindowStaleReason = 'ancestry' | 'intent' | 'binding' | 'settings'
 
 /**
  * Migration 006 — the animation document tables (§11.2), appended to the
@@ -603,41 +612,75 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
     throw new AnimationRuleError(`No extension window slot with id ${windowSlotId} in this document.`, 404)
   }
 
-  /** The binding source an attempt's frozen record names (null for a plain
-   *  take or an unknown attempt). Seed and full bindings both carry the
-   *  field — the ancestry walk never needs the widened half, so this read
-   *  stays the Task-3 narrow forever. */
+  /** The binding source an attempt's frozen record names (null ONLY for the
+   *  genuinely-absent cases: a plain take with no binding block, or an
+   *  unknown attempt id). A row whose snapshot cannot parse, or whose
+   *  binding block names a non-UUID source, is CORRUPTION and refuses
+   *  LOUDLY — the sibling corruption paths (the body's hydration abort,
+   *  hydrateAll's named poison isolation) never silently degrade, and
+   *  truncating the ancestry walk with a null would under-mark descendants,
+   *  the exact silent-drop class the module refuses (the fix round's M-3).
+   *  Seed and full bindings both carry the field — the ancestry walk never
+   *  needs the widened half, so this read stays the Task-3 narrow. */
   function bindingSourceOf(attemptId: string): string | null {
     const row = statements.attempt.get(attemptId) as Record<string, unknown> | undefined
     if (!row) return null
+    let snapshot: FrozenAttemptSnapshot
     try {
-      const snapshot = JSON.parse(str(row.snapshot_json)) as FrozenAttemptSnapshot
-      return snapshot.continuationBinding?.sourceAttemptId ?? null
+      snapshot = JSON.parse(str(row.snapshot_json)) as FrozenAttemptSnapshot
     } catch {
-      return null
+      throw new Error(`Attempt ${attemptId} carries a snapshot this build cannot parse — the ancestry walk refuses to mark descendants from corrupt truth (nothing was persisted).`)
+    }
+    const binding = snapshot.continuationBinding
+    if (binding === undefined) return null
+    if (!isUuid(binding.sourceAttemptId)) {
+      throw new Error(`Attempt ${attemptId} carries a malformed continuation binding — the ancestry walk refuses to mark descendants from corrupt truth (nothing was persisted).`)
+    }
+    return binding.sourceAttemptId
+  }
+
+  /** Windows — across EVERY chain; branches are lineage too — whose SELECTED
+   *  attempt's frozen ancestry (binding sources walked attempt → source → …)
+   *  passes through one of `seeds` — the descendants an ancestry change
+   *  displaces (§4: a descendant goes stale when its relevant SELECTED
+   *  ancestry changes; unselected alternatives mark NO ONE). The walk
+   *  crosses chain boundaries through the attempt rows themselves: a BRANCH
+   *  chain rooted on the displaced lineage is as much a descendant as the
+   *  root chain's own windows, and the branch's own mismatch derivation
+   *  skips its root — the MARK is the only prompt it ever gets (the fix
+   *  round's M-2). The visited set is corruption insurance: the commands
+   *  keep sources strictly earlier in the chain, but a hand-edited body must
+   *  never loop this walk. */
+  function markAncestryDescendants(body: AnimationDocumentBody, seeds: ReadonlySet<string>, reason: WindowStaleReason): void {
+    for (const chain of body.chains) {
+      for (const window of chain.windows) {
+        if (window.selectedCandidateId === null) continue
+        let ancestor = bindingSourceOf(window.selectedCandidateId)
+        const visited = new Set<string>()
+        while (ancestor !== null && !visited.has(ancestor)) {
+          if (seeds.has(ancestor)) {
+            markWindowStale(window, reason)
+            break
+          }
+          visited.add(ancestor)
+          ancestor = bindingSourceOf(ancestor)
+        }
+      }
     }
   }
 
-  /** Windows whose SELECTED attempt's frozen ancestry (binding sources
-   *  walked attempt → source → …) passes through one of `seeds` — the
-   *  descendants an ancestry change displaces (§4: a descendant goes stale
-   *  when its relevant SELECTED ancestry changes; unselected alternatives
-   *  mark NO ONE). The visited set is corruption insurance: the commands
-   *  keep sources strictly earlier in the chain, but a hand-edited body
-   *  must never loop this walk. */
-  function markAncestryDescendants(chain: ExtensionChain, seeds: ReadonlySet<string>, reason: WindowStaleReason): void {
-    for (const window of chain.windows) {
-      if (window.selectedCandidateId === null) continue
-      let ancestor = bindingSourceOf(window.selectedCandidateId)
-      const visited = new Set<string>()
-      while (ancestor !== null && !visited.has(ancestor)) {
-        if (seeds.has(ancestor)) {
-          markWindowStale(window, reason)
-          break
-        }
-        visited.add(ancestor)
-        ancestor = bindingSourceOf(ancestor)
-      }
+  /** The DOCUMENT-GLOBAL authored-input mark (§8.3's own sentence — "Changing
+   *  intent or effective settings also makes affected work outdated;
+   *  staleness is not limited to image replacement"): the character binding
+   *  and the document settings are inputs to EVERY take — span or chain
+   *  window, root chain or branch — so the window mark is the span mark's
+   *  exact twin (mark all, scope nothing; the fix round's I-1). The
+   *  span-scoped 'intent' leg stays span-rooted by contrast: the span's
+   *  intent is that span's takes' authored input, while identity and the
+   *  operating point belong to the whole document. */
+  function markAllWindowSlots(body: AnimationDocumentBody, reason: WindowStaleReason): void {
+    for (const chain of body.chains) {
+      for (const window of chain.windows) markWindowStale(window, reason)
     }
   }
 
@@ -748,6 +791,10 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
         body.bindingHistory.push(bindingVersionFromInput(validated, version))
         body.activeBindingVersion = version
         markStale(body, body.spans.map((span) => span.id), 'binding')
+        // §8.3's sentence covers chain windows too (the fix round's I-1):
+        // identity comes from the binding's references for EVERY take —
+        // span or window, root chain or branch.
+        markAllWindowSlots(body, 'binding')
       })
     },
 
@@ -898,6 +945,10 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
         }
         body.settings = { ...body.settings, ...patch, fps: 24 }
         markStale(body, body.spans.map((span) => span.id), 'settings')
+        // The operating point is a document-global input to every render —
+        // chain windows mark exactly as every span marks (§8.3, the fix
+        // round's I-1).
+        markAllWindowSlots(body, 'settings')
       })
     },
 
@@ -1126,17 +1177,19 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
      *  member, expectedRevision-gated, lock-guarded): sets the slot's OWN
      *  selection truth; landing never calls this. A REAL change marks the
      *  windows whose selected ancestry runs through the DISPLACED attempt
-     *  stale ('ancestry') — never rebinding them: descendants bind frozen
-     *  source attempts, and those rows never change (§4's ancestry rule).
-     *  A no-op re-select writes nothing (§5.3 reserves marks for actual
-     *  changes); re-selecting an earlier choice back adds no NEW marks —
-     *  marks are monotonic, and the DERIVED mismatch (chainMismatch) reads
-     *  consistent again on its own. */
+     *  stale ('ancestry') — across every chain, branch chains included (a
+     *  branch rooted on the displaced lineage is as much a descendant) —
+     *  never rebinding them: descendants bind frozen source attempts, and
+     *  those rows never change (§4's ancestry rule). A no-op re-select
+     *  writes nothing (§5.3 reserves marks for actual changes);
+     *  re-selecting an earlier choice back adds no NEW marks — marks are
+     *  monotonic, and the DERIVED mismatch (chainMismatch) reads consistent
+     *  again on its own. */
     selectWindowCandidate: (documentId: string, windowSlotId: string, attemptId: string, expectedRevision: number) => {
       if (!isUuid(windowSlotId)) throw new AnimationRuleError('The window slot id must be a UUID.', 400)
       if (!isUuid(attemptId)) throw new AnimationRuleError('The attempt id must be a UUID.', 400)
       return authorCommand(documentId, expectedRevision, (body) => {
-        const { chain, slot } = requireWindowSlot(body, windowSlotId)
+        const { slot } = requireWindowSlot(body, windowSlotId)
         if (!slot.attempts.includes(attemptId)) {
           throw new AnimationRuleError(`Attempt ${attemptId} is not an alternative of window slot ${windowSlotId}.`, 404)
         }
@@ -1146,7 +1199,7 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
         if (slot.selectedCandidateId === attemptId) return false
         const displaced = slot.selectedCandidateId
         slot.selectedCandidateId = attemptId
-        if (displaced !== null) markAncestryDescendants(chain, new Set([displaced]), 'ancestry')
+        if (displaced !== null) markAncestryDescendants(body, new Set([displaced]), 'ancestry')
       })
     },
 
@@ -1195,7 +1248,7 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
         if (slot.sourceAttemptId === sourceAttemptId) return false
         slot.sourceAttemptId = sourceAttemptId
         markWindowStale(slot, 'ancestry')
-        markAncestryDescendants(chain, new Set(slot.attempts), 'ancestry')
+        markAncestryDescendants(body, new Set(slot.attempts), 'ancestry')
       })
     },
 
