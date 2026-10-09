@@ -159,7 +159,9 @@
 //       no-file case (the named not-produced condition, terminal, playable
 //       preserved); the eviction case (the availability check — the
 //       preflight/dispatch seam — refuses BY NAME at both call sites, the
-//       clip playable, and recovers when the blob resolves again)
+//       clip playable, and recovers when the blob resolves again); and the
+//       bookend containment (review M-1 — a state-write IO failure lands in
+//       the event, never an unhandled rejection, never a leaked in-flight id)
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -2696,4 +2698,76 @@ test('(y4) the eviction case — the availability check refuses BY NAME at both 
     (err) => err instanceof AnimationRuleError && err.status === 400 && /re-fetch/.test(err.message),
     'the explicit retry refuses the unavailable condition — recovery is §7\'s explicit list',
   )
+})
+
+test('(y5) the bookend containment — a state-write IO failure never escapes the kick, never leaks the in-flight id (review M-1)', async () => {
+  const { doc, step, revision } = carryDocFixture('Papa')
+
+  // The bookend stub: ONE throwing state write per leg — the SQLite
+  // disk-full class (the payloads are trivially valid, so IO is the only
+  // failure mode the writes have). Leg 1 fails the PROLOGUE registering
+  // write; leg 2 fails the exhausted-EPILOGUE error write. Everything else
+  // passes through to the production store.
+  const rawWrite = anim.setAttemptContinuation
+  const originalWrite = rawWrite.bind(anim)
+  let leg = 1
+  let thrown = false
+  let attempt1 = null
+  let attempt2 = null
+  anim.setAttemptContinuation = (attemptId, continuation) => {
+    const prologue = continuation.state === 'registering' && continuation.error === undefined
+    const epilogue = continuation.state === 'registering' && continuation.error !== undefined
+    if (!thrown && ((leg === 1 && attemptId === attempt1 && prologue) || (leg === 2 && attemptId === attempt2 && epilogue))) {
+      thrown = true
+      throw new Error(`sqlite: database or disk is full (${leg === 1 ? 'prologue' : 'epilogue'})`)
+    }
+    return originalWrite(attemptId, continuation)
+  }
+  try {
+    // ---- Leg 1 — the PROLOGUE bookend: the registering write itself fails.
+    // The failure must land as the registration-failed EVENT (this test
+    // process survives — no unhandled rejection), the row keeps its prior
+    // truth, no fetch half-runs, and the in-flight set is CLEAN afterward
+    // (the explicit retry runs — a leaked id would silently no-op at the
+    // guard).
+    const submitted1 = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, revision) }, 'idem-y5a')
+    attempt1 = submitted1.attemptId
+    let leg1Fetches = 0
+    carryFetchOverrides.set(attempt1, (id) => {
+      leg1Fetches += 1
+      return engineClient.fetchCarryArtifact(id)
+    })
+    await waitAttemptState(attempt1, ['ready'], 'the media landing (leg 1)')
+    await waitUntil(() => events.some((event) => event.type === 'animation.attempt.continuation-registration-failed' && event.payload.attemptId === attempt1), 10_000, 'the prologue bookend failure landing as the event')
+    assert.deepEqual(anim.getAttempt(attempt1).continuation, { state: 'absent' }, 'a failed prologue write leaves the row at its prior truth — no half-state')
+    assert.equal(leg1Fetches, 0, 'the registration did not half-run — the loop never started behind the failed bookend')
+    const registrationFailed = events.find((event) => event.type === 'animation.attempt.continuation-registration-failed' && event.payload.attemptId === attempt1)
+    assert.match(registrationFailed.payload.error, /disk is full \(prologue\)/, 'the event names the observed bookend cause')
+    await service.retryContinuationRegistration(attempt1)
+    assert.equal(anim.getAttempt(attempt1).continuation.state, 'ready', 'the explicit retry RAN after the bookend failure — the in-flight set was cleaned, not leaked')
+    assert.ok(anim.getAttempt(attempt1).continuation.artifact)
+    assert.ok(leg1Fetches >= 1, 'the retry fetched through the real path')
+
+    // ---- Leg 2 — the EPILOGUE bookend: the exhausted-error write itself
+    // fails after the bounded loop. Same contract: the event lands with the
+    // bookend cause, the set cleans, the explicit retry drives to ready.
+    leg = 2
+    thrown = false
+    const submitted2 = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, revision) }, 'idem-y5b')
+    attempt2 = submitted2.attemptId
+    carryFetchOverrides.set(attempt2, async () => {
+      throw new Error('the engine became unreachable at the receipt fetch')
+    })
+    await waitAttemptState(attempt2, ['ready'], 'the media landing (leg 2)')
+    await waitUntil(() => events.some((event) => event.type === 'animation.attempt.continuation-registration-failed' && event.payload.attemptId === attempt2 && /disk is full \(epilogue\)/.test(String(event.payload.error))), 10_000, 'the epilogue bookend failure landing as the event with its cause')
+    assert.deepEqual(anim.getAttempt(attempt2).continuation, { state: 'registering' }, 'the prologue write landed; the failed error-write left no half-error state')
+    carryFetchOverrides.delete(attempt2)
+    await service.retryContinuationRegistration(attempt2)
+    assert.equal(anim.getAttempt(attempt2).continuation.state, 'ready', 'the explicit retry drove the epilogue-failed row to ready')
+    assert.ok(anim.getAttempt(attempt2).continuation.artifact)
+  } finally {
+    anim.setAttemptContinuation = rawWrite
+    carryFetchOverrides.delete(attempt1)
+    carryFetchOverrides.delete(attempt2)
+  }
 })

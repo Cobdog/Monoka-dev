@@ -301,16 +301,26 @@ export function createCompletionOwner(deps: {
    *      the in-graph Save never ran, a new alternative (an explicit
    *      re-roll) is the user's path, and the clip stays playable.
    *  Idempotent by construction (content addressing; the record write is
-   *  wholesale) and re-entrant-safe through the registeringCarry set. */
+   *  wholesale) and re-entrant-safe through the registeringCarry set. The
+   *  bookend STATE WRITES are contained with the loop body: an IO failure of
+   *  either lands in the registration-failed event — never an unhandled
+   *  rejection off a detached kick, never a leaked in-flight id. */
   async function registerCarryArtifact(attemptId: string): Promise<'ready' | 'not-produced' | 'failed'> {
     const attempt = store.getAttempt(attemptId)
     if (!attempt || !attempt.result) return 'failed' // nothing landed — not this function's row
     if (attempt.continuation.state !== 'absent' && attempt.continuation.state !== 'registering') return 'failed' // already settled (registered / not-produced / unavailable)
     if (registeringCarry.has(attemptId)) return 'failed' // already in flight — the kick converges there
     registeringCarry.add(attemptId)
-    store.setAttemptContinuation(attemptId, { state: 'registering' })
     let lastError = 'carry artifact registration failed'
     try {
+      // THE BOOKENDS LIVE INSIDE THE CONTAINED REGION (review M-1): the
+      // registering write, the loop, and the exhausted write/emit. A bookend
+      // STATE-WRITE failure (the IO class — disk-full; the payloads cannot
+      // fail validation) lands in the catch's event instead of an unhandled
+      // rejection off a detached kick, and the finally cleans the in-flight
+      // set on EVERY path — so a later kick, the AWAITED explicit retry
+      // included, always runs rather than silently no-opping at the guard.
+      store.setAttemptContinuation(attemptId, { state: 'registering' })
       for (let tries = 0; tries <= maxAutoCarryRetries; tries += 1) {
         try {
           const bytes = await engine.fetchCarryArtifact(attemptId)
@@ -349,16 +359,22 @@ export function createCompletionOwner(deps: {
           lastError = failure instanceof Error ? failure.message : String(failure)
         }
       }
+      // Bounded retries exhausted with the file still unfetchable/unverifiable:
+      // the row keeps the retryable `registering` state plus the reason — the
+      // explicit action (or a later boot sweep) re-drives it. The clip above
+      // stays landed and playable regardless.
+      store.setAttemptContinuation(attemptId, { state: 'registering', error: lastError })
+      emit('animation.attempt.continuation-registration-failed', { attemptId, error: lastError })
+      return 'failed'
+    } catch (bookend) {
+      // A bookend failure (one of the two state writes itself — the IO
+      // class): the row keeps whatever truth it holds for the sweep or the
+      // explicit retry to re-drive; the event names the observed cause.
+      emit('animation.attempt.continuation-registration-failed', { attemptId, error: bookend instanceof Error ? bookend.message : String(bookend) })
+      return 'failed'
     } finally {
       registeringCarry.delete(attemptId)
     }
-    // Bounded retries exhausted with the file still unfetchable/unverifiable:
-    // the row keeps the retryable `registering` state plus the reason — the
-    // explicit action (or a later boot sweep) re-drives it. The clip above
-    // stays landed and playable regardless.
-    store.setAttemptContinuation(attemptId, { state: 'registering', error: lastError })
-    emit('animation.attempt.continuation-registration-failed', { attemptId, error: lastError })
-    return 'failed'
   }
 
   /** Events from the engine feed (the realtime hub's channel, or a test
