@@ -145,6 +145,12 @@
 //       either persists: exactly one created:true, the loser the same 409
 //       the sequential case answers; identical inputs racing stay
 //       idempotent (one created:false with the same attempt id)
+//   (x) the extension lane's carry seam (spec 2026-10-08 §7, Task 1) — the
+//       tween builder's save tail validates through the contract-truth walk
+//       (inside (i)); a LANDED carry render leaves the file at
+//       engineOutputCarryPath(attemptId) with a digest that verifies across
+//       re-fetches and NO history-listing payload; a plain render (no flag)
+//       writes nothing
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -165,7 +171,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const assert = require('node:assert/strict')
-const { randomUUID } = require('node:crypto')
+const { createHash, randomUUID } = require('node:crypto')
 const Database = require('better-sqlite3')
 const { makePortAllocator } = require('./lib/ports.cjs')
 const { makeScratchDir, removeAllScratchDirs } = require('./lib/scratch.cjs')
@@ -182,7 +188,7 @@ import {
   engineInputName,
 } from '../shared/animation/graphs'
 import { COMPILER_VERSION, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../shared/animation/compiler'
-import { animationInputHash } from '../shared/animation/types'
+import { CONTINUATION_SAVE_RECIPE_VERSION, animationInputHash, engineOutputCarryPath } from '../shared/animation/types'
 
 const REAL_INFO = require(path.join(REPO, 'scripts/fixtures/engine-object-info.json')).nodes
 
@@ -1176,6 +1182,27 @@ test('(i) every builder emission validates CLEAN against the REAL captured schem
   assert.equal(extrasConditioning.inputs.ref_image_size, 'match', 'the frozen reference sizing rides the conditioning node')
   assert.equal(Object.values(extrasGraph).find((node) => node.class_type === 'BasicScheduler').inputs.denoise, 0.72, 'the frozen denoise rides the scheduler')
   assert.equal(Object.values(extrasGraph).find((node) => node.class_type === 'LoraLoaderModelOnly').inputs.strength_model, 0.85, 'the frozen adapter strength rides the LoRA loader')
+
+  // The extension lane's carry tail (spec 2026-10-08 §7): the TWEEN builder
+  // — alone, per the adapter scope — emits the pack's Save node when the
+  // frozen snapshot carries the build flag, and the emission validates
+  // through the SAME gate (the pack's classes are in the REAL capture; no
+  // objectInfoExtras needed).
+  const carrySnap = { ...snapshots.tween, settings: { ...snapshots.tween.settings, carry: true } }
+  const carryGraph = buildTweenGraph(carrySnap, resolvedSettings('tween'))
+  assert.deepEqual(validateGraphAgainstSchemas(carryGraph, REAL_INFO), [], 'the carry save tail passes the engine gate')
+  const carrySaves = Object.values(carryGraph).filter((node) => node.class_type === 'MiniMaxH3MotionContextSaveLatent')
+  assert.equal(carrySaves.length, 1, 'exactly one carry save node rides the carrying tween graph')
+  assert.deepEqual(carrySaves[0].inputs.latent, ['15', 0], "the save node consumes the sampler's LIVE AV latent (the same tensor VAEDecode consumes)")
+  assert.equal(carrySaves[0].inputs.filename_prefix, 'animation/carry', 'the pre-stamp marker prefix — the port stamps the attempt id in')
+  assert.equal(carrySaves[0].inputs.clip_index, 1, "the pack's fixed slot — deterministic, never run-numbered")
+  // A plain tween render (no flag) emits NO save node, and neither do the
+  // other tools even when the flag rides their snapshots (the adapter scope).
+  assert.equal(Object.values(graphs.tween).some((node) => node.class_type === 'MiniMaxH3MotionContextSaveLatent'), false, 'a plain tween render carries no save node')
+  const heroFlagged = buildHeroGraph({ ...snapshots.hero, settings: { ...snapshots.hero.settings, carry: true } }, resolvedSettings('hero'))
+  assert.equal(Object.values(heroFlagged).some((node) => node.class_type === 'MiniMaxH3MotionContextSaveLatent'), false, 'the hero builder never emits the carry save node (the adapter scope)')
+  const seqFlagged = buildSequenceGraph({ ...snapshots.sequence, settings: { ...snapshots.sequence.settings, carry: true } }, resolvedSettings('sequence'))
+  assert.equal(Object.values(seqFlagged).some((node) => node.class_type === 'MiniMaxH3MotionContextSaveLatent'), false, 'the sequence builder never emits the carry save node (the adapter scope)')
 
   // And the graph the DIST build actually submitted (read back from the
   // fake engine's history in (a)) validates clean too — same gate, same
@@ -2258,4 +2285,104 @@ test('(w) three identical registrations ⇒ one blob row, ZERO staging files; a 
   }, failingDir)
   assert.throws(() => failing.registerBytes('image', bytes, 'frame-d.png'), /registration exploded/, 'the failed registration propagates its error')
   assert.deepEqual(fs.readdirSync(failingDir), [], 'a failed registration leaves no orphan staging file')
+})
+
+// ---------------------------------------------------------------------------
+// (x) the extension lane's carry seam (spec 2026-10-08 §7, plan Task 1) —
+//     the deterministic receipt over a LANDED carry render, and the no-flag
+//     shape. The builder-leg truth lives in (i); here the REAL submit path
+//     runs: the frozen carry flag rides the tween build, the port stamps the
+//     pack's Save node with the attempt id, the fake engine writes the file
+//     at the deterministic path, and the test plays Task 2's owner — derive
+//     the path from the attempt id ALONE, fetch through /view, verify the
+//     digest. No history payload is consulted anywhere: the Save node
+//     returns no UI output (the receipt IS the path + the digest).
+// ---------------------------------------------------------------------------
+test('(x) a landed carry render leaves the file at engineOutputCarryPath with a verifiable digest; a plain render writes nothing', async () => {
+  const doc = anim.createDocument({ projectId, name: 'Xray', binding: makeBinding() })
+  const keyFrom = uuid()
+  const keyTo = uuid()
+  let row = anim.addKeyCandidate(doc.id, keyFrom, { id: uuid(), assetReference: registerRefImage('x-from'), origin: 'import', provenance: { assetId: 'stable-x1' }, poseDescription: null, facing: null }, 0)
+  row = anim.addKeyCandidate(doc.id, keyTo, { id: uuid(), assetReference: registerRefImage('x-to'), origin: 'import', provenance: { assetId: 'stable-x2' }, poseDescription: null, facing: null }, row.revision)
+  row = anim.insertSpan(doc.id, { fromKeyId: keyFrom, toKeyId: keyTo, intent: { movement: 'leans into the turn', preservation: 'silhouette intact' } }, row.revision)
+  const step = row.body.spans[0].stepSlots[0].id
+
+  // The path contract's shape, pinned before any render runs: derived from
+  // the attempt id alone, under the engine's output directory.
+  assert.equal(engineOutputCarryPath('0f0e0d0c-1b1a-4c3d-8e7f-9a6b5c4d3e2f'), 'animation/0f0e0d0c-1b1a-4c3d-8e7f-9a6b5c4d3e2f/carry_00001.safetensors', 'the deterministic path: the attempt dir + the pack slot')
+
+  // ---- Leg 1 — the CARRY render (the source render that carries).
+  const carrySnap = makeTweenSnapshot(step, row.revision)
+  carrySnap.settings.carry = true
+  const carried = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnap }, 'idem-x1')
+  const landed = await waitAttemptState(carried.attemptId, ['ready'], 'the carry render landing (media readiness unchanged — the artifact split is Task 2)')
+
+  // The graph the engine stored carries the pack's Save node with the
+  // STAMPED per-attempt prefix — and the engine's outputs_to_execute lists
+  // it (an OUTPUT_NODE like any save tail, the real tuple shape).
+  const record = await engineRecord(landed.engineJobId)
+  const graph = record.prompt[2]
+  const saveEntry = Object.entries(graph).find(([, node]) => node.class_type === 'MiniMaxH3MotionContextSaveLatent')
+  assert.ok(saveEntry, "the landed graph carries the pack's Save node")
+  assert.equal(saveEntry[1].inputs.filename_prefix, `animation/${carried.attemptId}/carry`, 'the port stamped the marker under the attempt directory')
+  assert.ok(record.prompt[4].includes(saveEntry[0]), "outputs_to_execute lists the save node (the pack's node is an OUTPUT_NODE)")
+  // NO history-UI payload: the outputs listing carries the media alone —
+  // the receipt is the deterministic path, never a listing entry.
+  const listed = Object.values(record.outputs).flatMap((node) => node.images ?? [])
+  assert.ok(listed.length > 0 && listed.every((entry) => !String(entry.filename).endsWith('.safetensors')), 'the carry file never rides the history outputs listing')
+
+  // THE OWNER'S MOVE (Task 2 formalizes it): derive the path from the
+  // attempt id alone and fetch the bytes through the engine's /view —
+  // (subfolder, filename) addressing, exactly the real engine's
+  // output-folder form.
+  const carryPath = engineOutputCarryPath(carried.attemptId)
+  const parts = carryPath.split('/')
+  const carryFilename = parts.pop()
+  const carrySubfolder = parts.join('/')
+  const carryUrl = `/view?filename=${encodeURIComponent(carryFilename)}&subfolder=${encodeURIComponent(carrySubfolder)}&type=output`
+  const firstFetch = await engineFetch(carryUrl)
+  assert.equal(firstFetch.status, 200, 'the saved carry file is served at the deterministic path')
+  const carryBytes = Buffer.from(await firstFetch.arrayBuffer())
+
+  // The file is the pack's container shape: safetensors framing whose
+  // metadata carries the save-format id (the record's saveRecipeVersion is
+  // READ FROM THE FILE) and whose payload is the profile-driven size.
+  const headerLength = Number(carryBytes.readBigUInt64LE(0))
+  const header = JSON.parse(carryBytes.subarray(8, 8 + headerLength).toString('utf8'))
+  assert.equal(header.__metadata__.format, CONTINUATION_SAVE_RECIPE_VERSION, "the file's metadata carries the pack's save-format id")
+  assert.ok(header.video && header.audio, "the synthetic carry models the pack's two-stream AV shape")
+  const profileSpec = JSON.parse(fs.readFileSync(path.join(REPO, 'e2e/mirror/profiles/animation-h3.json'), 'utf8'))
+  assert.equal(carryBytes.length, 8 + headerLength + profileSpec.carryFile.bytes, 'the payload is the profile-driven size')
+  assert.equal(header.audio.data_offsets[1], profileSpec.carryFile.bytes, 'the tensor offsets partition the payload exactly')
+
+  // The receipt record the owner registers (Task 2's row): the digest is
+  // sha256 over the SAVED BYTES, and it VERIFIES — a re-fetch at the same
+  // deterministic path serves byte-identical content.
+  const digestOf = (buf) => createHash('sha256').update(buf).digest('hex')
+  const artifact = {
+    artifactId: uuid(),
+    sourceAttemptId: carried.attemptId,
+    digest: digestOf(carryBytes),
+    saveRecipeVersion: header.__metadata__.format,
+    producedAt: Date.now(),
+  }
+  assert.match(artifact.digest, /^[0-9a-f]{64}$/, 'the digest is a real sha256 over the saved bytes')
+  assert.equal(artifact.saveRecipeVersion, CONTINUATION_SAVE_RECIPE_VERSION)
+  const refetched = await engineFetch(carryUrl)
+  assert.equal(refetched.status, 200)
+  assert.equal(digestOf(Buffer.from(await refetched.arrayBuffer())), artifact.digest, 'the deterministic path re-serves byte-identical content — the digest verifies')
+
+  // ---- Leg 2 — the PLAIN render (no flag): the same tween lane writes
+  // NOTHING (a plain render does not carry; its continuation readiness is
+  // the not-produced condition once Task 2 lands).
+  const plainSnap = makeTweenSnapshot(step, row.revision)
+  const plain = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: plainSnap }, 'idem-x2')
+  const plainLanded = await waitAttemptState(plain.attemptId, ['ready'], 'the plain tween render landing')
+  const plainRecord = await engineRecord(plainLanded.engineJobId)
+  assert.equal(Object.values(plainRecord.prompt[2]).some((node) => node.class_type === 'MiniMaxH3MotionContextSaveLatent'), false, 'a plain render submits no save node')
+  const plainParts = engineOutputCarryPath(plain.attemptId).split('/')
+  const plainFile = plainParts.pop()
+  const plainSubfolder = plainParts.join('/')
+  const miss = await engineFetch(`/view?filename=${encodeURIComponent(plainFile)}&subfolder=${encodeURIComponent(plainSubfolder)}&type=output`)
+  assert.equal(miss.status, 404, 'no carry file exists for the plain render')
 })

@@ -157,6 +157,58 @@ export type FrozenAttemptSnapshot = {
 export type AttemptExecutionState = 'queued' | 'rendering' | 'preparing' | 'ready' | 'failed' | 'cancelled' | 'interrupted' | 'reconciling'
 
 // ---------------------------------------------------------------------------
+// the continuation artifact (the extension lane, spec
+// 2026-10-08-animation-extension-lane-design.md §7 — the cross-submission
+// carry contract)
+// ---------------------------------------------------------------------------
+
+/** The pack's save-format identity: ComfyUI-H3-Motion-Context stamps
+ *  {"format": "h3_motion_context_av_v1"} into every carry file's
+ *  safetensors metadata (nodes.py _write_safetensors), so a record's
+ *  saveRecipeVersion is READ FROM THE FILE — the artifact carries its own
+ *  format truth, never a studio-side guess. */
+export const CONTINUATION_SAVE_RECIPE_VERSION = 'h3_motion_context_av_v1'
+
+/** The registered carry artifact of a LANDED source render (§7): an owned,
+ *  content-addressed record the completion owner mints after discovering and
+ *  digesting the saved file. The digest is the binding's opaque artifact
+ *  handle (§5 "the artifact identity") — never an engine slot path or cache
+ *  key, nothing the engine's internal lifecycle can invalidate; live
+ *  bindings pin it against retention. */
+export type ContinuationArtifactRecord = {
+  artifactId: string // UUID
+  sourceAttemptId: string
+  digest: string // sha256 of the saved file bytes
+  saveRecipeVersion: string // the pack's save format version
+  producedAt: number
+}
+
+/** The carry save-tail's pre-stamp shape — the ONE definition of what the
+ *  tween builder emits: the marker the Save node's filename_prefix carries
+ *  before the engine port's attempt-id stamping rewrites it under
+ *  animation/<attemptId>/ (exactly like the media save tail), and the pack
+ *  slot the node writes (clip_index — the pack's fixed-slot convention: a
+ *  re-roll overwrites its own slot, where index 0 would number files by
+ *  engine RUN and break determinism). */
+export const CARRY_SAVE_PREFIX = 'animation/carry'
+export const CARRY_SAVE_SLOT = 1
+
+/** THE DETERMINISTIC RECEIPT CONTRACT (§7): the source render's Save node
+ *  writes to a path derived from the ATTEMPT ID ALONE. Both sides of the
+ *  seam derive through this function — the builder/port emission (the
+ *  stamped prefix + the fixed slot land the file here) and the owner's
+ *  post-landing discovery — never through a history payload: the Save node
+ *  returns its path as an execution output with NO history-UI receipt,
+ *  which is precisely the gap this contract closes. The path is relative to
+ *  the ENGINE's output directory (the pack resolves filename_prefix folders
+ *  there); the receipt fetch addresses it as (subfolder, filename) through
+ *  the engine's own /view. */
+export function engineOutputCarryPath(attemptId: string): string {
+  const name = CARRY_SAVE_PREFIX.split('/').filter(Boolean).pop() ?? 'carry'
+  return `animation/${attemptId}/${name}_${String(CARRY_SAVE_SLOT).padStart(5, '0')}.safetensors`
+}
+
+// ---------------------------------------------------------------------------
 // closed vocabularies (byte-identical fixed strings, spec §6.3)
 // ---------------------------------------------------------------------------
 
