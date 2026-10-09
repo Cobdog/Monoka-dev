@@ -34,8 +34,10 @@
  * anyway: an unexpected dangling id degrades to a defensible value rather
  * than crashing the render.
  */
-import type { AnimationDocumentBody, AnimationTool, AttemptExecutionState, KeyCandidate, KeySlot, Span } from '../../shared/animation/types'
+import type { AnimationDocumentBody, AnimationTool, AttemptContinuationView, AttemptExecutionState, ChainMismatch, ExtensionChain, FacingTerm, KeyCandidate, KeySlot, Span, WindowSlot } from '../../shared/animation/types'
+import { chainMismatch } from '../../shared/animation/types'
 import { assemblyDocumentProblems, assemblyEntryVerdict } from '../../shared/animation/assembly'
+import { CONTINUATION_OVERLAP_RECIPE, continuationWindowPlan, type ContinuationWindowPlan } from '../../shared/animation/graphs'
 
 /** Where a key's chosen image came from (the closed §5.1 vocabulary). */
 export type KeyOrigin = KeyCandidate['origin']
@@ -352,4 +354,353 @@ export function deriveAssembledSequence(body: AnimationDocumentBody, attempts: R
   // preview used to render silently.
   problems.push(...assemblyDocumentProblems(body.settings, outputStart, body.editorial.length === 0))
   return { fps: body.settings.fps, totalFrames: outputStart, contributions, problems }
+}
+
+// ---------------------------------------------------------------------------
+// The extension lane (spec 2026-10-08-animation-extension-lane-design.md,
+// Task 6) — the chain surface (§4's window slots, the source-attempt-edge
+// traversal, the derived mismatch, the assembled preview) and the Extend
+// preview (§4's carry math + preflight verdicts + §6's two clocks). Pure
+// like the rest of this module; the Timeline/ExtendPanel/WindowReview
+// components render these, tests/animation-timeline-model.test.js pins
+// them, e2e/animation.spec.ts pins the rendered behavior.
+// ---------------------------------------------------------------------------
+
+/** The extension-lane attempt facts these derivations read — the recovery
+ *  read's AttemptStateView satisfies this structurally (oldest-first). */
+export type ExtensionAttemptFacts = {
+  attemptId: string
+  targetId: string
+  execution: AttemptExecutionState
+  /** The frozen binding's source (extension rows only) — the edge truth the
+   *  mismatch walk resolves through. */
+  extension?: {
+    sourceAttemptId: string
+    targetLength: number
+    movement: string
+    preservation: string
+    overrides: { medium: string; scene?: string; camera?: { description: string; reason: string } }
+    anchors: Array<{ reference: 'rolling-near' | 'fixed-far'; frame: number }>
+  }
+  continuation: AttemptContinuationView
+  modelIdentitiesStamped?: boolean
+  referenceAssetIds?: string[]
+  candidate: { frameCount: number } | null
+}
+
+/** The shared `sourceOf` over the attempt list: an extension row resolves to
+ *  ITS binding's frozen source; a plain take (or a row the older build froze
+ *  without the view's extension block) resolves to null — chainMismatch
+ *  treats that as consistent (the derivation is best-effort at the client;
+ *  the server's own walk refuses loudly where it matters). */
+function extensionSourceOf(attempts: ReadonlyArray<ExtensionAttemptFacts>): (attemptId: string) => string | null {
+  return (attemptId) => attempts.find((entry) => entry.attemptId === attemptId)?.extension?.sourceAttemptId ?? null
+}
+
+/** One window as the chain surface renders it. */
+export type ChainWindowView = {
+  slot: WindowSlot
+  /** The slot's landed take rows in landing order — `landed` false while a
+   *  take renders (the strip shows the in-flight count honestly). */
+  takes: Array<{ attemptId: string; landed: boolean; deliveredFrames: number | null }>
+  /** The slot's SELECTED take's row facts (null until the explicit
+   *  selection). */
+  selected: ExtensionAttemptFacts | null
+  /** True when a LANDED take awaits the slot's first selection — the
+   *  window's own review-decision marker. */
+  reviewPending: boolean
+}
+
+/** One chain as the surface renders it: the root, the ordered windows, the
+ *  DERIVED mismatch (§4 — surfaced, never silently assembled past), and the
+ *  assembled preview ALONG THE SELECTED PATH when the walk is consistent. */
+export type ChainView = {
+  chain: ExtensionChain
+  /** The root attempt's row facts (null when the row left the document —
+   *  named by `rootProblem`). */
+  root: ExtensionAttemptFacts | null
+  rootProblem: string | null
+  windows: ChainWindowView[]
+  mismatch: ChainMismatch | null
+  /** The assembled preview (§4): delivered frames along the ONE selected
+   *  path — null while the mismatch stands (the banner replaces it; never a
+   *  silent assembly from unrelated ancestry). */
+  assembled: { windows: number; deliveredFrames: number } | null
+}
+
+export type ChainSurface = { chains: ChainView[] }
+
+/** §4's chain surface: every chain in body order, each window in `order`
+ *  sequence with its takes strip facts and its own selection truth, the
+ *  derived mismatch through the shared walk (source-attempt edges — each
+ *  window's selected take's frozen source, never slot lists alone), and the
+ *  assembled preview that honors exactly one selected path. */
+export function deriveChainSurface(body: AnimationDocumentBody, attempts: ReadonlyArray<ExtensionAttemptFacts>): ChainSurface {
+  const rowOf = (attemptId: string): ExtensionAttemptFacts | null => attempts.find((entry) => entry.attemptId === attemptId) ?? null
+  const sourceOf = extensionSourceOf(attempts)
+  const chains: ChainView[] = []
+  // `chains` reads as [] on bodies the older build wrote (the parse
+  // contract) — tolerate its absence the same way rather than crashing.
+  for (const chain of body.chains ?? []) {
+    const root = rowOf(chain.rootAttemptId)
+    const windows: ChainWindowView[] = [...chain.windows]
+      .sort((a, b) => (a.order !== b.order ? a.order - b.order : a.id < b.id ? -1 : 1))
+      .map((slot) => {
+        const takes = slot.attempts.map((attemptId) => {
+          const row = rowOf(attemptId)
+          return {
+            attemptId,
+            landed: row !== null && row.execution === 'ready' && row.candidate !== null,
+            deliveredFrames: row !== null && row.execution === 'ready' && row.candidate !== null ? row.candidate.frameCount : null,
+          }
+        })
+        return {
+          slot,
+          takes,
+          selected: slot.selectedCandidateId === null ? null : rowOf(slot.selectedCandidateId),
+          reviewPending: slot.selectedCandidateId === null && takes.some((take) => take.landed),
+        }
+      })
+    chains.push({
+      chain,
+      root,
+      rootProblem: root === null ? `The chain's root take (${chain.rootAttemptId}) is not among this document's attempts.` : null,
+      windows,
+      mismatch: chainMismatch(chain, sourceOf),
+      assembled: null,
+    })
+  }
+  // The assembled preview per chain (only when the walk is consistent): the
+  // selected path's delivered frames — root clip + every window's SELECTED
+  // take, the exact path the next extension conditions on.
+  for (const view of chains) {
+    if (view.mismatch !== null || view.root === null || view.root.candidate === null) continue
+    let deliveredFrames = view.root.candidate.frameCount
+    let selectedWindows = 0
+    for (const window of view.windows) {
+      if (window.slot.selectedCandidateId === null) continue
+      if (window.selected === null || window.selected.candidate === null) {
+        deliveredFrames = 0
+        selectedWindows = -1
+        break
+      }
+      deliveredFrames += window.selected.candidate.frameCount
+      selectedWindows += 1
+    }
+    if (selectedWindows >= 0) view.assembled = { windows: selectedWindows, deliveredFrames }
+  }
+  return { chains }
+}
+
+/** One named preflight verdict (§4 — "each a named pass or refusal with its
+ *  reason"). Advisory verdicts (the identity-discontinuity hint, Task 5's
+ *  ruling b) are NOT failures: `advisory` carries the named hint while
+ *  `pass` stays true. */
+export type ExtendVerdict = { name: string; pass: boolean; detail: string; advisory?: boolean }
+
+/** The identity references the extension compiles against (the ROOT SPAN's
+ *  selected keys — the route's own resolution, mirrored): null when they do
+ *  not resolve, with the named problem in `referencesProblem`. */
+export type ExtendIdentityReferences = {
+  near: { assetId: string; poseDescription: string | null; facing: FacingTerm | null }
+  far: { assetId: string; poseDescription: string | null; facing: FacingTerm | null }
+} | null
+
+/** §4's Extend preview: the carry math in BOTH clocks, the pinned tail's
+ *  frame range in source coordinates (generated + delivered via the ONE
+ *  mapping), the preflight verdicts, and the identity-discontinuity
+ *  advisory. Everything the panel shows before submission; the server
+ *  re-derives authoritatively and its refusals carry the same names. */
+export type ExtendPreview = {
+  source: ExtensionAttemptFacts | null
+  sourceProblem: string | null
+  /** The source's frozen GENERATED length — the pinned-tail math's base. */
+  sourceLength: number | null
+  plan: ContinuationWindowPlan | null
+  /** The recipe's named refusal when the plan does not compute (the same
+   *  message the route answers with). */
+  recipeProblem: string | null
+  /** The pinned tail in BOTH coordinate systems: the raw latent's world
+   *  (generated) and the user's (delivered, through the ONE mapping —
+   *  `continuationGeneratedFrame`). Null delivered when the source's own
+   *  trim cannot be resolved (the take has not landed). */
+  pinnedTail: { generated: { start: number; end: number }; delivered: { start: number; end: number } | null } | null
+  /** The two clocks (§4): the generated window's full length and the
+   *  delivered count after the pinned head is trimmed. */
+  clocks: { generated: number; delivered: number } | null
+  verdicts: ExtendVerdict[]
+  references: ExtendIdentityReferences
+  referencesProblem: string | null
+  /** True when every non-advisory verdict passes and the references resolve
+   *  — the panel's submit gate (the text inputs gate themselves). */
+  ready: boolean
+}
+
+/** The root-span walk (the route's own `rootTakeOf`, mirrored): the source's
+ *  binding edges back to the PLAIN take the chain roots on. */
+function extensionRootAttempt(attempts: ReadonlyArray<ExtensionAttemptFacts>, sourceAttemptId: string): ExtensionAttemptFacts | null {
+  const seen = new Set<string>()
+  let current = sourceAttemptId
+  for (;;) {
+    if (seen.has(current)) return null // a corrupt cycle degrades to "no root"
+    seen.add(current)
+    const row = attempts.find((entry) => entry.attemptId === current) ?? null
+    if (row === null) return null
+    const next = row.extension?.sourceAttemptId
+    if (next === undefined) return row
+    current = next
+  }
+}
+
+export function deriveExtendPreview(
+  body: AnimationDocumentBody,
+  attempts: ReadonlyArray<ExtensionAttemptFacts>,
+  sourceAttemptId: string,
+  targetLength: number,
+  anchors: ReadonlyArray<{ reference: 'rolling-near' | 'fixed-far'; frame: number }>,
+): ExtendPreview {
+  const source = attempts.find((entry) => entry.attemptId === sourceAttemptId) ?? null
+  const verdicts: ExtendVerdict[] = []
+  const none: ExtendPreview = {
+    source, sourceProblem: source === null ? 'That take is no longer among this document\'s attempts — reload picked up a change.' : null,
+    sourceLength: null, plan: null, recipeProblem: null, pinnedTail: null, clocks: null, verdicts, references: null, referencesProblem: null, ready: false,
+  }
+  if (source === null) return { ...none, verdicts: [{ name: 'Source take', pass: false, detail: none.sourceProblem! }] }
+
+  // ---- the carry availability verdict (§7/§8) ----------------------------
+  const continuation = source.continuation.state
+  if (continuation === 'ready') {
+    verdicts.push({ name: 'Carry', pass: true, detail: 'The registered carry resolves by digest — the pinned tail is available.' })
+  } else if (continuation === 'absent') {
+    verdicts.push({ name: 'Carry', pass: false, detail: 'This take carried no tail (a plain render) — only renders submitted with the carry flag hold one to extend.' })
+  } else if (continuation === 'registering') {
+    verdicts.push({ name: 'Carry', pass: false, detail: `The carried tail is still registering${source.continuation.error !== undefined ? ` (last error: ${source.continuation.error})` : ''} — the Extend action opens once registration lands.` })
+  } else if (continuation === 'not-produced') {
+    verdicts.push({ name: 'Carry', pass: false, detail: 'This take\'s in-graph save never completed (not produced) — it can never seed an extension; a new take of the step is the path.' })
+  } else {
+    verdicts.push({ name: 'Carry', pass: false, detail: 'The registered carry no longer resolves (continuation unavailable) — re-land the source chain; the clip itself stays playable.' })
+  }
+
+  // ---- the identity-evidence verdict (Task 3's named condition) ----------
+  if (continuation === 'ready' && source.modelIdentitiesStamped !== true) {
+    verdicts.push({
+      name: 'Identity evidence',
+      pass: false,
+      detail: 'Continuation identity evidence is missing — this take rendered without resolved model digests, so it can never seed a continuation binding (never a name-only pass). Re-land the source on the current weights and extend that take.',
+    })
+  } else if (continuation === 'ready') {
+    verdicts.push({ name: 'Identity evidence', pass: true, detail: 'The frozen model identities are present — the submission re-verifies them against the engine\'s current weights before spending anything.' })
+  }
+
+  // ---- the root span's references (the route's resolution, mirrored) -----
+  const root = extensionRootAttempt(attempts, sourceAttemptId)
+  const rootSpan = root === null ? null : body.spans.find((span) => span.stepSlots.some((slot) => slot.id === root.targetId)) ?? null
+  const selectedOf = (keyId: string): KeyCandidate | null => {
+    const slot = body.keys.find((entry) => entry.id === keyId) ?? null
+    if (slot === null || slot.selectedCandidateId === null) return null
+    return slot.candidates.find((entry) => entry.id === slot.selectedCandidateId) ?? null
+  }
+  let references: ExtendIdentityReferences = null
+  let referencesProblem: string | null = null
+  if (rootSpan === null) {
+    referencesProblem = root === null
+      ? 'The chain\'s root take cannot be resolved from this document — the window\'s identity references do not resolve.'
+      : `The chain's root take targets a step slot no span owns — the window's identity references cannot be resolved.`
+  } else {
+    const near = selectedOf(rootSpan.fromKeyId)
+    const far = selectedOf(rootSpan.toKeyId)
+    if (near === null || far === null) {
+      referencesProblem = 'The chain\'s root span has a key with no selected image — the caption needs both poses.'
+    } else {
+      references = {
+        near: { assetId: near.assetReference.assetId, poseDescription: near.poseDescription, facing: near.facing },
+        far: { assetId: far.assetReference.assetId, poseDescription: far.poseDescription, facing: far.facing },
+      }
+    }
+  }
+
+  // ---- the overlap-recipe math (§6 — the shared plan, both clocks) -------
+  const sourceLength = source.extension?.targetLength
+    ?? (source.candidate !== null && source.execution === 'ready' ? source.candidate.frameCount : null)
+  let plan: ContinuationWindowPlan | null = null
+  let recipeProblem: string | null = null
+  if (sourceLength === null) {
+    recipeProblem = 'The source take holds no readable window length (it has not landed) — the pinned tail\'s coordinates cannot be computed.'
+  } else {
+    try {
+      plan = continuationWindowPlan({ sourceLength, targetLength, contextLength: CONTINUATION_OVERLAP_RECIPE.contextLength })
+    } catch (failure) {
+      recipeProblem = failure instanceof Error ? failure.message : String(failure)
+    }
+  }
+  if (plan !== null) {
+    verdicts.push({
+      name: 'Overlap recipe',
+      pass: true,
+      detail: `A ${targetLength}-frame window pins the source's last ${plan.headTrim} frames: ${targetLength} generated, ${plan.deliveredRange.end} delivered after the pinned head is trimmed.`,
+    })
+  } else {
+    verdicts.push({ name: 'Overlap recipe', pass: false, detail: recipeProblem ?? 'The window does not satisfy the overlap recipe.' })
+  }
+
+  // ---- the collision verdict (§10 — the anchors vs the pinned head) ------
+  const malformedAnchor = anchors.find((anchor) => !Number.isInteger(anchor.frame) || anchor.frame < 0)
+  if (malformedAnchor !== undefined) {
+    verdicts.push({ name: 'Anchors', pass: false, detail: `The ${malformedAnchor.reference} anchor's frame must be a non-negative whole number of the sampled window's frames.` })
+  } else if (anchors.length === 0) {
+    verdicts.push({ name: 'Anchors', pass: true, detail: 'No reference anchors — nothing can fall inside the pinned head.' })
+  } else if (plan !== null) {
+    const collision = anchors.find((anchor) => anchor.frame < plan!.headTrim)
+    if (collision !== undefined) {
+      verdicts.push({ name: 'Anchors', pass: false, detail: `The ${collision.reference} anchor at sampled frame ${collision.frame} falls inside the pinned head (frames 0-${plan.headTrim - 1}) — the conditioning node would silently drop it there; the lane refuses instead, naming the anchor. Move it past the pinned head or drop it.` })
+    } else {
+      const outside = anchors.find((anchor) => anchor.frame >= targetLength)
+      verdicts.push(outside !== undefined
+        ? { name: 'Anchors', pass: false, detail: `The ${outside.reference} anchor at frame ${outside.frame} is outside the sampled window (0-${targetLength - 1}).` }
+        : { name: 'Anchors', pass: true, detail: 'Every anchor sits past the pinned head — the conditioning keeps them all.' })
+    }
+  }
+
+  // ---- the identity-discontinuity advisory (Task 5's ruling b) -----------
+  if (references !== null && rootSpan !== null && source.referenceAssetIds !== undefined && source.referenceAssetIds.length >= 2) {
+    const [frozenNear, frozenFar] = source.referenceAssetIds
+    if (frozenNear !== references.near.assetId || frozenFar !== references.far.assetId) {
+      verdicts.push({
+        name: 'Identity continuity',
+        pass: true,
+        advisory: true,
+        detail: 'The chain\'s keys changed since this take rendered — the extension will condition on the CURRENT selected key images, which differ from the ones this take was generated under (identity may shift at the join). The frozen binding stays truthful either way.',
+      })
+    }
+  }
+
+  const pinnedTail = plan === null || sourceLength === null ? null : (() => {
+    const { generatedStart, generatedEnd } = plan!.windowCoordinates
+    // The delivered-tail display derives through the ONE mapping's inverse
+    // (continuationGeneratedFrame defines d + trim = g, so d = g − trim): a
+    // plain root delivers its whole window (trim 0); an extension source's
+    // trim is its frozen generated length minus its landed delivered count.
+    const trim = source.extension !== undefined && source.candidate !== null && source.execution === 'ready'
+      ? source.extension.targetLength - source.candidate.frameCount
+      : 0
+    const delivered = trim > 0
+      ? { start: generatedStart - trim, end: generatedEnd - trim }
+      : { start: generatedStart, end: generatedEnd }
+    return { generated: { start: generatedStart, end: generatedEnd }, delivered }
+  })()
+
+  const ready = verdicts.every((verdict) => verdict.pass) && references !== null && plan !== null
+  return {
+    source,
+    sourceProblem: null,
+    sourceLength,
+    plan,
+    recipeProblem,
+    pinnedTail,
+    clocks: plan === null ? null : { generated: targetLength, delivered: plan.deliveredRange.end },
+    verdicts,
+    references,
+    referencesProblem,
+    ready,
+  }
 }

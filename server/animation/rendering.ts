@@ -82,7 +82,7 @@ import {
 } from '../../shared/animation/graphs'
 import { COMPILER_VERSION, compileExtensionCaption, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../../shared/animation/compiler'
 import type { CompiledCaption, ExtensionContext, HeroContext, SequenceContext, TweenContext } from '../../shared/animation/compiler'
-import { animationInputHash, engineOutputCarryPath, isUuid, parseModelContentIdentities } from '../../shared/animation/types'
+import { animationInputHash, engineOutputCarryPath, isMediumString, isUuid, parseModelContentIdentities } from '../../shared/animation/types'
 import type { AnimationTool, AssetReference, AttemptContinuationView, AttemptExecutionState, ContinuationArtifactRecord, FrozenAttemptSnapshot, MediumString, ModelContentIdentity } from '../../shared/animation/types'
 import { runTool } from '../datasets/probe'
 
@@ -210,6 +210,35 @@ export type AttemptStateView = {
   sequencePreservation?: string
   /** SEQUENCE rows: the resolved overrides the frozen caption compiled with. */
   sequenceOverrides?: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
+  /** EXTENSION rows (the extension lane, Task 6): the frozen continuation
+   *  binding's SOURCE attempt — the edge truth the client's chainMismatch
+   *  walk resolves (`sourceOf`) and the re-roll/retry submission agrees
+   *  with the window slot's recorded source — plus the re-roll truth
+   *  (§4's split): the frozen draft (movement/preservation/overrides/
+   *  anchors, resubmitted byte-identically by both re-roll shapes) and
+   *  the window's GENERATED length (settings.length — the carry preview
+   *  and the next window's pinned-tail math read it; the DELIVERED count
+   *  is the candidate's frameCount). Plain tween rows leave it unset. */
+  extension?: {
+    sourceAttemptId: string
+    targetLength: number
+    movement: string
+    preservation: string
+    overrides: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
+    anchors: Array<{ reference: 'rolling-near' | 'fixed-far'; frame: number }>
+  }
+  /** The frozen references' asset ids in role order (the references in
+   *  force at freeze — read-only surface truth). The extension lane's
+   *  identity-discontinuity advisory compares these against the chain's
+   *  root span's CURRENT selected keys (Task 5's ruling b). */
+  referenceAssetIds?: string[]
+  /** EXTENSION-LANE sources: whether the frozen snapshot carries a
+   *  well-formed resolved-identity stamp. A carrying take without it can
+   *  never seed a binding — the named continuation-identity-missing
+   *  condition (Task 3's carried ruling), surfaced client-side by the
+   *  Extend gate. Absent on non-carrying rows (the fact is meaningless
+   *  there). */
+  modelIdentitiesStamped?: boolean
   caption: string
   compilerVersion: string
   execution: AttemptExecutionState
@@ -1099,6 +1128,41 @@ function continuationBindingOf(snapshot: FrozenAttemptSnapshot): { sourceAttempt
   return { sourceAttemptId, modelIdentities }
 }
 
+/** The EXTENSION block of a frozen snapshot narrowed for the view (Task 6):
+ *  the binding's source attempt (the seed narrows it — present on every
+ *  extension row whatever era froze it), the window's generated length, and
+ *  the frozen draft. Null when the snapshot is not an extension target; a
+ *  row whose era predates the draft freeze answers null TOO (the view then
+ *  carries no re-roll truth and the client names the gap) — a malformed
+ *  block is storage corruption this read refuses to widen, so it degrades
+ *  to the same named-gap shape rather than surfacing a half-parsed draft. */
+function extensionRowOf(snapshot: FrozenAttemptSnapshot): Pick<AttemptStateView, 'extension'> | null {
+  type ExtensionView = NonNullable<AttemptStateView['extension']>
+  const binding = (snapshot as { continuationBinding?: unknown }).continuationBinding
+  if (binding === undefined || typeof binding !== 'object' || binding === null || Array.isArray(binding)) return null
+  const sourceAttemptId = (binding as Record<string, unknown>).sourceAttemptId
+  const settings = isRecord(snapshot.settings) ? snapshot.settings : {}
+  const draft: unknown = snapshot.extension
+  if (!isUuid(sourceAttemptId)) return null
+  if (typeof settings.length !== 'number' || !Number.isInteger(settings.length) || settings.length <= 0) return null
+  if (!isRecord(draft) || typeof draft.movement !== 'string' || typeof draft.preservation !== 'string'
+    || !isRecord(draft.overrides) || !Array.isArray(draft.anchors)) return null
+  const { medium, scene, camera } = draft.overrides
+  if (!isMediumString(medium)) return null
+  const overrides: ExtensionView['overrides'] = { medium }
+  if (typeof scene === 'string') overrides.scene = scene
+  if (isRecord(camera) && typeof camera.description === 'string' && typeof camera.reason === 'string') {
+    overrides.camera = { description: camera.description, reason: camera.reason }
+  }
+  const anchors: ExtensionView['anchors'] = []
+  for (const entry of draft.anchors) {
+    if (!isRecord(entry) || (entry.reference !== 'rolling-near' && entry.reference !== 'fixed-far')
+      || typeof entry.frame !== 'number' || !Number.isInteger(entry.frame) || entry.frame < 0) return null
+    anchors.push({ reference: entry.reference as 'rolling-near' | 'fixed-far', frame: entry.frame })
+  }
+  return { extension: { sourceAttemptId, targetLength: settings.length, movement: draft.movement, preservation: draft.preservation, overrides, anchors } }
+}
+
 // ---------------------------------------------------------------------------
 // the service
 // ---------------------------------------------------------------------------
@@ -1648,6 +1712,11 @@ export function createAnimationRenderingService(deps: {
               sequenceOverrides: attempt.snapshot.sequence.overrides,
             }
           : {}),
+        // The extension lane's row truth (Task 6): composed ONLY when every
+        // input parses — a row the older build froze (no draft block) simply
+        // carries no extension view, and the client's re-roll names the gap
+        // instead of resubmitbing a guess.
+        ...(extensionRowOf(attempt.snapshot) ?? {}),
         caption: attempt.snapshot.caption,
         compilerVersion: attempt.snapshot.compilerVersion,
         execution: attempt.execution.state,
@@ -1665,6 +1734,15 @@ export function createAnimationRenderingService(deps: {
       }
       if (attempt.execution.progress !== undefined) view.progress = attempt.execution.progress
       if (attempt.execution.failureReason !== undefined) view.failureReason = attempt.execution.failureReason
+      // The frozen references' asset ids, role-ordered (the discontinuity
+      // advisory's frozen half); the identity-stamp fact only when the
+      // snapshot claims to carry (the fact is meaningless otherwise).
+      if (attempt.snapshot.references.length > 0) {
+        view.referenceAssetIds = attempt.snapshot.references.map((entry) => entry.assetReference.assetId)
+      }
+      if (carryRequested(attempt.snapshot)) {
+        view.modelIdentitiesStamped = parseModelContentIdentities(attempt.snapshot.modelIdentities) !== null
+      }
       return view
     },
 

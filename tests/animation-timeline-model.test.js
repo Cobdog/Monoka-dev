@@ -24,7 +24,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { deriveAssembledSequence, deriveContributableClips, deriveReviewPosition, deriveTimeline } from '../src/animation/timelineModel'
+import { deriveAssembledSequence, deriveChainSurface, deriveContributableClips, deriveExtendPreview, deriveReviewPosition, deriveTimeline } from '../src/animation/timelineModel'
 
 const uuid = () => randomUUID()
 
@@ -454,4 +454,156 @@ test('deriveAssembledSequence concatenates the ordered list with holds in output
   const unlandedView = deriveAssembledSequence(body, [tweenTake, seqTake, seqTake2])
   assert.ok(unlandedView.problems.some((problem) => problem.includes('has not landed')), 'the unlanded entry is named')
   assert.equal(unlandedView.contributions.length, 4, 'the entry still renders — named, not dropped')
+})
+
+// ---------------------------------------------------------------------------
+// The extension lane (Task 6, spec 2026-10-08-animation-extension-lane-design.md
+// §4): deriveChainSurface (the source-attempt-edge traversal, the derived
+// mismatch, the assembled preview) + deriveExtendPreview (§4's carry math,
+// §6's two clocks, the preflight verdicts, the discontinuity advisory).
+// ---------------------------------------------------------------------------
+
+function windowSlot(order, overrides = {}) {
+  return { id: uuid(), order, attempts: [], selectedCandidateId: null, lock: false, sourceAttemptId: '', stale: false, staleReasons: [], ...overrides }
+}
+
+function chainOf(rootAttemptId, windows) {
+  return { rootAttemptId, windows }
+}
+
+/** One extension-lane attempt row (the view's structural facts). */
+function extTake(attemptId, overrides = {}) {
+  return {
+    attemptId,
+    targetId: uuid(),
+    execution: 'ready',
+    continuation: { state: 'ready' },
+    candidate: { frameCount: 34 },
+    ...overrides,
+  }
+}
+
+test('deriveChainSurface walks windows in order and assembles the ONE selected path (§4)', () => {
+  const root = extTake(uuid(), { candidate: { frameCount: 22 } })
+  const w1Take = extTake(uuid(), { extension: { sourceAttemptId: root.attemptId, targetLength: 56, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [] } })
+  const w2Take = extTake(uuid(), { extension: { sourceAttemptId: w1Take.attemptId, targetLength: 56, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [] }, candidate: { frameCount: 34 } })
+  const w1Alt = extTake(uuid(), { extension: { sourceAttemptId: root.attemptId, targetLength: 39, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [] } })
+  const w1 = windowSlot(0, { attempts: [w1Take.attemptId, w1Alt.attemptId], selectedCandidateId: w1Take.attemptId, sourceAttemptId: root.attemptId })
+  const w2 = windowSlot(1, { attempts: [w2Take.attemptId], selectedCandidateId: w2Take.attemptId, sourceAttemptId: w1Take.attemptId })
+  const body = { ...bodyOf([], []), chains: [chainOf(root.attemptId, [w2, w1])] }
+  const surface = deriveChainSurface(body, [root, w1Take, w1Alt, w2Take])
+  assert.equal(surface.chains.length, 1)
+  const chain = surface.chains[0]
+  // Windows sort by ORDER (the fixture's array order disagrees).
+  assert.deepEqual(chain.windows.map((window) => window.slot.id), [w1.id, w2.id])
+  assert.equal(chain.mismatch, null, 'the selected path is consistent — no mismatch')
+  // The assembled preview: root 22 + w1's selected 34 + w2's selected 34.
+  assert.deepEqual(chain.assembled, { windows: 2, deliveredFrames: 90 })
+  // Alternatives ride the window's takes but never the path.
+  assert.equal(chain.windows[0].takes.length, 2)
+  assert.equal(chain.windows[0].selected.attemptId, w1Take.attemptId)
+})
+
+test('deriveChainSurface derives the NAMED mismatch when an ancestor selection displaces the edge — and both resolutions are answerable (§4)', () => {
+  const root = extTake(uuid(), { candidate: { frameCount: 22 } })
+  const a1 = extTake(uuid(), { extension: { sourceAttemptId: root.attemptId, targetLength: 56, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [] } })
+  const a2 = extTake(uuid(), { extension: { sourceAttemptId: root.attemptId, targetLength: 56, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [] } })
+  const b = extTake(uuid(), { extension: { sourceAttemptId: a1.attemptId, targetLength: 56, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [] } })
+  const w1 = windowSlot(0, { attempts: [a1.attemptId, a2.attemptId], selectedCandidateId: a2.attemptId, sourceAttemptId: root.attemptId })
+  const w2 = windowSlot(1, { attempts: [b.attemptId], selectedCandidateId: b.attemptId, sourceAttemptId: a1.attemptId })
+  const body = { ...bodyOf([], []), chains: [chainOf(root.attemptId, [w1, w2])] }
+  const surface = deriveChainSurface(body, [root, a1, a2, b])
+  const mismatch = surface.chains[0].mismatch
+  assert.notEqual(mismatch, null, 'B extends A1 while the ancestor slot selects A2 — the named mismatch')
+  assert.equal(mismatch.windowSlotId, w2.id)
+  assert.equal(mismatch.selectedAttemptId, b.attemptId)
+  assert.equal(mismatch.sourceAttemptId, a1.attemptId)
+  assert.equal(mismatch.ancestorSlotId, w1.id)
+  assert.equal(mismatch.expectedSelection, a1.attemptId, 'the first resolution: reselect the compatible ancestry')
+  assert.equal(surface.chains[0].assembled, null, 'never a silent assembly past the mismatch')
+  // Reselecting A1 back clears the derivation (marks are monotonic; the
+  // DERIVED state reads consistent on its own).
+  const restored = { ...body, chains: [{ ...body.chains[0], windows: [{ ...w1, selectedCandidateId: a1.attemptId }, w2] }] }
+  assert.equal(deriveChainSurface(restored, [root, a1, a2, b]).chains[0].mismatch, null)
+})
+
+test('deriveExtendPreview: the first extension from a plain 22-frame take — both clocks, the pinned tail, the verdicts pass (§4/§6)', () => {
+  const stepId = uuid()
+  const root = extTake(uuid(), { targetId: stepId, candidate: { frameCount: 22 }, modelIdentitiesStamped: true, referenceAssetIds: ['near-a', 'far-a'] })
+  const fromKey = keySlot(0, { selectedCandidateId: 'c1', candidates: [{ ...candidate('import'), id: 'c1', assetReference: { assetId: 'near-a', relPath: null, kind: 'image' } }] })
+  const toKey = keySlot(1, { selectedCandidateId: 'c2', candidates: [{ ...candidate('import'), id: 'c2', assetReference: { assetId: 'far-a', relPath: null, kind: 'image' } }] })
+  const body = bodyOf([fromKey, toKey], [spanOf(fromKey.id, toKey.id, { stepSlots: [{ ...stepSlot(), id: stepId }] })])
+  const preview = deriveExtendPreview(body, [root], root.attemptId, 56, [])
+  assert.equal(preview.sourceLength, 22)
+  assert.deepEqual(preview.clocks, { generated: 56, delivered: 34 })
+  assert.deepEqual(preview.pinnedTail, { generated: { start: 0, end: 22 }, delivered: { start: 0, end: 22 } }, 'a plain root delivers its whole window — the pinned tail is the same range in both worlds')
+  assert.ok(preview.ready, 'every verdict passes and the references resolve')
+  assert.ok(preview.verdicts.every((verdict) => verdict.pass))
+  // The compiled-caption context resolves the root span's selected keys.
+  assert.equal(preview.references.near.assetId, 'near-a')
+  assert.equal(preview.references.far.assetId, 'far-a')
+})
+
+test('deriveExtendPreview: the SECOND extension maps the pinned tail through the frozen trim — [34,56) generated is [12,34) delivered (§6)', () => {
+  const stepId = uuid()
+  const root = extTake(uuid(), { targetId: stepId, candidate: { frameCount: 22 }, modelIdentitiesStamped: true })
+  const extension = extTake(uuid(), {
+    extension: { sourceAttemptId: root.attemptId, targetLength: 56, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [] },
+    candidate: { frameCount: 34 },
+    modelIdentitiesStamped: true,
+  })
+  const fromKey = keySlot(0, { selectedCandidateId: 'c1', candidates: [{ ...candidate('import'), id: 'c1' }] })
+  const toKey = keySlot(1, { selectedCandidateId: 'c2', candidates: [{ ...candidate('import'), id: 'c2' }] })
+  const body = bodyOf([fromKey, toKey], [spanOf(fromKey.id, toKey.id, { stepSlots: [{ ...stepSlot(), id: stepId }] })])
+  const preview = deriveExtendPreview(body, [root, extension], extension.attemptId, 56, [])
+  assert.equal(preview.sourceLength, 56, 'the extension source\'s GENERATED length — never its delivered 34')
+  assert.deepEqual(preview.pinnedTail, { generated: { start: 34, end: 56 }, delivered: { start: 12, end: 34 } }, 'the raw latent\'s world and the user\'s, through the ONE mapping')
+  assert.deepEqual(preview.clocks, { generated: 56, delivered: 34 })
+  assert.ok(preview.ready)
+})
+
+test('deriveExtendPreview names the recipe, collision, identity, and availability refusals — and the discontinuity advisory never refuses (§4/§10, Task 3 + Task 5 ruling b)', () => {
+  const stepId = uuid()
+  const nearKey = (assetId) => keySlot(0, { selectedCandidateId: 'c1', candidates: [{ ...candidate('import'), id: 'c1', assetReference: { assetId, relPath: null, kind: 'image' } }] })
+  const root = extTake(uuid(), { targetId: stepId, candidate: { frameCount: 22 }, modelIdentitiesStamped: true, referenceAssetIds: ['near-a', 'far-a'] })
+  const fromKey = nearKey('near-a')
+  const toKey = keySlot(1, { selectedCandidateId: 'c2', candidates: [{ ...candidate('import'), id: 'c2', assetReference: { assetId: 'far-a', relPath: null, kind: 'image' } }] })
+  const body = bodyOf([fromKey, toKey], [spanOf(fromKey.id, toKey.id, { stepSlots: [{ ...stepSlot(), id: stepId }] })])
+  const byName = (verdicts, name) => verdicts.find((verdict) => verdict.name === name)
+
+  // Off-grid target: the recipe refusal, the same name the route answers with.
+  const offGrid = deriveExtendPreview(body, [root], root.attemptId, 50, [])
+  assert.equal(offGrid.plan, null)
+  assert.match(offGrid.recipeProblem, /17k\+5/)
+  assert.equal(byName(offGrid.verdicts, 'Overlap recipe').pass, false)
+  assert.equal(offGrid.ready, false)
+
+  // An anchor inside the pinned head: the collision refusal NAMES the anchor.
+  const collision = deriveExtendPreview(body, [root], root.attemptId, 56, [{ reference: 'rolling-near', frame: 3 }])
+  const anchors = byName(collision.verdicts, 'Anchors')
+  assert.equal(anchors.pass, false)
+  assert.match(anchors.detail, /rolling-near/)
+  assert.match(anchors.detail, /frame 3/)
+  assert.match(anchors.detail, /pinned head/)
+
+  // A stamp-less source: the named continuation-identity-missing condition.
+  const stampless = extTake(uuid(), { targetId: stepId, candidate: { frameCount: 22 }, modelIdentitiesStamped: false })
+  const identity = byName(deriveExtendPreview(body, [stampless], stampless.attemptId, 56, []).verdicts, 'Identity evidence')
+  assert.equal(identity.pass, false)
+  assert.match(identity.detail, /identity evidence is missing/i)
+
+  // The unavailable carry: the named condition, the clip stays playable.
+  const evicted = extTake(uuid(), { targetId: stepId, candidate: { frameCount: 22 }, continuation: { state: 'unavailable' } })
+  const carry = byName(deriveExtendPreview(body, [evicted], evicted.attemptId, 56, []).verdicts, 'Carry')
+  assert.equal(carry.pass, false)
+  assert.match(carry.detail, /unavailable/)
+
+  // The identity-discontinuity ADVISORY: the current keys differ from the
+  // frozen references — named, but pass stays true (Task 5's ruling b).
+  const changedKey = nearKey('a-different-image')
+  const changedBody = bodyOf([changedKey, toKey], [spanOf(changedKey.id, toKey.id, { stepSlots: [{ ...stepSlot(), id: stepId }] })])
+  const advisory = byName(deriveExtendPreview(changedBody, [root], root.attemptId, 56, []).verdicts, 'Identity continuity')
+  assert.equal(advisory.pass, true)
+  assert.equal(advisory.advisory, true)
+  assert.match(advisory.detail, /differ/)
 })

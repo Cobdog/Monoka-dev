@@ -63,11 +63,13 @@ import { SurfaceSwitcher } from '../surfaces/SurfaceSwitcher'
 import { Button } from '../ui/Button'
 import { Chip, ChipGroup } from '../ui/Chip'
 import { animationHref } from './client'
+import type { ChainMismatch } from '../../shared/animation/types'
 import { BindingPanel } from './BindingPanel'
 import { KeyCandidates, type KeyImportDestination } from './KeyCandidates'
 import { Timeline } from './Timeline'
 import { SpanInspector } from './SpanInspector'
 import { ReviewPanel } from './ReviewPanel'
+import { ExtendPanel, WindowReview } from './ExtendPanel'
 import { HeroPanel } from './HeroPanel'
 import { HeroReview } from './HeroReview'
 import { SequencePanel } from './SequencePanel'
@@ -75,8 +77,8 @@ import { SequenceReview } from './SequenceReview'
 import { EditorialPanel } from './EditorialPanel'
 import { ExportPanel } from './ExportPanel'
 import { IN_FLIGHT } from './reviewStatus'
-import { deriveAssembledSequence, deriveContributableClips, deriveReviewPosition, deriveTimeline, type TimelineReviewPosition } from './timelineModel'
-import { deriveHeroPreview, deriveTweenPreview, useAnimationDocument } from './state'
+import { deriveAssembledSequence, deriveChainSurface, deriveContributableClips, deriveReviewPosition, deriveTimeline, type TimelineReviewPosition } from './timelineModel'
+import { deriveHeroPreview, deriveTweenPreview, useAnimationDocument, type ExtensionOutcome } from './state'
 import './animation.css'
 
 export function AnimationApp() {
@@ -121,6 +123,17 @@ export function AnimationApp() {
   // stays selected; switching keys (or a reload) falls back to the derived
   // default below. Keyed by key id so a stale pick never leaks across keys.
   const [keyTool, setKeyTool] = useState<{ keyId: string; tool: 'hero' | 'sequence' } | null>(null)
+  // The extension lane (Task 6): the chain window under review (a window
+  // slot id — its own selection dimension; selecting a key or span clears
+  // it and vice versa, exactly one review subject at a time).
+  const [selectedWindowId, setSelectedWindowId] = useState<string | null>(null)
+  // The window review's SUBJECT override (the reviewer's explicit take),
+  // keyed by window slot id so switching windows forgets the stale take.
+  const [windowTake, setWindowTake] = useState<{ windowSlotId: string; attemptId: string } | null>(null)
+  // The Extend flow's open source (the landed take whose carried tail the
+  // next window conditions on) — opened by an Extend action, closed by the
+  // submission's follow-to-window or the panel's Close.
+  const [extendFor, setExtendFor] = useState<string | null>(null)
   // The stage's responsive mode. The 1440px literal MIRRORS the media query
   // in animation.css (.anim-stage-panes' two-column rule) — one breakpoint,
   // two homes, because a CSS media query cannot read a var and JS cannot
@@ -329,6 +342,82 @@ export function AnimationApp() {
     () => (document === null ? null : deriveAssembledSequence(document.body, document.attempts)),
     [document],
   )
+  // The extension lane's chain surface (§4, Task 6): the chains in body
+  // order, each window's takes + selection truth, the DERIVED mismatch, the
+  // assembled preview along the selected path. Pure (timelineModel).
+  const chainSurface = useMemo(
+    () => (document === null ? null : deriveChainSurface(document.body, document.attempts)),
+    [document],
+  )
+  // The selected chain window (a window slot id), resolved against the
+  // surface — null when the window left the document.
+  const selectedWindowView = useMemo(() => {
+    if (chainSurface === null || selectedWindowId === null) return null
+    for (const chain of chainSurface.chains) {
+      const index = chain.windows.findIndex((window) => window.slot.id === selectedWindowId)
+      if (index >= 0) return { chain, window: chain.windows[index]!, index }
+    }
+    return null
+  }, [chainSurface, selectedWindowId])
+  // The window review's subject: the reviewer's explicit take, else the
+  // window's NEWEST (the freshest truth); an EMPTY window (the refused or
+  // interrupted submission's trailing hole) names itself honestly — the
+  // Extend flow is its surface.
+  const windowReview = useMemo(() => {
+    if (document === null || selectedWindowView === null) return null
+    const ids = selectedWindowView.window.slot.attempts
+    if (ids.length === 0) {
+      return { empty: true as const, slot: selectedWindowView.window.slot, index: selectedWindowView.index }
+    }
+    const chosen = windowTake !== null && windowTake.windowSlotId === selectedWindowView.window.slot.id
+      ? document.attempts.find((entry) => entry.attemptId === windowTake.attemptId) ?? null
+      : null
+    const subject = chosen ?? document.attempts.find((entry) => entry.attemptId === ids[ids.length - 1]) ?? null
+    if (subject === null) return null
+    return { empty: false as const, subject, slot: selectedWindowView.window.slot, index: selectedWindowView.index, takes: ids.map((attemptId) => ({ attemptId })) }
+  }, [document, selectedWindowView, windowTake])
+  // The Extend flow's source row (null when the take left the document —
+  // the panel then unmounts, its close already implied).
+  const extendSource = useMemo(
+    () => (document === null || extendFor === null ? null : document.attempts.find((entry) => entry.attemptId === extendFor) ?? null),
+    [document, extendFor],
+  )
+  // The shell's Extend submission wrapper: the follow-to-window on success
+  // (the review IS the landing's surface; the panel closes, the window's
+  // review opens on the in-flight take — §7.3's during-the-wait contract).
+  const submitExtension = async (draft: Parameters<typeof session.commands.extendTake>[1], idempotencyKey: string): Promise<ExtensionOutcome> => {
+    if (extendFor === null) return { ok: false, submission: null }
+    const outcome = await session.commands.extendTake(extendFor, draft, idempotencyKey)
+    if (outcome.ok) {
+      setExtendFor(null)
+      setSelectedWindowId(outcome.windowSlotId)
+      setWindowTake(null)
+    }
+    return outcome
+  }
+  const retryExtension = async (submission: Parameters<typeof session.commands.retryExtendSubmission>[0]) => {
+    const outcome = await session.commands.retryExtendSubmission(submission)
+    if (outcome !== null) {
+      setExtendFor(null)
+      setSelectedWindowId(outcome.windowSlotId)
+      setWindowTake(null)
+    }
+    return outcome
+  }
+  // The mismatch banner's two explicit resolutions (§4): reselect the
+  // compatible ancestry, or explicitly rebind to the ancestor's CURRENT
+  // selection — both revision-gated commands through the adapter.
+  const resolveMismatchByReselect = (mismatch: ChainMismatch) => {
+    if (mismatch.ancestorSlotId === null) return
+    void session.commands.selectWindowCandidate(mismatch.ancestorSlotId, mismatch.expectedSelection)
+  }
+  const resolveMismatchByRebind = (mismatch: ChainMismatch) => {
+    if (mismatch.ancestorSlotId === null || document === null) return
+    const ancestor = document.body.chains.flatMap((chain) => chain.windows).find((window) => window.id === mismatch.ancestorSlotId) ?? null
+    const target = ancestor?.selectedCandidateId ?? null
+    if (target === null) return
+    void session.commands.rebindWindow(mismatch.windowSlotId, target)
+  }
 
   if (phase === 'loading') {
     return (
@@ -490,13 +579,18 @@ export function AnimationApp() {
                   selectedId={selectedId}
                   playhead={playhead}
                   busy={busy}
-                  onSelectKey={setSelectedId}
-                  onSelectSpan={setSelectedId}
+                  chains={chainSurface}
+                  selectedWindowId={selectedWindowId}
+                  onSelectKey={(keyId) => { setSelectedId(keyId); setSelectedWindowId(null) }}
+                  onSelectSpan={(spanId) => { setSelectedId(spanId); setSelectedWindowId(null) }}
                   onToggleLock={(keyId, locked) => void session.commands.toggleKeyLock(keyId, locked)}
                   onSeedInitialKey={() => void session.commands.seedInitialKey()}
+                  onSelectWindow={(windowSlotId) => { setSelectedWindowId(windowSlotId); setSelectedId(null); setExtendFor(null) }}
+                  onReselectAncestor={resolveMismatchByReselect}
+                  onRebindWindow={resolveMismatchByRebind}
                 />
               </div>
-              {(spanInspector !== null || selectedKey !== null) && (
+              {(spanInspector !== null || selectedKey !== null || windowReview !== null) && (
                 <div className="anim-stage-panes" data-anim-stage-panes>
                   {/* The review/preview pane — the selected surface's landed
                       (or in-flight) takes; an honest empty state names the
@@ -523,6 +617,7 @@ export function AnimationApp() {
                             void session.commands.rerollStep(selectedSpan.id, reviewPanel.subject.targetId)
                           }}
                           onRetryPreparation={() => void session.commands.retryPreparation(reviewPanel.subject.attemptId)}
+                          onExtend={() => setExtendFor(reviewPanel.subject.attemptId)}
                           newTakeAttemptId={reviewPanel.newTakeAttemptId}
                           onDismissNewTake={dismissNewTake}
                         />
@@ -607,6 +702,55 @@ export function AnimationApp() {
                           )}
                         </div>
                       </>
+                    )}
+                    {/* The extension lane's window review (Task 6): a chain
+                        window's takes strip, its EXPLICIT selection, the
+                        re-roll split, and the Extend action on the subject
+                        take. An EMPTY window names itself — the Extend flow
+                        (its own surface) is the way in. */}
+                    {windowReview !== null && (
+                      windowReview.empty ? (
+                        <div className="anim-stage-empty" data-anim-review-empty data-anim-window-empty={windowReview.slot.id}>
+                          <strong>An empty window</strong>
+                          <span>A previous submission never settled here — Extend the source take again to fill it, or keep authoring elsewhere; nothing chains by itself.</span>
+                        </div>
+                      ) : (
+                        <WindowReview
+                          attempt={windowReview.subject}
+                          window={windowReview.slot}
+                          windowIndex={windowReview.index + 1}
+                          takes={windowReview.takes}
+                          busy={busy}
+                          onSelectTake={(attemptId) => setWindowTake({ windowSlotId: windowReview.slot!.id, attemptId })}
+                          onSelectCandidate={(attemptId) => void session.commands.selectWindowCandidate(windowReview.slot!.id, attemptId)}
+                          onToggleLock={(locked) => void session.commands.toggleWindowLock(windowReview.slot!.id, locked)}
+                          onExtend={() => setExtendFor(windowReview.subject!.attemptId)}
+                          onReroll={() => {
+                            // T10-M4's pin doctrine: the re-roll pins the
+                            // CURRENT subject first — the fresh take lands
+                            // announced beside it, never stealing the review
+                            // (§8.2: the window's selection never moves).
+                            setWindowTake({ windowSlotId: windowReview.slot!.id, attemptId: windowReview.subject!.attemptId })
+                            void session.commands.rerollExtension(windowReview.subject!.attemptId)
+                          }}
+                          onRetryPreparation={() => void session.commands.retryPreparation(windowReview.subject!.attemptId)}
+                        />
+                      )
+                    )}
+                    {/* The Extend flow (§4): mounted under the take's review —
+                        the carry preview, the preflight verdicts, the window
+                        draft, the submission (and its lost-response Retry). */}
+                    {extendSource !== null && activeBinding !== null && (
+                      <ExtendPanel
+                        source={extendSource}
+                        body={document!.body}
+                        attempts={document!.attempts}
+                        bindingMedium={activeBinding.medium}
+                        busy={busy}
+                        onSubmit={submitExtension}
+                        onRetrySubmission={retryExtension}
+                        onClose={() => setExtendFor(null)}
+                      />
                     )}
                   </div>
                   {/* The active inspector pane — the authoring surface for

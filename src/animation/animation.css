@@ -281,3 +281,34 @@
 .anim-key-candidate-placeholder { display: grid; place-items: center; width: 96px; height: 96px; padding: 6px; border: 1px dashed var(--line); border-radius: 6px; color: var(--muted); font-size: var(--text-sm); text-align: center; }
 .anim-key-import { display: grid; gap: 8px; justify-items: start; }
 .anim-key-import-assets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* The extension lane (Task 6, k2q0n9s — spec 2026-10-08 §4): the Extend
+   panel's card (the review card shape again), the carry-preview math block,
+   the preflight verdict rows, and the timeline's chain band with the
+   mismatch banner. Geometry only; tones ride the tokens. */
+
+.anim-extend { display: grid; gap: 12px; max-width: 88ch; justify-self: start; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-extend h3 { margin: 0; font-size: var(--text-lg); }
+.anim-extend-math { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.anim-extend-math strong { color: var(--text); }
+.anim-extend-verdicts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.anim-extend-verdict { display: grid; gap: 2px; padding: 6px 10px; border-left: 3px solid var(--line); color: var(--muted); font-size: var(--text-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.anim-extend-verdict strong { color: var(--text); }
+.anim-extend-verdict[data-anim-verdict-pass='true']:not([data-anim-verdict-advisory='true']) { border-left-color: var(--accent); }
+.anim-extend-verdict[data-anim-verdict-pass='false'] { border-left-color: var(--danger); }
+.anim-extend-anchor { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.anim-chains { display: grid; gap: 8px; }
+.anim-chain { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.anim-chain-header { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.anim-chain-header strong { font-size: var(--text-md); }
+.anim-chain-windows { display: flex; flex-wrap: wrap; gap: 6px; }
+.anim-chain-window { display: inline-grid; gap: 2px; justify-items: start; padding: 4px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); color: var(--muted); font-size: var(--text-sm); cursor: pointer; }
+.anim-chain-window[data-anim-selected='true'] { border-color: var(--accent); color: var(--text); }
+.anim-chain-window-meta { font-size: var(--text-sm); }
+.anim-chain-window[data-anim-window-stale='true'] .anim-chain-window-meta { font-style: italic; }
+.anim-chain-window-flag { padding: 1px 6px; border: 1px solid var(--danger); border-radius: 999px; color: var(--danger); font-size: var(--text-sm); }
+.anim-chain-window[data-anim-window-review-pending='true'] { border-style: dashed; }
+.anim-chain-mismatch { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--danger); border-radius: 8px; background: var(--surface-2); }
+.anim-chain-mismatch-title { margin: 0; color: var(--text); font-size: var(--text-md); }
+.anim-chain-mismatch-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
