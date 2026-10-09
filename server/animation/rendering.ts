@@ -80,8 +80,8 @@ import {
   type AnimationGraph,
   type GraphBuildSettings,
 } from '../../shared/animation/graphs'
-import { COMPILER_VERSION, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../../shared/animation/compiler'
-import type { CompiledCaption, HeroContext, SequenceContext, TweenContext } from '../../shared/animation/compiler'
+import { COMPILER_VERSION, compileExtensionCaption, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../../shared/animation/compiler'
+import type { CompiledCaption, ExtensionContext, HeroContext, SequenceContext, TweenContext } from '../../shared/animation/compiler'
 import { animationInputHash, engineOutputCarryPath, isUuid, parseModelContentIdentities } from '../../shared/animation/types'
 import type { AnimationTool, AssetReference, AttemptContinuationView, AttemptExecutionState, ContinuationArtifactRecord, FrozenAttemptSnapshot, MediumString, ModelContentIdentity } from '../../shared/animation/types'
 import { runTool } from '../datasets/probe'
@@ -268,10 +268,17 @@ export type AnimationRenderingService = {
    *  engine: the registered artifact is the source of truth, and the source
    *  graph is NEVER re-executed to regenerate a carry. */
   requireContinuationArtifact(attemptId: string): ContinuationArtifactRecord
+  /** §6's FRESH half for the Extend route's preflight (lane Task 5): the
+   *  target's freshly resolved content identities against a FORCE-fetched
+   *  enumeration, digested through the ONE identity seam (resolvedIdentities
+   *  — the same resolver the dispatch gate calls; this is plumbing over it,
+   *  never a second digest path). Throws the named resolution/evidence
+   *  refusals; the route feeds the answer to compareModelIdentities. */
+  freshModelIdentities(input: { tool: AnimationTool; settings?: unknown }): Promise<ModelContentIdentity[]>
   /** The authoritative server-side compile dispatch (the shared module
    *  through the injected seam) — Task 5's route builds frozen captions
    *  here, so the compiler has exactly one server-side import site. */
-  compileCaption(input: { tool: 'hero'; context: HeroContext } | { tool: 'tween'; context: TweenContext } | { tool: 'sequence'; context: SequenceContext }): CompiledCaption
+  compileCaption(input: { tool: 'hero'; context: HeroContext } | { tool: 'tween'; context: TweenContext } | { tool: 'sequence'; context: SequenceContext } | { tool: 'extension'; context: ExtensionContext }): CompiledCaption
 }
 
 /** The definitive engine refusal (a 400 from /prompt): the attempt stays
@@ -510,22 +517,39 @@ enumerationTtlMs?: number }): EnginePort {
     return files
   }
 
-  /** The clip's frame count from the graph the engine stored in the history
-   *  record — the conditioning node's `length` input (the fake and real
-   *  engines both store the full graph with the record). The history tuple
-   *  is [number, prompt_id, prompt_graph, extra_data, outputs_to_execute]
+  /** The clip's DELIVERED frame count from the graph the engine stored in
+   *  the history record — the conditioning node's `length` input (the fake
+   *  and real engines both store the full graph with the record), MINUS the
+   *  head trim an extension graph's Motion Context node reports: the
+   *  extension lane's saved output is the TRIMMED window (§6 — the pinned
+   *  head comes off before delivery), so the landed frameCount describes
+   *  what the clip actually holds. The history tuple is [number, prompt_id,
+   *  prompt_graph, extra_data, outputs_to_execute]
    *  (docs/devdocs/comfyui-api §3): the GRAPH lives at index 2. */
   function frameCountOf(record: Record<string, unknown>): number {
     const prompt = record.prompt
     if (Array.isArray(prompt) && isRecord(prompt[2])) {
+      let frames: number = ANIMATION_OPERATING_POINT.length
+      let found = false
       for (const node of Object.values(prompt[2] as Record<string, unknown>)) {
         const entry = node as { class_type?: unknown; inputs?: Record<string, unknown> } | null
         if (!entry || typeof entry !== 'object') continue
         if (entry.class_type === 'MiniMaxH3ImageToVideo' || entry.class_type === 'MiniMaxH3ReferenceToVideo') {
           const length = entry.inputs?.length
-          if (typeof length === 'number' && Number.isInteger(length) && length > 0) return length
+          if (typeof length === 'number' && Number.isInteger(length) && length > 0) {
+            frames = length
+            found = true
+          }
+        }
+        if (entry.class_type === 'MiniMaxH3MotionContext') {
+          const trim = Number(entry.inputs?.context_length)
+          if (Number.isInteger(trim) && trim > 0) {
+            frames -= trim
+            found = true
+          }
         }
       }
+      if (found) return Math.max(0, frames)
     }
     return ANIMATION_OPERATING_POINT.length
   }
@@ -1120,7 +1144,7 @@ export function createAnimationRenderingService(deps: {
    *  construction); '' means unconfigured, and unconfigured is the named
    *  evidence refusal wherever an identity is demanded. */
   modelFolder: ModelFolderResolver
-  compile: { hero: typeof compileHeroCaption; tween: typeof compileTweenCaption; sequence: typeof compileSequenceCaption }
+  compile: { hero: typeof compileHeroCaption; tween: typeof compileTweenCaption; sequence: typeof compileSequenceCaption; extension: typeof compileExtensionCaption }
   emit: (type: string, payload: unknown) => void
   now?: () => number
 }): AnimationRenderingService {
@@ -1660,6 +1684,19 @@ export function createAnimationRenderingService(deps: {
       return requireContinuationArtifact({ store, blobs }, attemptId)
     },
 
+    async freshModelIdentities(input) {
+      // §6's target-execution comparison's fresh half, plumbed to the Extend
+      // route's preflight through the ONE identity seam — force-fetched
+      // enumerations (correctness-critical, never the TTL cache), the same
+      // overrides the dispatch resolution reads.
+      return resolvedIdentities({
+        tool: input.tool,
+        enumerations: await engine.modelEnumerations({ force: true }),
+        overrides: modelOverrides(input.settings),
+        modelFolder,
+      })
+    },
+
     async extractFrame(attemptId, frameIndex) {
       const attempt = store.getAttempt(attemptId)
       if (!attempt) throw new AnimationRuleError(`No attempt with id ${attemptId}.`, 404)
@@ -1685,6 +1722,7 @@ export function createAnimationRenderingService(deps: {
     compileCaption(input) {
       if (input.tool === 'hero') return compile.hero(input.context)
       if (input.tool === 'tween') return compile.tween(input.context)
+      if (input.tool === 'extension') return compile.extension(input.context)
       return compile.sequence(input.context)
     },
   }

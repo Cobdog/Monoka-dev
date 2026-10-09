@@ -15,7 +15,14 @@
  *      plus the wave-2a rolling-reference annotation route in the same
  *      shape (§6.4) and the extension lane's window-candidate selection,
  *      and the attempt surface (submit / state / cancel / extract-frame /
- *      retry-preparation) delegating to the rendering service. The failure
+ *      retry-preparation) delegating to the rendering service, plus the
+ *      extension lane's EXTEND submission (lane Task 5, spec §4/§5/§6/§10)
+ *      as its own route: the before-dispatch preflights — compatibility
+ *      through Task 3's exported seams (requireContinuationArtifact +
+ *      compareModelIdentities), anchor collisions, the overlap recipe —
+ *      run BEFORE any attempt row exists, then the full §5
+ *      ContinuationBinding freezes SERVER-SIDE and dispatches through the
+ *      standing submit path. The failure
  *      mapping is the
  *      documents block's:
  *      AnimationConflictError → 409 WITH the current document (the rebase
@@ -51,7 +58,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { CanvasSchemaVersionError } from '../documents'
 import { AnimationConflictError, AnimationRuleError, type AnimationAttemptRow, type AnimationDocumentRow, type AnimationStore } from './store'
-import type { AnimationRenderingService } from './rendering'
+import { compareModelIdentities, ContinuationIdentityDriftError, ContinuationUnavailableError, type AnimationRenderingService } from './rendering'
+import { AnimationModelEvidenceError, AnimationModelResolutionError } from './models'
 import type { AnimationExportService } from './export'
 import { AnimationExportStaleError } from './export'
 import type { CompletionOwner } from './completion-owner'
@@ -63,17 +71,22 @@ import {
   isFacingTerm,
   isMediumString,
   isUuid,
+  parseContinuationBinding,
+  parseModelContentIdentities,
   type AnimationTool,
   type AssetReference,
   type BindingInput,
+  type ExtensionChain,
   type FacingTerm,
   type FrozenAttemptSnapshot,
   type KeyCandidate,
   type MediumString,
+  type ModelContentIdentity,
+  type WindowSlot,
 } from '../../shared/animation/types'
-import { ANIMATION_OPERATING_POINT } from '../../shared/animation/graphs'
+import { ANIMATION_OPERATING_POINT, CONTINUATION_OVERLAP_RECIPE, continuationWindowPlan } from '../../shared/animation/graphs'
 import { COMPILER_VERSION } from '../../shared/animation/compiler'
-import type { HeroContext, SequenceContext, TweenContext } from '../../shared/animation/compiler'
+import type { ExtensionContext, HeroContext, SequenceContext, TweenContext } from '../../shared/animation/compiler'
 
 // ---------------------------------------------------------------------------
 // small narrowing helpers (the documents.ts str/num idiom)
@@ -597,6 +610,17 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       if (!isNonEmptyString(idempotencyKey) || idempotencyKey.length > 400) throw new AnimationRuleError('The submission needs an idempotency key.', 400)
       const draft = recordField(body, 'draft', 'The submission needs a draft object (intent + overrides) — the server compiles and freezes the snapshot.')
       if (draft.tool !== tool) throw new AnimationRuleError(`The draft must be a ${tool} draft (draft.tool must match tool).`, 400)
+      // The carry build flag (extension lane §7, "the source render carries; a
+      // a plain render doesn't"): an execution-relevant intent, so it enters
+      // through the ROUTE's freeze() settings merge below — never a client
+      // settings passthrough — and only the tween lane may carry it (§3's
+      // adapter scope: hero/sequence need adapter-specific probes first).
+      if (draft.carry !== undefined && typeof draft.carry !== 'boolean') {
+        throw new AnimationRuleError('The draft\'s carry flag must be a boolean — set it true to persist this render\'s tail as a continuation artifact (a plain render carries nothing).', 400)
+      }
+      if (draft.carry === true && tool !== 'tween') {
+        throw new AnimationRuleError('Only the tween lane may carry its tail (spec §3\'s adapter scope) — hero and sequence renders need adapter-specific probes before they can condition a continuation.', 400)
+      }
 
       const resolved = resolveDraft(document, tool, targetId, draft)
       const { hero, sequence, promotedNear } = resolved
@@ -619,7 +643,8 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
        *  request so a lost-response retry reproduces the SAME frozen
        *  snapshot, varied per key so two different submissions never silently
        *  share a roll) derived over the swapped references, nothing
-       *  persisted. */
+       *  persisted. The carry flag (Task 1's load-bearing note) merges HERE —
+       *  the route's own settings merge is the one door it enters through. */
       const freeze = (nearAsset?: AssetReference): FrozenAttemptSnapshot => {
         const references = promotedNear !== undefined && nearAsset !== undefined
           ? resolved.references.map((entry) => (entry.role === 'rolling-near' ? { ...entry, assetReference: nearAsset } : entry))
@@ -630,7 +655,7 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
           references,
           caption: compiled.caption,
           compilerVersion: compiled.compilerVersion,
-          settings: { idempotencyKey },
+          settings: { idempotencyKey, ...(draft.carry === true ? { carry: true } : {}) },
           documentRevision: document.revision,
           // HERO rows freeze the authored draft (§8.1/§5.2) — the re-roll and
           // the span-into-the-accepted-key action read it. SEQUENCE rows
@@ -640,7 +665,7 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
           ...(sequence ? { sequence } : {}),
         }
         const seed = body.seed !== undefined ? body.seed : Number.parseInt(animationInputHash(seedless).slice(0, 8), 16) >>> 0
-        return { ...seedless, settings: { seed } }
+        return { ...seedless, settings: { seed, ...(draft.carry === true ? { carry: true } : {}) } }
       }
 
       // §11.4 idempotency BEFORE the engine-dependent near resolution (the
@@ -689,6 +714,307 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
       const submitted = await service.submit({ documentId, tool, targetId, snapshot: freeze(nearAsset), document }, idempotencyKey)
       return sendJson(response, 200, submitted)
     } catch (error) {
+      if (animationFailure(response, error)) return
+      throw error
+    }
+  }
+
+  // ---- the Extend submission (extension lane Task 5, spec §4/§5/§6/§9/§10) ---
+
+  /** The chain + window slot a window id names — the requireWindowSlot
+   *  refusal class (404, never a silent no-op). */
+  function requireWindowSlot(body: AnimationDocumentRow['body'], windowSlotId: string): { chain: ExtensionChain; slot: WindowSlot } {
+    for (const chain of body.chains) {
+      const slot = chain.windows.find((window) => window.id === windowSlotId)
+      if (slot) return { chain, slot }
+    }
+    throw new AnimationRuleError(`No extension window slot with id ${windowSlotId} in this document.`, 404)
+  }
+
+  /** The binding source a frozen snapshot names — the route's narrow read
+   *  (the same shape the shared builder and the store's ancestry walk read;
+   *  a present-but-malformed block refuses LOUDLY, never a silent null). */
+  function bindingSourceOfRow(row: AnimationAttemptRow): string | null {
+    const binding: unknown = row.snapshot.continuationBinding
+    if (binding === undefined) return null
+    if (!isRecord(binding) || !isUuid(binding.sourceAttemptId)) {
+      throw new AnimationRuleError(`Attempt ${row.id} carries a malformed continuation binding — the extend route refuses to walk corrupt ancestry.`, 400)
+    }
+    return binding.sourceAttemptId
+  }
+
+  /** The PLAIN tween take a continuation chain roots on — the ancestry walk
+   *  from any window's recorded source back through binding sources to the
+   *  take with no binding of its own. The identity references (§5: "the
+   *  image references in force, unchanged §2 contracts") resolve from THAT
+   *  take's span — the chain's identity anchor, exactly the shape Set L
+   *  measured (fixed start/end keys across every window of a chain; the
+   *  tail supplies the motion, the keys the identity). */
+  function rootTakeOf(sourceAttemptId: string, documentId: string): AnimationAttemptRow {
+    const visited = new Set<string>()
+    let current = sourceAttemptId
+    for (;;) {
+      if (visited.has(current)) {
+        throw new AnimationRuleError(`The continuation ancestry of attempt ${sourceAttemptId} is cyclic — the identity references cannot be resolved from corrupt truth.`, 400)
+      }
+      visited.add(current)
+      const row = store.getAttempt(current)
+      if (!row || row.documentId !== documentId) {
+        throw new AnimationRuleError(`The continuation ancestry names attempt ${current}, which is not an attempt of this document — the identity references cannot be resolved.`, 400)
+      }
+      const source = bindingSourceOfRow(row)
+      if (source === null) return row
+      current = source
+    }
+  }
+
+  async function extendAttempt(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const body = await readJson(request, 500_000)
+    // Submissions serialize behind the boot reconcile sweep and the engine
+    // policy gate, exactly like any attempt submission.
+    await ready()
+    const gate = engineAllowed()
+    if (!gate.ok) return sendJson(response, 400, { error: gate.error })
+    try {
+      const documentId = documentIdFrom(body)
+      // FREEZE-BEFORE-SUBMISSION (the I5 doctrine, the submit route's own):
+      // ONE synchronous document read feeding everything this route freezes.
+      const document = store.getDocument(documentId)
+      if (!document) throw new AnimationRuleError(`No animation document with id ${documentId}.`, 404)
+      const windowSlotId = uuidField(body, 'windowSlotId')
+      const bodySource = uuidField(body, 'sourceAttemptId')
+      const idempotencyKey = body.idempotencyKey
+      if (!isNonEmptyString(idempotencyKey) || idempotencyKey.length > 400) throw new AnimationRuleError('The submission needs an idempotency key.', 400)
+      if (body.continuationBinding !== undefined) {
+        throw new AnimationRuleError('The extend route builds the continuation binding server-side from the source attempt\'s frozen truth — do not send one (spec §5).', 400)
+      }
+      if (body.seed !== undefined && !isNonNegativeInt(body.seed)) throw new AnimationRuleError('The seed must be a non-negative integer.', 400)
+      const targetLength = body.targetLength
+      if (typeof targetLength !== 'number' || !Number.isInteger(targetLength) || targetLength <= 0) {
+        throw new AnimationRuleError('targetLength must be a positive integer — the target window\'s full generated length on the 17k+5 grid.', 400)
+      }
+      const draft = recordField(body, 'draft', 'The extension needs a draft object (the window\'s own movement + preservation + overrides) — the server compiles and freezes the caption.')
+
+      // ---- the window slot, its recorded source, and the ORDER guard -------
+      // The slot's RECORDED source is the binding truth (rebindContinuation
+      // re-points it; the next submission into the slot freezes it — Task 4's
+      // ruling): the body's sourceAttemptId must AGREE with it, never drive it.
+      const { chain, slot } = requireWindowSlot(document.body, windowSlotId)
+      if (slot.sourceAttemptId !== bodySource) {
+        throw new AnimationRuleError(`The window slot's recorded source is attempt ${slot.sourceAttemptId}, not ${bodySource} — reload the document (a rebind moved this window's source) and extend again.`, 400)
+      }
+      const sourceAttemptId = slot.sourceAttemptId
+      // Task 4's M-4 ruling: the mismatch derivation is selection-coherent
+      // but not order-aware, so the FREEZE discipline keeps the frozen
+      // record's coordinates honest — a source at or after the window it
+      // conditions is an inverted edge (only a corrupt or hand-edited body
+      // reaches here; the store's own commands keep sources strictly
+      // earlier), and it refuses by name here.
+      if (chain.rootAttemptId !== sourceAttemptId) {
+        const sourceSlot = chain.windows.find((window) => window.attempts.includes(sourceAttemptId))
+        if (!sourceSlot) {
+          throw new AnimationRuleError(`Attempt ${sourceAttemptId} is neither the root of, nor an alternative in, this window's chain — the extend route cannot freeze an out-of-chain binding source.`, 400)
+        }
+        if (sourceSlot.order >= slot.order) {
+          throw new AnimationRuleError(`A window's binding source must precede it in the chain — attempt ${sourceAttemptId} lives in window order ${sourceSlot.order}, at or after this window (order ${slot.order}); the frozen coordinates would encode an inverted edge.`, 400)
+        }
+      }
+
+      // ---- the source attempt: the Extend-source contract + the frozen geometry
+      const source = store.getAttempt(sourceAttemptId)
+      if (!source || source.documentId !== documentId) throw new AnimationRuleError(`Attempt ${sourceAttemptId} is not an attempt of this document.`, 404)
+      if (source.tool !== 'tween') {
+        throw new AnimationRuleError(`The extension lane conditions on tween-lane takes (§3's adapter scope) — attempt ${sourceAttemptId} is a ${source.tool} render.`, 400)
+      }
+      if (!source.result) {
+        throw new AnimationRuleError(`Attempt ${sourceAttemptId} has not landed — the Extend action lives on a landed take.`, 400)
+      }
+      const sourceSettings = isRecord(source.snapshot.settings) ? source.snapshot.settings : {}
+      const sourceLength = sourceSettings.length
+      if (typeof sourceLength !== 'number' || !Number.isInteger(sourceLength) || sourceLength <= 0) {
+        throw new AnimationRuleError(`Attempt ${sourceAttemptId}'s frozen window carries no readable length — the pinned tail's coordinates cannot be computed from its record.`, 400)
+      }
+
+      // ---- §6: the target length against the OVERLAP RECIPE, never the source's length
+      const recipe = CONTINUATION_OVERLAP_RECIPE
+      let plan: ReturnType<typeof continuationWindowPlan>
+      try {
+        plan = continuationWindowPlan({ sourceLength, targetLength, contextLength: recipe.contextLength })
+      } catch (failure) {
+        throw new AnimationRuleError(failure instanceof Error ? failure.message : String(failure), 400)
+      }
+
+      // ---- §5: the stamp-less source refuses named (Task 3's carried condition)
+      const sourceIdentities = parseModelContentIdentities(source.snapshot.modelIdentities)
+      if (sourceIdentities === null) {
+        throw new AnimationRuleError(`Attempt ${sourceAttemptId}'s frozen record carries no resolved model content identities (identity evidence missing) — a source rendered without digest evidence can never seed a continuation binding, never a name-only pass (spec §5). Re-land the source on the current weights and extend that take.`, 400)
+      }
+
+      // ---- the registered artifact: the binding's opaque handle (§5/§7)
+      const artifact = source.continuation.artifact
+      if (artifact === undefined) {
+        throw new AnimationRuleError(`Attempt ${sourceAttemptId} has no registered continuation artifact (its continuation state is "${source.continuation.state}") — only a registered carry can be extended${source.continuation.state === 'registering' ? '; retry once registration completes' : ''}.`, 400)
+      }
+
+      // ---- §5's conditioning inputs: the references in force, from the ROOT SPAN
+      const rootTake = rootTakeOf(sourceAttemptId, documentId)
+      const rootSpan = document.body.spans.find((span) => span.stepSlots.some((step) => step.id === rootTake.targetId))
+      if (!rootSpan) {
+        throw new AnimationRuleError(`The chain's root take targets step slot ${rootTake.targetId}, which no longer exists in the document — the window's identity references cannot be resolved from the span.`, 400)
+      }
+      const near = selectedCandidate(document.body, rootSpan.fromKeyId)
+      const far = selectedCandidate(document.body, rootSpan.toKeyId)
+      const references: FrozenAttemptSnapshot['references'] = [
+        { role: 'rolling-near', assetReference: near.assetReference, poseDescription: near.poseDescription, facing: near.facing },
+        { role: 'fixed-far', assetReference: far.assetReference, poseDescription: far.poseDescription, facing: far.facing },
+      ]
+
+      // ---- §10: the collision preflight — anchors inside the pinned head refuse NAMING the anchor
+      const anchors: Array<{ reference: 'rolling-near' | 'fixed-far'; frame: number }> = []
+      if (draft.anchors !== undefined) {
+        if (!Array.isArray(draft.anchors) || draft.anchors.length > 8 || draft.anchors.length < 1) {
+          throw new AnimationRuleError('The draft\'s anchors must be a non-empty array of at most 8 entries ({ reference: "rolling-near" | "fixed-far", frame }).', 400)
+        }
+        for (const entry of draft.anchors) {
+          if (!isRecord(entry) || (entry.reference !== 'rolling-near' && entry.reference !== 'fixed-far') || typeof entry.frame !== 'number' || !Number.isInteger(entry.frame) || entry.frame < 0) {
+            throw new AnimationRuleError('Each anchor needs a reference role ("rolling-near" or "fixed-far" — one of the in-force references) and a non-negative integer frame in the SAMPLED window.', 400)
+          }
+          if (entry.frame < plan.headTrim) {
+            throw new AnimationRuleError(`The ${entry.reference} anchor at sampled frame ${entry.frame} falls inside the pinned head (frames 0-${plan.headTrim - 1}) — the conditioning node would silently drop it there; the lane refuses instead, naming the anchor (spec §10). Move it past the pinned head or drop it.`, 400)
+          }
+          if (entry.frame >= targetLength) {
+            throw new AnimationRuleError(`The ${entry.reference} anchor at frame ${entry.frame} is outside the sampled window (0-${targetLength - 1}).`, 400)
+          }
+          anchors.push({ reference: entry.reference, frame: entry.frame })
+        }
+      }
+
+      // ---- §4/§9: the time-shifted caption (the sampled window's time base)
+      const overrides = parseOverrides(draft.overrides)
+      let compiled: ReturnType<AnimationRenderingService['compileCaption']>
+      try {
+        const context: ExtensionContext = {
+          rollingReference: { assetReference: near.assetReference, pose: { poseDescription: near.poseDescription, facing: near.facing } },
+          farReference: { assetReference: far.assetReference, pose: { poseDescription: far.poseDescription, facing: far.facing } },
+          movementStep: boundedText(draft.movement, 'The movement text'),
+          preservation: boundedText(draft.preservation, 'The preservation text'),
+          overrides,
+          window: { sampledLength: targetLength, pinnedLength: plan.headTrim, fps: document.body.settings.fps },
+        }
+        compiled = service.compileCaption({ tool: 'extension', context })
+      } catch (error) {
+        throw new AnimationRuleError(`The extension draft does not compile: ${error instanceof Error ? error.message : String(error)}`, 400)
+      }
+
+      // ---- §5: the frozen record, whole and server-built
+      // The binding's modelIdentities are the SOURCE ROW's stamp, copied
+      // verbatim (Task 3's ruling 4: server-side seeding; a client block is
+      // never echoed — refused outright above). The recipe's steps resolve
+      // from the ENTRY document row exactly as stampedSnapshot will inside
+      // the service, so the frozen record and the frozen graph agree.
+      const steps = typeof document.body.settings.steps === 'number' && Number.isInteger(document.body.settings.steps) && document.body.settings.steps > 0
+        ? document.body.settings.steps
+        : ANIMATION_OPERATING_POINT.stepsDefault
+      const buildBinding = (seed: number) => ({
+        sourceAttemptId,
+        modelIdentities: sourceIdentities,
+        windowCoordinates: plan.windowCoordinates,
+        headTrim: plan.headTrim,
+        deliveredRange: plan.deliveredRange,
+        artifact: { artifactId: artifact.artifactId, digest: artifact.digest },
+        recipe: {
+          mode: 'motion-context-tail',
+          contextLength: recipe.contextLength,
+          schedule: {
+            sampler: ANIMATION_OPERATING_POINT.sampler,
+            scheduler: ANIMATION_OPERATING_POINT.scheduler,
+            shiftVideo: ANIMATION_OPERATING_POINT.shiftVideo,
+            shiftAudio: ANIMATION_OPERATING_POINT.shiftAudio,
+            denoise: ANIMATION_OPERATING_POINT.denoise,
+            fps: document.body.settings.fps,
+            audioContextLength: recipe.audioContextLength,
+          },
+          steps,
+          seed,
+          recipeVersion: recipe.recipeVersion,
+        },
+        conditioning: {
+          caption: compiled.caption,
+          compilerVersion: compiled.compilerVersion,
+          referenceAssetIds: references.map((entry) => entry.assetReference.assetId),
+        },
+      })
+      // The seed policy is the submit route's own: the client's explicit seed
+      // on a deliberate re-roll, else one derived from the seedless freeze —
+      // derived over the record with recipe.seed at 0 (the derivation input
+      // is the request's own content; the placeholder never persists).
+      const seedless: FrozenAttemptSnapshot = {
+        tool: 'tween',
+        targetId: windowSlotId,
+        references,
+        caption: compiled.caption,
+        compilerVersion: compiled.compilerVersion,
+        settings: {
+          idempotencyKey,
+          carry: true,
+          length: targetLength,
+          contextLength: recipe.contextLength,
+          audioContextLength: recipe.audioContextLength,
+          ...(anchors.length > 0 ? { anchors } : {}),
+        },
+        documentRevision: document.revision,
+        continuationBinding: buildBinding(0),
+      }
+      const seed = body.seed !== undefined ? body.seed : Number.parseInt(animationInputHash(seedless).slice(0, 8), 16) >>> 0
+      const binding = buildBinding(seed)
+      if (parseContinuationBinding(binding) === null) {
+        throw new Error('The extend route produced a continuation binding that fails its own parser — an internal shape bug; nothing was persisted.')
+      }
+      const snapshot: FrozenAttemptSnapshot = { ...seedless, settings: { ...seedless.settings, seed }, continuationBinding: binding }
+
+      // ---- §11.4 idempotency BEFORE the engine-dependent preflight (M6's
+      // discipline): a same-key retry answers from the row its dispatch
+      // already gated, even while the engine is unreachable.
+      const existing = store.attemptByIdempotencyKey(idempotencyKey)
+      if (existing && existing.inputHash === animationInputHash(snapshot)) {
+        return sendJson(response, 200, { attemptId: existing.id, created: false })
+      }
+
+      // ---- §10: the BEFORE-DISPATCH refusals (Task 3's load-bearing wiring)
+      // AVAILABILITY — the registered artifact must resolve by digest NOW,
+      // through the one seam (never a second resolver): the user learns the
+      // eviction BEFORE the attempt row exists, the clip staying playable.
+      try {
+        service.requireContinuationArtifact(sourceAttemptId)
+      } catch (failure) {
+        if (failure instanceof AnimationRuleError) throw failure
+        throw new AnimationRuleError(failure instanceof Error ? failure.message : String(failure), 400)
+      }
+      // COMPATIBILITY — §6's target-execution comparison: the target's
+      // freshly resolved identities against the binding's frozen set. Drift
+      // (the aliased-weights case) and missing evidence refuse by name here,
+      // before anything is spent.
+      let fresh: ModelContentIdentity[]
+      try {
+        fresh = await service.freshModelIdentities({ tool: 'tween', settings: snapshot.settings })
+        compareModelIdentities(sourceIdentities, fresh)
+      } catch (failure) {
+        if (failure instanceof AnimationRuleError) throw failure
+        if (failure instanceof AnimationModelResolutionError || failure instanceof AnimationModelEvidenceError || failure instanceof ContinuationIdentityDriftError) {
+          throw new AnimationRuleError(failure.message, 400)
+        }
+        throw failure
+      }
+
+      // ---- the dispatch: exactly the standing submission path (the service's
+      // own continuation gate re-runs availability + compatibility at
+      // dispatch — the preflight above only moves the refusals earlier).
+      const submitted = await service.submit({ documentId, tool: 'tween', targetId: windowSlotId, snapshot, document }, idempotencyKey)
+      return sendJson(response, 200, submitted)
+    } catch (error) {
+      if (error instanceof ContinuationUnavailableError) {
+        return sendJson(response, 400, { error: error.message })
+      }
       if (animationFailure(response, error)) return
       throw error
     }
@@ -992,6 +1318,10 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
 
     if (pathname === '/api/lan/animation/attempts' && request.method === 'POST') {
       return submitAttempt(request, response)
+    }
+
+    if (pathname === '/api/lan/animation/extend' && request.method === 'POST') {
+      return extendAttempt(request, response)
     }
 
     if (pathname === '/api/lan/animation/attempt' && request.method === 'GET') {

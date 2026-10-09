@@ -319,11 +319,10 @@ const sendPreview = (seed, step) => {
 
 // ---------------------------------------------------------------- scripted execution
 
-/** The clip length a video graph conditions on — the conditioning node's
- * `length` input (the studio port's frameCountOf reads the same fact). The
- * animation lane's per-frame output listing below lists exactly this many
- * frame images beside the clip. */
-function graphClipLength(graph) {
+/** The SAMPLED clip length a video graph conditions on — the conditioning
+ * node's `length` input. The carry file's tensor shapes ride this (the
+ * sampler's live AV latent is the RAW window — pre-trim). */
+function sampledClipLength(graph) {
   for (const node of Object.values(graph ?? {})) {
     if (!node || typeof node !== 'object') continue
     if (node.class_type === 'MiniMaxH3ImageToVideo' || node.class_type === 'MiniMaxH3ReferenceToVideo') {
@@ -332,6 +331,31 @@ function graphClipLength(graph) {
     }
   }
   return 22
+}
+
+/** The DELIVERED clip length a video graph produces — the conditioning
+ * node's `length` input (the studio port's frameCountOf reads the same
+ * fact), MINUS the head trim an extension graph's Motion Context node
+ * reports (its context_length input): the pack's Trim node drops the
+ * pinned head off the decoded clip before the save tail, so an extension
+ * graph's output listing holds the TRIMMED window's frames, exactly what
+ * the real node chain delivers. The animation lane's per-frame output
+ * listing below lists exactly this many frame images beside the clip. */
+function graphClipLength(graph) {
+  let frames = 22
+  let found = false
+  for (const node of Object.values(graph ?? {})) {
+    if (!node || typeof node !== 'object') continue
+    if (node.class_type === 'MiniMaxH3ImageToVideo' || node.class_type === 'MiniMaxH3ReferenceToVideo') {
+      const length = node.inputs?.length
+      if (typeof length === 'number' && Number.isInteger(length) && length > 0) { frames = length; found = true }
+    }
+    if (node.class_type === 'MiniMaxH3MotionContext') {
+      const trim = Number(node.inputs?.context_length)
+      if (Number.isInteger(trim) && trim > 0) { frames -= trim; found = true }
+    }
+  }
+  return found ? Math.max(0, frames) : 22
 }
 
 /** The engine's queue-depth truth for status broadcasts: the running job
@@ -356,7 +380,9 @@ const outputsToExecuteOf = (graph) => Object.entries(graph ?? {})
  *  digests bytes — but the framing is the true shape, so metadata reads (the
  *  save-recipe version) behave for real. */
 function syntheticCarryBytes(graph, jobNumber) {
-  const length = graphClipLength(graph)
+  // The carried latent is the SAMPLER's raw window — pre-trim (the pack's
+  // Save node sits on the sampler output, beside the decode/trim chain).
+  const length = sampledClipLength(graph)
   const payloadBytes = profile.carryFile?.bytes ?? 8192
   const payload = Buffer.alloc(payloadBytes)
   for (let i = 0; i < payloadBytes; i += 1) payload[i] = (i * 31 + jobNumber * 7) & 0xff

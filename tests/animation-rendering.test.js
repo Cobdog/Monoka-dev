@@ -2854,10 +2854,13 @@ async function landCarrySource(label, idem) {
 
 /** The extension TARGET's snapshot: a tween snapshot whose frozen
  *  continuation binding carries the source attempt and its stamped
- *  identities verbatim (Task 5's route freezes this block; here the test
- *  stands in for the route). */
+ *  identities verbatim, shaped exactly as Task 5's route now freezes it —
+ *  the 56-frame sampled window with the recipe's 22-frame pinned head (the
+ *  plain tween snapshot's default 22-frame window cannot host a 22-frame
+ *  head; the node contract keeps the pin strictly shorter). */
 function extendSnapshot(step, revision, sourceAttemptId, modelIdentities) {
   const snapshot = makeTweenSnapshot(step, revision)
+  snapshot.settings = { ...snapshot.settings, carry: true, length: 56, contextLength: 22, audioContextLength: 24 }
   snapshot.continuationBinding = { sourceAttemptId, modelIdentities }
   return snapshot
 }

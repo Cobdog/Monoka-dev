@@ -21,6 +21,7 @@ import {
   compileHeroCaption,
   compileTweenCaption,
   compileSequenceCaption,
+  compileExtensionCaption,
 } from '../shared/animation/compiler'
 
 // --- fixtures ---------------------------------------------------------------
@@ -70,6 +71,15 @@ const sequenceCtx = () => ({
   overrides: { medium: 'flat cel colour on white', scene: 'a station platform' },
 })
 
+/** EXTENSION (the extension lane, v3): Set L's mctx window-2 geometry — a
+ * 56-frame sampled window whose first 22 frames are the pinned head — over
+ * the tween fixture's references. */
+const extensionCtx = () => ({
+  ...tweenCtx(),
+  movementStep: 'the opening second of this window holds the turn; from there the head turns back toward the camera',
+  window: { sampledLength: 56, pinnedLength: 22, fps: 24 },
+})
+
 /** Sections must appear as substrings strictly in the given order. */
 const inOrder = (caption, sections) => {
   let at = -1
@@ -94,7 +104,7 @@ test('hero caption: SCENE / MOVEMENT / STATIC in order, medium verbatim, Referen
   assert.ok(caption.includes('low wide') && caption.includes('establishes the alley'), 'camera carries its reason clause')
   assert.ok(caption.includes('framing and ground'), 'STATIC ends on the framing+ground hold')
   assert.deepEqual(hints, [], 'a clean fixture compiles without hints')
-  assert.equal(compilerVersion, '2')
+  assert.equal(compilerVersion, '3')
 })
 
 // --- tween ------------------------------------------------------------------
@@ -112,7 +122,7 @@ test('tween caption: five sections in order; FIRST FRAME is the ROLLING referenc
   assert.ok(caption.includes('facing screen-right'), 'facing rendered for the target frame')
   assert.ok(caption.includes(tweenCtx().movementStep), 'the movement step appears verbatim')
   assert.deepEqual(hints, [], 'a clean fixture compiles without hints')
-  assert.equal(compilerVersion, '2')
+  assert.equal(compilerVersion, '3')
 })
 
 // --- tween v2: the authored preservation appends to STATIC (wave 2a, the
@@ -138,7 +148,7 @@ test('tween v2: authored preservation appends to STATIC after the fixed hold; em
   )
   assert.ok(authored.caption.endsWith('The gold earring and both hands remain still.'), 'the authored text is the caption\'s last byte — nothing appended after it')
   assert.ok(authored.caption.includes('framing and ground plane stay fixed'), 'the measured fixed hold phrase stays')
-  assert.equal(authored.compilerVersion, '2', 'the append is a compiler-versioned change')
+  assert.equal(authored.compilerVersion, '3', 'the append is a compiler-versioned change')
   // Whitespace-only authored text is "not authored": the v1 line, byte for
   // byte — the fixed hold phrase never grew a trailing sentence.
   for (const empty of ['', '   ', '\t\n ']) {
@@ -161,6 +171,45 @@ test('tween v2: negation in the authored preservation is flagged, never rewritte
   assert.ok(flagged.caption.includes('the hands never drift and the scarf does not move'), 'the offending text rides the caption verbatim')
 })
 
+// --- extension (the extension lane, v3 — the time-shifted caption) ----------
+
+test('extension caption: the tween sections with the mechanical TIME disclosure between TARGET END FRAME and MOVEMENT', () => {
+  const { caption, hints, compilerVersion } = compileExtensionCaption(extensionCtx())
+  inOrder(caption, ['SCENE:', 'FIRST FRAME', 'TARGET END FRAME', 'TIME:', 'MOVEMENT:', 'STATIC:'])
+  // The prompt-time shift (the strategic review's finding, §4's carry
+  // preview disclosure): the caption states the SAMPLED window's clock,
+  // where the pinned head sits, and which sampled frame delivery starts at.
+  assert.equal(
+    caption.split('\n')[3],
+    'TIME: prompt times address the sampled window — 0.00 s to 2.33 s (56 frames at 24 fps); the pinned head occupies the first 0.92 s (sampled frames 0-21, trimmed on delivery); delivered frame 0 is sampled frame 22 (0.92 s).',
+    'the TIME section is mechanical from the window geometry (56 sampled / 22 pinned at 24 fps)',
+  )
+  // The standing tween shape is untouched: the extension caption with its
+  // one new line removed is EXACTLY the v2 tween caption over the same
+  // context — the bump adds a section, never a rewording.
+  const tweenOverSame = compileTweenCaption(extensionCtx()).caption
+  assert.equal(caption.replace(`${caption.split('\n')[3]}\n`, ''), tweenOverSame, 'minus the TIME line the extension caption is byte-identical to the tween shape')
+  // Reference numbering keeps the tween contract (in-force references 1/2).
+  assert.ok(caption.includes('FIRST FRAME (Reference 1)') && caption.includes('TARGET END FRAME (Reference 2)'))
+  assert.deepEqual(hints, [], 'a clean window compiles without hints')
+  assert.equal(compilerVersion, '3')
+  // Determinism + a second geometry: the 39-frame window pinning a 5-frame
+  // head carries its own numbers (0.21 s pinned).
+  const short = compileExtensionCaption({ ...extensionCtx(), window: { sampledLength: 39, pinnedLength: 5, fps: 24 } })
+  assert.equal(
+    short.caption.split('\n')[3],
+    'TIME: prompt times address the sampled window — 0.00 s to 1.63 s (39 frames at 24 fps); the pinned head occupies the first 0.21 s (sampled frames 0-4, trimmed on delivery); delivered frame 0 is sampled frame 5 (0.21 s).',
+    'the disclosure follows the geometry, not a template constant',
+  )
+  // The language checks are the tween family's own (the hint collector is
+  // shared): negation in the window's authored preservation flags.
+  const negated = compileExtensionCaption({ ...extensionCtx(), preservation: 'the scarf never drifts' })
+  assert.ok(hintKinds(negated.hints).includes('negation'), 'negation in the window\'s preservation is noted')
+  // The pure compiler defends its geometry: a pinned head as long as the
+  // sampled window throws, never compiles.
+  assert.throws(() => compileExtensionCaption({ ...extensionCtx(), window: { sampledLength: 22, pinnedLength: 22, fps: 24 } }), /malformed/)
+})
+
 // --- sequence ---------------------------------------------------------------
 
 test('sequence caption: alignment line first, Subject on twos, actions in beat order, Preserve last', () => {
@@ -176,7 +225,7 @@ test('sequence caption: alignment line first, Subject on twos, actions in beat o
   assert.ok(caption.indexOf('Action:') < caption.indexOf('Preserve:'), 'Action precedes Preserve')
   assert.ok(caption.endsWith('Preserve: coat hem stays consistent; the rhythm stays even'), 'Preserve is the last section, verbatim')
   assert.deepEqual(hints, [], 'a clean fixture compiles without hints')
-  assert.equal(compilerVersion, '2')
+  assert.equal(compilerVersion, '3')
 
   // A degenerate empty action list omits the Action section; Preserve stays last.
   const empty = compileSequenceCaption({ ...sequenceCtx(), orderedActions: [] })
@@ -191,6 +240,7 @@ test('no compiled caption contains a landing progress token', () => {
     compileHeroCaption(heroCtx()).caption,
     compileTweenCaption(tweenCtx()).caption,
     compileSequenceCaption(sequenceCtx()).caption,
+    compileExtensionCaption(extensionCtx()).caption,
   ]) {
     assert.ok(!caption.includes('landing'), `the dead step-size lever stays out (${JSON.stringify(caption.slice(0, 40))}…)`)
   }
@@ -258,10 +308,11 @@ test('negation in movement or preservation text is flagged and kept verbatim', (
 // --- the mechanical vocabulary guards -----------------------------------------
 
 test('every return carries the compiler version', () => {
-  assert.equal(COMPILER_VERSION, '2')
-  assert.equal(compileHeroCaption(heroCtx()).compilerVersion, '2')
-  assert.equal(compileTweenCaption(tweenCtx()).compilerVersion, '2')
-  assert.equal(compileSequenceCaption(sequenceCtx()).compilerVersion, '2')
+  assert.equal(COMPILER_VERSION, '3')
+  assert.equal(compileHeroCaption(heroCtx()).compilerVersion, '3')
+  assert.equal(compileTweenCaption(tweenCtx()).compilerVersion, '3')
+  assert.equal(compileSequenceCaption(sequenceCtx()).compilerVersion, '3')
+  assert.equal(compileExtensionCaption(extensionCtx()).compilerVersion, '3')
 })
 
 test('an unsupported medium string is rejected at runtime by every entry point', () => {
@@ -269,6 +320,7 @@ test('an unsupported medium string is rejected at runtime by every entry point',
   assert.throws(() => compileHeroCaption({ ...heroCtx(), overrides: badMedium }), /medium/, 'hero guards the vocabulary')
   assert.throws(() => compileTweenCaption({ ...tweenCtx(), overrides: badMedium }), /medium/, 'tween guards the vocabulary')
   assert.throws(() => compileSequenceCaption({ ...sequenceCtx(), overrides: badMedium }), /medium/, 'sequence guards the vocabulary')
+  assert.throws(() => compileExtensionCaption({ ...extensionCtx(), overrides: badMedium }), /medium/, 'extension guards the vocabulary')
   // A facing outside the closed vocabulary is equally impossible by type —
   // and equally mechanical, so the runtime guard fires rather than leaking
   // arbitrary text into the submitted caption.

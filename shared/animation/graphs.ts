@@ -31,7 +31,7 @@
  * references instead of duplicating them engine-side.
  */
 import type { AnimationTool, AssetReference, FacingTerm, FrozenAttemptSnapshot } from './types'
-import { CARRY_SAVE_PREFIX, CARRY_SAVE_SLOT } from './types'
+import { CARRY_SAVE_PREFIX, CARRY_SAVE_SLOT, engineOutputCarryPath, isUuid } from './types'
 
 /** A ComfyUI prompt graph: node id → { class_type, inputs } — the same shape
  *  src/lib/engineContract.ts validates against the captured object_info. */
@@ -184,6 +184,158 @@ export const MOTION_CONTEXT_SAVE_CLASS = 'MiniMaxH3MotionContextSaveLatent'
 export function carryRequested(snapshot: FrozenAttemptSnapshot): boolean {
   const settings = isRecord(snapshot.settings) ? snapshot.settings : {}
   return settings.carry === true
+}
+
+// ---------------------------------------------------------------------------
+// the continuation OVERLAP RECIPE (the extension lane, spec §9 — provisional)
+// ---------------------------------------------------------------------------
+
+/** The extension lane's conditioning classes (ComfyUI-H3-Motion-Context —
+ *  Set L's measured mechanism): the Load node reads the registered carry
+ *  file from the ENGINE's own output folder (the deterministic receipt path,
+ *  addressed as a FILE with clip_index > 0 — "pointing at a specific FILE
+ *  always loads that file when clip_index is greater than 0"); the Motion
+ *  Context node pins the carried AV latent's tail as never-denoised
+ *  conditioning rows and answers the trim count; the Trim node drops the
+ *  pinned head off the DECODED clip (picture only here — the lane's graphs
+ *  are silent by §3, and the node's audio input is optional by design); the
+ *  Add Guide node anchors a reference image at an authored frame (the
+ *  extension draft's anchor vocabulary, §10's collision surface). All four
+ *  are in the REAL captured object_info — no mirror extras needed. */
+export const MOTION_CONTEXT_LOAD_CLASS = 'MiniMaxH3MotionContextLoadLatent'
+export const MOTION_CONTEXT_CLASS = 'MiniMaxH3MotionContext'
+export const MOTION_CONTEXT_TRIM_CLASS = 'MiniMaxH3MotionContextTrim'
+export const MOTION_CONTEXT_GUIDE_CLASS = 'MiniMaxH3AddGuide'
+
+/** The OVERLAP RECIPE (spec §9 — "provisional until the tuning probe lands"):
+ *  the join values every extension freezes into its binding's `recipe` and
+ *  the target-length validation runs against. The two PROBE-GATED values
+ *  carry their FALLBACKS inline — the join-tuning probe is PAUSED at this
+ *  landing, so v1 ships Set L's measured operating point (the 22f
+ *  latent-tail context on ComfyUI-H3-Motion-Context, 24f of tail audio)
+ *  and the constants are the ONLY place a tuned recipe will land. The
+ *  offered context lengths are NOT probe-gated: they are the node's own
+ *  served combo (whole numbers of latent steps — anything else the node
+ *  would silently snap DOWN, the exact degradation §10 bans), pinned here
+ *  so the validation and the builder emit one of the engine's real keys.
+ *  Recipe changes are version changes (§5): bump recipeVersion with any
+ *  value here. */
+export const CONTINUATION_OVERLAP_RECIPE = {
+  /** PROBE (join tuning): frames of the source's picture the window pins —
+   *  fallback 22, Set L's measured near-seamless context. */
+  contextLength: 22,
+  /** PROBE (join tuning): frames of tail audio pinned independently —
+   *  fallback 24, the node's documented whole-second default. */
+  audioContextLength: 24,
+  /** The node's own combo — whole latent steps only. */
+  offeredContextLengths: [5, 22, 39, 56],
+  recipeVersion: 'overlap-recipe-v1-probe-pending',
+} as const
+
+/** A legal H3 window length on the 17k+5 frame grid (5, 22, 39, 56, 73, …).
+ *  The engine SNAPS an off-grid length UP silently (nodes_minimax_h3
+ *  temporal_shape); the lane refuses instead (§10's no-silent-drop). */
+export function isLegalH3WindowLength(length: number): boolean {
+  return Number.isInteger(length) && length >= 5 && length <= 3600 && (length - 5) % 17 === 0
+}
+
+/** Latent steps a legal window length occupies: FRAME_PER_TOKEN cycles
+ *  (1,4,4,4,4) — 5 steps per 17 frames, plus the 2-step (1+4) head, so
+ *  17k+5 frames ⇔ 5k+2 steps (5f→2, 22f→7, 39f→12, 56f→17; the pack's own
+ *  _steps_for_frames table). */
+function h3LatentSteps(length: number): number {
+  return (5 * (length - 5)) / 17 + 2
+}
+
+/** The full §6 coordinate mapping for one extension window, computed and
+ *  checked in ONE place — the route freezes exactly this record and the
+ *  tests pin its arithmetic. Every refusal is a NAMED error message (the
+ *  route maps it to its 400; the builder never sees these shapes): the
+ *  source and target must be legal 17k+5 windows, the pinned tail must be
+ *  one of the node's offered lengths, the tail must be STRICTLY SHORTER
+ *  than the generation (the node contract) and NO LONGER than the source's
+ *  own window (the node would silently pin less), and the tail's latent
+ *  steps must begin at a whole cycle boundary (the phase check the node
+ *  itself enforces — for on-grid lengths it holds by construction; the
+ *  check stands as the fail-closed backstop). */
+export type ContinuationWindowPlan = {
+  /** The pinned tail's frame range in the SOURCE's GENERATED coordinates —
+   *  the raw latent's own world (§6: subsequent extensions refer to this,
+   *  never to delivered time). */
+  windowCoordinates: { generatedStart: number; generatedEnd: number; phase: string }
+  headTrim: number
+  deliveredRange: { start: number; end: number }
+}
+
+export function continuationWindowPlan(input: { sourceLength: number; targetLength: number; contextLength: number }): ContinuationWindowPlan {
+  const { sourceLength, targetLength, contextLength } = input
+  if (!isLegalH3WindowLength(sourceLength)) {
+    throw new Error(`The pinned tail is sliced from the source's raw latent, and the source's frozen window (${sourceLength} frames) is not a legal 17k+5 length — its tail cannot be phase-aligned (spec §6).`)
+  }
+  if (!isLegalH3WindowLength(targetLength)) {
+    throw new Error(`The target window length (${targetLength}) is not a legal 17k+5 length on the 24 fps grid (5, 22, 39, 56, 73, …) — the engine would silently snap it up; the lane refuses instead (spec §10).`)
+  }
+  if (!(CONTINUATION_OVERLAP_RECIPE.offeredContextLengths as readonly number[]).includes(contextLength)) {
+    throw new Error(`The overlap recipe's pinned tail (${contextLength} frames) is not one of the Motion Context node's offered windows (5/22/39/56 — whole numbers of latent steps); the node would silently snap it down (spec §10).`)
+  }
+  if (contextLength >= targetLength) {
+    throw new Error(`The node contract keeps the pinned tail strictly shorter than the generation: the recipe pins ${contextLength} frames and the target window is ${targetLength} (spec §6).`)
+  }
+  if (contextLength > sourceLength) {
+    throw new Error(`The pinned tail (${contextLength} frames) is longer than the source's own window (${sourceLength}) — the node would silently pin less of it; the lane refuses instead (spec §10).`)
+  }
+  const startSteps = h3LatentSteps(sourceLength) - h3LatentSteps(contextLength)
+  if (!Number.isInteger(startSteps) || startSteps % 5 !== 0) {
+    throw new Error(`The pinned tail's ${contextLength} frames do not begin at a whole latent cycle of the source's ${sourceLength}-frame window — the node refuses a shifted join, and so does the lane (spec §6).`)
+  }
+  return {
+    windowCoordinates: { generatedStart: sourceLength - contextLength, generatedEnd: sourceLength, phase: 'cycle-0' },
+    headTrim: contextLength,
+    deliveredRange: { start: 0, end: targetLength - contextLength },
+  }
+}
+
+/** The extension anchors a frozen snapshot's settings may carry (§4/§10):
+ *  an in-force reference image pinned at an authored frame of the SAMPLED
+ *  window, expressed as an Add Guide node — the vocabulary whose
+ *  inside-the-pinned-head collisions the preflight refuses by name. The
+ *  narrow read is shared by the builder (which wires the LoadImage) and
+ *  stays loud on malformed shapes. */
+export type ExtensionAnchor = { reference: 'rolling-near' | 'fixed-far'; frame: number }
+
+function extensionAnchorsOf(snapshot: FrozenAttemptSnapshot): ExtensionAnchor[] {
+  const settings = isRecord(snapshot.settings) ? snapshot.settings : {}
+  const raw = settings.anchors
+  if (raw === undefined) return []
+  if (!Array.isArray(raw) || raw.length > 8) throw new Error('The frozen anchors must be an array of at most 8 entries (reference role + frame).')
+  const anchors: ExtensionAnchor[] = []
+  for (const entry of raw) {
+    if (!isRecord(entry)) throw new Error('A frozen anchor must be an object with a reference role and a frame.')
+    if (entry.reference !== 'rolling-near' && entry.reference !== 'fixed-far') {
+      throw new Error(`A frozen anchor's reference must be one of the in-force roles "rolling-near"/"fixed-far" — got ${JSON.stringify(String(entry.reference))}.`)
+    }
+    const frame = entry.frame
+    if (typeof frame !== 'number' || !Number.isInteger(frame) || frame < 0) {
+      throw new Error('A frozen anchor\'s frame must be a non-negative integer.')
+    }
+    anchors.push({ reference: entry.reference, frame })
+  }
+  return anchors
+}
+
+/** The binding source a frozen snapshot names — the builder's narrow,
+ *  environment-neutral read (rendering.ts's continuationBindingOf is the
+ *  validating seam server-side; this one only needs the Load node's path
+ *  argument). Null when the snapshot carries no binding (every plain
+ *  render); LOUD on a present-but-malformed block — corrupt truth never
+ *  builds a graph. */
+function continuationSourceOf(snapshot: FrozenAttemptSnapshot): string | null {
+  const raw = (snapshot as { continuationBinding?: unknown }).continuationBinding
+  if (raw === undefined) return null
+  if (!isRecord(raw) || !isUuid(raw.sourceAttemptId)) {
+    throw new Error('The frozen continuation binding is malformed (it must name its source attempt by UUID) — the extension conditioning refuses to build from corrupt truth.')
+  }
+  return raw.sourceAttemptId
 }
 
 export type GraphReference = {
@@ -398,6 +550,77 @@ export function buildTweenGraph(snapshot: FrozenAttemptSnapshot, settings: Graph
         clip_index: CARRY_SAVE_SLOT,
       },
     }
+  }
+  // The extension lane's CONDITIONING BUILD (spec §4/§6, lane Task 5): a
+  // snapshot carrying a continuation binding is an extension attempt — the
+  // conditioning routes through the pack's Motion Context chain exactly as
+  // Set L wired it (g_mctx_chain), adapted to the cross-submission carry:
+  //   '40' LoadLatent   — the registered carry file at its deterministic
+  //                       engine-output path (clip_index 1 addresses the
+  //                       FILE; §7: the registered artifact is the truth,
+  //                       the engine's own file the read-through);
+  //   guides           — the draft's anchors (Add Guide per anchor, chained
+  //                       onto the conditioning BEFORE the Motion Context
+  //                       node: anchors inside the pinned head are the
+  //                       node's silent drops, so they live upstream of it
+  //                       where the preflight's collision refusal governs);
+  //   '41' MotionContext — pins the carried tail as never-denoised rows,
+  //                       answers trim_frames;
+  //   '42' Trim         — drops the pinned head off the decoded clip, so
+  //                       the SAVED output is the delivered window (§6: the
+  //                       head-trim count frozen beside it).
+  // The sampler still denoises the FRESH latent (node 10's output 1) — only
+  // the guider's conditioning moves to the Motion Context output. The audio
+  // half stays silent (§3: no audio in delivered output; the Trim node's
+  // audio input is optional and unwired).
+  const continuationSource = continuationSourceOf(snapshot)
+  if (continuationSource !== null) {
+    const settings = isRecord(snapshot.settings) ? snapshot.settings : {}
+    const contextLength = positiveInt(settings.contextLength, CONTINUATION_OVERLAP_RECIPE.contextLength)
+    const audioContextLength = positiveInt(settings.audioContextLength, CONTINUATION_OVERLAP_RECIPE.audioContextLength)
+    if (!(CONTINUATION_OVERLAP_RECIPE.offeredContextLengths as readonly number[]).includes(contextLength)) {
+      throw new Error(`The frozen context length ${contextLength} is not one of the Motion Context node's offered windows (5/22/39/56) — the extension graph refuses to build a silently-snapped join.`)
+    }
+    if (contextLength >= extras.length) {
+      throw new Error(`The pinned tail (${contextLength} frames) must be strictly shorter than the sampled window (${extras.length}) — the node refuses to pin a run as long as the clip itself.`)
+    }
+    graph['40'] = {
+      class_type: MOTION_CONTEXT_LOAD_CLASS,
+      inputs: { latent_path: engineOutputCarryPath(continuationSource), clip_index: 1 },
+    }
+    let conditioning: [string, number] = ['10', 0]
+    let guideId = 43
+    for (const anchor of extensionAnchorsOf(snapshot)) {
+      graph[String(guideId)] = {
+        class_type: MOTION_CONTEXT_GUIDE_CLASS,
+        inputs: {
+          positive: conditioning,
+          latent: ['10', 1],
+          image: [anchor.reference === 'rolling-near' ? '30' : '31', 0],
+          frame_idx: anchor.frame,
+          vae: ['3', 0],
+        },
+      }
+      conditioning = [String(guideId), 0]
+      guideId += 1
+    }
+    graph['41'] = {
+      class_type: MOTION_CONTEXT_CLASS,
+      inputs: {
+        conditioning,
+        vae: ['3', 0],
+        latent: ['10', 1],
+        context_length: String(contextLength),
+        audio_context_length: audioContextLength,
+        context_latent: ['40', 0],
+      },
+    }
+    graph['12'].inputs.conditioning = ['41', 0]
+    graph['42'] = {
+      class_type: MOTION_CONTEXT_TRIM_CLASS,
+      inputs: { images: ['16', 0], trim_frames: ['41', 1] },
+    }
+    graph['18'].inputs.images = ['42', 0]
   }
   return graph
 }
