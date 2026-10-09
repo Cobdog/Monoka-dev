@@ -592,6 +592,7 @@ export function createStudioServer(paths: StudioServerPaths) {
       findJobByAttempt: (attemptId) => enginePortFor().findJobByAttempt(attemptId),
       queuedJobIds: () => enginePortFor().queuedJobIds(),
       uploadReference: (assetId, bytes) => enginePortFor().uploadReference(assetId, bytes),
+      fetchCarryArtifact: (attemptId) => enginePortFor().fetchCarryArtifact(attemptId),
       modelEnumerations: (options) => enginePortFor().modelEnumerations(options),
     }
     // The fabric seam: internal service/owner events adapt onto the
@@ -614,6 +615,7 @@ export function createStudioServer(paths: StudioServerPaths) {
       engine,
       emit,
       prepareFrame: makeFramePreparer({ engine, store, blobs, ffmpegPath: animationFfmpeg }),
+      blobs,
       redispatch: (attemptId) => animationRedispatch(attemptId),
     })
     const service = createAnimationRenderingService({

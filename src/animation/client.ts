@@ -17,6 +17,7 @@ import type {
   AnimationDocumentBody,
   AnimationTool,
   AssetReference,
+  AttemptContinuationView,
   AttemptExecutionState,
   BindingInput,
   FacingTerm,
@@ -81,6 +82,14 @@ export type AttemptStateView = {
    *  or a lost job renders its own neutral copy, never a failure reason). */
   failureReason?: string
   preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number; error?: string }
+  /** The CONTINUATION readiness half of the two-readiness lifecycle
+   *  (extension lane §7/§8): independent of execution/candidate — a clip can
+   *  be playable and not continuation-ready (absent / registering /
+   *  not-produced / unavailable), never the reverse. The shared type IS the
+   *  contract here (one definition, no hand-drift between the server view
+   *  and this mirror); `artifact` is the opaque content-addressed handle the
+   *  Extend flow will bind to. */
+  continuation: AttemptContinuationView
   candidate: { id: string | null; assetReference: AssetReference; frameCount: number; earlierRevision: boolean } | null
 }
 

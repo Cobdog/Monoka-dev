@@ -50,9 +50,12 @@ import {
   type AnimationDocumentBody,
   type AnimationTool,
   type AssetReference,
+  type AttemptContinuationRow,
+  type AttemptContinuationState,
   type AttemptExecutionState,
   type BindingInput,
   type BindingVersion,
+  type ContinuationArtifactRecord,
   type FacingTerm,
   type FrozenAttemptSnapshot,
   type KeyCandidate,
@@ -85,6 +88,11 @@ export type AnimationAttemptRow = {
   engineJobId: string | null
   execution: { state: AttemptExecutionState; progress?: { value: number; max: number }; failureReason?: string; dispatchVerdict?: 'never-delivered' | 'uncertain' }
   preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number; error?: string }
+  /** The continuation readiness half of the two-readiness lifecycle (§8, the
+   *  extension lane's Task 2): the owner writes it after media landing —
+   *  never before, never blocking it. Rows persisted before the column
+   *  existed hydrate as `{ state: 'absent' }`. */
+  continuation: AttemptContinuationRow
   /** `candidate.id` is the MINTED document candidate id — the id inside the
    *  document body's key slot (hero landings); null when the tool mints
    *  nothing (tween attaches by attempt id, sequence surfaces through
@@ -128,6 +136,9 @@ export class AnimationRuleError extends Error {
 }
 
 const EXECUTION_STATES: ReadonlySet<string> = new Set(['queued', 'rendering', 'preparing', 'ready', 'failed', 'cancelled', 'interrupted', 'reconciling'])
+/** The continuation readiness vocabulary (§7/§8 — see AttemptContinuationState
+ *  in shared types for the per-state contract). */
+const CONTINUATION_STATES: ReadonlySet<string> = new Set(['absent', 'registering', 'ready', 'unavailable', 'not-produced'])
 /** The delivery verdict a dispatch failure persists (wave 1 fix round, the
  *  review's I-1): 'never-delivered' — the failure preceded the /prompt send
  *  (the engine was unreachable at the upload/enumeration stage, the request
@@ -213,9 +224,20 @@ export function upAnimationTables(db: Database.Database): void {
       OR OLD.snapshot_json IS NOT NEW.snapshot_json
       OR OLD.created_at IS NOT NEW.created_at
     BEGIN
-      SELECT RAISE(ABORT, 'animation_attempt is append-only (spec 11.2): only engine_job_id/execution/preparation/result/own_revision/updated_at may change');
+      SELECT RAISE(ABORT, 'animation_attempt is append-only (spec 11.2): only engine_job_id/execution/preparation/result/continuation/own_revision/updated_at may change');
     END;
   `)
+}
+
+/** Migration 007 — the continuation readiness column (extension lane Task 2,
+ * spec 2026-10-08 §7/§8): one additive nullable column on animation_attempt
+ * holding the AttemptContinuationRow. Append-only like every migration: an
+ * applied-006 home ALTERs the column in as NULL for every existing row,
+ * which hydrates as `{ state: 'absent' }` — the honest pre-lane truth. The
+ * append-only trigger needs no change (it freezes columns, and continuation
+ * is a lifecycle-writable one — the same class as preparation_json). */
+export function upAnimationContinuation(db: Database.Database): void {
+  db.exec('ALTER TABLE animation_attempt ADD COLUMN continuation_json TEXT;')
 }
 
 // ---------------------------------------------------------------------------
@@ -268,6 +290,22 @@ function parseAssetReferenceLocal(value: unknown): AssetReference | null {
   if (relPath !== null && typeof relPath !== 'string') return null
   if (kind !== 'image' && kind !== 'video') return null
   return { assetId, relPath, kind }
+}
+
+/** A ContinuationArtifactRecord's shape (the registration's durable half):
+ *  UUID ids, a real sha256 hex digest, the file-read save-recipe version,
+ *  and a wall-clock producedAt. The sourceAttemptId must name the row it
+ *  rides on — a record copied from another attempt is corruption, not a
+ *  registration. */
+function validateContinuationArtifact(value: unknown, sourceAttemptId: string): ContinuationArtifactRecord | null {
+  if (!isRecord(value)) return null
+  const { artifactId, sourceAttemptId: namedSource, digest, saveRecipeVersion, producedAt } = value
+  if (!isUuid(artifactId)) return null
+  if (namedSource !== sourceAttemptId) return null
+  if (typeof digest !== 'string' || !/^[0-9a-f]{64}$/.test(digest)) return null
+  if (!isNonEmptyString(saveRecipeVersion)) return null
+  if (!isNonNegativeInt(producedAt)) return null
+  return { artifactId, sourceAttemptId, digest, saveRecipeVersion, producedAt }
 }
 
 function validateBindingInput(binding: unknown): BindingInput | null {
@@ -353,6 +391,7 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
     setAttemptResult: db.prepare('UPDATE animation_attempt SET result_json = ?, own_revision = own_revision + 1, updated_at = ? WHERE id = ?'),
     setAttemptExecution: db.prepare('UPDATE animation_attempt SET execution_json = ?, engine_job_id = COALESCE(?, engine_job_id), own_revision = own_revision + 1, updated_at = ? WHERE id = ?'),
     setAttemptPreparation: db.prepare('UPDATE animation_attempt SET preparation_json = ?, own_revision = own_revision + 1, updated_at = ? WHERE id = ?'),
+    setAttemptContinuation: db.prepare('UPDATE animation_attempt SET continuation_json = ?, own_revision = own_revision + 1, updated_at = ? WHERE id = ?'),
   }
 
   // ---- hydration + version guard -------------------------------------------
@@ -396,6 +435,7 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       engineJobId: row.engine_job_id === null ? null : str(row.engine_job_id),
       execution: parseJson<AnimationAttemptRow['execution']>(row.execution_json, { state: 'queued' as const }),
       preparation: parseJson<AnimationAttemptRow['preparation']>(row.preparation_json, { state: 'pending' as const }),
+      continuation: parseJson<AnimationAttemptRow['continuation']>(row.continuation_json, { state: 'absent' as const }),
       result: (() => {
         const parsed = parseJson<AnimationAttemptRow['result']>(row.result_json, null)
         // candidate.id normalization: rows persisted before the field
@@ -1116,9 +1156,44 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       statements.setAttemptPreparation.run(JSON.stringify(next), now(), attemptId)
     },
 
+    /** The continuation readiness write (extension lane §7/§8 — the owner's
+     *  registration machinery persists through this): wholesale replace, the
+     *  owner owns the state machine exactly as it owns preparation's. A
+     *  `ready`/`unavailable` write carries the artifact record (validated
+     *  whole — its sourceAttemptId must name THIS row); `error` is capped at
+     *  the same 2000 the execution failureReason allows. */
+    setAttemptContinuation: (attemptId: string, continuation: { state: AttemptContinuationState; artifact?: ContinuationArtifactRecord; relPath?: string; error?: string }) => {
+      const row = statements.attempt.get(attemptId ?? '') as Record<string, unknown> | undefined
+      if (!row) throw new AnimationRuleError(`No attempt with id ${attemptId}.`, 404)
+      if (!CONTINUATION_STATES.has(continuation?.state)) throw new AnimationRuleError(`Unknown continuation state ${String(continuation?.state)}.`, 400)
+      let artifact: ContinuationArtifactRecord | undefined
+      if (continuation.artifact !== undefined) {
+        const validated = validateContinuationArtifact(continuation.artifact, attemptId)
+        if (!validated) throw new AnimationRuleError('The continuation artifact record needs a UUID artifactId, this attempt as its source, a sha256 hex digest, a save-recipe version, and a producedAt timestamp.', 400)
+        artifact = validated
+      }
+      if (continuation.relPath !== undefined && !isNonEmptyString(continuation.relPath)) throw new AnimationRuleError('relPath must be a non-empty string.', 400)
+      if (continuation.error !== undefined && typeof continuation.error !== 'string') throw new AnimationRuleError('error must be a string.', 400)
+      const next: AttemptContinuationRow = { state: continuation.state }
+      if (artifact !== undefined) next.artifact = artifact
+      if (continuation.relPath !== undefined) next.relPath = continuation.relPath
+      if (continuation.error !== undefined) next.error = continuation.error.slice(0, 2000)
+      statements.setAttemptContinuation.run(JSON.stringify(next), now(), attemptId)
+    },
+
     attemptsInFlight: (): AnimationAttemptRow[] =>
       hydrateAll(statements.allAttempts.all() as Array<Record<string, unknown>>)
         .filter((attempt) => IN_FLIGHT_STATES.has(attempt.execution.state)),
+
+    /** Every LANDED attempt (a result row) — the boot sweep's continuation
+     *  half (extension lane §7): a landed carry whose registration never
+     *  completed (studio crash between landing and the record) resumes from
+     *  here, idempotently, never re-rendering. The caller applies the
+     *  carries-a-tail predicate — the snapshot's semantics stay the owner's,
+     *  the row walk stays the store's. */
+    landedAttempts: (): AnimationAttemptRow[] =>
+      hydrateAll(statements.allAttempts.all() as Array<Record<string, unknown>>)
+        .filter((attempt) => attempt.result !== null),
 
     attemptByEngineJobId: (engineJobId: string) => {
       const row = statements.attemptByJob.get(engineJobId ?? '') as Record<string, unknown> | undefined

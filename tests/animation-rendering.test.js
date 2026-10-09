@@ -151,6 +151,15 @@
 //       engineOutputCarryPath(attemptId) with a digest that verifies across
 //       re-fetches and NO history-listing payload; a plain render (no flag)
 //       writes nothing
+//   (y) the readiness split (spec §7/§8, Task 2) — the owner's carry
+//       registration: the happy split (media ready while the artifact
+//       registers, then continuation-ready with the digest-verified record);
+//       registration failure with the file present (bounded retries → the
+//       boot sweep's resume → the explicit action, none re-rendering); the
+//       no-file case (the named not-produced condition, terminal, playable
+//       preserved); the eviction case (the availability check — the
+//       preflight/dispatch seam — refuses BY NAME at both call sites, the
+//       clip playable, and recovers when the blob resolves again)
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -203,6 +212,7 @@ const {
 const {
   createAnimationRenderingService,
   createComfyEnginePort,
+  ContinuationUnavailableError,
   decodeClipFrame,
   makeDocumentStoreBlobSink,
   makeFramePreparer,
@@ -247,6 +257,7 @@ let sink = null
 let engineClient = null
 let events = []
 let prepOverrides = null
+let carryFetchOverrides = null
 let productionPreparer = null
 let owner = null
 let service = null
@@ -439,6 +450,17 @@ async function waitAttemptState(attemptId, states, label, timeoutMs = 10_000) {
   return anim.getAttempt(attemptId)
 }
 
+/** The continuation-readiness twin of waitAttemptState (section y): waits
+ *  for the attempt's continuation state to settle into one of `states`. */
+async function waitContinuation(attemptId, states, label, timeoutMs = 10_000) {
+  const wanted = new Set(states)
+  await waitUntil(() => {
+    const attempt = anim.getAttempt(attemptId)
+    return attempt !== null && wanted.has(attempt.continuation.state)
+  }, timeoutMs, label)
+  return anim.getAttempt(attemptId)
+}
+
 // ---- suite boot ------------------------------------------------------------------
 
 beforeAll(async () => {
@@ -486,18 +508,33 @@ beforeAll(async () => {
   // preparation runs through the real preparer.
   prepOverrides = new Map()
   productionPreparer = makeFramePreparer({ engine: engineClient, store: anim, blobs: sink, ffmpegPath: () => 'ffmpeg' })
+  // The carry-registration instrument (extension lane Task 2, the prep
+  // pattern applied to the receipt fetch): per-attempt overrides in FRONT of
+  // the production fetchCarryArtifact — a held gate (the happy split's
+  // observability) or an injected failure (the bounded-retry leg). Only the
+  // OWNER's engine view is wrapped: the service's dispatch path keeps the
+  // untouched production port, exactly like the preparer seam.
+  carryFetchOverrides = new Map()
+  const ownerEngine = {
+    ...engineClient,
+    fetchCarryArtifact: (attemptId) => {
+      const override = carryFetchOverrides.get(attemptId)
+      return override ? override(attemptId) : engineClient.fetchCarryArtifact(attemptId)
+    },
+  }
   // Wave 1's queue-semantic redispatch, wired the way core.ts wires it (the
   // service takes the owner, so the sweep's redispatch arm calls through a
   // forward-declared thunk assigned once the service exists).
   let serviceRedispatch = async () => null
   owner = createCompletionOwner({
     store: anim,
-    engine: engineClient,
+    engine: ownerEngine,
     emit,
     prepareFrame: (attemptId, frameIndex) => {
       const override = prepOverrides.has(attemptId) ? prepOverrides.get(attemptId) : prepOverrides.get('*')
       return override ? override(attemptId, frameIndex) : productionPreparer(attemptId, frameIndex)
     },
+    blobs: sink,
     redispatch: (attemptId) => serviceRedispatch(attemptId),
     maxAutoPrepRetries: 2,
     pollMs: 60,
@@ -893,7 +930,7 @@ test('(g) reconcile resolves a lost dispatch by attempt-identifier search — ne
   // reconciliation pending, the attempt preserved (§11.4).
   const deadPort = await freePort()
   const deadEngine = createComfyEnginePort({ baseUrl: `http://127.0.0.1:${deadPort}`, blobs: sink })
-  const deadOwner = createCompletionOwner({ store: anim, engine: deadEngine, emit: () => undefined, prepareFrame: productionPreparer, pollMs: 50 })
+  const deadOwner = createCompletionOwner({ store: anim, engine: deadEngine, emit: () => undefined, prepareFrame: productionPreparer, blobs: sink, pollMs: 50 })
   const deadService = createAnimationRenderingService({
     store: anim, engine: deadEngine, owner: deadOwner, blobs: sink, ffmpegPath: () => 'ffmpeg',
     compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
@@ -1859,6 +1896,7 @@ function gatedEnginePort(gateDep) {
     findJobByAttempt: (attemptId) => engineClient.findJobByAttempt(attemptId),
     queuedJobIds: () => engineClient.queuedJobIds(),
     uploadReference: (assetId, bytes) => engineClient.uploadReference(assetId, bytes),
+    fetchCarryArtifact: (attemptId) => engineClient.fetchCarryArtifact(attemptId),
     modelEnumerations: (options) => engineClient.modelEnumerations(options),
   }
   gateDep(port)
@@ -1869,7 +1907,7 @@ function gatedEnginePort(gateDep) {
  *  store/sink/preparer (the cancel/observe paths run production code). */
 function gatedServiceFor(port) {
   const gatedEvents = []
-  const gatedOwner = createCompletionOwner({ store: anim, engine: port, emit: (type, payload) => gatedEvents.push({ type, payload }), prepareFrame: productionPreparer, pollMs: 60 })
+  const gatedOwner = createCompletionOwner({ store: anim, engine: port, emit: (type, payload) => gatedEvents.push({ type, payload }), prepareFrame: productionPreparer, blobs: sink, pollMs: 60 })
   const gatedServiceInstance = createAnimationRenderingService({
     store: anim, engine: port, owner: gatedOwner, blobs: sink, ffmpegPath: () => 'ffmpeg',
     compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
@@ -2385,4 +2423,277 @@ test('(x) a landed carry render leaves the file at engineOutputCarryPath with a 
   const plainSubfolder = plainParts.join('/')
   const miss = await engineFetch(`/view?filename=${encodeURIComponent(plainFile)}&subfolder=${encodeURIComponent(plainSubfolder)}&type=output`)
   assert.equal(miss.status, 404, 'no carry file exists for the plain render')
+})
+
+// ---------------------------------------------------------------------------
+// (y) the readiness split (spec 2026-10-08 §7/§8, Task 2) — the owner's
+//     carry registration over the REAL submit path. The production machinery
+//     runs whole: the landing path kicks the registration detached, the
+//     store persists the continuation column, the availability check is the
+//     exported seam Task 3/5's preflight/dispatch will call. The one
+//     instrument is the carry-fetch override in front of the owner's engine
+//     view (the prep-override pattern) — a held gate proves the SPLIT, an
+//     injected failure proves the retry shapes.
+// ---------------------------------------------------------------------------
+
+/** A fresh tween span + step slot on a fresh document (the (y) sections'
+ *  shared fixture shape). */
+function carryDocFixture(name) {
+  const doc = anim.createDocument({ projectId, name, binding: makeBinding() })
+  const keyFrom = uuid()
+  const keyTo = uuid()
+  let row = anim.addKeyCandidate(doc.id, keyFrom, { id: uuid(), assetReference: registerRefImage(`y-${name}-from`), origin: 'import', provenance: { assetId: `stable-${uuid().slice(0, 8)}` }, poseDescription: null, facing: null }, 0)
+  row = anim.addKeyCandidate(doc.id, keyTo, { id: uuid(), assetReference: registerRefImage(`y-${name}-to`), origin: 'import', provenance: { assetId: `stable-${uuid().slice(0, 8)}` }, poseDescription: null, facing: null }, row.revision)
+  row = anim.insertSpan(doc.id, { fromKeyId: keyFrom, toKeyId: keyTo, intent: { movement: 'turns through the doorway', preservation: 'silhouette intact' } }, row.revision)
+  return { doc, step: row.body.spans[0].stepSlots[0].id, revision: row.revision }
+}
+
+function carrySnapshot(step, revision) {
+  const snapshot = makeTweenSnapshot(step, revision)
+  snapshot.settings.carry = true
+  return snapshot
+}
+
+test('(y1) the happy split — media lands ready WHILE the artifact registers; the record registers digest-verified', async () => {
+  const { doc, step, revision } = carryDocFixture('Yankee')
+  const before = await engineRecordCount()
+
+  // The gate holds the receipt fetch until the split is OBSERVED — the
+  // deterministic way to catch the registering window on a fast local fetch.
+  let release = null
+  const gate = new Promise((resolve) => { release = resolve })
+  const submitted = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, revision) }, 'idem-y1')
+  carryFetchOverrides.set(submitted.attemptId, async (attemptId) => {
+    await gate
+    return engineClient.fetchCarryArtifact(attemptId)
+  })
+
+  // THE SPLIT (§7): playable readiness lands FIRST and independently — the
+  // standing ready transition, the candidate, and the proposed frame are all
+  // durable while the continuation is still REGISTERING.
+  const landed = await waitAttemptState(submitted.attemptId, ['ready'], 'the carrying render landing its media readiness')
+  assert.equal(landed.result.candidate.frameCount, 22, 'the playable clip landed')
+  assert.equal(landed.preparation.state, 'proposed', 'the proposed frame prepared — the standing lifecycle untouched')
+  assert.equal(anim.getAttempt(submitted.attemptId).continuation.state, 'registering', 'media ready while the carry artifact registers — the two readiness halves are independent')
+  assert.ok(events.some((event) => event.type === 'animation.attempt.ready' && event.payload.attemptId === submitted.attemptId), 'the ready event fired without waiting for the carry')
+  assert.ok(!events.some((event) => event.type === 'animation.attempt.continuation-ready' && event.payload.attemptId === submitted.attemptId), 'no continuation-ready event while the registration is held')
+
+  release()
+  const registered = await waitContinuation(submitted.attemptId, ['ready'], 'the carry artifact registering')
+  assert.equal(registered.continuation.artifact.sourceAttemptId, submitted.attemptId)
+  assert.match(registered.continuation.artifact.artifactId, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, 'the artifact id is a canonical UUID')
+  assert.equal(registered.continuation.artifact.saveRecipeVersion, CONTINUATION_SAVE_RECIPE_VERSION, 'the save-recipe version was read FROM the file, not guessed')
+
+  // THE DIGEST: sha256 over the file bytes served at the deterministic
+  // receipt path — and the registered blob is byte-identical to them.
+  const carryPath = engineOutputCarryPath(submitted.attemptId)
+  const parts = carryPath.split('/')
+  const filename = parts.pop()
+  const subfolder = parts.join('/')
+  const served = await engineFetch(`/view?filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}&type=output`)
+  assert.equal(served.status, 200)
+  const servedBytes = Buffer.from(await served.arrayBuffer())
+  const digestOf = (buf) => createHash('sha256').update(buf).digest('hex')
+  assert.equal(registered.continuation.artifact.digest, digestOf(servedBytes), 'the record digest is the sha256 of the saved file bytes')
+  const stored = documents.readBlob(registered.continuation.relPath)
+  assert.ok(stored && stored.equals(servedBytes), 'the registered studio blob is byte-identical to the engine-served carry file')
+
+  // The view mirror: continuation ready with the OPAQUE handle only.
+  const state = service.getState(submitted.attemptId)
+  assert.equal(state.continuation.state, 'ready')
+  assert.deepEqual(Object.keys(state.continuation.artifact).sort(), ['artifactId', 'digest'], 'the view carries the opaque {artifactId, digest} handle — no blob path leaks')
+  assert.equal(state.continuation.artifact.digest, registered.continuation.artifact.digest)
+  assert.ok(events.some((event) => event.type === 'animation.attempt.continuation-ready' && event.payload.attemptId === submitted.attemptId), 'the fabric seam observed the registration')
+  assert.equal(await engineRecordCount(), before + 1, 'exactly one engine submission — the registration read, never re-rendered')
+})
+
+test('(y2) registration failure with the file present — bounded retries, the sweep resume, the explicit action; never a re-render', async () => {
+  const { doc, step, revision } = carryDocFixture('Zulu')
+  const before = await engineRecordCount()
+  const submitted = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, revision) }, 'idem-y2')
+  let fetchAttempts = 0
+  carryFetchOverrides.set(submitted.attemptId, async () => {
+    fetchAttempts += 1
+    throw new Error('the engine became unreachable at the receipt fetch')
+  })
+  await waitAttemptState(submitted.attemptId, ['ready'], 'the media landing regardless of the carry failure')
+  await waitUntil(() => {
+    const row = anim.getAttempt(submitted.attemptId)
+    return row.continuation.state === 'registering' && row.continuation.error !== undefined
+  }, 10_000, 'the bounded registration retries exhausting with the reason recorded')
+  assert.equal(fetchAttempts, 3, 'the first try plus 2 bounded auto-retries — the frame-preparation pattern')
+  const failedRow = anim.getAttempt(submitted.attemptId)
+  assert.match(failedRow.continuation.error, /unreachable at the receipt fetch/)
+  assert.equal(failedRow.execution.state, 'ready', 'the clip stays playable — the playable half never regresses')
+  assert.ok(failedRow.result, 'the landed candidate is preserved')
+  assert.equal(failedRow.preparation.state, 'proposed')
+  assert.equal(await engineRecordCount(), before + 1, 'the failed registration re-submitted nothing')
+
+  // THE SWEEP RESUME (the §7 crash shape): a later boot's reconcile re-drives
+  // a registering row — bounded again, still no /prompt anywhere.
+  await owner.reconcile()
+  await waitUntil(() => fetchAttempts >= 6, 10_000, 'the sweep re-driving the bounded registration')
+  // The sweep kick's retries are immediate (no timers), but the final
+  // settle-write races the count observation — hold until the loop has
+  // provably finished before clearing the failure for the explicit action.
+  await sleep(250)
+  assert.equal(fetchAttempts, 6, 'the sweep resume performed its own bounded round')
+  const sweptRow = anim.getAttempt(submitted.attemptId)
+  assert.equal(sweptRow.continuation.state, 'registering', 'the sweep resume keeps the retryable shape')
+  assert.match(sweptRow.continuation.error, /unreachable at the receipt fetch/)
+  assert.equal(await engineRecordCount(), before + 1, 'the sweep resume re-submitted nothing')
+
+  // THE EXPLICIT ACTION (the registering shape's way forward): the failure
+  // clears, the retry registers, still no re-render. The retry's fetch runs
+  // through the PRODUCTION path (the override is gone), so the counter stays
+  // at 6 — the registration itself is the proof.
+  carryFetchOverrides.delete(submitted.attemptId)
+  await service.retryContinuationRegistration(submitted.attemptId)
+  const recovered = anim.getAttempt(submitted.attemptId)
+  assert.equal(recovered.continuation.state, 'ready')
+  assert.ok(recovered.continuation.artifact, 'the record registered')
+  const recoveredDigest = (buf) => createHash('sha256').update(buf).digest('hex')
+  const y2Path = engineOutputCarryPath(submitted.attemptId)
+  const y2Parts = y2Path.split('/')
+  const y2Served = await engineFetch(`/view?filename=${encodeURIComponent(y2Parts.pop())}&subfolder=${encodeURIComponent(y2Parts.join('/'))}&type=output`)
+  assert.equal(recovered.continuation.artifact.digest, recoveredDigest(Buffer.from(await y2Served.arrayBuffer())), 'the recovered record digests the real carry file')
+  assert.ok(documents.readBlob(recovered.continuation.relPath), 'the studio blob is readable')
+  assert.equal(fetchAttempts, 6, 'no further override fetches — the explicit retry read through the production path')
+  assert.equal(await engineRecordCount(), before + 1, 'the whole recovery never re-rendered')
+
+  // The retry's own refusals: a landed attempt that never carried, and an
+  // unlanded attempt, answer the named 400s.
+  const plain = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: makeTweenSnapshot(step, anim.getDocument(doc.id).revision) }, 'idem-y2-plain')
+  await waitAttemptState(plain.attemptId, ['ready'], 'the plain (no-carry) render landing')
+  await assert.rejects(
+    () => service.retryContinuationRegistration(plain.attemptId),
+    (err) => err instanceof AnimationRuleError && err.status === 400 && /no continuation artifact to register/.test(err.message),
+    'the explicit retry refuses a non-carrying attempt by name',
+  )
+  const unlanded = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, anim.getDocument(doc.id).revision) }, 'idem-y2-unlanded')
+  await assert.rejects(
+    () => service.retryContinuationRegistration(unlanded.attemptId),
+    (err) => err instanceof AnimationRuleError && err.status === 400 && /Only a landed clip/.test(err.message),
+    'the explicit retry refuses an unlanded attempt',
+  )
+  await service.cancel(unlanded.attemptId)
+})
+
+test('(y3) the no-file case — the named not-produced condition, terminal, playable preserved, no re-render ever', async () => {
+  const { doc, step, revision } = carryDocFixture('Nova')
+  await engineControl({ omitCarrySave: true })
+  try {
+    const submitted = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, revision) }, 'idem-y3')
+    const landed = await waitAttemptState(submitted.attemptId, ['ready'], 'the media landing (the render itself succeeded)')
+    await waitContinuation(submitted.attemptId, ['not-produced'], 'the named condition settling')
+
+    const row = anim.getAttempt(submitted.attemptId)
+    assert.equal(row.continuation.state, 'not-produced', 'the deterministic receipt path holds no file — not-produced')
+    assert.equal(row.continuation.artifact, undefined, 'no artifact was minted')
+    assert.equal(row.execution.state, 'ready', 'the clip stays playable')
+    assert.ok(row.result, 'the landed candidate is preserved')
+    assert.equal(row.preparation.state, 'proposed', 'the standing lifecycle is untouched')
+    assert.equal(landed.result.candidate.frameCount, 22)
+    // The receipt path really is empty (the knob suppressed the write).
+    const parts = engineOutputCarryPath(submitted.attemptId).split('/')
+    const file = parts.pop()
+    const miss = await engineFetch(`/view?filename=${encodeURIComponent(file)}&subfolder=${encodeURIComponent(parts.join('/'))}&type=output`)
+    assert.equal(miss.status, 404, 'no carry file exists at the deterministic path')
+
+    // NO RE-RENDER EVER: an absence window over the engine's record count —
+    // the settle, a wait, and the refused retry all leave it unchanged.
+    const settled = await engineRecordCount()
+    await sleep(300) // negative observation window: nothing re-prompts
+    assert.equal(await engineRecordCount(), settled, 'no re-render fired for the no-file condition')
+
+    // TERMINAL for the attempt: the explicit retry refuses with the named
+    // condition pointing at the re-roll, never a re-fetch.
+    await assert.rejects(
+      () => service.retryContinuationRegistration(submitted.attemptId),
+      (err) => err instanceof AnimationRuleError && err.status === 400 && /continuation readiness is unreachable/.test(err.message) && /re-roll/.test(err.message),
+      'the explicit retry refuses the terminal named condition',
+    )
+    assert.equal(await engineRecordCount(), settled, 'the refused retry re-rendered nothing')
+    assert.equal(service.getState(submitted.attemptId).continuation.state, 'not-produced', 'the view carries the named condition')
+    assert.ok(events.some((event) => event.type === 'animation.attempt.continuation-not-produced' && event.payload.attemptId === submitted.attemptId), 'the fabric seam observed the named condition')
+  } finally {
+    await engineControl({ omitCarrySave: false })
+  }
+})
+
+test('(y4) the eviction case — the availability check refuses BY NAME at both call sites; the clip playable; recovery on re-resolve', async () => {
+  const { doc, step, revision } = carryDocFixture('Oscar')
+  const submitted = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, revision) }, 'idem-y4')
+  await waitAttemptState(submitted.attemptId, ['ready'], 'the carrying render landing')
+  const registered = await waitContinuation(submitted.attemptId, ['ready'], 'the artifact registering')
+  const artifact = registered.continuation.artifact
+  const relPath = registered.continuation.relPath
+  const blobAbs = path.join(home, relPath)
+  const blobBytes = fs.readFileSync(blobAbs)
+
+  // THE PREFLIGHT SITE: the artifact removed post-registration — the check
+  // refuses BY NAME (the artifact id + the digest), the state flips
+  // unavailable, the RECORD is preserved (§5: metadata vs availability).
+  fs.unlinkSync(blobAbs)
+  await assert.rejects(
+    async () => service.requireContinuationArtifact(submitted.attemptId),
+    (err) => err instanceof ContinuationUnavailableError
+      && err.message.includes(artifact.artifactId)
+      && err.message.includes(artifact.digest)
+      && /continuation unavailable/.test(err.message)
+      && /stays playable/.test(err.message),
+    'the preflight-site check refuses by name',
+  )
+  const unavailableRow = anim.getAttempt(submitted.attemptId)
+  assert.equal(unavailableRow.continuation.state, 'unavailable')
+  assert.equal(unavailableRow.continuation.artifact.digest, artifact.digest, 'the record stays truthful history')
+  const view = service.getState(submitted.attemptId)
+  assert.equal(view.execution, 'ready', 'the clip stays playable throughout')
+  assert.ok(view.candidate, 'the playable candidate is intact')
+  assert.equal(view.continuation.state, 'unavailable', 'the view carries the unavailable condition')
+  assert.equal(view.continuation.artifact.artifactId, artifact.artifactId, 'the view still carries the opaque handle — the binding surface stays truthful')
+
+  // THE DISPATCH SITE (the same seam the dispatch will call): refuses again
+  // by name — and the miss is ALSO a digest MISMATCH, not just absence: a
+  // replaced file under the content-addressed path refuses identically.
+  fs.writeFileSync(blobAbs, Buffer.concat([blobBytes, Buffer.from('-tampered')]))
+  await assert.rejects(
+    async () => service.requireContinuationArtifact(submitted.attemptId),
+    (err) => err instanceof ContinuationUnavailableError && err.message.includes(artifact.artifactId),
+    'the dispatch-site check refuses the replaced-content artifact by name',
+  )
+  assert.equal(anim.getAttempt(submitted.attemptId).continuation.state, 'unavailable')
+
+  // RECOVERY: availability is derived truth — the blob resolving by digest
+  // again flips the row back to ready (the §7 backstop, not a re-fetch).
+  fs.writeFileSync(blobAbs, blobBytes)
+  const record = service.requireContinuationArtifact(submitted.attemptId)
+  assert.equal(record.digest, artifact.digest)
+  assert.equal(record.artifactId, artifact.artifactId)
+  assert.equal(anim.getAttempt(submitted.attemptId).continuation.state, 'ready', 'a re-resolved artifact is available again — the state tracks the digest, not a guess')
+
+  // The seam's own refusal vocabulary: no registered artifact answers the
+  // named rule error (the plain-attempt shape), not the unavailable class.
+  const plain = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: makeTweenSnapshot(step, anim.getDocument(doc.id).revision) }, 'idem-y4-plain')
+  await waitAttemptState(plain.attemptId, ['ready'], 'the plain render landing')
+  await assert.rejects(
+    async () => service.requireContinuationArtifact(plain.attemptId),
+    (err) => err instanceof AnimationRuleError && err.status === 400 && /no registered continuation artifact/.test(err.message),
+    'an attempt with no artifact answers the rule refusal, never the unavailable class',
+  )
+  // And the explicit retry's unavailable refusal (the named recovery list).
+  const gone = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, anim.getDocument(doc.id).revision) }, 'idem-y4-gone')
+  await waitAttemptState(gone.attemptId, ['ready'], 'the second carrying render landing')
+  await waitContinuation(gone.attemptId, ['ready'], 'the second artifact registering')
+  const goneRow = anim.getAttempt(gone.attemptId)
+  fs.unlinkSync(path.join(home, goneRow.continuation.relPath))
+  await assert.rejects(
+    async () => service.requireContinuationArtifact(gone.attemptId),
+    (err) => err instanceof ContinuationUnavailableError,
+  )
+  await assert.rejects(
+    () => service.retryContinuationRegistration(gone.attemptId),
+    (err) => err instanceof AnimationRuleError && err.status === 400 && /re-fetch/.test(err.message),
+    'the explicit retry refuses the unavailable condition — recovery is §7\'s explicit list',
+  )
 })

@@ -47,7 +47,7 @@
  *      and caller-provided reproducibility settings), so a lost-response
  *      retry of the same request still matches even if the document moved.
  */
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -78,8 +78,8 @@ import {
 } from '../../shared/animation/graphs'
 import { COMPILER_VERSION, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../../shared/animation/compiler'
 import type { CompiledCaption, HeroContext, SequenceContext, TweenContext } from '../../shared/animation/compiler'
-import { animationInputHash } from '../../shared/animation/types'
-import type { AnimationTool, AssetReference, AttemptExecutionState, FrozenAttemptSnapshot, MediumString } from '../../shared/animation/types'
+import { animationInputHash, engineOutputCarryPath } from '../../shared/animation/types'
+import type { AnimationTool, AssetReference, AttemptContinuationView, AttemptExecutionState, ContinuationArtifactRecord, FrozenAttemptSnapshot, MediumString } from '../../shared/animation/types'
 import { runTool } from '../datasets/probe'
 
 // ---------------------------------------------------------------------------
@@ -156,6 +156,14 @@ export type EnginePort = {
   /** Uploads a reference asset into the engine's input folder under the
    *  shared deterministic name (graphs.ts' engineInputName). */
   uploadReference(assetId: string, bytes: Buffer): Promise<void>
+  /** THE RECEIPT FETCH (extension lane §7): the carry file at
+   *  engineOutputCarryPath(attemptId), fetched through the engine's /view as
+   *  (subfolder, filename, type=output) — the deterministic receipt, never a
+   *  history payload (the Save node returns no UI output). Null = the engine
+   *  holds NO file at the path (the no-file shape — the named not-produced
+   *  condition); a THROW is an unreachable/refusing engine, the retryable
+   *  registration-failure class. */
+  fetchCarryArtifact(attemptId: string): Promise<Buffer | null>
   /** The engine's OWN enumeration of what its loader nodes accept — THE
    *  registry the animation lane resolves its model slots against (wave 1,
    *  the live review's #1: never a pinned filename, never another
@@ -209,6 +217,13 @@ export type AttemptStateView = {
    *  failure and renders its own neutral copy). */
   failureReason?: string
   preparation: { state: 'pending' | 'proposed' | 'failed' | 'done'; proposedFrameIndex?: number; error?: string }
+  /** The CONTINUATION readiness half of the two-readiness lifecycle
+   *  (extension lane §7/§8): independent of `execution`/`candidate` — a clip
+   *  can be playable (ready + candidate) and not continuation-ready (the
+   *  carry absent/failed/lost), never the reverse. `artifact` is the OPAQUE
+   *  content-addressed handle (Task 4's binding freezes it verbatim); the
+   *  view never leaks the blob-tree path the digest resolves through. */
+  continuation: AttemptContinuationView
   /** Mirrors the store's result candidate: `id` is the MINTED document
    *  candidate id (hero landings — the correlation key against the document
    *  body's slot candidates); null when the tool mints nothing (tween
@@ -234,6 +249,21 @@ export type AnimationRenderingService = {
    *  cancel idiom): re-prepare the proposed frame of a LANDED clip without
    *  re-rendering. */
   retryPreparation(attemptId: string): Promise<void>
+  /** §7's explicit registration retry (the extension lane's registering
+   *  shape — the frame-preparation pattern's twin): re-drive the carry
+   *  discovery/digest/registration of a LANDED attempt without re-rendering.
+   *  Refuses the named conditions (not-produced is terminal for the attempt;
+   *  unavailable's recovery is §7's explicit list, never a re-fetch). */
+  retryContinuationRegistration(attemptId: string): Promise<void>
+  /** §7's AVAILABILITY CHECK — the seam the Extend submission's preflight
+   *  AND dispatch call: resolves the registered artifact BY DIGEST against
+   *  the studio's own blob store. A miss throws the named continuation
+   *  unavailable refusal and flips the attempt's continuation state; a hit
+   *  returns the record (and re-flips a previously-unavailable row back to
+   *  ready — availability is derived, re-observed truth). Never touches the
+   *  engine: the registered artifact is the source of truth, and the source
+   *  graph is NEVER re-executed to regenerate a carry. */
+  requireContinuationArtifact(attemptId: string): ContinuationArtifactRecord
   /** The authoritative server-side compile dispatch (the shared module
    *  through the injected seam) — Task 5's route builds frozen captions
    *  here, so the compiler has exactly one server-side import site. */
@@ -309,7 +339,7 @@ function engineValidationReason(bodyText: string): string {
 // ---------------------------------------------------------------------------
 
 export type AnimationBlobSink = {
-  registerBytes(kind: 'image' | 'video', bytes: Buffer, name: string): { relPath: string; present: boolean }
+  registerBytes(kind: 'image' | 'video' | 'latent', bytes: Buffer, name: string): { relPath: string; present: boolean }
   readBlob(relPath: string): Buffer | null
 }
 
@@ -683,6 +713,23 @@ enumerationTtlMs?: number }): EnginePort {
       if (!response.ok) throw new Error(`the engine's /upload/image answered ${response.status}`)
     },
 
+    async fetchCarryArtifact(attemptId) {
+      // The deterministic receipt contract: the path derived from the attempt
+      // id alone, addressed as (subfolder, filename) through the engine's own
+      // /view — exactly how a real engine serves its output folder. A 404 is
+      // the NO-FILE verdict (the pack's Save never completed); anything else
+      // non-ok or a transport failure is the retryable registration class.
+      const rel = engineOutputCarryPath(attemptId)
+      const parts = rel.split('/')
+      const filename = parts.pop() ?? ''
+      const subfolder = parts.join('/')
+      const params = new URLSearchParams({ filename, subfolder, type: 'output' })
+      const response = await fetch(`${base}/view?${params.toString()}`) // throws on unreachable
+      if (response.status === 404) return null
+      if (!response.ok) throw new Error(`the engine's /view answered ${response.status} for ${filename}`)
+      return Buffer.from(await response.arrayBuffer())
+    },
+
     async modelEnumerations(force) {
       if (!force?.force && enumerationCache !== null && Date.now() - enumerationCache.at < enumerationTtlMs) {
         return enumerationCache.value
@@ -895,6 +942,54 @@ async function resolveFrameAsset(deps: FrameResolutionDeps, attemptId: string, f
  *  engine's output listing (see resolveFrameAsset). */
 export function makeFramePreparer(deps: FrameResolutionDeps): (attemptId: string, frameIndex: number) => Promise<AssetReference> {
   return (attemptId, frameIndex) => resolveFrameAsset(deps, attemptId, frameIndex)
+}
+
+// ---------------------------------------------------------------------------
+// the continuation availability check (§7 — the preflight/dispatch seam)
+// ---------------------------------------------------------------------------
+
+/** §7's NAMED refusal — the continuation unavailable condition: a REGISTERED
+ *  artifact that no longer resolves by digest. The message names the artifact
+ *  and its digest, states that the clip stays playable, and names the user's
+ *  explicit options (re-land the source chain, or the v1.1 recovery when it
+ *  lands). Routes map this to a 400; nothing ever answers it by re-rendering
+ *  the source graph. */
+export class ContinuationUnavailableError extends Error {
+  constructor(artifactId: string, digest: string, attemptId: string) {
+    super(`The continuation artifact ${artifactId} (digest ${digest}) carried by attempt ${attemptId} no longer resolves in the studio's store — the named continuation unavailable condition (spec §7). The clip itself stays playable; the explicit options are to re-land the source chain or accept the recovery behavior when it lands.`)
+    this.name = 'ContinuationUnavailableError'
+  }
+}
+
+/** §7's availability check, the one seam the Extend submission's preflight
+ *  AND its dispatch both call: the registered artifact must resolve BY
+ *  DIGEST — the bytes at the registration's content-addressed path must hash
+ *  to the record's digest (a replaced or truncated file is a miss, never
+ *  "close enough"; this is the immutable-artifact backstop the Task 1 review
+ *  routed here). A miss flips the attempt's continuation state to
+ *  `unavailable` (the record itself is preserved — §5's
+ *  metadata-vs-availability separation) and throws the named refusal; a hit
+ *  re-flips a previously-unavailable row to `ready` (availability is derived
+ *  truth — a relinked artifact is available again) and returns the record.
+ *  NEVER touches the engine: the registered artifact is the source of truth
+ *  and the source graph is never re-executed to regenerate a carry. */
+export function requireContinuationArtifact(deps: { store: AnimationStore; blobs: AnimationBlobSink }, attemptId: string): ContinuationArtifactRecord {
+  const attempt = deps.store.getAttempt(attemptId)
+  if (!attempt) throw new AnimationRuleError(`No attempt with id ${attemptId}.`, 404)
+  const record = attempt.continuation.artifact
+  if (record === undefined) {
+    throw new AnimationRuleError(`Attempt ${attemptId} has no registered continuation artifact (its continuation state is "${attempt.continuation.state}") — only a registered carry can be resolved.`, 400)
+  }
+  const bytes = attempt.continuation.relPath !== undefined ? deps.blobs.readBlob(attempt.continuation.relPath) : null
+  const digest = bytes === null ? null : createHash('sha256').update(bytes).digest('hex')
+  if (bytes === null || digest !== record.digest) {
+    deps.store.setAttemptContinuation(attemptId, { state: 'unavailable', artifact: record, ...(attempt.continuation.relPath !== undefined ? { relPath: attempt.continuation.relPath } : {}) })
+    throw new ContinuationUnavailableError(record.artifactId, record.digest, attemptId)
+  }
+  if (attempt.continuation.state === 'unavailable') {
+    deps.store.setAttemptContinuation(attemptId, { state: 'ready', artifact: record, ...(attempt.continuation.relPath !== undefined ? { relPath: attempt.continuation.relPath } : {}) })
+  }
+  return record
 }
 
 // ---------------------------------------------------------------------------
@@ -1354,6 +1449,11 @@ export function createAnimationRenderingService(deps: {
           ...(attempt.preparation.proposedFrameIndex !== undefined ? { proposedFrameIndex: attempt.preparation.proposedFrameIndex } : {}),
           ...(attempt.preparation.error !== undefined ? { error: attempt.preparation.error } : {}),
         },
+        continuation: {
+          state: attempt.continuation.state,
+          ...(attempt.continuation.artifact !== undefined ? { artifact: { artifactId: attempt.continuation.artifact.artifactId, digest: attempt.continuation.artifact.digest } } : {}),
+          ...(attempt.continuation.error !== undefined ? { error: attempt.continuation.error } : {}),
+        },
         candidate: attempt.result ? attempt.result.candidate : null,
       }
       if (attempt.execution.progress !== undefined) view.progress = attempt.execution.progress
@@ -1367,6 +1467,14 @@ export function createAnimationRenderingService(deps: {
 
     retryPreparation(attemptId) {
       return owner.retryPreparation(attemptId)
+    },
+
+    retryContinuationRegistration(attemptId) {
+      return owner.retryContinuationRegistration(attemptId)
+    },
+
+    requireContinuationArtifact(attemptId) {
+      return requireContinuationArtifact({ store, blobs }, attemptId)
     },
 
     async extractFrame(attemptId, frameIndex) {

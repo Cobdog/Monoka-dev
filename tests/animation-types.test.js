@@ -19,6 +19,7 @@ import {
   parseKeyCandidate,
   parseAnimationDocumentBody,
   animationInputHash,
+  readCarrySaveRecipe,
 } from '../shared/animation/types'
 
 const uuid = () => randomUUID()
@@ -358,4 +359,34 @@ test('animationInputHash is order-stable and difference-sensitive', () => {
   )
   assert.notEqual(animationInputHash({ ...snapshot, settings: { steps: 6, cfg: 3.5, seed: 43 } }), baseline, 'a settings change differs')
   assert.notEqual(animationInputHash({ ...snapshot, settings: { steps: 6, cfg: 3.5, seed: 42, extra: 1 } }), baseline, 'an added settings key differs')
+})
+
+// The extension lane's receipt-verify half (Task 2): the save-recipe version
+// is read FROM the carry file's own safetensors metadata — the pack's framing
+// (u64 LE header length + JSON header), parsed environment-neutrally.
+test('readCarrySaveRecipe reads the pack metadata from the safetensors framing; malformation refuses', () => {
+  const framed = (header) => {
+    const headerBuf = Buffer.from(JSON.stringify(header), 'utf8')
+    const buf = Buffer.alloc(8 + headerBuf.length + 16)
+    buf.writeBigUInt64LE(BigInt(headerBuf.length), 0)
+    headerBuf.copy(buf, 8)
+    return buf
+  }
+  const withMetadata = framed({ __metadata__: { format: 'h3_motion_context_av_v1' }, video: { dtype: 'F16', shape: [22, 16, 48, 84], data_offsets: [0, 14] } })
+  assert.equal(readCarrySaveRecipe(withMetadata), 'h3_motion_context_av_v1', 'the metadata format is the save-recipe version, read from the file')
+  assert.equal(readCarrySaveRecipe(framed({})), null, 'no metadata block refuses')
+  assert.equal(readCarrySaveRecipe(framed({ __metadata__: {} })), null, 'no format key refuses')
+  assert.equal(readCarrySaveRecipe(framed({ __metadata__: { format: '' } })), null, 'an empty format refuses')
+  assert.equal(readCarrySaveRecipe(framed({ __metadata__: { format: 7 } })), null, 'a non-string format refuses')
+  // Framing malformation: short bytes, a header length past the buffer, and
+  // garbage JSON all refuse — never a guessed version.
+  assert.equal(readCarrySaveRecipe(Buffer.alloc(4)), null, 'shorter than the framing prefix')
+  assert.equal(readCarrySaveRecipe(Buffer.from([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])), null, 'a header length far past the buffer')
+  const overlong = Buffer.alloc(24)
+  overlong.writeBigUInt64LE(16n, 0)
+  overlong.fill(0x7f, 8, 24) // 16 bytes of non-JSON
+  assert.equal(readCarrySaveRecipe(overlong), null, 'unparseable header JSON refuses')
+  // A subarray view (non-zero byteOffset) still reads the framing correctly.
+  const padded = Buffer.concat([Buffer.alloc(3), withMetadata])
+  assert.equal(readCarrySaveRecipe(padded.subarray(3)), 'h3_motion_context_av_v1', 'a non-zero-offset view parses the same file')
 })

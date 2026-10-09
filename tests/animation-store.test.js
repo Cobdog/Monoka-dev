@@ -6,9 +6,9 @@
 // The suite drives the BUILT store modules directly (better-sqlite3 handle +
 // dist-server imports — the documents suite's shim, without the server boot:
 // no ports, no routes; the routes land in task 5):
-//   (a) migration 006 — both tables, the three indexes, the append-only
+//   (a) migration 006 + 007 — both tables, the three indexes, the append-only
 //       trigger (aborts a snapshot_json/tool UPDATE; own_revision updates are
-//       the legal path), id list + user_version
+//       the legal path), the continuation column, id list + user_version
 //   (b) CRUD + the revision gate — create/list/get round-trip; a stale
 //       expectedRevision throws AnimationConflictError carrying the CURRENT
 //       document; a locked key refuses selection (400) until unlocked; the
@@ -30,6 +30,10 @@
 //   (h) archive round-trip — project export packs animation documents +
 //       attempts + every referenced blob; import restores both tables and
 //       the blob bytes, and refuses id collisions loudly
+//   (j) the continuation column (extension lane Task 2) — setAttemptContinuation's
+//       validation + round-trip over migration 007's column, landedAttempts
+//       (the boot sweep's registration-resume read), and the archive riding
+//       the registered carry blob
 //
 // Run after `pnpm build:server` (the store + archive load from dist-server).
 // Scratch homes go through the Wave 4 ledger (tests/lib/scratch.cjs).
@@ -55,6 +59,7 @@ const { migrations, migrateDatabase } = require(path.join(REPO, 'dist-server/ser
 const {
   createAnimationStore,
   upAnimationTables,
+  upAnimationContinuation,
   ANIMATION_SCHEMA_VERSION,
   AnimationConflictError,
   AnimationRuleError,
@@ -195,17 +200,26 @@ function openScratchStudio(label) {
 // ---------------------------------------------------------------------------
 // (a) migration 006
 // ---------------------------------------------------------------------------
-test('(a) migration 006 — tables, indexes, the append-only trigger', () => {
-  assert.equal(migrations.length, 6, 'the migration list carries six entries')
+test('(a) migration 006 + 007 — tables, indexes, the append-only trigger, the continuation column', () => {
+  assert.equal(migrations.length, 7, 'the migration list carries seven entries')
   assert.equal(migrations[5].id, 6)
   assert.equal(migrations[5].name, '006-animation-documents')
   assert.equal(migrations[5].up, upAnimationTables, 'migration 6 runs upAnimationTables')
-  assert.equal(applied, 6, 'a fresh boot applies all six migrations')
-  assert.equal(Number(db.pragma('user_version', { simple: true })), 6)
+  assert.equal(migrations[6].id, 7)
+  assert.equal(migrations[6].name, '007-animation-continuation')
+  assert.equal(migrations[6].up, upAnimationContinuation, 'migration 7 runs upAnimationContinuation')
+  assert.equal(applied, 7, 'a fresh boot applies all seven migrations')
+  assert.equal(Number(db.pragma('user_version', { simple: true })), 7)
 
   const appliedRows = db.prepare('SELECT id, name FROM schema_migrations ORDER BY id').all()
-  assert.equal(appliedRows.length, 6)
+  assert.equal(appliedRows.length, 7)
   assert.deepEqual(appliedRows[5], { id: 6, name: '006-animation-documents' })
+  assert.deepEqual(appliedRows[6], { id: 7, name: '007-animation-continuation' })
+
+  // The continuation column: additive, nullable — every pre-lane row hydrates
+  // as the honest absent state.
+  const columns = db.prepare("SELECT name FROM pragma_table_info('animation_attempt')").all().map((row) => row.name)
+  assert.ok(columns.includes('continuation_json'), 'migration 007 added continuation_json to animation_attempt')
 
   const names = new Set(db.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'animation%'").all().map((row) => row.name))
   for (const expected of [
@@ -1078,4 +1092,77 @@ test('(i) appendStepSlot grows a span one empty slot per command; the revision g
   )
   assert.throws(() => anim.appendStepSlot(doc.id, uuid(), again.revision), (err) => err.status === 404, 'an unknown span is a 404')
   assert.throws(() => anim.appendStepSlot(doc.id, 'not-a-uuid', again.revision), (err) => err.status === 400, 'a malformed span id is a 400')
+})
+
+// ---------------------------------------------------------------------------
+// (j) the continuation column (extension lane Task 2, spec 2026-10-08 §7/§8)
+//     — setAttemptContinuation's validation + round-trip, landedAttempts (the
+//     boot sweep's registration-resume read), and the project archive riding
+//     the registered carry blob.
+// ---------------------------------------------------------------------------
+
+test('(j) setAttemptContinuation round-trips the readiness record; landedAttempts scopes the resume read; the archive carries the artifact', () => {
+  const doc = anim.createDocument({ projectId, name: 'Juliet', binding: makeBinding() })
+  const keyJ = uuid()
+  const attempt = recordAttemptSimple(anim, doc.id, 'sequence', keyJ, 'idem-j1')
+  assert.deepEqual(anim.getAttempt(attempt.attempt.id).continuation, { state: 'absent' }, 'a fresh row hydrates as the pre-lane absent state')
+
+  // The landed tween/sequence row is the registration's substrate.
+  anim.landCandidate(attempt.attempt.id, { assetReference: { assetId: 'seq-j1', relPath: 'takes/clip-j1.mp4', kind: 'video' }, frameCount: 22, earlierRevision: false })
+  assert.ok(anim.getAttempt(attempt.attempt.id).result)
+
+  // The retryable shape first: registering + error, wholesale replaced.
+  let row = anim.getAttempt(attempt.attempt.id)
+  anim.setAttemptContinuation(attempt.attempt.id, { state: 'registering', error: 'the engine became unreachable at the receipt fetch' })
+  row = anim.getAttempt(attempt.attempt.id)
+  assert.deepEqual(row.continuation, { state: 'registering', error: 'the engine became unreachable at the receipt fetch' })
+  assert.ok(row.ownRevision > attempt.attempt.ownRevision, 'the continuation write rides the attempt\'s own revision')
+  // A raw UPDATE of the column is legal under the append-only trigger (it
+  // freezes inputs, not lifecycle columns).
+  db.prepare('UPDATE animation_attempt SET continuation_json = ? WHERE id = ?').run(JSON.stringify({ state: 'absent' }), attempt.attempt.id)
+  assert.equal(anim.getAttempt(attempt.attempt.id).continuation.state, 'absent')
+
+  // The registered shape: the full record, validated whole.
+  const carryBytes = Buffer.from(`carry-artifact-${uuid()}`)
+  const digest = require('node:crypto').createHash('sha256').update(carryBytes).digest('hex')
+  const carryFile = path.join(home, `carry-${uuid().slice(0, 8)}.safetensors`)
+  fs.writeFileSync(carryFile, carryBytes)
+  const registered = documentStore.registerBlobFile('latent', carryFile)
+  assert.ok(registered.present)
+  const record = { artifactId: uuid(), sourceAttemptId: attempt.attempt.id, digest, saveRecipeVersion: 'h3_motion_context_av_v1', producedAt: Date.now() }
+  anim.setAttemptContinuation(attempt.attempt.id, { state: 'ready', artifact: record, relPath: registered.relPath })
+  assert.deepEqual(anim.getAttempt(attempt.attempt.id).continuation, { state: 'ready', artifact: record, relPath: registered.relPath })
+
+  // The refusal vocabulary: unknown states, malformed records, foreign
+  // sources, and unknown attempts.
+  assert.throws(() => anim.setAttemptContinuation(attempt.attempt.id, { state: 'half-registered' }), (err) => err instanceof AnimationRuleError && err.status === 400)
+  assert.throws(() => anim.setAttemptContinuation(attempt.attempt.id, { state: 'ready', artifact: { ...record, digest: 'not-a-digest' } }), (err) => err.status === 400 && /sha256/.test(err.message), 'a malformed digest refuses')
+  assert.throws(() => anim.setAttemptContinuation(attempt.attempt.id, { state: 'ready', artifact: { ...record, sourceAttemptId: uuid() } }), (err) => err.status === 400 && /source/.test(err.message), 'a record naming another attempt refuses')
+  assert.throws(() => anim.setAttemptContinuation(uuid(), { state: 'ready' }), (err) => err.status === 404, 'an unknown attempt is a 404')
+
+  // landedAttempts: the boot sweep's registration-resume read — landed rows
+  // in, unlanded rows out (the caller applies the carries-a-tail predicate).
+  const unlanded = recordAttemptSimple(anim, doc.id, 'sequence', keyJ, 'idem-j2')
+  const landedIds = new Set(anim.landedAttempts().map((entry) => entry.id))
+  assert.ok(landedIds.has(attempt.attempt.id), 'the landed row is in the resume read')
+  assert.ok(!landedIds.has(unlanded.attempt.id), 'the unlanded row is not')
+
+  // The archive arm (its own project, isolated counts): a registered carry
+  // is a referenced blob — it rides the export or would be a silent omission.
+  const carryProject = documentStore.createProject({ name: 'Carry archive' })
+  const carryDoc = anim.createDocument({ projectId: carryProject.id, name: 'Kilo', binding: makeBinding() })
+  const sourceAttempt = recordAttemptSimple(anim, carryDoc.id, 'sequence', uuid(), 'idem-j3').attempt
+  anim.landCandidate(sourceAttempt.id, { assetReference: { assetId: 'seq-j3', relPath: 'takes/clip-j3.mp4', kind: 'video' }, frameCount: 22, earlierRevision: false })
+  anim.setAttemptContinuation(sourceAttempt.id, { state: 'ready', artifact: { ...record, sourceAttemptId: sourceAttempt.id, artifactId: uuid() }, relPath: registered.relPath })
+  const { archive, manifest } = exportProjectArchive(documentStore, carryProject.id)
+  assert.equal(manifest.counts.animationDocuments, 1)
+  assert.equal(manifest.counts.animationAttempts, 1)
+  assert.ok(manifest.blobs.some((b) => b.path === registered.relPath), 'the registered carry blob rides the archive (the continuation walk)')
+  assert.ok(!manifest.missingBlobs.some((b) => b.path === registered.relPath), 'the carry is not a missing entry')
+  const imported = openScratchStudio('carry-import')
+  const report = importProjectArchive(imported.documents, archive)
+  assert.equal(report.projectId, carryProject.id)
+  assert.deepEqual(imported.animation.getAttempt(sourceAttempt.id).continuation, anim.getAttempt(sourceAttempt.id).continuation, 'the continuation record round-trips byte-equal')
+  const roundTripped = imported.documents.readBlob(registered.relPath)
+  assert.ok(roundTripped && roundTripped.equals(carryBytes), 'the carry blob bytes round-trip content-addressed')
 })

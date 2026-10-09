@@ -25,6 +25,13 @@
  *     through the engine's own history — never a blind resubmit;
  *   - reference preparation fails → the clip stays landed, bounded
  *     auto-retries, then the explicit retryPreparation — no re-render;
+ *   - carry registration (extension lane §7): media landing and artifact
+ *     registration are INDEPENDENT readiness halves — the registration is
+ *     kicked detached after the standing ready transition (a carry failure
+ *     never holds the playable clip hostage), retries bounded like frame
+ *     preparation (file-present failures) or settles terminal
+ *     not-produced (no file), and resumes idempotently after a crash or a
+ *     restart through the boot sweep — never a re-render;
  *   - cancellation races completion → whatever the engine finished is
  *     preserved and never auto-selected (the store enforces the
  *     never-selects half).
@@ -33,9 +40,12 @@
  * store's setters (append-only discipline, §11.2). The in-memory watchers
  * are OBSERVATION only — losing them loses nothing durable.
  */
-import type { AssetReference } from '../../shared/animation/types'
+import { createHash, randomUUID } from 'node:crypto'
+import type { AssetReference, ContinuationArtifactRecord } from '../../shared/animation/types'
+import { readCarrySaveRecipe } from '../../shared/animation/types'
+import { carryRequested } from '../../shared/animation/graphs'
 import { AnimationRuleError, type AnimationAttemptRow, type AnimationStore } from './store'
-import type { EnginePort, EngineJobStatus } from './rendering'
+import type { AnimationBlobSink, EnginePort, EngineJobStatus } from './rendering'
 
 /** Terminal execution states — no event, poll, or cancel moves them. */
 const TERMINAL_STATES: ReadonlySet<string> = new Set(['ready', 'failed', 'cancelled', 'interrupted'])
@@ -50,6 +60,11 @@ export function createCompletionOwner(deps: {
   engine: EnginePort
   emit: (type: string, payload: unknown) => void
   prepareFrame: (attemptId: string, frameIndex: number) => Promise<AssetReference>
+  /** The content-addressed blob sink the carry registration registers into
+   *  (extension lane §7: the discovered engine file is digested and
+   *  registered as the studio-owned continuation artifact — the engine-side
+   *  file is a transient handoff from that moment on). */
+  blobs: AnimationBlobSink
   /** The rendering service's queue-semantic redispatch (wave 1): the sweep's
    *  PROVEN-never-landed arm dispatches the frozen attempt through it instead
    *  of stranding the user's submission as interrupted. 'aborted' (I1's
@@ -60,15 +75,21 @@ export function createCompletionOwner(deps: {
   /** Bounded auto-retries AFTER the first preparation try (default 2 — a
    *  rejecting preparer gets 3 chances before preparation is marked failed). */
   maxAutoPrepRetries?: number
+  /** Bounded auto-retries AFTER the first carry-registration try (default 2,
+   *  the preparation bound's twin — a failing fetch/verify/register gets 3
+   *  chances before the row stays `registering` with its error, the explicit
+   *  retry the way forward). */
+  maxAutoCarryRetries?: number
   /** The observation poll cadence in ms (default 500; tests tighten it). */
   pollMs?: number
   /** How many consecutive engine-unreachable polls before the watcher gives
    *  up and leaves the attempt reconciliation-pending (default 3). */
   maxPollErrors?: number
 }) {
-  const { store, engine, emit, prepareFrame } = deps
+  const { store, engine, emit, prepareFrame, blobs } = deps
   const redispatch = deps.redispatch
   const maxAutoPrepRetries = deps.maxAutoPrepRetries ?? 2
+  const maxAutoCarryRetries = deps.maxAutoCarryRetries ?? 2
   const pollMs = deps.pollMs ?? 500
   const maxPollErrors = deps.maxPollErrors ?? 3
 
@@ -125,9 +146,14 @@ export function createCompletionOwner(deps: {
     if (!attempt) return 'untouched'
     if (TERMINAL_STATES.has(attempt.execution.state)) {
       // Ready but preparation never completed (a crash between landing and
-      // proposing) → resume it; every other terminal state is final.
-      if (attempt.execution.state === 'ready' && (attempt.preparation.state === 'pending' || attempt.preparation.state === 'failed') && attempt.result) {
-        await prepareProposedFrame(attempt, attempt.result.candidate.frameCount)
+      // proposing) → resume it; every other terminal state is final. The
+      // carry registration resumes the same way (§7: a crash between landing
+      // and the record re-drives idempotently — never a re-render).
+      if (attempt.execution.state === 'ready' && attempt.result) {
+        if (attempt.preparation.state === 'pending' || attempt.preparation.state === 'failed') {
+          await prepareProposedFrame(attempt, attempt.result.candidate.frameCount)
+        }
+        if (continuationPending(attempt)) void registerCarryArtifact(attempt.id)
       }
       return 'untouched'
     }
@@ -211,6 +237,12 @@ export function createCompletionOwner(deps: {
       documentId: attempt.documentId,
       candidate: landed.attempt.result?.candidate ?? null,
     })
+    // THE READINESS SPLIT (extension lane §7/§8): playable readiness is NOW
+    // durable — the carry registration runs DETACHED, so a slow or failing
+    // registration never holds the standing ready transition (or the ready
+    // event) hostage. The synchronous prologue below writes `registering`
+    // before the first await, which is what makes the split observable.
+    if (carryRequested(attempt.snapshot)) void registerCarryArtifact(attempt.id)
     return 'done'
   }
 
@@ -233,6 +265,100 @@ export function createCompletionOwner(deps: {
     }
     store.setAttemptPreparation(attempt.id, { state: 'failed', error: lastError })
     emit('animation.attempt.preparation-failed', { attemptId: attempt.id, error: lastError })
+  }
+
+  // ---- the carry registration (extension lane §7 — the readiness split's
+  // continuation half; the frame-preparation pattern applied to the artifact)
+
+  /** In-flight registrations (double-kick dedupe: the landing path, the
+   *  terminal-resume branch, and the boot sweep can all reach for the same
+   *  attempt; two concurrent registrations would mint two artifact ids for
+   *  one digest). */
+  const registeringCarry = new Set<string>()
+
+  /** True when a LANDED attempt owes a carry registration: it froze the carry
+   *  flag (the same strict snapshot read the tween builder gates on) and its
+   *  continuation has not settled into one of the three settled states —
+   *  registered, provably absent (no file), or observed-away (unavailable). */
+  function continuationPending(attempt: AnimationAttemptRow): boolean {
+    return attempt.result !== null
+      && carryRequested(attempt.snapshot)
+      && (attempt.continuation.state === 'absent' || attempt.continuation.state === 'registering')
+  }
+
+  /** §7's server-side registration: DISCOVER the saved file at the
+   *  deterministic receipt path (the engine port's fetch — a 404 is the
+   *  no-file verdict), VERIFY it (the safetensors metadata's save-recipe
+   *  version, read FROM the file; the sha256 digest over the bytes), and
+   *  REGISTER it content-addressed in the studio's blob store together with
+   *  the ContinuationArtifactRecord. The two retry shapes (the brief's
+   *  frame-preparation pattern):
+   *    - file EXISTS but discovery/verification/registration fails → bounded
+   *      auto-retries, then the row stays `registering` with its error —
+   *      retryContinuationRegistration is the explicit way forward, and the
+   *      engine is only ever READ (no re-render);
+   *    - NO file at the path → `not-produced`, TERMINAL for this attempt:
+   *      the in-graph Save never ran, a new alternative (an explicit
+   *      re-roll) is the user's path, and the clip stays playable.
+   *  Idempotent by construction (content addressing; the record write is
+   *  wholesale) and re-entrant-safe through the registeringCarry set. */
+  async function registerCarryArtifact(attemptId: string): Promise<'ready' | 'not-produced' | 'failed'> {
+    const attempt = store.getAttempt(attemptId)
+    if (!attempt || !attempt.result) return 'failed' // nothing landed — not this function's row
+    if (attempt.continuation.state !== 'absent' && attempt.continuation.state !== 'registering') return 'failed' // already settled (registered / not-produced / unavailable)
+    if (registeringCarry.has(attemptId)) return 'failed' // already in flight — the kick converges there
+    registeringCarry.add(attemptId)
+    store.setAttemptContinuation(attemptId, { state: 'registering' })
+    let lastError = 'carry artifact registration failed'
+    try {
+      for (let tries = 0; tries <= maxAutoCarryRetries; tries += 1) {
+        try {
+          const bytes = await engine.fetchCarryArtifact(attemptId)
+          if (bytes === null) {
+            // No file at the receipt path: the pack's Save node never
+            // completed inside the source render — §7's named condition,
+            // terminal for THIS attempt, playable preserved.
+            store.setAttemptContinuation(attemptId, { state: 'not-produced' })
+            emit('animation.attempt.continuation-not-produced', { attemptId, documentId: attempt.documentId })
+            return 'not-produced'
+          }
+          const saveRecipeVersion = readCarrySaveRecipe(bytes)
+          if (saveRecipeVersion === null) {
+            // The file exists but is not the pack's container: a verification
+            // failure, the RETRYABLE class (bounded, then explicit) — never
+            // registered on a guess.
+            throw new Error('the saved carry file does not carry the pack\'s safetensors metadata (its save-recipe version is unreadable) — the artifact cannot be registered unverified')
+          }
+          const digest = createHash('sha256').update(bytes).digest('hex')
+          const registered = blobs.registerBytes('latent', bytes, `carry-${attemptId}.safetensors`)
+          const artifact: ContinuationArtifactRecord = {
+            artifactId: randomUUID(),
+            sourceAttemptId: attemptId,
+            digest,
+            saveRecipeVersion,
+            producedAt: Date.now(),
+          }
+          store.setAttemptContinuation(attemptId, { state: 'ready', artifact, relPath: registered.relPath })
+          emit('animation.attempt.continuation-ready', {
+            attemptId,
+            documentId: attempt.documentId,
+            artifact: { artifactId: artifact.artifactId, digest: artifact.digest },
+          })
+          return 'ready'
+        } catch (failure) {
+          lastError = failure instanceof Error ? failure.message : String(failure)
+        }
+      }
+    } finally {
+      registeringCarry.delete(attemptId)
+    }
+    // Bounded retries exhausted with the file still unfetchable/unverifiable:
+    // the row keeps the retryable `registering` state plus the reason — the
+    // explicit action (or a later boot sweep) re-drives it. The clip above
+    // stays landed and playable regardless.
+    store.setAttemptContinuation(attemptId, { state: 'registering', error: lastError })
+    emit('animation.attempt.continuation-registration-failed', { attemptId, error: lastError })
+    return 'failed'
   }
 
   /** Events from the engine feed (the realtime hub's channel, or a test
@@ -424,6 +550,15 @@ export function createCompletionOwner(deps: {
         if (fresh && IN_FLIGHT_STATES.has(fresh.execution.state)) setExecution(fresh, 'reconciling')
       }
     }
+    // The §7 registration resume: a LANDED carry whose registration never
+    // settled (a studio crash between the media landing and the record, or
+    // a boot under an unreachable engine) re-drives here — idempotent
+    // discovery/digest/registration against the engine's DISK-BACKED output
+    // folder, never a re-render. Detached like the landing-path kick: a slow
+    // or failing registration must never stall the boot sweep.
+    for (const attempt of store.landedAttempts()) {
+      if (continuationPending(attempt)) void registerCarryArtifact(attempt.id)
+    }
   }
 
   /** Cancellation racing completion (§11.4): depose the engine job, then
@@ -505,6 +640,27 @@ export function createCompletionOwner(deps: {
     await prepareProposedFrame(attempt, attempt.result.candidate.frameCount)
   }
 
+  /** The explicit carry-registration retry (extension lane §7 — the
+   *  registering shape's way forward): re-drives the discovery/verification/
+   *  registration WITHOUT re-rendering (the engine is READ at its receipt
+   *  path, never submitted to). The named conditions refuse: `not-produced`
+   *  is terminal for the attempt (the re-roll is the path), and
+   *  `unavailable`'s recovery is §7's explicit list (re-land the source
+   *  chain / the v1.1 behavior) — never a silent re-fetch. */
+  async function retryContinuationRegistration(attemptId: string): Promise<void> {
+    const attempt = attemptOrThrow(attemptId)
+    if (!attempt.result) throw new AnimationRuleError('Only a landed clip can have its continuation artifact registration retried.', 400)
+    if (!carryRequested(attempt.snapshot)) throw new AnimationRuleError('This attempt submitted no carry save tail — there is no continuation artifact to register.', 400)
+    if (attempt.continuation.state === 'ready') return // idempotent: already registered
+    if (attempt.continuation.state === 'not-produced') {
+      throw new AnimationRuleError('No carry file was produced for this attempt — continuation readiness is unreachable for it (the in-graph save did not complete). The clip stays playable; a new alternative (an explicit re-roll) is the path forward.', 400)
+    }
+    if (attempt.continuation.state === 'unavailable') {
+      throw new AnimationRuleError('The continuation artifact for this attempt was registered and has since become unavailable — recovery is the explicit re-land of the source chain (or the recovery behavior when it lands), never a re-fetch. The clip itself stays playable.', 400)
+    }
+    await registerCarryArtifact(attemptId)
+  }
+
   /** Drops in-memory watchers (one attempt, or all — the restart shape for
    *  tests; production never needs the no-arg form, the process dying IS
    *  the drop). Rows keep their truth. */
@@ -516,5 +672,5 @@ export function createCompletionOwner(deps: {
     stopWatcher(attemptId)
   }
 
-  return { observe, reconcile, onAttemptEvent, cancel, retryPreparation, stopObserving }
+  return { observe, reconcile, onAttemptEvent, cancel, retryPreparation, retryContinuationRegistration, stopObserving }
 }

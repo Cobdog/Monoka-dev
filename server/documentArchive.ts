@@ -277,6 +277,11 @@ export function exportProjectArchive(store: DocumentStore, projectId: string): {
   for (const attempt of animationAttemptRows) {
     animationJsonRelPaths(attempt.snapshot_json, referencedPaths)
     animationJsonRelPaths(attempt.result_json, referencedPaths)
+    // The continuation readiness column (extension lane §7): a registered
+    // carry artifact is a referenced blob like any landed asset — its
+    // content-addressed path rides the walk or the artifact would be a
+    // silent omission from every project export.
+    animationJsonRelPaths(attempt.continuation_json, referencedPaths)
   }
   const blobEntries: Array<{ name: string; data: Buffer }> = []
   const packedHashes = new Set<string>()

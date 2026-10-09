@@ -28,7 +28,8 @@
  *                    "videoOnly":true|false,
  *                    "underdeliverFrames":n,
  *                    "loaderEnumerations":{unet,clip,vae,lora}|null,
- *                    "hangObjectInfo":true|false}
+ *                    "hangObjectInfo":true|false,
+ *                    "omitCarrySave":true|false}
  *   GET  /__control — current state
  *
  * "loaderEnumerations" (wave 1) overrides the profile's loader combo lists
@@ -242,6 +243,12 @@ const state = {
   // its submit path hangs ahead of persistence (wave 1 fix round M-1's
   // regression knob).
   hangObjectInfo: false,
+  // The extension lane's no-file shape (spec 2026-10-08 §7): while true, a
+  // CARRYING graph still renders and lands its media normally but the pack's
+  // Save node writes NOTHING — the in-graph save failed while the render
+  // succeeded, the exact world the studio's named "continuation not-produced"
+  // condition settles from (the deterministic receipt path holds no file).
+  omitCarrySave: false,
 }
 const control = (req, res, url) => {
   if (url.pathname === '/__control' && req.method === 'GET') {
@@ -510,8 +517,10 @@ function runPrompt(job) {
     }
     // The in-graph carry save (extension lane §7): the pack's Save node
     // executes with the render — a carrying graph writes its carry file at
-    // completion, before the executed/success events close the job.
-    writeCarryArtifact(graph, n)
+    // completion, before the executed/success events close the job. The
+    // omitCarrySave knob suppresses ONLY this write (media still lands) —
+    // the no-file shape the not-produced condition names.
+    if (!state.omitCarrySave) writeCarryArtifact(graph, n)
     send({ type: 'executing', data: { prompt_id: promptId, node: 'MiniMaxH3ImageToVideo' } })
     send({ type: 'executed', data: { prompt_id: promptId, node: 'save', output: { images } } })
     send({ type: 'execution_success', data: { prompt_id: promptId } })
