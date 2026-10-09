@@ -263,7 +263,7 @@ const RULES = [
   {
     match: ['shared/animation/types.ts'],
     suites: ['animation-types', 'animation-store', 'animation-compiler', 'animation-rendering'],
-    reason: 'the animation domain types + guards — the store suite drives parseAnimationDocumentBody + the candidate parser through every authoring command and landing; the compiler suite compiles through the closed vocabularies; the rendering suite behaviorally pins the extension lane\'s identity types (the snapshot-carried modelIdentities + continuationBinding seed and their parsers, lane Task 3).',
+    reason: 'the animation domain types + guards — the store suite drives parseAnimationDocumentBody + the candidate parser through every authoring command and landing; the compiler suite compiles through the closed vocabularies; the rendering suite behaviorally pins the extension lane\'s identity types (the snapshot-carried modelIdentities + continuationBinding seed and their parsers, lane Task 3); the types suite owns the parser/malformation pins directly, including lane Task 4\'s chain parsers, the full ContinuationBinding record, and the chainMismatch walk.',
   },
   {
     match: ['shared/animation/compiler.ts'],

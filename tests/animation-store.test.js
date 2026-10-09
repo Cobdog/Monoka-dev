@@ -34,6 +34,12 @@
 //       validation + round-trip over migration 007's column, landedAttempts
 //       (the boot sweep's registration-resume read), and the archive riding
 //       the registered carry blob
+//   (k) the extension chain (extension lane Task 4) — window slots +
+//       selection truth, the staleness rules (alternatives never
+//       invalidate; ancestry/intent marks with takes preserved), rebind as
+//       the explicit document mutation producing the NEXT attempt's binding
+//       (the old ones byte-unchanged), the derived mismatch, and the
+//       archive round-trip carrying chains + bindings + artifacts
 //
 // Run after `pnpm build:server` (the store + archive load from dist-server).
 // Scratch homes go through the Wave 4 ledger (tests/lib/scratch.cjs).
@@ -41,6 +47,10 @@
 import { test, beforeAll, afterAll } from 'vitest'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
+// The shared pure module imports from SOURCE (the routes suite's precedent —
+// vitest transforms the TS natively); the server modules below load from the
+// built dist-server, the suite's standing discipline.
+import { chainMismatch } from '../shared/animation/types'
 
 const require = createRequire(import.meta.url)
 const __dirname = require('node:path').dirname(fileURLToPath(import.meta.url))
@@ -1165,4 +1175,383 @@ test('(j) setAttemptContinuation round-trips the readiness record; landedAttempt
   assert.deepEqual(imported.animation.getAttempt(sourceAttempt.id).continuation, anim.getAttempt(sourceAttempt.id).continuation, 'the continuation record round-trips byte-equal')
   const roundTripped = imported.documents.readBlob(registered.relPath)
   assert.ok(roundTripped && roundTripped.equals(carryBytes), 'the carry blob bytes round-trip content-addressed')
+})
+// ---------------------------------------------------------------------------
+// (k) the extension chain (extension lane Task 4, spec 2026-10-08 §4/§5) —
+//     window slots + selection truth, the staleness rules (alternatives
+//     never invalidate; selected-ancestry changes mark descendants; the
+//     rebind-as-new-attempt contract), the derived mismatch, and the
+//     archive round-trip carrying chains + bindings + artifacts.
+// ---------------------------------------------------------------------------
+
+const sha256Of = (label) => require('node:crypto').createHash('sha256').update(label).digest('hex')
+
+const makeIdentityK = (name) => ({ name, digest: sha256Of(`weights-${name}`), bytes: 1_000_000 })
+
+/** A FULL §5 continuation binding (Task 4's record) for one source. */
+const makeFullBinding = (sourceAttemptId, overrides = {}) => ({
+  sourceAttemptId,
+  modelIdentities: [makeIdentityK('ref2va_int8.safetensors'), makeIdentityK('h3_tween_adapter.safetensors')],
+  windowCoordinates: { generatedStart: 0, generatedEnd: 21, phase: '17k+5' },
+  headTrim: 5,
+  deliveredRange: { start: 0, end: 16 },
+  artifact: { artifactId: uuid(), digest: sha256Of(`carry-${sourceAttemptId}`) },
+  recipe: { mode: 'mctx-latent-tail', contextLength: 22, schedule: { shift: '12/3' }, steps: 30, seed: 7, recipeVersion: 'extension-v1' },
+  conditioning: { caption: 'she strides on through the rain', compilerVersion: '2', referenceAssetIds: [uuid(), uuid()] },
+  ...overrides,
+})
+
+/** Records + lands ONE extension attempt into a window slot, freezing the
+ *  given continuation binding (seed or full) — the store-level half of what
+ *  Task 5's extend route drives through the service. (makeSnapshot takes
+ *  per-field overrides only, so the binding rides an explicit spread.) */
+function recordLandedExtension(store, documentId, windowSlotId, idempotencyKey, binding, documentRevision) {
+  const recorded = store.recordAttempt({
+    id: uuid(),
+    documentId,
+    tool: 'tween',
+    targetId: windowSlotId,
+    idempotencyKey,
+    inputHash: `hash-${idempotencyKey}`,
+    snapshot: { ...makeSnapshot({ tool: 'tween', targetId: windowSlotId, documentRevision }), continuationBinding: binding },
+  })
+  assert.equal(recorded.created, true)
+  store.landCandidate(recorded.attempt.id, {
+    assetReference: { assetId: `clip-${idempotencyKey}`, relPath: `takes/clip-${idempotencyKey}.mp4`, kind: 'video' },
+    frameCount: 22,
+    earlierRevision: false,
+  })
+  return recorded.attempt
+}
+
+/** The derived mismatch's sourceOf, over THIS store's attempt rows. */
+const storeSourceOf = (store) => (attemptId) => store.getAttempt(attemptId)?.snapshot?.continuationBinding?.sourceAttemptId ?? null
+
+const snapshotBytesByAttempt = (documentId) =>
+  new Map(db.prepare('SELECT id, snapshot_json FROM animation_attempt WHERE document_id = ?').all(documentId).map((entry) => [entry.id, entry.snapshot_json]))
+
+let docK = null
+let chainK = null
+let wK1 = null
+let wK2 = null
+let wK3 = null
+
+test('(k1) the window-slot lifecycle — the chain materializes on the first Extend, selection is explicit, locks guard it', () => {
+  docK = anim.createDocument({ projectId, name: 'Lima-chain', binding: makeBinding() })
+  const keyK1 = uuid()
+  const keyK2 = uuid()
+  let row = anim.addKeyCandidate(docK.id, keyK1, makeCandidate(), 0)
+  row = anim.addKeyCandidate(docK.id, keyK2, makeCandidate(), row.revision)
+  row = anim.selectKeyCandidate(docK.id, keyK1, row.body.keys.find((k) => k.id === keyK1).candidates[0].id, row.revision)
+  row = anim.selectKeyCandidate(docK.id, keyK2, row.body.keys.find((k) => k.id === keyK2).candidates[0].id, row.revision)
+  row = anim.insertSpan(docK.id, { fromKeyId: keyK1, toKeyId: keyK2, intent: { movement: 'walks two steps', preservation: 'silhouette intact' } }, row.revision)
+  const stepK = row.body.spans[0].stepSlots[0].id
+
+  // The root substrate: a LANDED tween take on the span.
+  const rootRecorded = recordAttemptSimple(anim, docK.id, 'tween', stepK, 'idem-k-root', { documentRevision: row.revision })
+  anim.landCandidate(rootRecorded.attempt.id, { assetReference: { assetId: 'clip-k-root', relPath: 'takes/clip-k-root.mp4', kind: 'video' }, frameCount: 22, earlierRevision: false })
+  const rootK = rootRecorded.attempt
+
+  // The first Extend: the chain materializes ROOTED at the take, carrying
+  // one empty window (order 0, the take as its recorded source).
+  const revisionBeforeCreate = anim.getDocument(docK.id).revision
+  const created = anim.createWindowSlot(docK.id, rootK.id, revisionBeforeCreate)
+  assert.equal(created.revision, revisionBeforeCreate + 1, 'the create is one authoring command')
+  assert.equal(created.body.chains.length, 1, 'the chain materialized')
+  chainK = created.body.chains[0]
+  assert.equal(chainK.rootAttemptId, rootK.id)
+  assert.equal(chainK.windows.length, 1)
+  wK1 = chainK.windows[0]
+  assert.deepEqual(
+    wK1,
+    { id: wK1.id, order: 0, attempts: [], selectedCandidateId: null, lock: false, sourceAttemptId: rootK.id, stale: false, staleReasons: [] },
+    'the fresh window: empty, unselected, unlocked, the take as its recorded source, nothing stale',
+  )
+  assert.match(wK1.id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, 'the minted window id is a canonical UUID')
+
+  // The extension attempt lands INTO the window (targetId = the window id)
+  // — attached as an alternative, never selected, nothing marked.
+  const extA1 = recordLandedExtension(anim, docK.id, wK1.id, 'idem-k-ext-a1', makeFullBinding(rootK.id), created.revision)
+  row = anim.getDocument(docK.id)
+  wK1 = row.body.chains[0].windows[0]
+  assert.deepEqual(wK1.attempts, [extA1.id], 'the landed extension attempt attached to its window slot')
+  assert.equal(wK1.selectedCandidateId, null, 'landing NEVER selects (§4: selection is a new explicit command)')
+  assert.equal(wK1.stale, false, 'a landed alternative marks nothing (§5.3)')
+
+  // The explicit selection — the slot's own truth, revision-gated.
+  assert.throws(
+    () => anim.selectWindowCandidate(docK.id, wK1.id, extA1.id, row.revision - 1),
+    (err) => err instanceof AnimationConflictError && err.currentRevision === row.revision,
+    'a stale expectedRevision conflicts carrying the current document',
+  )
+  row = anim.selectWindowCandidate(docK.id, wK1.id, extA1.id, row.revision)
+  wK1 = row.body.chains[0].windows[0]
+  assert.equal(wK1.selectedCandidateId, extA1.id)
+  assert.equal(wK1.stale, false, 'the FIRST selection displaces nothing — no one conditioned on a prior selection')
+  const revisionAfterSelect = row.revision
+  row = anim.selectWindowCandidate(docK.id, wK1.id, extA1.id, row.revision)
+  assert.equal(row.revision, revisionAfterSelect, 'a no-op re-select bumps no revision (§5.3)')
+
+  // Locks guard the selection; membership stays legal (the key-slot class).
+  row = anim.setWindowLock(docK.id, wK1.id, true, row.revision)
+  assert.equal(row.body.chains[0].windows[0].lock, true)
+  const extA2 = recordLandedExtension(anim, docK.id, wK1.id, 'idem-k-ext-a2', makeFullBinding(rootK.id), row.revision)
+  row = anim.getDocument(docK.id)
+  assert.deepEqual(row.body.chains[0].windows[0].attempts, [extA1.id, extA2.id], 'a locked window still accepts alternatives')
+  assert.throws(
+    () => anim.selectWindowCandidate(docK.id, wK1.id, extA2.id, row.revision),
+    (err) => err instanceof AnimationRuleError && err.status === 400 && /locked/.test(err.message),
+    'selecting on a locked window is a 400',
+  )
+  row = anim.setWindowLock(docK.id, wK1.id, false, row.revision)
+  assert.equal(row.body.chains[0].windows[0].lock, false)
+
+  // The create/refuse vocabulary: unknown/foreign/unlandable sources.
+  assert.throws(() => anim.createWindowSlot(docK.id, uuid(), row.revision), (err) => err.status === 404, 'an unknown source attempt is a 404')
+  assert.throws(() => anim.createWindowSlot(docK.id, attemptE1.attempt.id, row.revision), (err) => err.status === 404 && /not an attempt of this document/.test(err.message), 'a foreign document\'s attempt is a 404')
+  const heroK = recordAttemptSimple(anim, docK.id, 'hero', uuid(), 'idem-k-hero', { documentRevision: row.revision })
+  anim.landCandidate(heroK.attempt.id, { assetReference: { assetId: 'clip-k-hero', relPath: null, kind: 'video' }, frameCount: 22, earlierRevision: false })
+  assert.throws(
+    () => anim.createWindowSlot(docK.id, heroK.attempt.id, anim.getDocument(docK.id).revision),
+    (err) => err.status === 400 && /tween-lane/.test(err.message),
+    'a hero take cannot seed a window (§3 adapter scope)',
+  )
+  const unlandedK = recordAttemptSimple(anim, docK.id, 'tween', stepK, 'idem-k-unlanded', { documentRevision: row.revision })
+  assert.throws(
+    () => anim.createWindowSlot(docK.id, unlandedK.attempt.id, anim.getDocument(docK.id).revision),
+    (err) => err.status === 400 && /not landed/.test(err.message),
+    'an unlanded take is a state refusal — the Extend action lives on landed takes',
+  )
+  assert.throws(() => anim.selectWindowCandidate(docK.id, uuid(), extA1.id, row.revision), (err) => err.status === 404, 'an unknown window is a 404')
+  assert.throws(() => anim.selectWindowCandidate(docK.id, wK1.id, uuid(), row.revision), (err) => err.status === 404, 'an attempt not in the window is a 404')
+
+  // The parser's pointer integrity is the serve gate: a surgically
+  // authored window whose selection points outside its own slot makes the
+  // whole document refuse to SERVE — the loud abort, never a rebuild.
+  const corrupt = JSON.parse(JSON.stringify(anim.getDocument(docK.id).body))
+  corrupt.chains[0].windows[0].selectedCandidateId = uuid()
+  db.prepare('UPDATE animation_document SET body_json = ? WHERE id = ?').run(JSON.stringify(corrupt), docK.id)
+  assert.throws(() => anim.getDocument(docK.id), /cannot parse/, 'a corrupt window selection refuses loudly at hydration')
+  const repaired = JSON.parse(JSON.stringify(corrupt))
+  repaired.chains[0].windows[0].selectedCandidateId = corrupt.chains[0].windows[0].attempts[0]
+  db.prepare('UPDATE animation_document SET body_json = ? WHERE id = ?').run(JSON.stringify(repaired), docK.id)
+  assert.equal(anim.getDocument(docK.id).body.chains[0].windows[0].selectedCandidateId, corrupt.chains[0].windows[0].attempts[0], 'the repaired body serves again')
+})
+
+test('(k2) adding an unselected alternative marks NOTHING stale — alternatives never invalidate', () => {
+  const before = anim.getDocument(docK.id)
+  const chainsBefore = JSON.parse(JSON.stringify(before.body.chains))
+  const extA3 = recordLandedExtension(anim, docK.id, wK1.id, 'idem-k-ext-a3', makeFullBinding(chainK.rootAttemptId), before.revision)
+  const after = anim.getDocument(docK.id)
+  const window = after.body.chains[0].windows[0]
+  assert.deepEqual(window.attempts.slice(0, -1), chainsBefore[0].windows[0].attempts, 'the alternative appended')
+  assert.ok(window.attempts.includes(extA3.id))
+  assert.equal(window.selectedCandidateId, chainsBefore[0].windows[0].selectedCandidateId, 'the selection is untouched by a landing')
+  for (const chain of after.body.chains) {
+    const priorChain = chainsBefore.find((entry) => entry.rootAttemptId === chain.rootAttemptId)
+    for (const w of chain.windows) {
+      const prior = priorChain.windows.find((entry) => entry.id === w.id)
+      assert.equal(w.stale, prior.stale, `window ${w.id} stale flag unchanged`)
+      assert.deepEqual(w.staleReasons, prior.staleReasons, `window ${w.id} reasons unchanged — an unselected alternative invalidates no one`)
+    }
+  }
+  assert.equal(after.revision, before.revision, 'landing never bumps the authored revision')
+})
+
+test('(k3) an ancestor reselection marks descendants stale WITHOUT rebinding; the derived mismatch names the state', () => {
+  // Build the chain's descendants: w2 extends w1's SELECTED take; w3
+  // extends w2's selected take. One landed, selected alternative each.
+  let row = anim.getDocument(docK.id)
+  const w1Selected = row.body.chains[0].windows[0].selectedCandidateId
+  row = anim.createWindowSlot(docK.id, w1Selected, row.revision)
+  chainK = row.body.chains[0]
+  wK2 = chainK.windows[1]
+  assert.equal(wK2.order, 1, 'extending the selected candidate appends to the rooted chain')
+  assert.equal(wK2.sourceAttemptId, w1Selected, 'the new window records its source')
+  const extB1 = recordLandedExtension(anim, docK.id, wK2.id, 'idem-k-ext-b1', makeFullBinding(wK2.sourceAttemptId), row.revision)
+  row = anim.selectWindowCandidate(docK.id, wK2.id, extB1.id, anim.getDocument(docK.id).revision)
+  row = anim.createWindowSlot(docK.id, extB1.id, row.revision)
+  wK3 = row.body.chains[0].windows[2]
+  assert.equal(row.body.chains.length, 1, 'still one chain — the root line')
+  const extC1 = recordLandedExtension(anim, docK.id, wK3.id, 'idem-k-ext-c1', makeFullBinding(extB1.id), row.revision)
+  row = anim.selectWindowCandidate(docK.id, wK3.id, extC1.id, anim.getDocument(docK.id).revision)
+
+  // Extending an UNSELECTED alternative BRANCHES: a new chain rooted at it.
+  const branchSource = row.body.chains[0].windows[0].attempts.find((id) => id !== w1Selected)
+  row = anim.createWindowSlot(docK.id, branchSource, row.revision)
+  assert.equal(row.body.chains.length, 2, 'the branch is its own chain rooted at the alternative')
+  assert.equal(row.body.chains[1].rootAttemptId, branchSource)
+  assert.equal(row.body.chains[1].windows[0].sourceAttemptId, branchSource)
+
+  // THE RESELECTION: w1 selects its other alternative — the displaced take
+  // is what w2 (and transitively w3) were conditioned on.
+  const snapshotsBefore = snapshotBytesByAttempt(docK.id)
+  row = anim.selectWindowCandidate(docK.id, wK1.id, branchSource, anim.getDocument(docK.id).revision)
+  const windowsOf = (r) => Object.fromEntries(r.body.chains[0].windows.map((w) => [w.id, w]))
+  const marked = windowsOf(row)
+  assert.equal(marked[wK2.id].stale, true, 'the direct descendant went stale')
+  assert.ok(marked[wK2.id].staleReasons.includes('ancestry'), 'with the ancestry reason')
+  assert.equal(marked[wK3.id].stale, true, 'the transitive descendant went stale too (the walk follows binding sources)')
+  assert.ok(marked[wK3.id].staleReasons.includes('ancestry'))
+  assert.equal(marked[wK1.id].stale, false, 'the reselected slot itself carries no mark')
+  // WITHOUT REBINDING: every frozen attempt row is byte-unchanged, and the
+  // takes stay attached (§8.3: takes preserved).
+  const snapshotsAfter = snapshotBytesByAttempt(docK.id)
+  assert.deepEqual([...snapshotsAfter.entries()].sort(), [...snapshotsBefore.entries()].sort(), 'no attempt row changed by one byte — descendants bind frozen source attempts')
+  assert.deepEqual(marked[wK2.id].attempts, [extB1.id], 'the stale window keeps its takes')
+  assert.deepEqual(marked[wK3.id].attempts, [extC1.id])
+  // The branch chain's own window is not a descendant of the displaced take
+  // through any SELECTED edge — unmarked.
+  assert.equal(row.body.chains[1].windows[0].stale, false, 'the branch chain marks nothing here')
+
+  // The DERIVED mismatch (§4): the walk names the broken edge while the
+  // ancestor selects the other alternative — and reads consistent again
+  // once the compatible ancestry is reselected.
+  const sourceOf = storeSourceOf(anim)
+  const chainNow = anim.getDocument(docK.id).body.chains[0]
+  assert.deepEqual(
+    chainMismatch(chainNow, sourceOf),
+    { windowSlotId: wK2.id, selectedAttemptId: extB1.id, sourceAttemptId: w1Selected, ancestorSlotId: wK1.id, expectedSelection: w1Selected },
+    'the mismatch names the descendant, its take, the frozen source, the ancestor slot, and the restoring selection',
+  )
+  row = anim.selectWindowCandidate(docK.id, wK1.id, w1Selected, anim.getDocument(docK.id).revision)
+  assert.equal(chainMismatch(anim.getDocument(docK.id).body.chains[0], sourceOf), null, 'reselecting the compatible ancestry restores the derived path')
+  // The MARKS stand (monotonic, the span machinery's own doctrine): stale
+  // is a re-render prompt with takes preserved, never auto-cleared.
+  assert.ok(windowsOf(row)[wK2.id].staleReasons.includes('ancestry'), 'the mark stands after the path restored')
+})
+
+test('(k4) rebindContinuation edits the document and produces the NEXT attempt\'s binding — the old ones byte-unchanged', () => {
+  let row = anim.getDocument(docK.id)
+  let chain = row.body.chains[0]
+  const w1 = chain.windows[0]
+  const w2 = chain.windows[1]
+  const displacedSource = w2.sourceAttemptId
+  // The mismatch-resolution shape: w1 selects its compatible take again;
+  // rebind w2 to the OTHER alternative.
+  const rebindSource = w1.attempts.find((id) => id !== w1.selectedCandidateId)
+  assert.notEqual(rebindSource, displacedSource)
+
+  const snapshotsBefore = snapshotBytesByAttempt(docK.id)
+  row = anim.rebindContinuation(docK.id, w2.id, rebindSource, row.revision)
+  chain = row.body.chains[0]
+  const rebound = chain.windows[1]
+  assert.equal(rebound.sourceAttemptId, rebindSource, 'the slot\'s recorded source re-pointed')
+  assert.equal(rebound.stale, true, 'the rebound window marks stale (its takes bind the displaced source)')
+  assert.ok(rebound.staleReasons.includes('ancestry'))
+  assert.equal(chain.windows[2].stale, true, 'the descendant marked too (§5: descendant staleness)')
+  assert.ok(chain.windows[2].staleReasons.includes('ancestry'))
+
+  // The next attempt — the re-submission the rebind enables — freezes the
+  // REBOUND source; the old ones are byte-unchanged (the absolute contract).
+  const next = recordLandedExtension(anim, docK.id, w2.id, 'idem-k-ext-b2', makeFullBinding(rebindSource), row.revision)
+  const snapshotsAfter = snapshotBytesByAttempt(docK.id)
+  for (const [id, bytes] of snapshotsAfter) {
+    if (id === next.id) continue
+    assert.equal(bytes, snapshotsBefore.get(id), `attempt ${id} is byte-unchanged`)
+  }
+  assert.equal(anim.getAttempt(next.id).snapshot.continuationBinding.sourceAttemptId, rebindSource, 'the NEW attempt carries the rebound binding source')
+  row = anim.getDocument(docK.id)
+  assert.ok(row.body.chains[0].windows[1].attempts.includes(next.id), 'the new attempt joined as an alternative')
+  assert.equal(row.body.chains[0].windows[1].attempts.length, 2, 'the prior take stays attached (takes preserved)')
+
+  // The refusal + no-op vocabulary.
+  const revision = row.revision
+  const noOp = anim.rebindContinuation(docK.id, w2.id, rebindSource, revision)
+  assert.equal(noOp.revision, revision, 'a same-source rebind is the no-op verdict — no bump, no write')
+  assert.throws(
+    () => anim.rebindContinuation(docK.id, w1.id, chain.windows[2].attempts[0], revision),
+    (err) => err.status === 400 && /precede/.test(err.message),
+    'a source at or after the window refuses — the cycle guard',
+  )
+  assert.throws(
+    () => anim.rebindContinuation(docK.id, w1.id, w1.attempts[0], revision),
+    (err) => err.status === 400 && /precede/.test(err.message),
+    'a source from the window\'s OWN slot refuses — a window cannot extend itself',
+  )
+  // A genuinely cross-chain source: land one take in the branch chain, then
+  // try to rebind the root chain's window to it.
+  const branchWindow = row.body.chains[1].windows[0]
+  const branchTake = recordLandedExtension(anim, docK.id, branchWindow.id, 'idem-k-branch-1', makeFullBinding(row.body.chains[1].rootAttemptId), revision)
+  assert.throws(
+    () => anim.rebindContinuation(docK.id, w1.id, branchTake.id, anim.getDocument(docK.id).revision),
+    (err) => err.status === 400 && /neither the root of, nor an alternative in/.test(err.message),
+    'a cross-chain source refuses — a rebind resolves a mismatch inside one chain',
+  )
+  assert.throws(() => anim.rebindContinuation(docK.id, uuid(), rebindSource, revision), (err) => err.status === 404, 'an unknown window is a 404')
+  // Rebinding to the chain ROOT is legal in principle — for w1 it is the
+  // no-op (its recorded source IS the root).
+  assert.equal(anim.rebindContinuation(docK.id, w1.id, chain.rootAttemptId, revision).revision, revision, 'the root rebind of w1 is the no-op')
+})
+
+test('(k5) an authored-input change on the root span marks the chain\'s windows stale (intent)', () => {
+  let row = anim.getDocument(docK.id)
+  const spanId = row.body.spans[0].id
+  row = anim.updateSpanIntent(docK.id, spanId, { movement: 'she pivots and walks back', preservation: 'silhouette intact' }, row.revision)
+  const rootChain = row.body.chains[0]
+  for (const window of rootChain.windows) {
+    assert.equal(window.stale, true, `window ${window.id} marked`)
+    assert.ok(window.staleReasons.includes('intent'), `window ${window.id} carries the intent reason`)
+  }
+  assert.ok(row.body.spans.find((s) => s.id === spanId).staleReasons.includes('intent'), 'the span itself still marks (the standing rule)')
+  // The BRANCH chain roots at an extension ATTEMPT (its target is a window
+  // slot, not a step slot) — it rides its parent chain's marks, not its own.
+  const branchChain = row.body.chains[1]
+  for (const window of branchChain.windows) {
+    assert.ok(!window.staleReasons.includes('intent'), `branch window ${window.id} carries no intent mark (documented residual)`)
+  }
+})
+
+test('(k6) the project archive round-trips chains + bindings + artifacts (its own project)', () => {
+  // A registered carry blob the source's continuation record + the binding
+  // both name — the artifact the archive must carry.
+  const carryBytes = Buffer.from(`chain-carry-${uuid()}`)
+  const carryFile = path.join(home, `chain-carry-${uuid().slice(0, 8)}.safetensors`)
+  fs.writeFileSync(carryFile, carryBytes)
+  const registered = documentStore.registerBlobFile('latent', carryFile)
+  assert.ok(registered.present)
+
+  const chainProject = documentStore.createProject({ name: 'Chain archive' })
+  const doc = anim.createDocument({ projectId: chainProject.id, name: 'Mike-chain', binding: makeBinding() })
+  const keyM1 = uuid()
+  const keyM2 = uuid()
+  let row = anim.addKeyCandidate(doc.id, keyM1, makeCandidate(), 0)
+  row = anim.addKeyCandidate(doc.id, keyM2, makeCandidate(), row.revision)
+  row = anim.selectKeyCandidate(doc.id, keyM1, row.body.keys.find((k) => k.id === keyM1).candidates[0].id, row.revision)
+  row = anim.selectKeyCandidate(doc.id, keyM2, row.body.keys.find((k) => k.id === keyM2).candidates[0].id, row.revision)
+  row = anim.insertSpan(doc.id, { fromKeyId: keyM1, toKeyId: keyM2, intent: { movement: 'runs', preservation: 'steady' } }, row.revision)
+  const stepM = row.body.spans[0].stepSlots[0].id
+  const root = recordAttemptSimple(anim, doc.id, 'tween', stepM, 'idem-m-root', { documentRevision: row.revision })
+  anim.landCandidate(root.attempt.id, { assetReference: { assetId: 'clip-m-root', relPath: registered.relPath, kind: 'video' }, frameCount: 22, earlierRevision: false })
+  anim.setAttemptContinuation(root.attempt.id, {
+    state: 'ready',
+    artifact: { artifactId: uuid(), sourceAttemptId: root.attempt.id, digest: sha256Of(carryBytes.toString()), saveRecipeVersion: 'h3_motion_context_av_v1', producedAt: Date.now() },
+    relPath: registered.relPath,
+  })
+  row = anim.createWindowSlot(doc.id, root.attempt.id, anim.getDocument(doc.id).revision)
+  const windowM = row.body.chains[0].windows[0]
+  // The FULL §5 binding freezes into the extension attempt — the artifact
+  // handle names the registered carry.
+  const fullBinding = makeFullBinding(root.attempt.id, { artifact: { artifactId: uuid(), digest: sha256Of(carryBytes.toString()) } })
+  const ext = recordLandedExtension(anim, doc.id, windowM.id, 'idem-m-ext', fullBinding, row.revision)
+  row = anim.selectWindowCandidate(doc.id, windowM.id, ext.id, anim.getDocument(doc.id).revision)
+
+  const { archive, manifest } = exportProjectArchive(documentStore, chainProject.id)
+  assert.equal(manifest.counts.animationDocuments, 1)
+  assert.equal(manifest.counts.animationAttempts, 2, 'the root take and the extension attempt both ride')
+  assert.ok(manifest.blobs.some((b) => b.path === registered.relPath), 'the carry blob rides (the artifact walk)')
+  assert.ok(!manifest.missingBlobs.some((b) => b.path === registered.relPath), 'the carry is not a missing entry')
+
+  const imported = openScratchStudio('chain-import')
+  const report = importProjectArchive(imported.documents, archive)
+  assert.equal(report.projectId, chainProject.id)
+  const ours = anim.getDocument(doc.id)
+  assert.deepEqual(imported.animation.getDocument(doc.id).body.chains, ours.body.chains, 'the CHAIN round-trips byte-equal (windows, selections, sources, staleness)')
+  assert.deepEqual(imported.animation.getAttempt(ext.id).snapshot.continuationBinding, fullBinding, 'the BINDING round-trips verbatim inside the frozen snapshot')
+  assert.deepEqual(imported.animation.getAttempt(root.attempt.id).continuation, anim.getAttempt(root.attempt.id).continuation, 'the continuation record round-trips')
+  const roundTripped = imported.documents.readBlob(registered.relPath)
+  assert.ok(roundTripped && roundTripped.equals(carryBytes), 'the ARTIFACT bytes round-trip content-addressed')
+  // The imported chain still derives: the mismatch walk over the imported
+  // rows reads the same truth (consistent here).
+  assert.equal(chainMismatch(imported.animation.getDocument(doc.id).body.chains[0], storeSourceOf(imported.animation)), null, 'the imported chain walks consistent')
 })

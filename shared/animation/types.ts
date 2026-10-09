@@ -14,9 +14,11 @@
  * decides 400 vs degrade. Beyond shape, the parser enforces the document's
  * internal pointer integrity, the same class as the spec's own "a span
  * connects key slots": a selectedCandidateId must live in its own slot, a
- * rolling reference must name one of its slot's attempts, an editorial
- * contribution must name an existing span (or carry spanId null — the
- * spanless whole-scene lane, task 13), an activeBindingVersion must be
+ * rolling reference must name one of its slot's attempts, a window slot's
+ * selection must name one of its own alternatives (extension lane Task 4),
+ * an editorial contribution must name an existing span (or carry spanId
+ * null — the spanless whole-scene lane, task 13), an activeBindingVersion
+ * must be
  * carried by the binding history (empty history allows only version 0 — the
  * pre-binding document), and entity ids are unique within their collection.
  * NOT enforced here (deliberately): editorial inFrame/outFrame ordering —
@@ -83,6 +85,42 @@ export type Span = {
   staleReasons: string[] // e.g. ['binding', 'pose', 'intent', 'settings']
 }
 
+/** One extension-chain window slot (the extension lane, spec
+ *  2026-10-08-animation-extension-lane-design.md §4's document model — the
+ *  key-slot pattern applied to windows): the landed EXTENSION attempt
+ *  alternatives for one new-time window, the slot's own EXPLICIT
+ *  selected-candidate pointer (one selection truth per slot,
+ *  server-enforced, lockable by the same lock class), and — lane Task 4's
+ *  widening of the plan's interface — the slot's RECORDED SOURCE (the
+ *  attempt whose carried tail the NEXT submission into this slot
+ *  conditions on: createWindowSlot sets it, rebindContinuation re-points
+ *  it, and the attempts already in the slot keep their own frozen
+ *  bindings, which are the per-attempt truth) plus the §8.3 stale-mark
+ *  pair in the span's own shape. The window vocabulary is its own:
+ *  'ancestry' — the window's selected ancestry moved (a reselected
+ *  ancestor window, or an explicit rebind); 'intent' — an authored-input
+ *  change on the span whose take roots the chain. Alternatives never
+ *  carry a mark (§5.3/§8.3 extended to chains). */
+export type WindowSlot = {
+  id: string // UUID
+  order: number
+  attempts: string[] // extension attempt ids — alternatives, takes preserved (§8.3)
+  selectedCandidateId: string | null // an attempt id of THIS slot — never implicit in landing
+  lock: boolean
+  sourceAttemptId: string // the RECORDED source — the next submission's binding source
+  stale: boolean
+  staleReasons: string[] // e.g. ['ancestry', 'intent']
+}
+
+/** The extension chain (§4): rooted at the source attempt the first Extend
+ *  acted on, owning an ordered window-slot list. Extending the root or a
+ *  window's SELECTED candidate appends the next window to the rooted
+ *  chain; extending an UNSELECTED alternative BRANCHES — a new chain
+ *  rooted at that alternative (the re-roll shape applied to chains). The
+ *  branch's own root is a member of its parent chain's windows; traversal
+ *  composes through attempt bindings, never through slot lists alone. */
+export type ExtensionChain = { rootAttemptId: string; windows: WindowSlot[] }
+
 export type BindingVersion = {
   version: number
   characterDescription: string
@@ -105,6 +143,10 @@ export type EditorialContribution = { id: string; spanId: string | null; attempt
 export type AnimationDocumentBody = {
   keys: KeySlot[]
   spans: Span[]
+  /** The extension chains (§4, lane Task 4) — ABSENT in bodies the older
+   *  build wrote; parseAnimationDocumentBody reads absence as the
+   *  pre-chain document ([]), and every persist materializes the field. */
+  chains: ExtensionChain[]
   bindingHistory: BindingVersion[]
   activeBindingVersion: number
   editorial: EditorialContribution[]
@@ -166,18 +208,18 @@ export type FrozenAttemptSnapshot = {
    *  comparison). Plain attempts leave it unset — the standing lane never
    *  digests anything. */
   modelIdentities?: ModelContentIdentity[]
-  /** EXTENSION-LANE targets only (spec §5/§6, lane Task 3 — the frozen
-   *  binding's SEED; Task 4's ContinuationBinding widens this block with the
-   *  window coordinates, the recipe, and the conditioning record): the
-   *  source attempt whose carried tail this window conditions on, plus the
-   *  SOURCE's frozen model identities (copied verbatim from the source's
-   *  `modelIdentities` at binding creation). At dispatch the target's
-   *  freshly resolved identities must MATCH this set — filenames alias;
-   *  weights replaced under an unchanged name refuse by name. */
-  continuationBinding?: {
-    sourceAttemptId: string
-    modelIdentities: ModelContentIdentity[]
-  }
+  /** EXTENSION-LANE targets only (spec §5/§6, lane Tasks 3–4): the frozen
+   *  continuation binding. Task 3 landed the SEED (the strict prefix —
+   *  rows the Task-3-era build wrote carry exactly that shape, and the
+   *  dispatch gate narrows to it); Task 4 widens the record to the full
+   *  §5 contract (the window coordinates, head trim, delivered range, the
+   *  artifact identity, the recipe, the conditioning) — frozen WHOLE at
+   *  submission by the extend route (Task 5, server-side: the source
+   *  row's frozen model identities copied verbatim, never a client echo)
+   *  and never edited afterwards: rebinding produces a NEW attempt, never
+   *  a write to this field on an existing row (the append-only trigger
+   *  enforces the row half of that contract). */
+  continuationBinding?: ContinuationBinding | ContinuationBindingSeed
 }
 
 export type AttemptExecutionState = 'queued' | 'rendering' | 'preparing' | 'ready' | 'failed' | 'cancelled' | 'interrupted' | 'reconciling'
@@ -352,6 +394,137 @@ export function parseModelContentIdentities(value: unknown): ModelContentIdentit
     identities.push(identity)
   }
   return identities
+}
+
+// ---------------------------------------------------------------------------
+// the continuation binding (the extension lane, spec §5 — the frozen record)
+// ---------------------------------------------------------------------------
+
+/** The binding's SEED — Task 3's two fields, the strict prefix of the full
+ *  record. Its own type because rows the Task-3-era build wrote carry
+ *  exactly this shape and every reader of a binding narrows to it first
+ *  (the dispatch gate's read is the seed, whether the row carries the
+ *  prefix or the full record). */
+export type ContinuationBindingSeed = {
+  sourceAttemptId: string
+  modelIdentities: ModelContentIdentity[]
+}
+
+/** The FULL frozen record (spec §5, verbatim fields): the source attempt
+ *  (the landed render whose tail is carried), the pinned tail's window
+ *  coordinates (GENERATED frames — the raw window's range on the 17k+5
+ *  grid, the latent's own world) and the temporal phase the conditioning
+ *  requires, the HEAD TRIM, the DELIVERED range (the user's world, after
+ *  the pinned head is trimmed), the carried state's content-addressed
+ *  artifact identity (its AVAILABILITY is tracked separately, §7 — the
+ *  record stays truthful even when the state it names is gone), the join
+ *  recipe and its version, the resolved MODEL CONTENT IDENTITIES (copied
+ *  verbatim from the source's frozen set, never re-derived), and the
+ *  conditioning inputs (the caption as compiled for the sampled window,
+ *  its compiler version, the image references in force). */
+export type ContinuationBinding = ContinuationBindingSeed & {
+  windowCoordinates: { generatedStart: number; generatedEnd: number; phase: string }
+  headTrim: number
+  deliveredRange: { start: number; end: number }
+  artifact: { artifactId: string; digest: string }
+  recipe: { mode: string; contextLength: number; schedule: unknown; steps: number; seed: number; recipeVersion: string }
+  conditioning: { caption: string; compilerVersion: string; referenceAssetIds: string[] }
+}
+
+/** The explicit d ↔ g = d + trim mapping (§6): a delivered frame addresses
+ *  the generated frame `headTrim` frames later. The ONE place the
+ *  coordinate translation is defined — the UI's delivered-tail display and
+ *  the next window's generated reference both derive through it; recovery
+ *  and replay use the frozen mapping, never recomputed geometry. */
+export function continuationGeneratedFrame(deliveredFrame: number, headTrim: number): number {
+  return deliveredFrame + headTrim
+}
+
+/** The §5 record's shape, whole and strict — null on ANY malformation (the
+ *  module's parser contract). The seed validates first (a UUID source, a
+ *  well-formed identity set), then every widened field; `schedule` rides
+ *  as opaque JSON — its shape is the recipe's own versioned contract, not
+ *  this module's. Cross-field legality (the overlap recipe's constraints,
+ *  delivered length = generated length − trim) is the extend route's
+ *  freeze-time check (Task 5), deliberately not re-derived here. */
+export function parseContinuationBinding(value: unknown): ContinuationBinding | null {
+  if (!isRecord(value)) return null
+  const { sourceAttemptId, modelIdentities, windowCoordinates, headTrim, deliveredRange, artifact, recipe, conditioning } = value
+  if (!isUuid(sourceAttemptId)) return null
+  const identities = parseModelContentIdentities(modelIdentities)
+  if (identities === null) return null
+  if (!isRecord(windowCoordinates)) return null
+  const { generatedStart, generatedEnd, phase } = windowCoordinates
+  if (!isNonNegativeInt(generatedStart) || !isPositiveInt(generatedEnd) || generatedEnd <= generatedStart) return null
+  if (!isNonEmptyString(phase)) return null
+  if (!isNonNegativeInt(headTrim)) return null
+  if (!isRecord(deliveredRange)) return null
+  const { start, end } = deliveredRange
+  if (!isNonNegativeInt(start) || !isPositiveInt(end) || end <= start) return null
+  if (!isRecord(artifact) || !isUuid(artifact.artifactId)) return null
+  if (typeof artifact.digest !== 'string' || !SHA256_HEX_RE.test(artifact.digest)) return null
+  if (!isRecord(recipe)) return null
+  if (!isNonEmptyString(recipe.mode)) return null
+  if (!isPositiveInt(recipe.contextLength)) return null
+  if (recipe.schedule === undefined) return null
+  if (!isPositiveInt(recipe.steps)) return null
+  if (!isNonNegativeInt(recipe.seed)) return null
+  if (!isNonEmptyString(recipe.recipeVersion)) return null
+  if (!isRecord(conditioning)) return null
+  if (typeof conditioning.caption !== 'string' || conditioning.caption.length === 0 || conditioning.caption.length > 20_000) return null
+  if (!isNonEmptyString(conditioning.compilerVersion)) return null
+  if (!Array.isArray(conditioning.referenceAssetIds) || !conditioning.referenceAssetIds.every((id): id is string => isNonEmptyString(id))) return null
+  return {
+    sourceAttemptId,
+    modelIdentities: identities,
+    windowCoordinates: { generatedStart, generatedEnd, phase },
+    headTrim,
+    deliveredRange: { start, end },
+    artifact: { artifactId: artifact.artifactId, digest: artifact.digest },
+    recipe: { mode: recipe.mode, contextLength: recipe.contextLength, schedule: recipe.schedule, steps: recipe.steps, seed: recipe.seed, recipeVersion: recipe.recipeVersion },
+    conditioning: { caption: conditioning.caption, compilerVersion: conditioning.compilerVersion, referenceAssetIds: conditioning.referenceAssetIds },
+  }
+}
+
+/** The DERIVED ancestry-mismatch state (§4 — "the mismatch state is
+ *  derived, never silent"): the assembled preview walks window slots in
+ *  order, following each window's own recorded frozen source (its SELECTED
+ *  attempt's binding source) backward. A window whose source is not the
+ *  chain root and not the CURRENT SELECTION of the slot holding it (B
+ *  extends A1; the ancestor slot now selects A2) is a NAMED mismatch —
+ *  surfaced, never silently assembled from unrelated ancestry. The
+ *  resolutions are the two explicit commands: select the ancestor's
+ *  `expectedSelection` back, or rebind this window to the ancestor's
+ *  current selection. `sourceOf` resolves an attempt id to ITS binding's
+ *  source attempt (null for a plain take or an unknown attempt) — the
+ *  store walks rows server-side; the client walks its view (Task 6).
+ *  Locks never hide a mismatch: this is derived truth, not a command. */
+export type ChainMismatch = {
+  windowSlotId: string // the descendant whose live edge is broken
+  selectedAttemptId: string // its selected attempt — the conditioned take
+  sourceAttemptId: string // the frozen source its binding names
+  ancestorSlotId: string | null // null ⇒ the source is not a member of this chain at all
+  expectedSelection: string // the attempt the ancestor must select to restore the path
+}
+
+export function chainMismatch(chain: ExtensionChain, sourceOf: (attemptId: string) => string | null): ChainMismatch | null {
+  const windows = [...chain.windows].sort((a, b) => a.order - b.order)
+  for (const window of windows) {
+    if (window.selectedCandidateId === null) continue
+    const source = sourceOf(window.selectedCandidateId)
+    if (source === null || source === chain.rootAttemptId) continue
+    const ancestor = chain.windows.find((slot) => slot.attempts.includes(source)) ?? null
+    if (ancestor === null || ancestor.selectedCandidateId !== source) {
+      return {
+        windowSlotId: window.id,
+        selectedAttemptId: window.selectedCandidateId,
+        sourceAttemptId: source,
+        ancestorSlotId: ancestor === null ? null : ancestor.id,
+        expectedSelection: source,
+      }
+    }
+  }
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -610,6 +783,59 @@ function parseBindingVersion(value: unknown): BindingVersion | null {
   return { version, characterDescription, referenceAssetIds: parsedRefs, medium, initialKeyAssetId, boundAt }
 }
 
+function parseWindowSlot(value: unknown): WindowSlot | null {
+  if (!isRecord(value)) return null
+  const { id, order, attempts, selectedCandidateId, lock, sourceAttemptId, stale, staleReasons } = value
+  if (!isUuid(id)) return null
+  if (!isNonNegativeInt(order)) return null
+  if (!Array.isArray(attempts)) return null
+  const parsedAttempts: string[] = []
+  for (const raw of attempts) {
+    if (!isUuid(raw)) return null
+    parsedAttempts.push(raw)
+  }
+  if (selectedCandidateId !== null && !isUuid(selectedCandidateId)) return null
+  if (typeof lock !== 'boolean') return null
+  if (!isUuid(sourceAttemptId)) return null
+  if (typeof stale !== 'boolean') return null
+  if (!Array.isArray(staleReasons)) return null
+  for (const raw of staleReasons) {
+    if (typeof raw !== 'string') return null
+  }
+  if (selectedCandidateId !== null && !parsedAttempts.includes(selectedCandidateId)) return null
+  return { id, order, attempts: parsedAttempts, selectedCandidateId, lock, sourceAttemptId, stale, staleReasons }
+}
+
+/** A chain's internal integrity: unique window ids and orders, and one
+ *  window per attempt within the chain (a window's alternatives are its
+ *  own; an attempt can be a MEMBER of only one window — branch roots are
+ *  referenced by their OWN chain's rootAttemptId, and may simultaneously
+ *  be members of the parent chain's window, which is the branch shape). */
+function parseExtensionChain(value: unknown): ExtensionChain | null {
+  if (!isRecord(value)) return null
+  const { rootAttemptId, windows } = value
+  if (!isUuid(rootAttemptId)) return null
+  if (!Array.isArray(windows)) return null
+  const parsedWindows: WindowSlot[] = []
+  const windowIds = new Set<string>()
+  const orders = new Set<number>()
+  const members = new Set<string>()
+  for (const raw of windows) {
+    const window = parseWindowSlot(raw)
+    if (!window) return null
+    if (windowIds.has(window.id)) return null
+    if (orders.has(window.order)) return null
+    windowIds.add(window.id)
+    orders.add(window.order)
+    for (const attempt of window.attempts) {
+      if (members.has(attempt)) return null
+      members.add(attempt)
+    }
+    parsedWindows.push(window)
+  }
+  return { rootAttemptId, windows: parsedWindows }
+}
+
 function parseEditorialContribution(value: unknown, spanIds: ReadonlySet<string>): EditorialContribution | null {
   if (!isRecord(value)) return null
   const { id, spanId, attemptId, inFrame, outFrame, holdDuration } = value
@@ -637,7 +863,7 @@ function parseAnimationSettings(value: unknown): AnimationDocumentBody['settings
 
 export function parseAnimationDocumentBody(value: unknown): AnimationDocumentBody | null {
   if (!isRecord(value)) return null
-  const { keys, spans, bindingHistory, activeBindingVersion, editorial, settings } = value
+  const { keys, spans, chains, bindingHistory, activeBindingVersion, editorial, settings } = value
   if (!Array.isArray(keys)) return null
   if (!Array.isArray(spans)) return null
   if (!Array.isArray(bindingHistory)) return null
@@ -664,6 +890,30 @@ export function parseAnimationDocumentBody(value: unknown): AnimationDocumentBod
     if (spanIds.has(span.id)) return null
     spanIds.add(span.id)
     parsedSpans.push(span)
+  }
+
+  // The extension chains — ABSENT reads as the pre-chain document ([]):
+  // rows the older build wrote keep parsing whole (the TweenStepSlot
+  // widening-read family — a widening read, never a downgrade), and the
+  // store's persist always materializes the field. Present-but-malformed
+  // refuses like any other collection: unique roots, window ids unique
+  // across the whole document (one window slot id, one slot).
+  const parsedChains: ExtensionChain[] = []
+  if (chains !== undefined) {
+    if (!Array.isArray(chains)) return null
+    const roots = new Set<string>()
+    const windowIds = new Set<string>()
+    for (const raw of chains) {
+      const chain = parseExtensionChain(raw)
+      if (!chain) return null
+      if (roots.has(chain.rootAttemptId)) return null
+      roots.add(chain.rootAttemptId)
+      for (const window of chain.windows) {
+        if (windowIds.has(window.id)) return null
+        windowIds.add(window.id)
+      }
+      parsedChains.push(chain)
+    }
   }
 
   const parsedHistory: BindingVersion[] = []
@@ -694,6 +944,7 @@ export function parseAnimationDocumentBody(value: unknown): AnimationDocumentBod
   return {
     keys: parsedKeys,
     spans: parsedSpans,
+    chains: parsedChains,
     bindingHistory: parsedHistory,
     activeBindingVersion,
     editorial: parsedEditorial,

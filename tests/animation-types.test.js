@@ -18,8 +18,11 @@ import {
   mediumFromChipId,
   parseKeyCandidate,
   parseAnimationDocumentBody,
+  parseContinuationBinding,
   parseModelContentIdentity,
   parseModelContentIdentities,
+  chainMismatch,
+  continuationGeneratedFrame,
   animationInputHash,
   readCarrySaveRecipe,
 } from '../shared/animation/types'
@@ -28,8 +31,10 @@ const uuid = () => randomUUID()
 
 // A fully-populated valid body: two keys (three candidates across the four
 // origins), one span (two step slots — one with attempts + a selected rolling
-// reference, one empty), one binding version, one editorial contribution,
-// every optional field exercised somewhere.
+// reference, one empty), one extension chain (two window slots — one with
+// alternatives + a selection + its recorded source, one locked + stale with
+// the chain's own reason vocabulary), one binding version, one editorial
+// contribution, every optional field exercised somewhere.
 function makeBody() {
   const keyA = uuid()
   const keyB = uuid()
@@ -43,6 +48,12 @@ function makeBody() {
   const attemptA = uuid()
   const attemptB = uuid()
   const attemptEditorial = uuid()
+  const chainRoot = uuid()
+  const window1 = uuid()
+  const window2 = uuid()
+  const attemptExtA = uuid()
+  const attemptExtB = uuid()
+  const attemptExtC = uuid()
   return {
     keys: [
       {
@@ -111,6 +122,15 @@ function makeBody() {
         staleReasons: ['binding', 'pose'],
       },
     ],
+    chains: [
+      {
+        rootAttemptId: chainRoot,
+        windows: [
+          { id: window1, order: 0, attempts: [attemptExtA, attemptExtB], selectedCandidateId: attemptExtA, lock: false, sourceAttemptId: chainRoot, stale: false, staleReasons: [] },
+          { id: window2, order: 1, attempts: [attemptExtC], selectedCandidateId: null, lock: true, sourceAttemptId: attemptExtA, stale: true, staleReasons: ['ancestry', 'intent'] },
+        ],
+      },
+    ],
     bindingHistory: [
       {
         version: 1,
@@ -164,6 +184,23 @@ test('parseAnimationDocumentBody enforces the internal pointer integrity', () =>
     body.bindingHistory.push({ ...body.bindingHistory[0], boundAt: 1759800001000 })
   })
   rejects('two key slots sharing an id', (body) => { body.keys[1].id = body.keys[0].id })
+  // The extension chains (lane Task 4, §4): shape + the chain's own pointer
+  // integrity — a window's selection names one of ITS alternatives, the
+  // recorded source is a UUID, and one window per attempt within a chain.
+  rejects('chains is not an array', (body) => { body.chains = { 0: body.chains[0] } })
+  rejects('a chain root that is not a UUID', (body) => { body.chains[0].rootAttemptId = 'not-a-uuid' })
+  rejects('two chains rooted at the same attempt', (body) => { body.chains.push(JSON.parse(JSON.stringify(body.chains[0]))) })
+  rejects('a window id shared across chains', (body) => {
+    const branch = JSON.parse(JSON.stringify(body.chains[0]))
+    branch.rootAttemptId = branch.windows[0].attempts[1]
+    branch.windows = [{ ...branch.windows[0], id: body.chains[0].windows[1].id, attempts: [uuid()] }]
+    body.chains.push(branch)
+  })
+  rejects('a window selection pointing outside its own slot', (body) => { body.chains[0].windows[0].selectedCandidateId = uuid() })
+  rejects('a window whose recorded source is not a UUID', (body) => { body.chains[0].windows[0].sourceAttemptId = 'nope' })
+  rejects('two windows of one chain sharing an order', (body) => { body.chains[0].windows[1].order = 0 })
+  rejects('one attempt sitting in two windows of the same chain', (body) => { body.chains[0].windows[1].attempts.push(body.chains[0].windows[0].attempts[0]) })
+  rejects('a window staleReasons entry that is not a string', (body) => { body.chains[0].windows[0].staleReasons = [7] })
   // Task 13 — the spanless editorial lane (§11.2: a sequence attempt owns no
   // span, so its contribution carries spanId null — a whole-scene render);
   // a NON-null spanId still must name an existing span.
@@ -418,4 +455,136 @@ test('parseModelContentIdentities round-trips identity sets and refuses every ma
   assert.equal(parseModelContentIdentities('no'), null, 'not an array')
   assert.equal(parseModelContentIdentities([valid[0], { name: 'y.safetensors', digest: 'z', bytes: 2 }]), null, 'one malformed entry refuses the whole set')
   assert.equal(parseModelContentIdentities([valid[0], { ...valid[0] }]), null, 'a duplicate name refuses — one identity per slot')
+})
+
+// ---------------------------------------------------------------------------
+// the extension lane's document model (Task 4, spec §4/§5): the chains'
+// widening read, the full continuation binding, and the derived mismatch.
+// ---------------------------------------------------------------------------
+
+test('a body without chains parses as the pre-chain document — the widening read (lane Task 4)', () => {
+  const body = makeBody()
+  delete body.chains
+  const parsed = parseAnimationDocumentBody(body)
+  assert.notEqual(parsed, null, 'a pre-chain body parses whole')
+  assert.deepEqual(parsed.chains, [], 'the absent collection reads as empty — a widening read, never a downgrade')
+})
+
+test('parseContinuationBinding round-trips the full §5 record and refuses every malformation (lane Task 4)', () => {
+  const sha256 = (label) => require('node:crypto').createHash('sha256').update(label).digest('hex')
+  const binding = {
+    sourceAttemptId: uuid(),
+    modelIdentities: [
+      { name: 'ref2va_int8.safetensors', digest: sha256('unet'), bytes: 9_000_000_000 },
+      { name: 'h3_tween_adapter.safetensors', digest: sha256('adapter'), bytes: 300_000_000 },
+    ],
+    windowCoordinates: { generatedStart: 0, generatedEnd: 21, phase: '17k+5' },
+    headTrim: 5,
+    deliveredRange: { start: 0, end: 16 },
+    artifact: { artifactId: uuid(), digest: sha256('carry-bytes') },
+    recipe: { mode: 'mctx-latent-tail', contextLength: 22, schedule: { shift: '12/3', cfg: 1 }, steps: 30, seed: 7, recipeVersion: 'extension-v1' },
+    conditioning: { caption: 'she strides on through the rain, coat swinging', compilerVersion: '2', referenceAssetIds: [uuid(), uuid()] },
+  }
+  const parsed = parseContinuationBinding(binding)
+  assert.notEqual(parsed, null, 'the full record parses')
+  assert.deepEqual(parsed, binding, 'every §5 field survives the round-trip verbatim')
+
+  // The seed alone is NOT a full record — the strict reader refuses the
+  // prefix (the seed reader is the dispatch gate's own narrow, Task 3).
+  const seed = { sourceAttemptId: binding.sourceAttemptId, modelIdentities: binding.modelIdentities }
+  assert.equal(parseContinuationBinding(seed), null, 'the seed alone is not the full record')
+
+  const refuse = (label, mutate) => {
+    const mutated = JSON.parse(JSON.stringify(binding))
+    mutate(mutated)
+    assert.equal(parseContinuationBinding(mutated), null, label)
+  }
+  refuse('a source that is not a UUID', (b) => { b.sourceAttemptId = 'nope' })
+  refuse('a malformed identity set', (b) => { b.modelIdentities[0].digest = 'not-hex' })
+  refuse('windowCoordinates missing', (b) => { delete b.windowCoordinates })
+  refuse('a degenerate generated range', (b) => { b.windowCoordinates.generatedEnd = b.windowCoordinates.generatedStart })
+  refuse('an empty phase', (b) => { b.windowCoordinates.phase = '' })
+  refuse('a negative head trim', (b) => { b.headTrim = -1 })
+  refuse('a degenerate delivered range', (b) => { b.deliveredRange.end = b.deliveredRange.start })
+  refuse('a non-UUID artifact id', (b) => { b.artifact.artifactId = 'x' })
+  refuse('a non-sha256 artifact digest', (b) => { b.artifact.digest = 'zz' })
+  refuse('a missing schedule', (b) => { delete b.recipe.schedule })
+  refuse('a zero context length', (b) => { b.recipe.contextLength = 0 })
+  refuse('a zero step count', (b) => { b.recipe.steps = 0 })
+  refuse('a negative seed', (b) => { b.recipe.seed = -1 })
+  refuse('an empty recipe version', (b) => { b.recipe.recipeVersion = '' })
+  refuse('an empty caption', (b) => { b.conditioning.caption = '' })
+  refuse('a 20,001-character caption', (b) => { b.conditioning.caption = 'x'.repeat(20_001) })
+  refuse('a non-string reference asset id', (b) => { b.conditioning.referenceAssetIds = [7] })
+  refuse('a non-string compiler version', (b) => { b.conditioning.compilerVersion = 2 })
+
+  // The coordinate mapping (§6's explicit d ↔ g = d + trim).
+  assert.equal(continuationGeneratedFrame(0, 5), 5, 'delivered frame 0 is generated frame 5 under a 5-frame head trim')
+  assert.equal(continuationGeneratedFrame(16, 5), 21, 'the mapping holds at the delivered tail')
+})
+
+test('chainMismatch walks source-attempt edges: consistent chains pass, a reselected ancestor names the mismatch (lane Task 4)', () => {
+  const root = uuid()
+  const a1 = uuid()
+  const a2 = uuid()
+  const b1 = uuid()
+  const c1 = uuid()
+  const w1 = uuid()
+  const w2 = uuid()
+  const w3 = uuid()
+  // A1's binding: the root (an extension of the source take); B1 binds A1;
+  // C1 binds B1 — the three-generation chain.
+  const sources = new Map([[a1, root], [a2, root], [b1, a1], [c1, b1]])
+  const sourceOf = (attemptId) => sources.get(attemptId) ?? null
+  const chain = {
+    rootAttemptId: root,
+    windows: [
+      { id: w1, order: 0, attempts: [a1, a2], selectedCandidateId: a1, lock: false, sourceAttemptId: root, stale: false, staleReasons: [] },
+      { id: w2, order: 1, attempts: [b1], selectedCandidateId: b1, lock: false, sourceAttemptId: a1, stale: false, staleReasons: [] },
+      { id: w3, order: 2, attempts: [c1], selectedCandidateId: c1, lock: false, sourceAttemptId: b1, stale: false, staleReasons: [] },
+    ],
+  }
+
+  assert.equal(chainMismatch(chain, sourceOf), null, 'a chain whose ancestry edges all match the current selections is consistent')
+
+  // B extends A1; the ancestor slot now selects A2 — §4's exact case.
+  chain.windows[0].selectedCandidateId = a2
+  const mismatch = chainMismatch(chain, sourceOf)
+  assert.deepEqual(
+    mismatch,
+    { windowSlotId: w2, selectedAttemptId: b1, sourceAttemptId: a1, ancestorSlotId: w1, expectedSelection: a1 },
+    'the mismatch names the descendant, its selected take, the frozen source, the ancestor slot, and the selection that restores the path',
+  )
+  // The lock never hides it: the state is derived, not a command.
+  chain.windows[0].lock = true
+  assert.notEqual(chainMismatch(chain, sourceOf), null, 'a locked ancestor still mismatches visibly')
+
+  // The resolution the spec names first — reselect the compatible ancestry:
+  chain.windows[0].lock = false
+  chain.windows[0].selectedCandidateId = a1
+  assert.equal(chainMismatch(chain, sourceOf), null, 'reselecting the compatible ancestry restores the path')
+
+  // A source outside the chain (a dangling edge — corruption the derivation
+  // surfaces rather than papers over).
+  sources.set(b1, uuid())
+  const dangling = chainMismatch(chain, sourceOf)
+  assert.equal(dangling.ancestorSlotId, null, 'a source that is not a member of the chain reports no ancestor slot')
+  assert.equal(dangling.sourceAttemptId, sources.get(b1))
+
+  // Restore consistency; an UNSELECTED window carries no live edge of its
+  // own — skipped, never mismatched (a fresh, unreviewed window). But an
+  // ancestor whose selection is null while a descendant binds its attempt
+  // IS a mismatch: null is not the attempt the descendant was conditioned
+  // on (§4's letter).
+  sources.set(b1, a1)
+  chain.windows[2].selectedCandidateId = null
+  assert.equal(chainMismatch(chain, sourceOf), null, 'an unselected window carries no live edge — nothing to check for it')
+  chain.windows[1].selectedCandidateId = null
+  chain.windows[2].selectedCandidateId = c1
+  const unselectedAncestor = chainMismatch(chain, sourceOf)
+  assert.deepEqual(
+    unselectedAncestor,
+    { windowSlotId: w3, selectedAttemptId: c1, sourceAttemptId: b1, ancestorSlotId: w2, expectedSelection: b1 },
+    'a descendant of an UNSELECTED ancestor mismatches — the edge cannot assemble from no selection',
+  )
 })
