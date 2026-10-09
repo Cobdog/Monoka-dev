@@ -96,11 +96,13 @@ export type Span = {
  *  conditions on: createWindowSlot sets it, rebindContinuation re-points
  *  it, and the attempts already in the slot keep their own frozen
  *  bindings, which are the per-attempt truth) plus the §8.3 stale-mark
- *  pair in the span's own shape. The window vocabulary is its own:
- *  'ancestry' — the window's selected ancestry moved (a reselected
- *  ancestor window, or an explicit rebind); 'intent' — an authored-input
- *  change on the span whose take roots the chain. Alternatives never
- *  carry a mark (§5.3/§8.3 extended to chains). */
+ *  pair in the span's own shape. The window vocabulary: 'ancestry' — the
+ *  window's selected ancestry moved (a reselected ancestor window, or an
+ *  explicit rebind); 'intent' — an authored-input change on the span
+ *  whose take roots the chain (span-scoped); 'binding' / 'settings' —
+ *  the document-global authored inputs (identity, the operating point),
+ *  marking every window exactly as they mark every span. Alternatives
+ *  never carry a mark (§5.3/§8.3 extended to chains). */
 export type WindowSlot = {
   id: string // UUID
   order: number
@@ -109,7 +111,7 @@ export type WindowSlot = {
   lock: boolean
   sourceAttemptId: string // the RECORDED source — the next submission's binding source
   stale: boolean
-  staleReasons: string[] // e.g. ['ancestry', 'intent']
+  staleReasons: string[] // e.g. ['ancestry', 'binding', 'settings']
 }
 
 /** The extension chain (§4): rooted at the source attempt the first Extend

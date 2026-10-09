@@ -1555,3 +1555,134 @@ test('(k6) the project archive round-trips chains + bindings + artifacts (its ow
   // rows reads the same truth (consistent here).
   assert.equal(chainMismatch(imported.animation.getDocument(doc.id).body.chains[0], storeSourceOf(imported.animation)), null, 'the imported chain walks consistent')
 })
+
+// ---------------------------------------------------------------------------
+// (k7) the fix round's I-1 + M-2 — the document-global authored inputs
+//      (binding, settings) mark EVERY chain window exactly as they mark
+//      every span (§8.3's own sentence), and an ancestry displacement marks
+//      a BRANCH chain rooted on the displaced lineage (the walk crosses
+//      chain boundaries through the attempt rows).
+// ---------------------------------------------------------------------------
+
+test('(k7) updateBinding/updateDocumentSettings mark every window; a branch on the displaced lineage marks too (I-1, M-2)', () => {
+  const before = anim.getDocument(docK.id)
+  // (k5) left w1 marked 'intent' only; the branch chain's window unmarked.
+  const w1Before = before.body.chains[0].windows[0]
+  assert.deepEqual(w1Before.staleReasons, ['intent'], 'the entry state: w1 carries the intent mark only')
+  assert.equal(before.body.chains[1].windows[0].staleReasons.length, 0, 'the branch window carries nothing')
+
+  // BINDING — identity is a document-global input to every take: every
+  // window of every chain marks 'binding', the spans' own rule verbatim.
+  let row = anim.updateBinding(docK.id, makeBinding({ characterDescription: 'a courier, older coat' }), before.revision)
+  for (const chain of row.body.chains) {
+    for (const window of chain.windows) {
+      assert.ok(window.staleReasons.includes('binding'), `window ${window.id} marks binding`)
+    }
+  }
+  assert.ok(row.body.spans.every((span) => span.staleReasons.includes('binding')), 'every span still marks (the standing rule)')
+  assert.equal(row.body.bindingHistory.length, 2, 'the binding history is append-only')
+
+  // SETTINGS — the operating point is the same class: every window marks.
+  row = anim.updateDocumentSettings(docK.id, { steps: 33 }, row.revision)
+  for (const chain of row.body.chains) {
+    for (const window of chain.windows) {
+      assert.ok(window.staleReasons.includes('settings'), `window ${window.id} marks settings`)
+    }
+  }
+  assert.equal(row.body.settings.steps, 33)
+
+  // M-2 — a branch rooted ON THE DISPLACED LINEAGE: land an old-generation
+  // alternative in w2 (its binding names w1's selected take A1), branch a
+  // chain off it, select a take in the branch, then displace A1 in w1.
+  const rootChain = row.body.chains[0]
+  const w1 = rootChain.windows[0]
+  const w2 = rootChain.windows[1]
+  const a1 = w1.selectedCandidateId
+  const a2 = w1.attempts.find((id) => id !== a1)
+  const b2old = recordLandedExtension(anim, docK.id, w2.id, 'idem-k-ext-b2old', makeFullBinding(a1), row.revision)
+  let grown = anim.createWindowSlot(docK.id, b2old.id, anim.getDocument(docK.id).revision)
+  assert.equal(grown.body.chains.length, 3, 'the unselected alternative branched — a third chain rooted at it')
+  const branchOnLineage = grown.body.chains[2]
+  assert.equal(branchOnLineage.rootAttemptId, b2old.id)
+  const branchWindow = branchOnLineage.windows[0]
+  const takeD = recordLandedExtension(anim, docK.id, branchWindow.id, 'idem-k-d1', makeFullBinding(b2old.id), grown.revision)
+  row = anim.selectWindowCandidate(docK.id, branchWindow.id, takeD.id, anim.getDocument(docK.id).revision)
+
+  // The displacement: w1 selects the other alternative — A1 is what w2's
+  // takes AND the branch chain's whole lineage were conditioned on.
+  row = anim.selectWindowCandidate(docK.id, w1.id, a2, anim.getDocument(docK.id).revision)
+  const chainsAfter = row.body.chains
+  const rootAfter = chainsAfter[0]
+  assert.ok(rootAfter.windows[1].staleReasons.includes('ancestry'), 'the root chain\'s direct descendant marks (as before)')
+  const lineageBranch = chainsAfter.find((chain) => chain.rootAttemptId === b2old.id)
+  assert.ok(
+    lineageBranch.windows[0].staleReasons.includes('ancestry'),
+    'the BRANCH chain rooted on the displaced lineage marks too — the walk crosses chain boundaries through the attempt rows (M-2)',
+  )
+  const otherBranch = chainsAfter.find((chain) => chain.rootAttemptId === a2)
+  assert.ok(
+    !otherBranch.windows[0].staleReasons.includes('ancestry'),
+    'the branch rooted at the NEW selection is not on the displaced lineage — no ancestry mark',
+  )
+  // The derived mismatch on the ROOT chain still names the broken edge; the
+  // branch chain\'s own derivation skips its root (the mark is its prompt).
+  const sourceOf = storeSourceOf(anim)
+  assert.notEqual(chainMismatch(chainsAfter[0], sourceOf), null, 'the root chain mismatches')
+  assert.equal(chainMismatch(lineageBranch, sourceOf), null, 'the branch derivation root-skips its root — the MARK is the prompt (the M-4 residue rides Task 5)')
+  // Restore the compatible selection (marks stand, nothing new fires).
+  row = anim.selectWindowCandidate(docK.id, w1.id, a1, anim.getDocument(docK.id).revision)
+  assert.equal(chainMismatch(row.body.chains[0], sourceOf), null, 'the root chain derives consistent again')
+})
+
+// ---------------------------------------------------------------------------
+// (k8) the fix round's M-3 — corrupt truth mid-ancestry refuses LOUDLY:
+//      an unparseable snapshot and a malformed binding block each abort the
+//      marking command (nothing persisted), never a silently truncated walk
+//      that would under-mark descendants.
+// ---------------------------------------------------------------------------
+
+test('(k8) a corrupt snapshot or malformed binding mid-ancestry aborts the walk loudly; nothing persists (M-3)', () => {
+  const before = anim.getDocument(docK.id)
+  const rootChain = before.body.chains[0]
+  const w1 = rootChain.windows[0]
+  const w3 = rootChain.windows[2]
+  // Leg 2's substrate: a branch window holding takes but no selection (its
+  // selection displaces nothing, so the corruption it holds stays dormant
+  // until a displacement elsewhere walks through it).
+  const branchWindow = before.body.chains.flatMap((chain) => chain.windows).find((window) => window.attempts.length > 0 && window.selectedCandidateId === null)
+  assert.ok(branchWindow, 'an unselected branch window with attempts exists')
+
+  // Leg 1 — an UNPARSEABLE snapshot row the walk must descend through.
+  const corruptA = uuid()
+  db.prepare(
+    "INSERT INTO animation_attempt (id, document_id, tool, target_id, idempotency_key, input_hash, snapshot_json, engine_job_id, execution_json, preparation_json, result_json, own_revision, created_at, updated_at) VALUES (?, ?, 'tween', ?, ?, 'h-corr-a', ?, NULL, '{\"state\":\"ready\"}', '{\"state\":\"done\"}', NULL, 0, 1, 1)",
+  ).run(corruptA, docK.id, w3.id, 'idem-k-corrupt-a', '{"corrupt":')
+  const takeE = recordLandedExtension(anim, docK.id, w3.id, 'idem-k-ext-e', makeFullBinding(corruptA), before.revision)
+  assert.throws(
+    () => anim.selectWindowCandidate(docK.id, w3.id, takeE.id, anim.getDocument(docK.id).revision),
+    (err) => err instanceof Error && /ancestry walk refuses/.test(err.message) && /cannot parse/.test(err.message),
+    'selecting a take whose binding names the corrupt row aborts the walk loudly',
+  )
+  const afterThrow = anim.getDocument(docK.id)
+  assert.equal(afterThrow.body.chains[0].windows[2].selectedCandidateId, w3.attempts[0], 'the refused selection persisted nothing — the prior selection stands')
+  assert.equal(afterThrow.revision, before.revision, 'the aborted command bumped nothing (the extension landing rides no revision)')
+
+  // Leg 2 — a PARSEABLE snapshot whose binding block names a non-UUID
+  // source: equally corruption, equally loud.
+  const corruptB = uuid()
+  db.prepare(
+    "INSERT INTO animation_attempt (id, document_id, tool, target_id, idempotency_key, input_hash, snapshot_json, engine_job_id, execution_json, preparation_json, result_json, own_revision, created_at, updated_at) VALUES (?, ?, 'tween', ?, ?, 'h-corr-b', ?, NULL, '{\"state\":\"ready\"}', '{\"state\":\"done\"}', NULL, 0, 1, 1)",
+  ).run(corruptB, docK.id, branchWindow.id, 'idem-k-corrupt-b', JSON.stringify({ tool: 'tween', targetId: branchWindow.id, documentRevision: 0, continuationBinding: { sourceAttemptId: 'not-a-uuid' } }))
+  const takeF = recordLandedExtension(anim, docK.id, branchWindow.id, 'idem-k-ext-f', makeFullBinding(corruptB), afterThrow.revision)
+  // The branch window had no selection — selecting F displaces nothing, so
+  // no walk fires YET; the NEXT displacement anywhere walks through F.
+  const row = anim.selectWindowCandidate(docK.id, branchWindow.id, takeF.id, anim.getDocument(docK.id).revision)
+  const a1 = row.body.chains[0].windows[0].selectedCandidateId
+  const a2 = row.body.chains[0].windows[0].attempts.find((id) => id !== a1)
+  assert.throws(
+    () => anim.selectWindowCandidate(docK.id, w1.id, a2, anim.getDocument(docK.id).revision),
+    (err) => err instanceof Error && /ancestry walk refuses/.test(err.message) && /malformed continuation binding/.test(err.message),
+    'a displacement whose walk crosses the malformed binding aborts loudly',
+  )
+  assert.equal(anim.getDocument(docK.id).body.chains[0].windows[0].selectedCandidateId, a1, 'the refused displacement persisted nothing')
+})
