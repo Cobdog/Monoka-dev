@@ -369,3 +369,9 @@ approach any single-view A-pose geometry.
   displacement surrogate; seeds switched 421337→421421 after the collapse;
   the two gate recalibrations (§1); the three-quarter sheet view rendered
   a near-copy; the full-rank DMD probe leg not run (time).
+
+## The failure diagnosis (the maintainer's eye verdict: all degraded; diagnosis 2026-10-08, setM-diagnosis.md)
+
+**ANCHOR-CAUSED.** The pack's 4-point/3-update DMD-r64 schedule is BIMODAL per (seed × repaint) on OOD line art at 1344x768: it lands (crisp, on-model — psnr_first_vs_ref 36.1-36.8) or misses at FRAME 0 (washed/faceted → wrong-identity → dark-mode; psnr 7.3-24.6). Deterministic (bit-identical through null/canary re-runs — not a transient). Inputs exonerated (same ref, different seeds, different grades). The eye's "all failed" vs the metrics' "identity held": 4 of 12 non-collapsed runs landed crisp; whole-frame dE diluted character damage 2-4x on a mostly-white canvas; the "~2 dE anchor" headline over-generalized the landers. CORRECTION: seed 421337 was mischaracterized — not a total collapse but a dark-mode basin (face renders a crisp on-model B on black). Secondary: the driving video's melted hands inherited by every arc; rep_control carried an edit-lane glyph (never propagated — harmless); the sheet arm fails BY DESIGN (the layout dominates: both runs rendered the poster, motion 24-30%).
+
+**The protocol fix (the re-run recipe):** a frame-0 ANCHOR GATE — accept only psnr_first_vs_ref >= ~30 with first-frame mean in band; seed-retry on reject — then re-run the battery; in parallel measure the anchor miss rate at the README's documented-stable reference schedule (6-8 steps, optionally 0.4-0.6 MP — the pack's own guidance for reference work at the top of the canvas range) before judging the operating point. Cheap regardless: re-author rep_control without the glyph; drop or re-scope the sheet arm (single-view per the pack's README).
