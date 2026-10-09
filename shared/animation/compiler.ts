@@ -40,6 +40,16 @@
  * unchanged (hero has no preservation field; sequence already compiles
  * its Preserve section).
  *
+ * VERSION 3 (the extension lane, spec 2026-10-08 §4/§9): the EXTENSION
+ * entry point — the tween dialect parameterized by the sampled window's
+ * time base. Its caption inserts a mechanical TIME section between TARGET
+ * END FRAME and MOVEMENT disclosing the prompt-time shift (the strategic
+ * review's finding: prompt times refer to the sampled window; delivery
+ * times shift after the head trim) — every extension caption carries the
+ * disclosure structurally, never only through diligent authoring. The
+ * three standing templates are byte-identical to v2 ('2' rows replay as
+ * captured, exactly as '1' rows did across the v2 bump).
+ *
  * NOT emitted: the `landing <progress>` token. Set K measured the lever
  * dead and spec §6.5 bans controls implying generation-time timing — the
  * tween MOVEMENT section carries the authored step and nothing else.
@@ -47,7 +57,7 @@
 import { ANIMATION_MEDIA, isFacingTerm, isMediumString } from './types'
 import type { AssetReference, FacingTerm, MediumString } from './types'
 
-export const COMPILER_VERSION = '2'
+export const COMPILER_VERSION = '3'
 
 export type PoseRef = { poseDescription: string | null; facing: FacingTerm | null }
 export type SessionOverrideInput = { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
@@ -89,6 +99,18 @@ export type SequenceContext = {
   orderedActions: string[]
   preservation: string
   overrides: SessionOverrideInput
+}
+
+/** EXTENSION (the extension lane, spec §4/§9): the tween dialect for one
+ *  continuation window — the same two in-force references (identity; the
+ *  carried tail supplies the motion), the window's OWN movement and
+ *  preservation text (a window is new time, authored against the sampled
+ *  window's time base), plus the geometry the TIME section discloses: the
+ *  SAMPLED length (the raw window the model sees), the PINNED length (the
+ *  carried tail occupying its head, trimmed on delivery), and the frame
+ *  rate both clocks run on. */
+export type ExtensionContext = TweenContext & {
+  window: { sampledLength: number; pinnedLength: number; fps: number }
 }
 
 /** The ONE return shape — both environments, both consumers. */
@@ -230,10 +252,26 @@ function pushNegationHint(hints: CaptionHint[], textLabel: string, text: string)
 }
 
 // ---------------------------------------------------------------------------
-// the three compilers — hints collect in a fixed order (comparative,
+// the compilers — hints collect in a fixed order (comparative,
 // missing-facing in frame order, contradictory-facing, negation in text
 // order) so a context always compiles to the same caption AND hints
 // ---------------------------------------------------------------------------
+
+/** The tween-family hint collection (shared by the tween and extension
+ *  compilers — the extension context IS the tween dialect plus the window
+ *  geometry, so its language checks are the same checks). */
+function tweenHints(ctx: TweenContext): CaptionHint[] {
+  const hints: CaptionHint[] = []
+  pushComparativeHint(hints, 'TARGET END FRAME', ctx.farReference.pose.poseDescription)
+  if (ctx.rollingReference.pose.facing === null) hints.push(missingFacingHint('FIRST FRAME'))
+  if (ctx.farReference.pose.facing === null) hints.push(missingFacingHint('TARGET END FRAME'))
+  pushContradictionHint(hints, 'The movement step', 'TARGET END FRAME', ctx.movementStep, ctx.farReference.pose.facing)
+  pushNegationHint(hints, 'The movement step', ctx.movementStep)
+  // The appended preservation is authored text like the movement — checked
+  // for negation on the same string the caption carries (the trimmed form).
+  pushNegationHint(hints, 'The preservation text', ctx.preservation.trim())
+  return hints
+}
 
 export function compileHeroCaption(ctx: HeroContext): CompiledCaption {
   guardMedium(ctx.overrides.medium)
@@ -257,15 +295,6 @@ export function compileTweenCaption(ctx: TweenContext): CompiledCaption {
   guardMedium(ctx.overrides.medium)
   guardPose(ctx.rollingReference.pose)
   guardPose(ctx.farReference.pose)
-  const hints: CaptionHint[] = []
-  pushComparativeHint(hints, 'TARGET END FRAME', ctx.farReference.pose.poseDescription)
-  if (ctx.rollingReference.pose.facing === null) hints.push(missingFacingHint('FIRST FRAME'))
-  if (ctx.farReference.pose.facing === null) hints.push(missingFacingHint('TARGET END FRAME'))
-  pushContradictionHint(hints, 'The movement step', 'TARGET END FRAME', ctx.movementStep, ctx.farReference.pose.facing)
-  pushNegationHint(hints, 'The movement step', ctx.movementStep)
-  // The appended preservation is authored text like the movement — checked
-  // for negation on the same string the caption carries (the trimmed form).
-  pushNegationHint(hints, 'The preservation text', ctx.preservation.trim())
   const caption = [
     sceneSection(ctx.overrides),
     frameLine('FIRST FRAME', 1, ctx.rollingReference.pose),
@@ -273,7 +302,45 @@ export function compileTweenCaption(ctx: TweenContext): CompiledCaption {
     `MOVEMENT: ${ctx.movementStep}`,
     tweenStaticSection(ctx.preservation),
   ].join('\n')
-  return { caption, hints, compilerVersion: COMPILER_VERSION }
+  return { caption, hints: tweenHints(ctx), compilerVersion: COMPILER_VERSION }
+}
+
+/** The prompt-time shift disclosure (§4's carry preview, frozen INTO the
+ *  caption — v3): prompt times address the sampled window, whose first
+ *  `pinned` frames are the carried tail the delivery trims. Mechanical
+ *  from the window geometry alone; seconds at two decimals. */
+function extensionTimeSection(window: ExtensionContext['window']): string {
+  const seconds = (frames: number): string => `${(frames / window.fps).toFixed(2)} s`
+  const sampled = seconds(window.sampledLength)
+  const pinned = seconds(window.pinnedLength)
+  return `TIME: prompt times address the sampled window — 0.00 s to ${sampled} (${window.sampledLength} frames at ${window.fps} fps); the pinned head occupies the first ${pinned} (sampled frames 0-${window.pinnedLength - 1}, trimmed on delivery); delivered frame 0 is sampled frame ${window.pinnedLength} (${pinned}).`
+}
+
+/** EXTENSION — the tween template with the TIME section between TARGET END
+ *  FRAME and MOVEMENT: the reader knows the window's time base before the
+ *  authored movement, which is written against it (§4: movement + text
+ *  authored against the window's time base, compiled through the tween
+ *  dialect with the prompt-time shift the carry preview discloses). */
+export function compileExtensionCaption(ctx: ExtensionContext): CompiledCaption {
+  guardMedium(ctx.overrides.medium)
+  guardPose(ctx.rollingReference.pose)
+  guardPose(ctx.farReference.pose)
+  const { sampledLength, pinnedLength, fps } = ctx.window
+  if (!Number.isInteger(sampledLength) || sampledLength < 5 || !Number.isInteger(pinnedLength) || pinnedLength < 1 || pinnedLength >= sampledLength) {
+    throw new Error(`The extension window geometry is malformed (sampled ${String(sampledLength)}, pinned ${String(pinnedLength)}) — the pinned head must be at least one frame and strictly shorter than the sampled window.`)
+  }
+  if (typeof fps !== 'number' || !Number.isFinite(fps) || fps <= 0) {
+    throw new Error('The extension window needs a positive frame rate for its TIME section.')
+  }
+  const caption = [
+    sceneSection(ctx.overrides),
+    frameLine('FIRST FRAME', 1, ctx.rollingReference.pose),
+    frameLine('TARGET END FRAME', 2, ctx.farReference.pose),
+    extensionTimeSection(ctx.window),
+    `MOVEMENT: ${ctx.movementStep}`,
+    tweenStaticSection(ctx.preservation),
+  ].join('\n')
+  return { caption, hints: tweenHints(ctx), compilerVersion: COMPILER_VERSION }
 }
 
 export function compileSequenceCaption(ctx: SequenceContext): CompiledCaption {

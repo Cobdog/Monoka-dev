@@ -91,8 +91,9 @@
 import { test, beforeAll, afterAll } from 'vitest'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { engineInputName } from '../shared/animation/graphs'
-import { animationInputHash } from '../shared/animation/types'
+import { engineInputName, CONTINUATION_OVERLAP_RECIPE } from '../shared/animation/graphs'
+import { animationInputHash, engineOutputCarryPath, parseContinuationBinding } from '../shared/animation/types'
+import { validateGraphAgainstSchemas } from '../src/lib/engineContract'
 
 const require = createRequire(import.meta.url)
 const __dirname = require('node:path').dirname(fileURLToPath(import.meta.url))
@@ -387,7 +388,7 @@ test('(a) bootstrap serves the vocabularies; document create/list/read round-tri
   const boot = await api.get('/api/lan/animation/bootstrap')
   assert.equal(boot.status, 200)
   assert.equal(boot.body.schemaVersion, 1, 'the animation document schema version')
-  assert.equal(boot.body.compilerVersion, '2', 'the shared caption compiler version (v2: the tween STATIC append)')
+  assert.equal(boot.body.compilerVersion, '3', 'the shared caption compiler version (v3: the extension lane TIME section; the standing templates byte-identical to v2)')
   assert.deepEqual(boot.body.media, ['clean line on white', 'flat black-and-white animatic', 'flat cel colour on white'])
   assert.deepEqual(boot.body.facingTerms, ['toward camera', 'back to camera', 'screen-left', 'screen-right'])
   assert.equal(boot.body.defaults.outputWidth, 1344)
@@ -611,7 +612,7 @@ test('(c) submit emits attempt-state envelopes on the animation channel; the lan
   assert.equal(heroState.body.attempt.sourceKeyId, keyC1, 'the frozen draft names the SOURCE key')
   assert.equal(heroState.body.attempt.movementArc, heroDraft(keyC1).movementArc, 'the authored arc froze verbatim')
   assert.ok(typeof heroState.body.attempt.caption === 'string' && heroState.body.attempt.caption.length > 0, 'the frozen compiled caption rides the view')
-  assert.equal(heroState.body.attempt.compilerVersion, '2', 'the compiler version that built the frozen caption')
+  assert.equal(heroState.body.attempt.compilerVersion, '3', 'the compiler version that built the frozen caption')
   assert.ok(!heroState.body.attempt.caption.includes('TARGET END FRAME'), 'the hero caption has NO destination section (§6.2)')
   // The §5.2 document truth: the clip lands into the PROPOSED slot (which
   // materializes with it, selection null — §5.3), and the SOURCE key is
@@ -1681,7 +1682,7 @@ test('(m) the annotate route lands the pointer annotation; the step-2 frozen cap
   )
   // The frozen reference's pose fields carry it too (the snapshot's truth).
   const annotatedView = (await apiD.get(`/api/lan/animation/attempt?id=${takeTwo.body.attemptId}`)).body.attempt
-  assert.equal(annotatedView.compilerVersion, '2', 'the compiler v2 built the annotated caption')
+  assert.equal(annotatedView.compilerVersion, '3', 'the compiler v3 built the annotated caption')
   // The v2 STATIC append (the live review's #3): the span's authored
   // preservation — persisted all along, never before compiled — rides the
   // frozen caption after the fixed hold.
@@ -1953,4 +1954,424 @@ test('(p) the chains route family — create-window answers the minted ids, the 
     serverP.child.kill('SIGKILL')
     await new Promise((resolve) => { const timer = setTimeout(resolve, 5_000); serverP.child.once('exit', () => { clearTimeout(timer); resolve() }) })
   }
+})
+
+// ---------------------------------------------------------------------------
+// (q) the EXTEND submission (extension lane Task 5, spec §4/§5/§6/§9/§10):
+//     the route's frozen record — the full ContinuationBinding with BOTH
+//     coordinate systems and their mapping, seeded SERVER-SIDE from the
+//     source row's stamp — the time-shifted caption, target-length freedom,
+//     the engine graph (the Motion Context conditioning + the trim), the
+//     delivered count end to end, and the second-extension coordinate chain.
+//     Two server lives: phase 1 boots WITHOUT the models root (the
+//     identity-evidence-unconfigured world — the carrying source lands
+//     playable but stamp-less), phase 2 configures the root and restarts.
+// ---------------------------------------------------------------------------
+
+const ANIMATION_PROFILE_Q = JSON.parse(fs.readFileSync(path.join(REPO, 'e2e/mirror/profiles/animation-h3.json'), 'utf8'))
+const REAL_INFO_Q = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts/fixtures/engine-object-info.json'), 'utf8')).nodes
+const EVIDENCE_KIND_FOLDERS_Q = { unet: 'diffusion_models', clip: 'text_encoders', vae: 'vae', lora: 'loras' }
+
+let apiQ = null
+let serverQ1 = null
+let serverQ2 = null
+let docQ = null
+let qSource = null      // { attemptId, stepSlotId } — the phase-2 carrying source
+let qWindowId = ''      // the window the happy extension landed into
+let qExtensionId = ''   // the happy extension's attempt id
+let qState = null       // (q)'s tail handoff to (r): { api, revision, secondWindowId, secondExtensionId }
+const qModelRoot = () => path.join(home, 'q-models')
+
+/** One small weight file per enumerated name — the configured models root a
+ *  same-box install presents (the rendering suite's fixture shape). */
+function buildEvidenceFixtureQ() {
+  const root = qModelRoot()
+  for (const [slot, kind] of Object.entries(EVIDENCE_KIND_FOLDERS_Q)) {
+    for (const name of ANIMATION_PROFILE_Q.loaderEnumerations[slot] ?? []) {
+      const file = path.join(root, kind, ...name.split('/').filter(Boolean))
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, Buffer.from(`routes-q-evidence-weight-bytes:${kind}:${name}`))
+    }
+  }
+}
+
+/** The raw attempt row from the scratch DB (the view never leaks the blob
+ *  path or the frozen binding). */
+function readAttemptRowQ(attemptId) {
+  const db = new Database(path.join(home, 'studio.db'))
+  try {
+    const row = db.prepare('SELECT snapshot_json, continuation_json FROM animation_attempt WHERE id = ?').get(attemptId)
+    if (!row) return null
+    return { snapshot: JSON.parse(row.snapshot_json), continuation: JSON.parse(row.continuation_json ?? 'null') }
+  } finally {
+    db.close()
+  }
+}
+
+const attemptStateQ = async (apiRef, attemptId) => (await apiRef.get(`/api/lan/animation/attempt?id=${attemptId}`)).body.attempt
+async function waitAttemptQ(apiRef, attemptId, predicate, label, timeoutMs = 30_000) {
+  await waitUntil(async () => {
+    const attempt = await attemptStateQ(apiRef, attemptId)
+    return attempt !== undefined && predicate(attempt)
+  }, timeoutMs, label)
+  return attemptStateQ(apiRef, attemptId)
+}
+
+/** Two selected keys + a span — the identity anchors the extension resolves
+ *  its references from. */
+async function makeSpanQ(apiRef, documentId, keyLabelA, keyLabelB) {
+  const first = await makeSelectedKey(apiRef, documentId, (await apiRef.get(`/api/lan/animation/document?id=${documentId}`)).body.document.revision, keyLabelA)
+  const second = await makeSelectedKey(apiRef, documentId, first.revision, keyLabelB)
+  const inserted = await apiRef.post('/api/lan/animation/spans', {
+    op: 'insert', documentId, expectedRevision: second.revision,
+    fromKeyId: first.keyId, toKeyId: second.keyId, intent: { movement: 'she strides on through the rain', preservation: 'the coat hem swings true' },
+  })
+  assert.equal(inserted.status, 200, `the span inserts (${inserted.body.error ?? ''})`)
+  const span = inserted.body.document.body.spans.find((entry) => entry.id === inserted.body.spanId)
+  return { spanId: span.id, stepSlotId: span.stepSlots[0].id, revision: inserted.body.document.revision }
+}
+
+/** A landed, carrying tween take over the REAL submit route — the chain's
+ *  root (draft.carry true is the flag's only entry: the route's freeze()
+ *  settings merge, never a client passthrough). */
+async function submitCarryingTweenQ(apiRef, documentId, stepSlotId, idem, movement) {
+  const submitted = await apiRef.post('/api/lan/animation/attempts', {
+    documentId, tool: 'tween', targetId: stepSlotId, idempotencyKey: idem,
+    draft: { tool: 'tween', targetStepSlotId: stepSlotId, movementStep: movement, overrides: { medium: 'clean line on white', scene: 'a rain-slick street' }, carry: true },
+  })
+  assert.equal(submitted.status, 200, `the carrying tween take submits (${submitted.body.error ?? ''})`)
+  const landed = await waitAttemptQ(apiRef, submitted.body.attemptId, (attempt) => attempt.execution === 'ready', 'the carrying tween take landing')
+  assert.ok(landed.candidate, 'the source landed a clip')
+  await waitAttemptQ(apiRef, submitted.body.attemptId, (attempt) => attempt.continuation.state === 'ready', 'the source carry registration')
+  return submitted.body.attemptId
+}
+
+const extendDraftQ = (movement) => ({
+  movement,
+  preservation: 'the coat hem and the earring hold',
+  overrides: { medium: 'clean line on white', scene: 'a rain-slick street' },
+})
+
+test('(q) the extend route — the frozen §5 record whole, both coordinate systems, the server-side seed, the conditioned graph, the delivered count, the second extension', async () => {
+  // ---- phase 1: NO models root — the carrying source lands STAMP-LESS ----
+  serverQ1 = await bootServer(home, 'animation-routes Q1')
+  apiQ = client(serverQ1.port)
+  const created1 = await apiQ.post('/api/lan/animation/documents', { projectId, name: 'Q-source', binding: makeBinding() })
+  assert.equal(created1.status, 200)
+  const docQ1 = created1.body.document
+  const chain1 = await makeSpanQ(apiQ, docQ1.id, 'q1a', 'q1b')
+  const stamplessSource = await submitCarryingTweenQ(apiQ, docQ1.id, chain1.stepSlotId, 'idem-q1-source', 'she breaks into a run, coat flaring behind her')
+  const stamplessRow = readAttemptRowQ(stamplessSource)
+  assert.equal(stamplessRow.continuation.state, 'ready', 'the artifact registered (availability held)')
+  assert.equal(stamplessRow.snapshot.modelIdentities, undefined, 'the identity stamp could not land — the evidence root is unconfigured (the never-hostage principle: playable, registration done, no stamp)')
+  const window1 = await apiQ.post('/api/lan/animation/chains', { op: 'create-window', documentId: docQ1.id, sourceAttemptId: stamplessSource, expectedRevision: chain1.revision })
+  assert.equal(window1.status, 200, `create-window lands (${window1.body.error ?? ''})`)
+  // Task 3's carried condition: a stamp-less source refuses NAMED, before
+  // any attempt row exists.
+  const stamplessExtend = await apiQ.post('/api/lan/animation/extend', {
+    documentId: docQ1.id, windowSlotId: window1.body.windowSlotId, sourceAttemptId: stamplessSource,
+    targetLength: 56, idempotencyKey: 'idem-q1-extend', draft: extendDraftQ('the run carries on'),
+  })
+  assert.equal(stamplessExtend.status, 400)
+  assert.match(stamplessExtend.body.error, /identity evidence missing/)
+  assert.match(stamplessExtend.body.error, new RegExp(stamplessSource))
+  const stamplessState = await attemptStateQ(apiQ, stamplessSource)
+  assert.equal(stamplessState.execution, 'ready', 'the source stays playable throughout')
+  serverQ1.child.kill('SIGKILL')
+  await new Promise((resolve) => { const timer = setTimeout(resolve, 5_000); serverQ1.child.once('exit', () => { clearTimeout(timer); resolve() }) })
+
+  // ---- phase 2: the models root configured — the stamped world ------------
+  buildEvidenceFixtureQ()
+  const settingsFile = path.join(home, 'settings.json')
+  const currentSettings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'))
+  fs.writeFileSync(settingsFile, JSON.stringify({ ...currentSettings, modelRoot: qModelRoot() }))
+  serverQ2 = await bootServer(home, 'animation-routes Q2')
+  const api2 = client(serverQ2.port)
+  apiQ = api2
+
+  const created2 = await api2.post('/api/lan/animation/documents', { projectId, name: 'Q-extend', binding: makeBinding() })
+  assert.equal(created2.status, 200)
+  docQ = created2.body.document
+  const chain2 = await makeSpanQ(api2, docQ.id, 'q2a', 'q2b')
+  qSource = { attemptId: await submitCarryingTweenQ(api2, docQ.id, chain2.stepSlotId, 'idem-q2-source', 'she rounds the corner at full stride'), stepSlotId: chain2.stepSlotId }
+  const sourceRow = readAttemptRowQ(qSource.attemptId)
+  assert.ok(Array.isArray(sourceRow.snapshot.modelIdentities) && sourceRow.snapshot.modelIdentities.length === 4, 'the submit-time stamp landed (four resolved slots)')
+  assert.ok(sourceRow.snapshot.modelIdentities.every((identity) => /^[0-9a-f]{64}$/.test(identity.digest)), 'every identity is a sha-256 digest')
+
+  const window = await api2.post('/api/lan/animation/chains', { op: 'create-window', documentId: docQ.id, sourceAttemptId: qSource.attemptId, expectedRevision: chain2.revision })
+  assert.equal(window.status, 200, `create-window lands (${window.body.error ?? ''})`)
+  qWindowId = window.body.windowSlotId
+  let revision = window.body.document.revision
+
+  // ---- §6: target-length freedom — the recipe governs, never the source's
+  // length. 22→56 is LEGAL (the whole point of the lane); the violations
+  // refuse named with nothing spent.
+  const engineCountBefore = await engineRecordCount()
+  const offGrid = await api2.post('/api/lan/animation/extend', {
+    documentId: docQ.id, windowSlotId: qWindowId, sourceAttemptId: qSource.attemptId,
+    targetLength: 50, idempotencyKey: 'idem-q-offgrid', draft: extendDraftQ('the run carries on'),
+  })
+  assert.equal(offGrid.status, 400)
+  assert.match(offGrid.body.error, /17k\+5/)
+  const notShorter = await api2.post('/api/lan/animation/extend', {
+    documentId: docQ.id, windowSlotId: qWindowId, sourceAttemptId: qSource.attemptId,
+    targetLength: 22, idempotencyKey: 'idem-q-notshorter', draft: extendDraftQ('the run carries on'),
+  })
+  assert.equal(notShorter.status, 400)
+  assert.match(notShorter.body.error, /strictly shorter/)
+  assert.equal(await engineRecordCount(), engineCountBefore, 'the recipe violations spent nothing')
+
+  // ---- the HAPPY freeze: 22 → 56 ----------------------------------------
+  const extended = await api2.post('/api/lan/animation/extend', {
+    documentId: docQ.id, windowSlotId: qWindowId, sourceAttemptId: qSource.attemptId,
+    targetLength: 56, idempotencyKey: 'idem-q-extend-1', draft: extendDraftQ('the stride opens through the hips, the coat settling'),
+  })
+  assert.equal(extended.status, 200, `the extension submits (${JSON.stringify(extended.body)})`)
+  assert.equal(extended.body.created, true)
+  qExtensionId = extended.body.attemptId
+
+  const row = readAttemptRowQ(qExtensionId)
+  const binding = row.snapshot.continuationBinding
+  assert.notEqual(binding, undefined, 'the frozen snapshot carries the binding')
+  assert.notEqual(parseContinuationBinding(binding), null, 'the frozen record parses as the FULL §5 shape (the route\'s own self-check\'s contract)')
+  // §5, field by field — the SERVER-SIDE seed (the source row's stamp copied
+  // verbatim, never a client echo — the body carried none).
+  assert.equal(binding.sourceAttemptId, qSource.attemptId)
+  assert.deepEqual(binding.modelIdentities, sourceRow.snapshot.modelIdentities, 'the binding copies the source row\'s frozen identities byte-for-byte')
+  assert.deepEqual(binding.windowCoordinates, { generatedStart: 0, generatedEnd: 22, phase: 'cycle-0' }, 'the pinned tail [0,22) of the 22-frame source, in GENERATED coordinates')
+  assert.equal(binding.headTrim, 22, 'the pinned head is the trim')
+  assert.deepEqual(binding.deliveredRange, { start: 0, end: 34 }, 'the delivered window is the target minus the trim')
+  assert.equal(binding.artifact.artifactId, sourceRow.continuation.artifact.artifactId, 'the opaque artifact handle — the registered record')
+  assert.equal(binding.artifact.digest, sourceRow.continuation.artifact.digest)
+  assert.equal(binding.recipe.mode, 'motion-context-tail')
+  assert.equal(binding.recipe.contextLength, CONTINUATION_OVERLAP_RECIPE.contextLength, 'the PROBE fallback context length freezes into the recipe')
+  assert.equal(binding.recipe.recipeVersion, CONTINUATION_OVERLAP_RECIPE.recipeVersion)
+  // (e) The probe-gated recipe values — the constants carry their PROBE
+  // markers with the fallbacks inline (the join-tuning probe is paused; v1
+  // ships Set L's measured point), and the offered set IS the node's own
+  // served combo (contract truth, read from the capture).
+  assert.deepEqual(
+    { contextLength: CONTINUATION_OVERLAP_RECIPE.contextLength, audioContextLength: CONTINUATION_OVERLAP_RECIPE.audioContextLength, recipeVersion: CONTINUATION_OVERLAP_RECIPE.recipeVersion },
+    { contextLength: 22, audioContextLength: 24, recipeVersion: 'overlap-recipe-v1-probe-pending' },
+    'the PROBE fallbacks: the 22f latent-tail context and 24f tail audio (Set L), under the probe-pending version string',
+  )
+  assert.deepEqual(
+    [...CONTINUATION_OVERLAP_RECIPE.offeredContextLengths].map(String).sort(),
+    [...REAL_INFO_Q.MiniMaxH3MotionContext.input.required.context_length[0]].sort(),
+    'the offered context lengths are the Motion Context node\'s own served combo (numbers here, strings on the wire) — whole latent steps only',
+  )
+  assert.equal(binding.recipe.schedule.audioContextLength, CONTINUATION_OVERLAP_RECIPE.audioContextLength, 'the audio tail rides the opaque schedule block')
+  assert.equal(typeof binding.recipe.seed, 'number')
+  // BOTH frame counts freeze, with the explicit mapping between them.
+  assert.equal(row.snapshot.settings.length, 56, 'the GENERATED count (the sampled window the model sees)')
+  assert.equal(binding.deliveredRange.end, 34, 'the DELIVERED count (what the trim leaves)')
+  assert.equal(binding.deliveredRange.end + binding.headTrim, row.snapshot.settings.length, 'the frozen mapping: delivered + trim = generated')
+  // The time-shifted caption + the conditioning inputs.
+  assert.equal(row.snapshot.compilerVersion, '3', 'compiler v3 built the extension caption')
+  const captionLines = row.snapshot.caption.split('\n')
+  assert.match(captionLines[3], /^TIME: prompt times address the sampled window/, 'the caption carries the prompt-time shift mechanically')
+  assert.ok(captionLines[3].includes('56 frames at 24 fps') && captionLines[3].includes('sampled frame 22'), 'the TIME line states the sampled window\'s clock and where delivery starts')
+  const freshBodyQ = (await api2.get(`/api/lan/animation/document?id=${docQ.id}`)).body.document.body
+  const freshSpanQ = freshBodyQ.spans.find((span) => span.id === chain2.spanId)
+  const nearAssetId = freshBodyQ.keys.find((entry) => entry.id === freshSpanQ.fromKeyId).candidates.find((entry) => entry.id === freshBodyQ.keys.find((entry) => entry.id === freshSpanQ.fromKeyId).selectedCandidateId).assetReference.assetId
+  const farAssetId = freshBodyQ.keys.find((entry) => entry.id === freshSpanQ.toKeyId).candidates.find((entry) => entry.id === freshBodyQ.keys.find((entry) => entry.id === freshSpanQ.toKeyId).selectedCandidateId).assetReference.assetId
+  assert.deepEqual(binding.conditioning.referenceAssetIds, [nearAssetId, farAssetId], 'the references in force (the root span\'s selected keys) freeze by asset id — the §2 contract, server-resolved')
+  assert.deepEqual(row.snapshot.references.map((entry) => entry.assetReference.assetId), [nearAssetId, farAssetId], 'the frozen references are the same two in-force images the tween adapters consume')
+  assert.equal(binding.conditioning.caption, row.snapshot.caption, 'the conditioning caption is the frozen caption')
+
+  // The extension itself CARRIES (settings.carry through the route's own
+  // freeze — the second extension's source artifact).
+  assert.equal(row.snapshot.settings.carry, true, 'the extension attempt carries its own tail')
+
+  // ---- the ENGINE graph: the Motion Context conditioning, end to end ----
+  await waitAttemptQ(api2, qExtensionId, (attempt) => attempt.execution === 'ready', 'the extension rendering')
+  const records = await engineRecordsFor(qExtensionId)
+  assert.equal(records.length, 1, 'exactly one engine submission')
+  const graph = records[0].prompt[2]
+  assert.deepEqual(validateGraphAgainstSchemas(graph, REAL_INFO_Q), [], 'the submitted extension graph passes the engine\'s own validation gate (the pack\'s classes are in the REAL capture)')
+  const load = Object.values(graph).find((node) => node.class_type === 'MiniMaxH3MotionContextLoadLatent')
+  const mctx = Object.values(graph).find((node) => node.class_type === 'MiniMaxH3MotionContext')
+  const trim = Object.values(graph).find((node) => node.class_type === 'MiniMaxH3MotionContextTrim')
+  assert.ok(load && mctx && trim, 'the Load / Motion Context / Trim chain rides the graph')
+  assert.deepEqual(load.inputs, { latent_path: engineOutputCarryPath(qSource.attemptId), clip_index: 1 }, 'the Load node addresses the registered carry at its deterministic engine path (the receipt contract\'s own fetch form)')
+  assert.equal(mctx.inputs.context_length, String(CONTINUATION_OVERLAP_RECIPE.contextLength), 'the node\'s combo value as a string')
+  assert.deepEqual(mctx.inputs.context_latent, [Object.keys(graph).find((id) => graph[id] === load), 0], 'the carried latent feeds the Motion Context')
+  const guider = Object.values(graph).find((node) => node.class_type === 'BasicGuider')
+  assert.deepEqual(guider.inputs.conditioning, [Object.keys(graph).find((id) => graph[id] === mctx), 0], 'the guider conditions on the Motion Context output')
+  assert.deepEqual(trim.inputs.trim_frames, [Object.keys(graph).find((id) => graph[id] === mctx), 1], 'the trim follows the node\'s own trim_frames answer')
+  const createVideo = Object.values(graph).find((node) => node.class_type === 'CreateVideo')
+  assert.deepEqual(createVideo.inputs.images, [Object.keys(graph).find((id) => graph[id] === trim), 0], 'the SAVED video is the trimmed (delivered) window')
+  assert.ok(Object.values(graph).some((node) => node.class_type === 'MiniMaxH3MotionContextSaveLatent'), 'the extension carries its own tail (the save node rides)')
+
+  // The DELIVERED count lands end to end: the fake engine lists the trimmed
+  // window and the port's history read accounts for the trim.
+  const landedExtension = await attemptStateQ(api2, qExtensionId)
+  assert.equal(landedExtension.candidate.frameCount, 34, 'the landed clip holds the delivered 34 frames (56 sampled − 22 pinned)')
+  await waitAttemptQ(api2, qExtensionId, (attempt) => attempt.continuation.state === 'ready', 'the extension\'s own carry registration')
+
+  // ---- idempotency at the route (§7.2.2): the retry answers the row -----
+  const engineCountLanded = await engineRecordCount()
+  const retried = await api2.post('/api/lan/animation/extend', {
+    documentId: docQ.id, windowSlotId: qWindowId, sourceAttemptId: qSource.attemptId,
+    targetLength: 56, idempotencyKey: 'idem-q-extend-1', draft: extendDraftQ('the stride opens through the hips, the coat settling'),
+  })
+  assert.equal(retried.status, 200, `the same-key retry resolves (${JSON.stringify(retried.body)})`)
+  assert.equal(retried.body.created, false)
+  assert.equal(retried.body.attemptId, qExtensionId)
+  assert.equal(await engineRecordCount(), engineCountLanded, 'no second engine submission')
+  const conflicting = await api2.post('/api/lan/animation/extend', {
+    documentId: docQ.id, windowSlotId: qWindowId, sourceAttemptId: qSource.attemptId,
+    targetLength: 39, idempotencyKey: 'idem-q-extend-1', draft: extendDraftQ('the stride opens through the hips, the coat settling'),
+  })
+  assert.equal(conflicting.status, 409, 'a same-key different-input extend conflicts')
+  assert.equal(await engineRecordCount(), engineCountLanded, 'the conflicting extend reached no engine')
+
+  // ---- (d) the SECOND-EXTENSION coordinate chain: an extension OF an
+  // extension freezes the correct GENERATED-coordinates reference — the
+  // first extension's RAW 56-frame window, never its delivered 34.
+  const window2 = await api2.post('/api/lan/animation/chains', { op: 'create-window', documentId: docQ.id, sourceAttemptId: qExtensionId, expectedRevision: revision })
+  assert.equal(window2.status, 200, `create-window on the landed extension lands (${window2.body.error ?? ''})`)
+  revision = window2.body.document.revision
+  const second = await api2.post('/api/lan/animation/extend', {
+    documentId: docQ.id, windowSlotId: window2.body.windowSlotId, sourceAttemptId: qExtensionId,
+    targetLength: 56, idempotencyKey: 'idem-q-extend-2', draft: extendDraftQ('the run eases into the turn'),
+  })
+  assert.equal(second.status, 200, `the second extension submits (${JSON.stringify(second.body)})`)
+  const secondRow = readAttemptRowQ(second.body.attemptId)
+  const secondBinding = secondRow.snapshot.continuationBinding
+  assert.deepEqual(secondBinding.windowCoordinates, { generatedStart: 34, generatedEnd: 56, phase: 'cycle-0' }, 'the pinned tail [34,56) of the FIRST EXTENSION\'S sampled window — generated coordinates (the latent\'s own world), not its delivered 34')
+  assert.deepEqual(secondBinding.modelIdentities, readAttemptRowQ(qExtensionId).snapshot.modelIdentities, 'the second binding copies the FIRST EXTENSION\'s own row stamp (the weights it ran on)')
+  assert.equal(secondBinding.sourceAttemptId, qExtensionId)
+  // Let the second extension finish rendering before (r) snapshots the
+  // engine's record count (the exact-count discipline below).
+  await waitAttemptQ(api2, second.body.attemptId, (attempt) => attempt.execution === 'ready', 'the second extension rendering')
+  qState = { api: api2, revision, secondWindowId: window2.body.windowSlotId, secondExtensionId: second.body.attemptId }
+})
+
+// ---------------------------------------------------------------------------
+// (r) the before-dispatch refusals — §10's named vocabulary at the ROUTE
+//     (Task 3's load-bearing wiring: the user learns BEFORE the attempt row
+//     exists): the collision naming the anchor, the availability seam, the
+//     target-execution drift comparison, the M-4 order guard at the freeze,
+//     and the client-binding refusal.
+// ---------------------------------------------------------------------------
+
+test('(r) the extend preflights — the collision names the anchor, availability and drift refuse before the row, the order guard lands at the freeze', async () => {
+  assert.ok(qSource, '(q) ran first — the shared fixture exists')
+  const apiR = qState.api
+  const engineCountBefore = await engineRecordCount()
+
+  // ---- §10: the collision preflight — an anchor inside the pinned head
+  // refuses NAMING the anchor; a legal anchor rides the graph.
+  const collisionWindow = await apiR.post('/api/lan/animation/chains', { op: 'create-window', documentId: docQ.id, sourceAttemptId: qSource.attemptId, expectedRevision: qState.revision })
+  assert.equal(collisionWindow.status, 200)
+  let revision = collisionWindow.body.document.revision
+  const collisionDraft = { ...extendDraftQ('the run carries on'), anchors: [{ reference: 'rolling-near', frame: 3 }] }
+  const collision = await apiR.post('/api/lan/animation/extend', {
+    documentId: docQ.id, windowSlotId: collisionWindow.body.windowSlotId, sourceAttemptId: qSource.attemptId,
+    targetLength: 56, idempotencyKey: 'idem-r-collision', draft: collisionDraft,
+  })
+  assert.equal(collision.status, 400)
+  assert.match(collision.body.error, /rolling-near/)
+  assert.match(collision.body.error, /frame 3/)
+  assert.match(collision.body.error, /pinned head/)
+  assert.equal(await engineRecordCount(), engineCountBefore, 'the collision refusal spent nothing')
+  const anchored = await apiR.post('/api/lan/animation/extend', {
+    documentId: docQ.id, windowSlotId: collisionWindow.body.windowSlotId, sourceAttemptId: qSource.attemptId,
+    targetLength: 56, idempotencyKey: 'idem-r-anchored', draft: { ...extendDraftQ('the run carries on'), anchors: [{ reference: 'fixed-far', frame: 30 }] },
+  })
+  assert.equal(anchored.status, 200, `the legal anchor submits (${JSON.stringify(anchored.body)})`)
+  await waitAttemptQ(apiR, anchored.body.attemptId, (attempt) => attempt.execution === 'ready', 'the anchored extension rendering')
+  const anchoredGraph = (await engineRecordsFor(anchored.body.attemptId))[0].prompt[2]
+  const guide = Object.values(anchoredGraph).find((node) => node.class_type === 'MiniMaxH3AddGuide')
+  assert.ok(guide, 'the anchor rides the graph as an Add Guide node')
+  assert.equal(guide.inputs.frame_idx, 30, 'the anchor\'s frame is the SAMPLED window\'s coordinate')
+  const guideId = Object.keys(anchoredGraph).find((id) => anchoredGraph[id] === guide)
+  const anchoredMctx = Object.values(anchoredGraph).find((node) => node.class_type === 'MiniMaxH3MotionContext')
+  assert.deepEqual(anchoredMctx.inputs.conditioning, [guideId, 0], 'the guide chains onto the conditioning UPSTREAM of the Motion Context node — the drop-rule surface the preflight governs')
+  assert.deepEqual(validateGraphAgainstSchemas(anchoredGraph, REAL_INFO_Q), [], 'the anchored graph also passes the engine gate')
+
+  // ---- §7 at the ROUTE: availability — the evicted artifact refuses before
+  // the attempt row exists, the clip stays playable, recovery re-flips.
+  const sourceContinuation = readAttemptRowQ(qSource.attemptId).continuation
+  const blobAbs = path.join(home, sourceContinuation.relPath)
+  const blobBytes = fs.readFileSync(blobAbs)
+  const evictWindow = await apiR.post('/api/lan/animation/chains', { op: 'create-window', documentId: docQ.id, sourceAttemptId: qSource.attemptId, expectedRevision: revision })
+  assert.equal(evictWindow.status, 200)
+  revision = evictWindow.body.document.revision
+  fs.unlinkSync(blobAbs)
+  try {
+    const evicted = await apiR.post('/api/lan/animation/extend', {
+      documentId: docQ.id, windowSlotId: evictWindow.body.windowSlotId, sourceAttemptId: qSource.attemptId,
+      targetLength: 56, idempotencyKey: 'idem-r-evicted', draft: extendDraftQ('the run carries on'),
+    })
+    assert.equal(evicted.status, 400)
+    assert.match(evicted.body.error, /continuation unavailable/)
+    assert.ok(evicted.body.error.includes(sourceContinuation.artifact.artifactId), 'the refusal names the artifact id')
+    assert.equal(await engineRecordCount(), engineCountBefore + 1, 'only the anchored extension rendered — the eviction refusal spent nothing')
+    const sourceState = await attemptStateQ(apiR, qSource.attemptId)
+    assert.equal(sourceState.execution, 'ready', 'the source stays playable (§7)')
+    assert.equal(sourceState.continuation.state, 'unavailable', 'the derived flip landed through the preflight\'s own check')
+  } finally {
+    fs.writeFileSync(blobAbs, blobBytes)
+  }
+  const recovered = await apiR.post('/api/lan/animation/extend', {
+    documentId: docQ.id, windowSlotId: evictWindow.body.windowSlotId, sourceAttemptId: qSource.attemptId,
+    targetLength: 56, idempotencyKey: 'idem-r-recovered', draft: extendDraftQ('the run carries on'),
+  })
+  assert.equal(recovered.status, 200, `the restored artifact extends again (${JSON.stringify(recovered.body)})`)
+  await waitAttemptQ(apiR, recovered.body.attemptId, (attempt) => attempt.execution === 'ready', 'the recovered extension rendering')
+  assert.equal((await attemptStateQ(apiR, qSource.attemptId)).continuation.state, 'ready', 'availability is re-observed truth — the retry\'s preflight re-flipped the source')
+
+  // ---- §6 at the ROUTE: the target-execution comparison — the aliased
+  // weights case refuses naming the artifact and BOTH digests.
+  const engineCountAfterRecovery = await engineRecordCount()
+  const adapterFile = path.join(qModelRoot(), 'loras', 'h3_tween_step12000.safetensors')
+  const adapterBytes = fs.readFileSync(adapterFile)
+  fs.writeFileSync(adapterFile, Buffer.concat([adapterBytes, Buffer.from('-replaced-under-the-unchanged-name')]))
+  try {
+    const drifted = await apiR.post('/api/lan/animation/extend', {
+      documentId: docQ.id, windowSlotId: evictWindow.body.windowSlotId, sourceAttemptId: qSource.attemptId,
+      targetLength: 39, idempotencyKey: 'idem-r-drifted', draft: extendDraftQ('the run carries on'),
+    })
+    assert.equal(drifted.status, 400)
+    assert.match(drifted.body.error, /h3_tween_step12000\.safetensors/, 'the refusal names the aliased artifact')
+    assert.match(drifted.body.error, /frozen at digest/)
+    assert.match(drifted.body.error, /replaced/, 'the aliased-weights case names what happened')
+    assert.equal(await engineRecordCount(), engineCountAfterRecovery, 'the drift refusal submitted nothing')
+  } finally {
+    fs.writeFileSync(adapterFile, adapterBytes)
+  }
+
+  // ---- Task 4's M-4 at the freeze: a source at or after the window in
+  // chain order (only a corrupt or hand-edited body reaches here) refuses
+  // named — the inverted edge never freezes.
+  const db = new Database(path.join(home, 'studio.db'))
+  try {
+    const bodyRow = db.prepare('SELECT body_json FROM animation_document WHERE id = ?').get(docQ.id)
+    const body = JSON.parse(bodyRow.body_json)
+    const branchChain = body.chains.find((chain) => chain.rootAttemptId === qExtensionId)
+    assert.ok(branchChain, 'the second extension rooted its branch chain')
+    const selfSourced = branchChain.windows.find((window) => window.id === qState.secondWindowId)
+    selfSourced.sourceAttemptId = qState.secondExtensionId // the window's OWN take — an inverted edge
+    db.prepare('UPDATE animation_document SET body_json = ? WHERE id = ?').run(JSON.stringify(body), docQ.id)
+  } finally {
+    db.close()
+  }
+  const inverted = await apiR.post('/api/lan/animation/extend', {
+    documentId: docQ.id, windowSlotId: qState.secondWindowId, sourceAttemptId: qState.secondExtensionId,
+    targetLength: 56, idempotencyKey: 'idem-r-inverted', draft: extendDraftQ('the run carries on'),
+  })
+  assert.equal(inverted.status, 400)
+  assert.match(inverted.body.error, /must precede it in the chain/)
+
+  // ---- the server-side seed: a client binding block is refused outright —
+  // never echoed (Task 3's ruling 4).
+  const echoed = await apiR.post('/api/lan/animation/extend', {
+    documentId: docQ.id, windowSlotId: qState.secondWindowId, sourceAttemptId: qExtensionId,
+    targetLength: 56, idempotencyKey: 'idem-r-echo', draft: extendDraftQ('the run carries on'),
+    continuationBinding: { sourceAttemptId: qSource.attemptId, modelIdentities: [] },
+  })
+  assert.equal(echoed.status, 400)
+  assert.match(echoed.body.error, /server-side/)
 })

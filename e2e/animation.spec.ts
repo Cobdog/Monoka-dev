@@ -864,7 +864,7 @@ test('editing the movement text recompiles the caption preview and persists the 
   await expect(caption).toContainText('TARGET END FRAME (Reference 2): turned farther than the start, head past the shoulder line, facing toward camera')
   await expect(caption).toContainText('MOVEMENT: she pushes off the back foot into a full stride')
   await expect(caption).toContainText('SCENE: clean line on white.')
-  await expect(page.locator('[data-anim-caption-compiler]')).toHaveText('v2')
+  await expect(page.locator('[data-anim-caption-compiler]')).toHaveText('v3')
   // Edit the movement: the preview recomputes on the settle (the bounded
   // named-condition wait — the debounce's commit IS the condition).
   const MOVEMENT = 'the lead foot plants and the weight transfers through the hip'
@@ -960,7 +960,7 @@ test('submitting freezes the previewed caption verbatim (inspector)', async ({ p
     const settled = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { revision: number; attempts: Array<{ tool: string; targetId: string; caption: string; compilerVersion: string }> } }
     const attempt = settled.document.attempts.find((entry) => entry.tool === 'tween' && entry.targetId === seeded.stepSlotId)!
     expect(attempt.caption).toBe(previewed)
-    expect(attempt.compilerVersion).toBe('2')
+    expect(attempt.compilerVersion).toBe('3')
     expect(settled.document.revision).toBe(seeded.revision)
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
@@ -1426,7 +1426,7 @@ test('annotating the rolling reference recompiles the preview and freezes verbat
     const settled = await (await request.get(`/api/lan/animation/document?id=${seeded.documentId}`)).json() as { document: { attempts: Array<{ tool: string; targetId: string; caption: string; compilerVersion: string }> } }
     const stepTwo = settled.document.attempts.find((entry) => entry.tool === 'tween' && entry.targetId !== seeded.stepSlotId)!
     expect(stepTwo.caption).toBe(previewed)
-    expect(stepTwo.compilerVersion).toBe('2')
+    expect(stepTwo.compilerVersion).toBe('3')
     await expect(page.locator('[data-anim-command-error]')).toHaveCount(0)
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {

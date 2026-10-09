@@ -36,7 +36,7 @@ import { createAnimationRenderingService, createComfyEnginePort, makeDocumentSto
 import { createAnimationExportService } from './animation/export'
 import { createCompletionOwner } from './animation/completion-owner'
 import { animationFabricEmitter, createAnimationRoutes, makeEngineEventTap } from './animation/routes'
-import { compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../shared/animation/compiler'
+import { compileExtensionCaption, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../shared/animation/compiler'
 import { EngineProcess } from './engineProcess'
 import { RuntimeManager, RuntimeConfigError } from './runtime'
 import { ENGINE_PATCH_IDS, revertEnginePatch, ENGINE_PATCHES } from './enginePatch'
@@ -632,7 +632,7 @@ export function createStudioServer(paths: StudioServerPaths) {
       blobs,
       ffmpegPath: animationFfmpeg,
       modelFolder: animationModelFolder,
-      compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
+      compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption, extension: compileExtensionCaption },
       emit,
     })
     animationRedispatch = (attemptId) => service.redispatchAttempt(attemptId)

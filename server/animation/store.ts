@@ -631,9 +631,13 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
     } catch {
       throw new Error(`Attempt ${attemptId} carries a snapshot this build cannot parse — the ancestry walk refuses to mark descendants from corrupt truth (nothing was persisted).`)
     }
-    const binding = snapshot.continuationBinding
+    const binding: unknown = snapshot.continuationBinding
     if (binding === undefined) return null
-    if (!isUuid(binding.sourceAttemptId)) {
+    // A present-but-non-object block (JSON null among them — the Task-4 fix
+    // round's observation) is corruption, named like every other malformed
+    // shape, never a TypeError and never a silent null (the under-marking
+    // class this walk exists to prevent).
+    if (!isRecord(binding) || !isUuid(binding.sourceAttemptId)) {
       throw new Error(`Attempt ${attemptId} carries a malformed continuation binding — the ancestry walk refuses to mark descendants from corrupt truth (nothing was persisted).`)
     }
     return binding.sourceAttemptId
