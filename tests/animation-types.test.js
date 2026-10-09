@@ -18,6 +18,8 @@ import {
   mediumFromChipId,
   parseKeyCandidate,
   parseAnimationDocumentBody,
+  parseModelContentIdentity,
+  parseModelContentIdentities,
   animationInputHash,
   readCarrySaveRecipe,
 } from '../shared/animation/types'
@@ -389,4 +391,31 @@ test('readCarrySaveRecipe reads the pack metadata from the safetensors framing; 
   // A subarray view (non-zero byteOffset) still reads the framing correctly.
   const padded = Buffer.concat([Buffer.alloc(3), withMetadata])
   assert.equal(readCarrySaveRecipe(padded.subarray(3)), 'h3_motion_context_av_v1', 'a non-zero-offset view parses the same file')
+})
+
+test('parseModelContentIdentities round-trips identity sets and refuses every malformation (extension lane Task 3)', () => {
+  const hex = (fill) => fill.repeat(64)
+  const valid = [
+    { name: 'minimax_h3_ref2va_pruned_int8_convrot.safetensors', digest: hex('a'), bytes: 42 },
+    { name: 'sub/dir/h3_tween_step12000.safetensors', digest: hex('b'), bytes: 1 },
+  ]
+  // The round-trip: a non-empty set of well-formed, name-unique identities.
+  assert.deepEqual(parseModelContentIdentities(valid), valid, 'the set round-trips verbatim')
+  assert.deepEqual(parseModelContentIdentity(valid[0]), valid[0], 'a single identity round-trips')
+
+  // Identity malformation: every field has a named refusal shape.
+  assert.equal(parseModelContentIdentity(null), null, 'not an object')
+  assert.equal(parseModelContentIdentity({ name: '', digest: hex('a'), bytes: 1 }), null, 'an empty name')
+  assert.equal(parseModelContentIdentity({ name: 'x'.repeat(513), digest: hex('a'), bytes: 1 }), null, 'a pathologically long name')
+  assert.equal(parseModelContentIdentity({ name: 'x.safetensors', digest: 'not-hex', bytes: 1 }), null, 'a non-hex digest')
+  assert.equal(parseModelContentIdentity({ name: 'x.safetensors', digest: hex('A'), bytes: 1 }), null, 'an uppercase digest — the canonical form is lowercase hex')
+  assert.equal(parseModelContentIdentity({ name: 'x.safetensors', digest: hex('a').slice(0, 63), bytes: 1 }), null, 'a short digest')
+  assert.equal(parseModelContentIdentity({ name: 'x.safetensors', digest: hex('a'), bytes: 0 }), null, 'a zero byte count')
+  assert.equal(parseModelContentIdentity({ name: 'x.safetensors', digest: hex('a'), bytes: 1.5 }), null, 'a fractional byte count')
+
+  // Set malformation: empty, non-array, a malformed entry, a duplicate name.
+  assert.equal(parseModelContentIdentities([]), null, 'an empty set never freezes — a binding carries the full slot set')
+  assert.equal(parseModelContentIdentities('no'), null, 'not an array')
+  assert.equal(parseModelContentIdentities([valid[0], { name: 'y.safetensors', digest: 'z', bytes: 2 }]), null, 'one malformed entry refuses the whole set')
+  assert.equal(parseModelContentIdentities([valid[0], { ...valid[0] }]), null, 'a duplicate name refuses — one identity per slot')
 })

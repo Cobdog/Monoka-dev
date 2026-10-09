@@ -45,7 +45,7 @@ import { checkAllNodePacks, checkNodePack, ENGINE_NODE_PACKS, findNodePack, inst
 import { INVENTORY_MODEL_KINDS, instanceNamesForKind, inventoryFromObjectInfo, parseModelsEndpointList, registryInventoryFiles } from './instanceInventory'
 import { createObjectInfoProbe, probeClassPresence } from './objectInfoProbe'
 import { createManagerClient, managerInstallParams, managerUninstallParams, waitForManagerTask } from './managerClient'
-import { FETCH_ENTRY_IDS, findFetchEntry, networkFetchPackIds } from './fetchCatalog'
+import { FETCH_ENTRY_IDS, fetchModelRootPath, findFetchEntry, networkFetchPackIds } from './fetchCatalog'
 import { FetchManager, transportForEnvironment } from './fetcher'
 import { createLlmService, type LlmService } from './llm'
 import { createRouterProvider } from './llm/providers/router'
@@ -604,6 +604,13 @@ export function createStudioServer(paths: StudioServerPaths) {
     // real engine's video-only listing resolves review frames by decoding
     // them out of the registered clip.
     const animationFfmpeg = () => loadSettingsCached().ffmpegPath || 'ffmpeg'
+    // The identity-evidence locator (extension lane Task 3): the animation
+    // lane's content identities digest the engine's weight FILES, and the
+    // folders those live in are the studio's configured model roots — the
+    // SAME per-kind roots fetches land in (fetchModelRootPath: the kind's
+    // configured path, else <modelRoot>/<kind>, '' when unconfigured — the
+    // existing settings contract, re-resolved per call like ffmpeg).
+    const animationModelFolder = (kind: 'diffusion_models' | 'text_encoders' | 'vae' | 'loras') => fetchModelRootPath(kind, loadSettingsCached())
     // Wave 1's queue-semantic redispatch: the owner is constructed before
     // the service (the service takes the owner), so the sweep's redispatch
     // arm calls through this forward-declared thunk — assigned once the
@@ -624,6 +631,7 @@ export function createStudioServer(paths: StudioServerPaths) {
       owner,
       blobs,
       ffmpegPath: animationFfmpeg,
+      modelFolder: animationModelFolder,
       compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
       emit,
     })

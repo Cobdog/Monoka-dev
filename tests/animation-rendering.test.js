@@ -162,6 +162,19 @@
 //       clip playable, and recovers when the blob resolves again); and the
 //       bookend containment (review M-1 — a state-write IO failure lands in
 //       the event, never an unhandled rejection, never a leaked in-flight id)
+//   (z) content identities (spec §5/§6, Task 3) — the digesting seam and
+//       the fail-closed compatibility: the carrying SOURCE's submit stamps
+//       the digested identities of its RESOLVED weights; the extension
+//       target's DISPATCH re-resolves the target's identities fresh and
+//       compares them against the binding's frozen set — identical passes
+//       (the target renders), same-name-different-digest refuses naming the
+//       artifact and both digests with nothing submitted (the aliased
+//       weights case — the stat-keyed cache is NEVER trusted past the
+//       file's mtime), missing evidence refuses both ways (an enumerated
+//       name with no readable file; an unconfigured models root — never a
+//       name-only pass), and the eviction leg proves Task 2's availability
+//       seam is wired at the DISPATCH site itself (the load-bearing
+//       directive from Task 2's review — no second resolver exists)
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -212,8 +225,10 @@ const {
   AnimationRuleError,
 } = require(path.join(REPO, 'dist-server/server/animation/store.js'))
 const {
+  compareModelIdentities,
   createAnimationRenderingService,
   createComfyEnginePort,
+  ContinuationIdentityDriftError,
   ContinuationUnavailableError,
   decodeClipFrame,
   makeDocumentStoreBlobSink,
@@ -221,8 +236,10 @@ const {
 } = require(path.join(REPO, 'dist-server/server/animation/rendering.js'))
 const { createCompletionOwner } = require(path.join(REPO, 'dist-server/server/animation/completion-owner.js'))
 const {
+  AnimationModelEvidenceError,
   AnimationModelResolutionError,
   resolveAnimationModels,
+  resolvedIdentities,
 } = require(path.join(REPO, 'dist-server/server/animation/models.js'))
 
 const freePort = makePortAllocator('animation-rendering')
@@ -402,6 +419,50 @@ async function submitHero(doc, keyId, idem) {
   return service.submit({ documentId: doc.id, tool: 'hero', targetId: keyId, snapshot: makeHeroSnapshot(keyId, revision) }, idem)
 }
 
+// ---- the identity-evidence fixture (extension lane Task 3) --------------------
+//
+// The v1 evidence contract: content identities DIGEST the weight files
+// through the configured per-kind model folders (the design investigation's
+// outcome — the engine can enumerate and stat but serves no digest of model
+// weights anywhere in its API; the honest mechanism reads the files the
+// same-box engine loads). The mirror's role stays the REGISTRY: it
+// enumerates the names (wave 1). This fixture tree stands in for the
+// configured models root — one small weight file per enumerated name,
+// subfolder paths included, exactly the shape a configured install
+// presents. The missing-evidence and aliased-weights knobs are FILE
+// operations on this tree (unlink a file; rewrite bytes under the same
+// name) — the real-world failure shapes the checks must refuse on.
+
+const ANIMATION_PROFILE = JSON.parse(fs.readFileSync(path.join(REPO, 'e2e/mirror/profiles/animation-h3.json'), 'utf8'))
+const EVIDENCE_KIND_FOLDERS = { unet: 'diffusion_models', clip: 'text_encoders', vae: 'vae', lora: 'loras' }
+const evidenceRoot = { dir: '' }
+const evidenceOriginals = new Map()
+/** The service dep: the folder for one evidence kind — '' while the root is
+ *  unconfigured (a test knob for the named-refusal leg). */
+const evidenceFolderFor = (kind) => (evidenceRoot.dir ? path.join(evidenceRoot.dir, kind) : '')
+
+function buildEvidenceFixture() {
+  const root = path.join(home, 'identity-models')
+  for (const [slot, kind] of Object.entries(EVIDENCE_KIND_FOLDERS)) {
+    for (const name of ANIMATION_PROFILE.loaderEnumerations[slot] ?? []) {
+      const segments = name.split('/').filter(Boolean)
+      const file = path.join(root, kind, ...segments)
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      const bytes = Buffer.from(`identity-evidence-weight-bytes:${kind}:${name}`)
+      fs.writeFileSync(file, bytes)
+      evidenceOriginals.set(path.resolve(file), bytes)
+    }
+  }
+  evidenceRoot.dir = root
+}
+
+/** Restores a fixture file's original bytes (a fresh mtime — the stat-keyed
+ *  identity cache correctly re-hashes it back to the original digest). */
+function restoreEvidenceFile(absPath) {
+  const bytes = evidenceOriginals.get(path.resolve(absPath))
+  if (bytes !== undefined) fs.writeFileSync(absPath, bytes)
+}
+
 // ---- fake-engine probes --------------------------------------------------------
 
 const engineFetch = (pathname, init) => fetch(`http://127.0.0.1:${enginePort}${pathname}`, init)
@@ -500,6 +561,9 @@ beforeAll(async () => {
   anim = createAnimationStore(db, { appVersion: 'test' })
   projectId = documents.createProject({ name: 'Animation rendering' }).id
   sink = makeDocumentStoreBlobSink(documents, path.join(home, 'animation-staging'))
+  // The identity-evidence root (Task 3): built BEFORE any service exists —
+  // every carrying submit in every section digests against it.
+  buildEvidenceFixture()
   engineClient = createComfyEnginePort({ baseUrl: `http://127.0.0.1:${enginePort}`, blobs: sink })
   events = []
   const emit = (type, payload) => { events.push({ type, payload }) }
@@ -547,6 +611,7 @@ beforeAll(async () => {
     owner,
     blobs: sink,
     ffmpegPath: () => 'ffmpeg',
+    modelFolder: evidenceFolderFor,
     compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
     emit,
   })
@@ -934,7 +999,7 @@ test('(g) reconcile resolves a lost dispatch by attempt-identifier search — ne
   const deadEngine = createComfyEnginePort({ baseUrl: `http://127.0.0.1:${deadPort}`, blobs: sink })
   const deadOwner = createCompletionOwner({ store: anim, engine: deadEngine, emit: () => undefined, prepareFrame: productionPreparer, blobs: sink, pollMs: 50 })
   const deadService = createAnimationRenderingService({
-    store: anim, engine: deadEngine, owner: deadOwner, blobs: sink, ffmpegPath: () => 'ffmpeg',
+    store: anim, engine: deadEngine, owner: deadOwner, blobs: sink, ffmpegPath: () => 'ffmpeg', modelFolder: evidenceFolderFor,
     compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
     emit: () => undefined,
   })
@@ -1911,7 +1976,7 @@ function gatedServiceFor(port) {
   const gatedEvents = []
   const gatedOwner = createCompletionOwner({ store: anim, engine: port, emit: (type, payload) => gatedEvents.push({ type, payload }), prepareFrame: productionPreparer, blobs: sink, pollMs: 60 })
   const gatedServiceInstance = createAnimationRenderingService({
-    store: anim, engine: port, owner: gatedOwner, blobs: sink, ffmpegPath: () => 'ffmpeg',
+    store: anim, engine: port, owner: gatedOwner, blobs: sink, ffmpegPath: () => 'ffmpeg', modelFolder: evidenceFolderFor,
     compile: { hero: compileHeroCaption, tween: compileTweenCaption, sequence: compileSequenceCaption },
     emit: (type, payload) => gatedEvents.push({ type, payload }),
   })
@@ -2769,5 +2834,278 @@ test('(y5) the bookend containment — a state-write IO failure never escapes th
     anim.setAttemptContinuation = rawWrite
     carryFetchOverrides.delete(attempt1)
     carryFetchOverrides.delete(attempt2)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// (z) content identities (extension lane Task 3, spec §5/§6) — the digesting
+//     seam and the fail-closed target-execution comparison at dispatch
+// ---------------------------------------------------------------------------
+
+/** Lands a carrying tween source on a FRESH document and waits for BOTH
+ *  readiness halves (playable + the carry artifact registered). */
+async function landCarrySource(label, idem) {
+  const { doc, step, revision } = carryDocFixture(label)
+  const submitted = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, revision) }, idem)
+  await waitAttemptState(submitted.attemptId, ['ready'], `${label}: the carrying render landing`)
+  await waitContinuation(submitted.attemptId, ['ready'], `${label}: the carry artifact registering`)
+  return { doc, step, attemptId: submitted.attemptId }
+}
+
+/** The extension TARGET's snapshot: a tween snapshot whose frozen
+ *  continuation binding carries the source attempt and its stamped
+ *  identities verbatim (Task 5's route freezes this block; here the test
+ *  stands in for the route). */
+function extendSnapshot(step, revision, sourceAttemptId, modelIdentities) {
+  const snapshot = makeTweenSnapshot(step, revision)
+  snapshot.continuationBinding = { sourceAttemptId, modelIdentities }
+  return snapshot
+}
+
+const digestOf = (buf) => createHash('sha256').update(buf).digest('hex')
+const RESOLVED_UNET = 'minimax_h3_ref2va_pruned_int8_convrot.safetensors'
+const RESOLVED_TEXT_ENCODER = 'qwen3vl_32b_int8_convrot.safetensors'
+
+test('(z1) identical identities pass at DISPATCH — the source stamps the digests of its RESOLVED weights, and the target renders on the same set', async () => {
+  // ---- the digesting seam, directly: the fixture-backed folder answers
+  // one identity per RESOLVED slot, in the resolver's documented order.
+  const enumerations = await engineClient.modelEnumerations({ force: true })
+  const identities = await resolvedIdentities({ tool: 'tween', enumerations, modelFolder: evidenceFolderFor })
+  assert.equal(identities.length, 4, 'four slots, four identities')
+  assert.deepEqual(identities.map((identity) => identity.name), [RESOLVED_UNET, 'h3_tween_step12000.safetensors', RESOLVED_TEXT_ENCODER, 'minimax_h3_video_vae_fp16.safetensors'], 'the identity names are the RESOLVED names (the ladder output, in slot order)')
+  for (const identity of identities) {
+    assert.match(identity.digest, /^[0-9a-f]{64}$/, 'a sha-256 digest')
+    assert.ok(Number.isInteger(identity.bytes) && identity.bytes > 0, 'the byte count rides the identity')
+  }
+  const unet = identities.find((identity) => identity.name === RESOLVED_UNET)
+  const unetBytes = fs.readFileSync(path.join(evidenceRoot.dir, 'diffusion_models', RESOLVED_UNET))
+  assert.equal(unet.digest, digestOf(unetBytes), 'the digest is the sha256 of the resolved weight FILE')
+  assert.equal(unet.bytes, unetBytes.length, 'the byte count is the file size')
+
+  // ---- the pure comparison: an identical set passes; nothing throws.
+  compareModelIdentities(identities, identities.map((identity) => ({ ...identity })))
+
+  // ---- the SOURCE stamp through the real submit path: a carrying render's
+  // frozen record carries the digests of the weights it ran on.
+  const source = await landCarrySource('Zulu-one', 'idem-z1-source')
+  const stamped = anim.getAttempt(source.attemptId).snapshot.modelIdentities
+  assert.deepEqual(stamped, identities, 'the frozen record carries exactly the seam\'s identities — captured at source submit, before any drift can happen')
+
+  // ---- THE TARGET-VS-BINDING COMPARISON AT DISPATCH (test d): the same
+  // identities freshly re-resolved MATCH the frozen set — the gate passes
+  // and the graph is submitted exactly once.
+  const before = await engineRecordCount()
+  const target = await service.submit(
+    { documentId: source.doc.id, tool: 'tween', targetId: source.step, snapshot: extendSnapshot(source.step, anim.getDocument(source.doc.id).revision, source.attemptId, stamped) },
+    'idem-z1-target',
+  )
+  const landed = await waitAttemptState(target.attemptId, ['ready'], 'the extension target rendering under identical identities')
+  assert.ok(landed.result, 'the target rendered and landed a candidate')
+  assert.equal(await engineRecordCount(), before + 1, 'the gate PASSED — exactly one engine submission')
+})
+
+test('(z2) same name, different digest — the aliased-weights refusal names the artifact and BOTH digests, nothing is submitted, the cache is never trusted past the mtime', async () => {
+  const source = await landCarrySource('Zulu-two', 'idem-z2-source')
+  const frozenIdentities = anim.getAttempt(source.attemptId).snapshot.modelIdentities
+  const unet = frozenIdentities.find((identity) => identity.name === RESOLVED_UNET)
+  const unetPath = path.join(evidenceRoot.dir, 'diffusion_models', RESOLVED_UNET)
+  const before = await engineRecordCount()
+  try {
+    // WEIGHTS REPLACED UNDER THE UNCHANGED NAME — still enumerated, still
+    // "the resolved name", different bytes (the identity cache already holds
+    // this path's ORIGINAL digest from the source's submit: the refusal
+    // below also proves the cache re-hashed instead of serving it stale).
+    fs.writeFileSync(unetPath, Buffer.concat([fs.readFileSync(unetPath), Buffer.from('-replaced-weights-payload-aka-the-alias')]))
+    const freshDigest = digestOf(fs.readFileSync(unetPath))
+    assert.notEqual(freshDigest, unet.digest, 'the aliased file hashes differently')
+
+    const target = await service.submit(
+      { documentId: source.doc.id, tool: 'tween', targetId: source.step, snapshot: extendSnapshot(source.step, anim.getDocument(source.doc.id).revision, source.attemptId, frozenIdentities) },
+      'idem-z2-target',
+    )
+    const failed = await waitAttemptState(target.attemptId, ['failed'], 'the aliased-weights dispatch refusal')
+    assert.match(failed.execution.failureReason, new RegExp(RESOLVED_UNET.replace(/\./g, '\\.')), 'the refusal NAMES the drifted artifact (the unchanged filename)')
+    assert.ok(failed.execution.failureReason.includes(unet.digest), 'the refusal carries the frozen digest')
+    assert.ok(failed.execution.failureReason.includes(freshDigest), 'the refusal carries the fresh digest')
+    assert.match(failed.execution.failureReason, /replaced/, 'the refusal states the aliased-weights cause')
+    assert.match(failed.execution.failureReason, /re-land the source|rebind/, 'the refusal names the paths forward')
+    assert.ok(events.some((event) => event.type === 'animation.attempt.failed' && event.payload.attemptId === target.attemptId && event.payload.reason === 'continuation-compatibility'), 'the named compatibility-failure event fired')
+    assert.equal(await engineRecordCount(), before, 'NOTHING was submitted — the refusal preceded the graph send')
+
+    // The SOURCE is untouched by its descendant's refusal: playable and
+    // continuation-ready stay exactly as they landed (§5/§8).
+    const sourceRow = anim.getAttempt(source.attemptId)
+    assert.equal(sourceRow.execution.state, 'ready', 'the source stays playable')
+    assert.equal(sourceRow.continuation.state, 'ready', 'the source stays continuation-ready — drift refuses the TARGET, never mutates the source')
+
+    // The pure comparison, pinned directly: same name, different digest is
+    // the named drift refusal naming the artifact.
+    const drifted = frozenIdentities.map((identity) => (identity.name === RESOLVED_UNET ? { ...identity, digest: freshDigest, bytes: identity.bytes + 8 } : { ...identity }))
+    assert.throws(
+      () => compareModelIdentities(frozenIdentities, drifted),
+      (err) => err instanceof ContinuationIdentityDriftError && err.artifact === RESOLVED_UNET && err.message.includes(unet.digest) && err.message.includes(freshDigest),
+      'the seam refuses the digest mismatch by name',
+    )
+    // And the other drift shape: a name that no longer resolves at all.
+    assert.throws(
+      () => compareModelIdentities(frozenIdentities, frozenIdentities.filter((identity) => identity.name !== RESOLVED_UNET)),
+      (err) => err instanceof ContinuationIdentityDriftError && err.artifact === RESOLVED_UNET && /no longer resolves/.test(err.message),
+      'a vanished name refuses naming it',
+    )
+  } finally {
+    restoreEvidenceFile(unetPath)
+  }
+})
+
+test('(z3) missing identity evidence refuses — the deleted-file leg and the unconfigured-root leg, both named, never a name-only pass', async () => {
+  const source = await landCarrySource('Zulu-three', 'idem-z3-source')
+  const frozenIdentities = anim.getAttempt(source.attemptId).snapshot.modelIdentities
+  const clipPath = path.join(evidenceRoot.dir, 'text_encoders', RESOLVED_TEXT_ENCODER)
+  const submitTarget = (idem) => service.submit(
+    { documentId: source.doc.id, tool: 'tween', targetId: source.step, snapshot: extendSnapshot(source.step, anim.getDocument(source.doc.id).revision, source.attemptId, frozenIdentities) },
+    idem,
+  )
+
+  // ---- Leg 1: the name still ENUMERATES (the engine's registry serves it)
+  // but the weight file is gone — the enumerated-alias hazard.
+  fs.unlinkSync(clipPath)
+  let before = await engineRecordCount()
+  try {
+    let target = await submitTarget('idem-z3-target-a')
+    let failed = await waitAttemptState(target.attemptId, ['failed'], 'the missing-evidence refusal (file absent)')
+    assert.match(failed.execution.failureReason, /Identity evidence is missing/, 'the named evidence class')
+    assert.ok(failed.execution.failureReason.includes(RESOLVED_TEXT_ENCODER), 'the refusal names the resolved name whose evidence is gone')
+    assert.match(failed.execution.failureReason, /textEncoder/, 'the refusal names the slot')
+    assert.match(failed.execution.failureReason, /never a name-only pass/, 'the refusal states the fail-closed rule')
+    assert.equal(await engineRecordCount(), before, 'nothing was submitted')
+
+    // The seam, directly: the same world through resolvedIdentities.
+    const enumerations = await engineClient.modelEnumerations({ force: true })
+    await assert.rejects(
+      () => resolvedIdentities({ tool: 'tween', enumerations, modelFolder: evidenceFolderFor }),
+      (err) => err instanceof AnimationModelEvidenceError && err.slot === 'textEncoder' && err.resolvedName === RESOLVED_TEXT_ENCODER,
+      'the digesting seam throws the named evidence refusal itself',
+    )
+  } finally {
+    restoreEvidenceFile(clipPath)
+  }
+
+  // ---- Leg 2: the whole evidence root UNCONFIGURED (the v1 contract's
+  // named refusal — this studio runs beside the engine; when no models root
+  // is configured, identity checks refuse rather than pass on names).
+  const originalDir = evidenceRoot.dir
+  evidenceRoot.dir = ''
+  try {
+    before = await engineRecordCount()
+    const target = await submitTarget('idem-z3-target-b')
+    const failed = await waitAttemptState(target.attemptId, ['failed'], 'the missing-evidence refusal (root unconfigured)')
+    assert.match(failed.execution.failureReason, /Identity evidence is missing/)
+    assert.match(failed.execution.failureReason, /no models folder is configured/, 'the refusal names the configuration gap')
+    assert.equal(await engineRecordCount(), before, 'nothing was submitted')
+  } finally {
+    evidenceRoot.dir = originalDir
+  }
+})
+
+test('(z4) the dispatch site wires Task 2\'s availability seam — an evicted artifact refuses the extension BY NAME, and recovery re-submits clean', async () => {
+  const source = await landCarrySource('Zulu-four', 'idem-z4-source')
+  const frozenIdentities = anim.getAttempt(source.attemptId).snapshot.modelIdentities
+  const registered = anim.getAttempt(source.attemptId)
+  const blobAbs = path.join(home, registered.continuation.relPath)
+  const blobBytes = fs.readFileSync(blobAbs)
+
+  // EVICT the registered carry between registration and the extension's
+  // dispatch: the gate's availability half must refuse THROUGH THE SEAM
+  // (Task 2's requireContinuationArtifact — the one digest resolver; this
+  // is the wiring Task 2's review routed here as load-bearing).
+  fs.unlinkSync(blobAbs)
+  const before = await engineRecordCount()
+  try {
+    const target = await service.submit(
+      { documentId: source.doc.id, tool: 'tween', targetId: source.step, snapshot: extendSnapshot(source.step, anim.getDocument(source.doc.id).revision, source.attemptId, frozenIdentities) },
+      'idem-z4-target-a',
+    )
+    const failed = await waitAttemptState(target.attemptId, ['failed'], 'the eviction refusal at the dispatch site')
+    assert.match(failed.execution.failureReason, /continuation unavailable/, 'the named unavailable condition')
+    assert.ok(failed.execution.failureReason.includes(registered.continuation.artifact.artifactId), 'the refusal names the artifact id')
+    assert.ok(failed.execution.failureReason.includes(registered.continuation.artifact.digest), 'the refusal names the digest')
+    assert.ok(events.some((event) => event.type === 'animation.attempt.failed' && event.payload.attemptId === target.attemptId && event.payload.reason === 'continuation-unavailable'), 'the named unavailable event fired')
+    assert.equal(await engineRecordCount(), before, 'nothing was submitted')
+    // The seam's DERIVED state flip happened through the dispatch call —
+    // and the source's playable half is untouched throughout (§7).
+    assert.equal(anim.getAttempt(source.attemptId).continuation.state, 'unavailable', 'the source flipped unavailable through the dispatch-site check')
+    assert.equal(anim.getAttempt(source.attemptId).execution.state, 'ready', 'the source stays playable')
+
+    // RECOVERY: availability is derived truth — restore the bytes, and a
+    // NEW extension on a fresh key renders clean end to end. The re-observe
+    // happens THROUGH the retry's own dispatch check (the row sits
+    // optimistically unavailable until a consumer checks — exactly y4's
+    // derived-state contract).
+    fs.writeFileSync(blobAbs, blobBytes)
+    const retry = await service.submit(
+      { documentId: source.doc.id, tool: 'tween', targetId: source.step, snapshot: extendSnapshot(source.step, anim.getDocument(source.doc.id).revision, source.attemptId, frozenIdentities) },
+      'idem-z4-target-b',
+    )
+    const landed = await waitAttemptState(retry.attemptId, ['ready'], 'the recovered extension rendering')
+    assert.ok(landed.result, 'the recovered extension landed a candidate')
+    assert.equal(anim.getAttempt(source.attemptId).continuation.state, 'ready', 'the retry\'s dispatch check re-flipped the source — availability is re-observed truth')
+    assert.equal(await engineRecordCount(), before + 1, 'exactly one engine submission — the recovery path')
+  } finally {
+    if (!fs.existsSync(blobAbs)) fs.writeFileSync(blobAbs, blobBytes)
+  }
+})
+
+test('(z5) the binding\'s shape gate at submit — malformed identities never persist; the unconfigured world renders on WITHOUT the stamp and says so', async () => {
+  const { doc, step, revision } = carryDocFixture('Zulu-five')
+
+  // A malformed binding (not a 64-hex digest) refuses at submit — nothing
+  // persists, the named 400.
+  const malformed = carrySnapshot(step, revision)
+  malformed.continuationBinding = { sourceAttemptId: uuid(), modelIdentities: [{ name: 'x.safetensors', digest: 'not-a-digest', bytes: 10 }] }
+  await assert.rejects(
+    () => service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: malformed }, 'idem-z5-malformed'),
+    (err) => err instanceof AnimationRuleError && err.status === 400 && /well-formed model content identities/.test(err.message),
+    'a malformed binding answers the named shape refusal before anything persists',
+  )
+  // A foreign source attempt id refuses the same way.
+  const foreign = carrySnapshot(step, revision)
+  foreign.continuationBinding = { sourceAttemptId: 'not-a-uuid', modelIdentities: [{ name: 'x.safetensors', digest: 'a'.repeat(64), bytes: 10 }] }
+  await assert.rejects(
+    () => service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: foreign }, 'idem-z5-foreign'),
+    (err) => err instanceof AnimationRuleError && err.status === 400 && /source attempt by UUID/.test(err.message),
+  )
+
+  // The unconfigured world: a carrying submit does NOT refuse (the render
+  // is never hostage to identity evidence — §7's independence principle),
+  // the stamp simply does not land, the named event records the gap, and
+  // the extension attempt refuses later instead of passing on the name.
+  const originalDir = evidenceRoot.dir
+  evidenceRoot.dir = ''
+  try {
+    const submitted = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, revision) }, 'idem-z5-gap')
+    assert.equal(anim.getAttempt(submitted.attemptId).snapshot.modelIdentities, undefined, 'no identity stamp in the unconfigured world')
+    await waitAttemptState(submitted.attemptId, ['ready'], 'the render landing playable despite the identity gap')
+    await waitContinuation(submitted.attemptId, ['ready'], 'the carry artifact registering (availability is independent of identities)')
+    assert.ok(
+      events.some((event) => event.type === 'animation.attempt.continuation-identity-missing' && event.payload.attemptId === submitted.attemptId && /Identity evidence is missing/.test(String(event.payload.reason))),
+      'the gap landed as the named event — never a silent drop',
+    )
+    // And a binding hand-frozen from this unconfigured source refuses at
+    // dispatch: the target cannot pass on names it cannot digest.
+    const before = await engineRecordCount()
+    const named = await service.submit(
+      { documentId: doc.id, tool: 'tween', targetId: step, snapshot: extendSnapshot(step, anim.getDocument(doc.id).revision, submitted.attemptId, [
+        { name: RESOLVED_UNET, digest: 'b'.repeat(64), bytes: 100 },
+        { name: 'h3_tween_step12000.safetensors', digest: 'c'.repeat(64), bytes: 100 },
+        { name: RESOLVED_TEXT_ENCODER, digest: 'd'.repeat(64), bytes: 100 },
+        { name: 'minimax_h3_video_vae_fp16.safetensors', digest: 'e'.repeat(64), bytes: 100 },
+      ]) },
+      'idem-z5-named',
+    )
+    const failed = await waitAttemptState(named.attemptId, ['failed'], 'the name-only world refusing at dispatch')
+    assert.match(failed.execution.failureReason, /Identity evidence is missing/, 'never a name-only pass')
+    assert.equal(await engineRecordCount(), before, 'nothing was submitted')
+  } finally {
+    evidenceRoot.dir = originalDir
   }
 })
