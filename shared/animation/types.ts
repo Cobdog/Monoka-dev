@@ -208,6 +208,78 @@ export function engineOutputCarryPath(attemptId: string): string {
   return `animation/${attemptId}/${name}_${String(CARRY_SAVE_SLOT).padStart(5, '0')}.safetensors`
 }
 
+/** The continuation readiness half of the two-readiness lifecycle (§8):
+ *  `absent` — this attempt carries nothing (no save tail in its frozen graph;
+ *    every hero/sequence/plain-tween attempt lives here);
+ *  `registering` — the file exists engine-side and the owner is discovering,
+ *    digesting, and registering it (also the settled state after the bounded
+ *    retries exhausted, `error` carrying the reason — the retryable shape);
+ *  `ready` — the artifact is registered and digest-resolvable (continuation
+ *    readiness; the binding's handle is `artifact`);
+ *  `not-produced` — the deterministic receipt path holds no file: the in-graph
+ *    Save never ran to completion. TERMINAL for that attempt (§7's named
+ *    condition) — a new alternative (an explicit re-roll) is the only path,
+ *    and the clip stays playable;
+ *  `unavailable` — a REGISTERED artifact that no longer resolves by digest
+ *    (disk loss, manual removal): derived truth, re-observed at every
+ *    availability check, never a silent reconstruction (§7's other named
+ *    condition). */
+export type AttemptContinuationState = 'absent' | 'registering' | 'ready' | 'unavailable' | 'not-produced'
+
+/** The OPAQUE artifact handle the view (and §5's binding) carries — the
+ *  content-addressed identity, nothing the engine's lifecycle can invalidate
+ *  (no slot paths, no cache keys). */
+export type ContinuationArtifactHandle = { artifactId: string; digest: string }
+
+/** The view's continuation field (the client mirror imports this — one
+ *  definition; the server's AttemptStateView and src/animation/client.ts
+ *  change together). `error` surfaces only in the retryable registering
+ *  shape, mirroring the preparation view's error. */
+export type AttemptContinuationView = {
+  state: AttemptContinuationState
+  artifact?: ContinuationArtifactHandle
+  error?: string
+}
+
+/** The persisted per-attempt continuation record (animation_attempt's
+ *  continuation_json): the state, the registered artifact (Task 1's record
+ *  type verbatim), the studio blob-tree path the digest resolves through
+ *  (content-addressed — the bytes at that path must hash to `artifact.digest`
+ *    or the artifact is unavailable, never "close enough"), and the last
+ *    registration error. Server-side shape: the view never leaks `relPath`. */
+export type AttemptContinuationRow = {
+  state: AttemptContinuationState
+  artifact?: ContinuationArtifactRecord
+  relPath?: string
+  error?: string
+}
+
+/** Reads the pack's save-format id out of a carry file's safetensors framing
+ *  — the receipt contract's VERIFY half: a record's saveRecipeVersion is read
+ *  FROM THE FILE's own metadata (nodes.py _write_safetensors stamps
+ *  {"__metadata__":{"format":...}} into every carry), never a studio-side
+ *  guess. Null on any shape that is not the pack's container (short bytes, a
+ *  header length past the buffer, unparseable JSON, no metadata format) —
+ *  a file that fails this read fails registration, whatever its bytes hash
+ *  to. Pure + environment-neutral (ES builtins + TextDecoder only), like the
+ *  rest of this module. */
+export function readCarrySaveRecipe(bytes: Uint8Array): string | null {
+  if (bytes.length < 8) return null
+  const headerLength = Number(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getBigUint64(0, true))
+  if (!Number.isSafeInteger(headerLength) || headerLength <= 0 || headerLength > bytes.length - 8) return null
+  let header: unknown
+  try {
+    header = JSON.parse(new TextDecoder('utf-8').decode(bytes.subarray(8, 8 + headerLength)))
+  } catch {
+    return null
+  }
+  if (typeof header !== 'object' || header === null) return null
+  const metadata = (header as { __metadata__?: unknown }).__metadata__
+  if (typeof metadata !== 'object' || metadata === null) return null
+  const format = (metadata as { format?: unknown }).format
+  return typeof format === 'string' && format.length > 0 ? format : null
+}
+
 // ---------------------------------------------------------------------------
 // closed vocabularies (byte-identical fixed strings, spec §6.3)
 // ---------------------------------------------------------------------------

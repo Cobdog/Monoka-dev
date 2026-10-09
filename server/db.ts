@@ -20,7 +20,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
-import { upAnimationTables } from './animation/store'
+import { upAnimationContinuation, upAnimationTables } from './animation/store'
 import { upCanvasDocuments } from './documents'
 import { upDatasetTables } from './datasets/store'
 import { appAuthoredDiagnostic, sanitizeErrorMessage } from './logSanitize'
@@ -231,6 +231,16 @@ export const migrations: Migration[] = [
     id: 6,
     name: '006-animation-documents',
     up: upAnimationTables,
+  },
+  {
+    // Animation extension lane, Task 2 (spec 2026-10-08-animation-extension-
+    // lane-design.md §7/§8): the continuation readiness column — the attempt
+    // row's second, independent readiness flag (media landing vs carry
+    // artifact registration). Additive ALTER only; existing rows hydrate as
+    // the pre-lane 'absent' state.
+    id: 7,
+    name: '007-animation-continuation',
+    up: upAnimationContinuation,
   },
 ]
 

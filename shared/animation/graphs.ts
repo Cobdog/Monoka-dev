@@ -177,8 +177,11 @@ export const MOTION_CONTEXT_SAVE_CLASS = 'MiniMaxH3MotionContextSaveLatent'
  *  snapshot's settings like every other dial (fix M-6's doctrine — replay,
  *  recovery, and the input hash all reproduce it) and ONLY the tween
  *  builder reads it, per the adapter scope (§3: hero/sequence need
- *  adapter-specific probes before they may carry). */
-function carryRequested(snapshot: FrozenAttemptSnapshot): boolean {
+ *  adapter-specific probes before they may carry). Exported since the
+ *  extension lane's Task 2: the completion owner reads the SAME frozen
+ *  truth to know whether a landed attempt owes a carry registration — one
+ *  definition, strict `=== true`, never a second loose-key reader. */
+export function carryRequested(snapshot: FrozenAttemptSnapshot): boolean {
   const settings = isRecord(snapshot.settings) ? snapshot.settings : {}
   return settings.carry === true
 }
