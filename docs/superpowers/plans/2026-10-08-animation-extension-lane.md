@@ -84,7 +84,7 @@ The source fingerprint (spec §6): layout/geometry/length + the identities + the
 
 ### Task 4: Windows, bindings, selection, staleness, and rebind-as-new-attempt
 
-**Files:** shared/animation/types.ts, server/animation/store.ts (+ migration 007's additive columns/tables), server/animation/routes.ts (the command routes), tests/animation-store.test.js + tests/animation-routes.test.js.
+**Files:** shared/animation/types.ts, server/animation/store.ts (+ migration 008's additive columns/tables — Task 2 landed 007), server/animation/routes.ts (the command routes), tests/animation-store.test.js + tests/animation-routes.test.js.
 
 **Interfaces:**
 
