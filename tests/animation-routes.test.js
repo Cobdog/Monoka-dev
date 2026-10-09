@@ -79,6 +79,12 @@
 //       resolved references, revision, and seed compare — never the current
 //       compiler's output); a genuinely different draft on the same key
 //       still answers the 409
+//   (p) the extension-chain command routes (extension lane Task 4) —
+//       create-window/rebind/lock on the op-dispatched chains route +
+//       select/window-candidate; the minted windowSlotId + chainRoot answer,
+//       the revision gate, the adapter-scope/foreign/unknown refusals, and
+//       the document-changed envelopes (its own server life — (f) killed
+//       the first)
 //
 // Run after `pnpm build` (the server + web dist boot from dist-server).
 // Scratch homes through the Wave 4 ledger; ports through the allocator.
@@ -1813,4 +1819,138 @@ test('(o) a v1-era same-key retry resolves idempotently through the ROUTE; a dif
   assert.equal(conflict.status, 409)
   assert.match(conflict.body.error, /different inputs/)
   assert.equal(await engineRecordCount(), countBefore, 'the conflicting submit reached no engine')
+})
+
+// ---------------------------------------------------------------------------
+// (p) the extension-chain command routes (extension lane Task 4, spec
+//     2026-10-08 §4): create-window / rebind / lock on the op-dispatched
+//     chains route + the select/window-candidate selection route — the
+//     route contracts over the real server (the window semantics live in
+//     the store suite's (k); Task 5 owns the extend submission surface
+//     that lands alternatives into windows).
+// ---------------------------------------------------------------------------
+
+test('(p) the chains route family — create-window answers the minted ids, the gate and refusals hold, rebind and lock answer', async () => {
+  // Section (f) killed the first server life — this section boots its own
+  // (same scratch home, same fake engine) with its own fabric collector.
+  const serverP = await bootServer(home, 'animation-routes P')
+  const apiP = client(serverP.port)
+  const fabricP = openFabricCollector(serverP.port)
+  try {
+    await fabricP.subscribe('animation')
+    await fabricP.waitFor((envelopes) => envelopes.some((envelope) => envelope.ch === 'system' && envelope.type === 'hello'), 'the fabric hello', 10_000)
+
+  const created = await apiP.post('/api/lan/animation/documents', { projectId, name: 'Papa', binding: makeBinding() })
+  assert.equal(created.status, 200, `the document creates (${created.body.error ?? ''})`)
+  const docP = created.body.document
+  const key1 = await makeSelectedKey(apiP, docP.id, docP.revision, 'p1')
+  const key2 = await makeSelectedKey(apiP, docP.id, key1.revision, 'p2')
+  let revision = key2.revision
+  const inserted = await apiP.post('/api/lan/animation/spans', {
+    op: 'insert', documentId: docP.id, expectedRevision: revision,
+    fromKeyId: key1.keyId, toKeyId: key2.keyId, intent: { movement: 'she breaks into a run', preservation: 'silhouette intact' },
+  })
+  assert.equal(inserted.status, 200, `the span inserts (${inserted.body.error ?? ''})`)
+  const spanP = inserted.body.document.body.spans.find((span) => span.id === inserted.body.spanId)
+  const stepSlotId = spanP.stepSlots[0].id
+  revision = inserted.body.document.revision
+
+  // The chain's ROOT: a real landed tween take over HTTP.
+  const tween = await apiP.post('/api/lan/animation/attempts', {
+    documentId: docP.id, tool: 'tween', targetId: stepSlotId, idempotencyKey: 'idem-p-tween',
+    draft: { tool: 'tween', targetStepSlotId: stepSlotId, movementStep: 'she breaks into a run, coat flaring', overrides: { medium: 'clean line on white' } },
+  })
+  assert.equal(tween.status, 200, `the root tween take submits (${tween.body.error ?? ''})`)
+  const rootTakeId = tween.body.attemptId
+  await fabricP.waitFor(
+    (envelopes) => envelopes.some((envelope) => envelope.ch === 'animation' && envelope.type === 'attempt-ready' && envelope.payload.attemptId === rootTakeId),
+    'the root take landing',
+  )
+
+  // create-window over HTTP — the answer carries the minted window id and
+  // the chain root (the spans route's diff idiom).
+  const window = await apiP.post('/api/lan/animation/chains', { op: 'create-window', documentId: docP.id, sourceAttemptId: rootTakeId, expectedRevision: revision })
+  assert.equal(window.status, 200, `create-window lands (${window.body.error ?? ''})`)
+  assert.ok(window.body.windowSlotId, 'the minted window slot id answers')
+  assert.equal(window.body.chainRoot, rootTakeId, 'the chain root is the extended take')
+  const chainInBody = window.body.document.body.chains.find((chain) => chain.rootAttemptId === rootTakeId)
+  assert.ok(chainInBody, 'the chain rides the document view')
+  assert.deepEqual(
+    chainInBody.windows[0],
+    { id: window.body.windowSlotId, order: 0, attempts: [], selectedCandidateId: null, lock: false, sourceAttemptId: rootTakeId, stale: false, staleReasons: [] },
+    'the fresh window over the wire — empty, unselected, the take as its recorded source',
+  )
+  revision = window.body.document.revision
+  await fabricP.waitFor(
+    (envelopes) => envelopes.some((envelope) => envelope.ch === 'animation' && envelope.type === 'document-changed' && envelope.payload.documentId === docP.id && envelope.payload.reason === 'chains.create-window'),
+    'the chains.create-window document-changed envelope',
+  )
+
+  // The revision gate: a stale expectedRevision answers 409 WITH the current
+  // document (the shared rebase surface).
+  const stale = await apiP.post('/api/lan/animation/chains', { op: 'create-window', documentId: docP.id, sourceAttemptId: rootTakeId, expectedRevision: revision - 1 })
+  assert.equal(stale.status, 409)
+  assert.equal(stale.body.conflict.currentRevision, revision)
+  assert.equal(stale.body.conflict.currentDocument.body.chains.length, 1, 'the conflict carries the current document')
+
+  // The refusal vocabulary over the wire.
+  const gone = await apiP.post('/api/lan/animation/chains', { op: 'create-window', documentId: docP.id, sourceAttemptId: uuid(), expectedRevision: revision })
+  assert.equal(gone.status, 404, 'an unknown source attempt is a 404')
+  const foreign = await apiP.post('/api/lan/animation/chains', { op: 'create-window', documentId: docP.id, sourceAttemptId: heroAttemptC, expectedRevision: revision })
+  assert.equal(foreign.status, 404, 'an attempt of a DIFFERENT document is a 404')
+  const badOp = await apiP.post('/api/lan/animation/chains', { op: 'smash', documentId: docP.id, expectedRevision: revision })
+  assert.equal(badOp.status, 400, 'the op vocabulary is closed')
+  // A landed HERO take of THIS document — the adapter-scope refusal.
+  const heroP = await apiP.post('/api/lan/animation/attempts', {
+    documentId: docP.id, tool: 'hero', targetId: uuid(), idempotencyKey: 'idem-p-hero', draft: heroDraft(key1.keyId),
+  })
+  assert.equal(heroP.status, 200, `the hero take submits (${heroP.body.error ?? ''})`)
+  await fabricP.waitFor(
+    (envelopes) => envelopes.some((envelope) => envelope.ch === 'animation' && envelope.type === 'attempt-ready' && envelope.payload.attemptId === heroP.body.attemptId),
+    'the hero take landing',
+  )
+  const wrongLane = await apiP.post('/api/lan/animation/chains', { op: 'create-window', documentId: docP.id, sourceAttemptId: heroP.body.attemptId, expectedRevision: revision })
+  assert.equal(wrongLane.status, 400)
+  assert.match(wrongLane.body.error, /tween-lane/, 'the adapter scope refuses by name')
+
+  // The selection route: the window holds no alternatives yet (landing is
+  // what attaches them, and the extend submission surface is Task 5's) —
+  // the selection refusals answer named.
+  const selectUnknown = await apiP.post('/api/lan/animation/select/window-candidate', { documentId: docP.id, windowSlotId: window.body.windowSlotId, attemptId: uuid(), expectedRevision: revision })
+  assert.equal(selectUnknown.status, 404)
+  assert.match(selectUnknown.body.error, /not an alternative/)
+  const selectGoneWindow = await apiP.post('/api/lan/animation/select/window-candidate', { documentId: docP.id, windowSlotId: uuid(), attemptId: uuid(), expectedRevision: revision })
+  assert.equal(selectGoneWindow.status, 404)
+
+  // Lock/unlock round-trip (the same lock class as the keys).
+  const locked = await apiP.post('/api/lan/animation/chains', { op: 'lock', documentId: docP.id, windowSlotId: window.body.windowSlotId, expectedRevision: revision })
+  assert.equal(locked.status, 200, `the window locks (${locked.body.error ?? ''})`)
+  assert.equal(locked.body.document.body.chains[0].windows[0].lock, true)
+  revision = locked.body.document.revision
+  const unlocked = await apiP.post('/api/lan/animation/chains', { op: 'unlock', documentId: docP.id, windowSlotId: window.body.windowSlotId, expectedRevision: revision })
+  assert.equal(unlocked.status, 200)
+  assert.equal(unlocked.body.document.body.chains[0].windows[0].lock, false)
+  revision = unlocked.body.document.revision
+
+  // rebind over HTTP: the named refusals; then the no-op rebind (the
+  // window's source IS the root take) answers 200 bumping nothing.
+  const rebindGone = await apiP.post('/api/lan/animation/chains', { op: 'rebind', documentId: docP.id, windowSlotId: uuid(), sourceAttemptId: rootTakeId, expectedRevision: revision })
+  assert.equal(rebindGone.status, 404, 'an unknown window is a 404')
+  const rebindForeign = await apiP.post('/api/lan/animation/chains', { op: 'rebind', documentId: docP.id, windowSlotId: window.body.windowSlotId, sourceAttemptId: heroAttemptC, expectedRevision: revision })
+  assert.equal(rebindForeign.status, 404, 'a foreign-document source is a 404')
+  const rebindHero = await apiP.post('/api/lan/animation/chains', { op: 'rebind', documentId: docP.id, windowSlotId: window.body.windowSlotId, sourceAttemptId: heroP.body.attemptId, expectedRevision: revision })
+  assert.equal(rebindHero.status, 400, 'the adapter scope governs rebind sources too')
+  assert.match(rebindHero.body.error, /tween-lane/)
+  const rebindNoop = await apiP.post('/api/lan/animation/chains', { op: 'rebind', documentId: docP.id, windowSlotId: window.body.windowSlotId, sourceAttemptId: rootTakeId, expectedRevision: revision })
+  assert.equal(rebindNoop.status, 200, `the no-op rebind answers 200 (${rebindNoop.body.error ?? ''})`)
+  assert.equal(rebindNoop.body.document.revision, revision, 'the no-op rebind bumps nothing')
+  await fabricP.waitFor(
+    (envelopes) => envelopes.some((envelope) => envelope.ch === 'animation' && envelope.type === 'document-changed' && envelope.payload.documentId === docP.id && envelope.payload.reason === 'chains.rebind'),
+    'the chains.rebind document-changed envelope',
+  )
+  } finally {
+    fabricP.close()
+    serverP.child.kill('SIGKILL')
+    await new Promise((resolve) => { const timer = setTimeout(resolve, 5_000); serverP.child.once('exit', () => { clearTimeout(timer); resolve() }) })
+  }
 })

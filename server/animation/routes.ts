@@ -9,10 +9,12 @@
  *   1. THE ROUTES — documents create/list/read (the recovery read is
  *      durable, not callback-changed), the versioned binding update, the
  *      key and span command routes (discriminated by `op`, every branch
- *      expectedRevision-gated through the store's transactions), the THREE
- *      selection commands as distinct routes (§7.2.1) plus the wave-2a
- *      rolling-reference annotation route in the same shape (§6.4), and
- *      the attempt surface (submit / state / cancel / extract-frame /
+ *      expectedRevision-gated through the store's transactions), the
+ *      extension-chain command route (the same op shape, the extension
+ *      lane §4), the THREE selection commands as distinct routes (§7.2.1)
+ *      plus the wave-2a rolling-reference annotation route in the same
+ *      shape (§6.4) and the extension lane's window-candidate selection,
+ *      and the attempt surface (submit / state / cancel / extract-frame /
  *      retry-preparation) delegating to the rendering service. The failure
  *      mapping is the
  *      documents block's:
@@ -832,6 +834,54 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
         if (animationFailure(response, error)) return
         throw error
       }
+    }
+
+    if (pathname === '/api/lan/animation/chains' && request.method === 'POST') {
+      // The extension-chain command family (§4, lane Task 4): the window
+      // slot's lifecycle + the explicit rebind, op-dispatched like the keys
+      // and spans routes. create-window answers the MINTED window id and
+      // its chain root — the only facts the client did not already know
+      // (the spans route's diff idiom).
+      const body = await readJson(request, 100_000)
+      const expectedRevision = expectedRevisionFrom(body)
+      const op = body.op
+      try {
+        const documentId = documentIdFrom(body)
+        let row: AnimationDocumentRow
+        let windowSlotId: string | undefined
+        let chainRoot: string | undefined
+        if (op === 'create-window') {
+          const before = new Set((store.getDocument(documentId)?.body.chains ?? []).flatMap((chain) => chain.windows.map((window) => window.id)))
+          row = store.createWindowSlot(documentId, uuidField(body, 'sourceAttemptId'), expectedRevision)
+          const holding = row.body.chains.find((chain) => chain.windows.some((window) => !before.has(window.id)))
+          if (holding) {
+            windowSlotId = holding.windows.find((window) => !before.has(window.id))?.id
+            chainRoot = holding.rootAttemptId
+          }
+        } else if (op === 'rebind') {
+          row = store.rebindContinuation(documentId, uuidField(body, 'windowSlotId'), uuidField(body, 'sourceAttemptId'), expectedRevision)
+        } else if (op === 'lock' || op === 'unlock') {
+          row = store.setWindowLock(documentId, uuidField(body, 'windowSlotId'), op === 'lock', expectedRevision)
+        } else {
+          return sendJson(response, 400, { error: 'The chains route needs op: create-window, rebind, lock, or unlock.' })
+        }
+        emitDocumentChanged(documentId, row.revision, `chains.${String(op)}`)
+        const payload: Record<string, unknown> = { document: documentView(row) }
+        if (windowSlotId !== undefined) payload.windowSlotId = windowSlotId
+        if (chainRoot !== undefined) payload.chainRoot = chainRoot
+        return sendJson(response, 200, payload)
+      } catch (error) {
+        if (animationFailure(response, error)) return
+        throw error
+      }
+    }
+
+    if (pathname === '/api/lan/animation/select/window-candidate' && request.method === 'POST') {
+      // The selection family's window member (§4 — selectWindowCandidate,
+      // expectedRevision-gated, lock-guarded): the slot's own selection
+      // truth, never implicit in landing.
+      return authoring(response, request, 'select.window-candidate', (body, expectedRevision) =>
+        store.selectWindowCandidate(documentIdFrom(body), uuidField(body, 'windowSlotId'), uuidField(body, 'attemptId'), expectedRevision))
     }
 
     if (pathname === '/api/lan/animation/select/key-candidate' && request.method === 'POST') {

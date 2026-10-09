@@ -37,6 +37,19 @@
  *     chain's starting slot and landed tween attempts attach to it. Every
  *     subsequent slot appends through appendStepSlot (the chain's
  *     advancement command — the foundation contract review's F1).
+ *
+ * The extension lane (spec 2026-10-08-animation-extension-lane-design.md §4/
+ * §5, lane Task 4) rides the same disciplines: WINDOW slots live in the
+ * document body beside keys and spans (the key-slot pattern applied to
+ * windows — alternatives plus the slot's own selection truth plus its lock),
+ * the continuation BINDING rides the frozen attempt snapshot (Task 3's seed
+ * widened in place; rebinding re-points the SLOT's recorded source and
+ * produces the next attempt's binding through the next submission — a
+ * frozen attempt's source, caption, recipe, or provenance NEVER change),
+ * staleness marks are the span machinery's own shape with the chain's own
+ * vocabulary ('ancestry' / 'intent'), and the mismatch state is DERIVED
+ * (chainMismatch in the shared types) — surfaced, never written, never
+ * silent.
  */
 import { randomUUID } from 'node:crypto'
 import type Database from 'better-sqlite3'
@@ -56,10 +69,12 @@ import {
   type BindingInput,
   type BindingVersion,
   type ContinuationArtifactRecord,
+  type ExtensionChain,
   type FacingTerm,
   type FrozenAttemptSnapshot,
   type KeyCandidate,
   type SessionOverrides,
+  type WindowSlot,
 } from '../../shared/animation/types'
 
 /** The ANIMATION DOCUMENT schema version (distinct from migration ids and
@@ -160,6 +175,17 @@ const IN_FLIGHT_STATES: ReadonlySet<string> = new Set(['queued', 'rendering', 'p
  *  near reference — §6.4's reference state), an intent change rewrites the
  *  motion, a settings change alters every render's operating point. */
 type StaleReason = 'binding' | 'pose' | 'intent' | 'settings'
+
+/** The window-slot staleness vocabulary (the extension lane, spec §4 — §5.3/
+ *  §8.3's separation extended to chains): 'ancestry' — the window's
+ *  selected ancestry moved (a reselected ancestor window displacing the
+ *  attempt a descendant was conditioned on, or an explicit rebind);
+ *  'intent' — an authored-input change on the span whose take roots the
+ *  chain. Alternatives NEVER carry a mark — adding an unselected
+ *  alternative invalidates no one. Marks are monotonic like the span's
+ *  (§8.3: mark, never delete; takes preserved); the DERIVED mismatch
+ *  (chainMismatch, shared types) is the live truth a mark prompts about. */
+type WindowStaleReason = 'ancestry' | 'intent'
 
 /**
  * Migration 006 — the animation document tables (§11.2), appended to the
@@ -558,6 +584,82 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
     return ids
   }
 
+  // ---- the extension-chain helpers (§4, lane Task 4) -------------------------
+
+  /** The span mark's window twin: monotonic, reason-deduplicated. */
+  function markWindowStale(window: WindowSlot, reason: WindowStaleReason): void {
+    window.stale = true
+    if (!window.staleReasons.includes(reason)) window.staleReasons.push(reason)
+  }
+
+  /** The window slot + its chain by slot id — the requireKeySlot/
+   *  requireSpan refusal class (a missing target is a 404, never a silent
+   *  no-op). */
+  function requireWindowSlot(body: AnimationDocumentBody, windowSlotId: string): { chain: ExtensionChain; slot: WindowSlot } {
+    for (const chain of body.chains) {
+      const slot = chain.windows.find((window) => window.id === windowSlotId)
+      if (slot) return { chain, slot }
+    }
+    throw new AnimationRuleError(`No extension window slot with id ${windowSlotId} in this document.`, 404)
+  }
+
+  /** The binding source an attempt's frozen record names (null for a plain
+   *  take or an unknown attempt). Seed and full bindings both carry the
+   *  field — the ancestry walk never needs the widened half, so this read
+   *  stays the Task-3 narrow forever. */
+  function bindingSourceOf(attemptId: string): string | null {
+    const row = statements.attempt.get(attemptId) as Record<string, unknown> | undefined
+    if (!row) return null
+    try {
+      const snapshot = JSON.parse(str(row.snapshot_json)) as FrozenAttemptSnapshot
+      return snapshot.continuationBinding?.sourceAttemptId ?? null
+    } catch {
+      return null
+    }
+  }
+
+  /** Windows whose SELECTED attempt's frozen ancestry (binding sources
+   *  walked attempt → source → …) passes through one of `seeds` — the
+   *  descendants an ancestry change displaces (§4: a descendant goes stale
+   *  when its relevant SELECTED ancestry changes; unselected alternatives
+   *  mark NO ONE). The visited set is corruption insurance: the commands
+   *  keep sources strictly earlier in the chain, but a hand-edited body
+   *  must never loop this walk. */
+  function markAncestryDescendants(chain: ExtensionChain, seeds: ReadonlySet<string>, reason: WindowStaleReason): void {
+    for (const window of chain.windows) {
+      if (window.selectedCandidateId === null) continue
+      let ancestor = bindingSourceOf(window.selectedCandidateId)
+      const visited = new Set<string>()
+      while (ancestor !== null && !visited.has(ancestor)) {
+        if (seeds.has(ancestor)) {
+          markWindowStale(window, reason)
+          break
+        }
+        visited.add(ancestor)
+        ancestor = bindingSourceOf(ancestor)
+      }
+    }
+  }
+
+  /** The Extend action's source contract (§4): a real, LANDED tween-lane
+   *  attempt of THIS document — the review surface the action lives on.
+   *  Continuation AVAILABILITY is deliberately NOT checked here: binding
+   *  metadata is distinct from artifact availability (§5/§7), and the
+   *  availability truth belongs to the extend preflight (Task 5's route)
+   *  and the dispatch gate, which re-observe it. */
+  function requireExtendSource(documentId: string, sourceAttemptId: string): void {
+    const row = statements.attempt.get(sourceAttemptId) as Record<string, unknown> | undefined
+    if (!row || str(row.document_id) !== documentId) {
+      throw new AnimationRuleError(`Attempt ${sourceAttemptId} is not an attempt of this document.`, 404)
+    }
+    if (str(row.tool) !== 'tween') {
+      throw new AnimationRuleError(`The extension lane conditions on tween-lane takes (§3's adapter scope) — attempt ${sourceAttemptId} is a ${str(row.tool)} render.`, 400)
+    }
+    if (row.result_json === null || row.result_json === '') {
+      throw new AnimationRuleError(`Attempt ${sourceAttemptId} has not landed — the Extend action lives on a landed take.`, 400)
+    }
+  }
+
   // ---- shared input validation ----------------------------------------------
 
   function bindingVersionFromInput(input: BindingInput, version: number): BindingVersion {
@@ -600,6 +702,7 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       const body: AnimationDocumentBody = {
         keys: [],
         spans: [],
+        chains: [],
         bindingHistory: binding ? [bindingVersionFromInput(binding, 1)] : [],
         activeBindingVersion: binding ? 1 : 0,
         editorial: [],
@@ -759,7 +862,22 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       return authorCommand(documentId, expectedRevision, (body) => {
         const span = body.spans[requireSpan(body, spanId)]
         span.intent = validated
-        markStale(body, spanAndDescendants(body, spanId), 'intent')
+        const affected = spanAndDescendants(body, spanId)
+        markStale(body, affected, 'intent')
+        // The extension lane's authored-input rule (§4, lane Task 4): a chain
+        // rooted at a take of an AFFECTED span marks its windows 'intent' —
+        // the windows continue that take's motion, so the span's own
+        // re-render prompt extends down the chain (the §8.3 doctrine: err
+        // toward marking more; takes preserved). A branch chain rooted at an
+        // extension ATTEMPT targets a window slot, not a step slot — it rides
+        // its parent chain's marks through the shared root take instead.
+        for (const chain of body.chains) {
+          const root = statements.attempt.get(chain.rootAttemptId) as Record<string, unknown> | undefined
+          if (!root) continue
+          const rootedHere = body.spans.some((entry) => affected.has(entry.id) && entry.stepSlots.some((step) => step.id === str(root.target_id)))
+          if (!rootedHere) continue
+          for (const window of chain.windows) markWindowStale(window, 'intent')
+        }
       })
     },
 
@@ -975,6 +1093,112 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       })
     },
 
+    // extension-chain commands (§4, lane Task 4) — the window-slot family,
+    // every one transactional + expectedRevision-gated like the rest -------
+    /** The Extend action's document half (§4): one explicit command mints
+     *  the window slot the extension attempt will land into. The CHAIN
+     *  resolution: a take that roots no chain CREATES a chain rooted at
+     *  itself; a chain's ROOT or a window's SELECTED candidate appends the
+     *  next window to that chain; an UNSELECTED alternative BRANCHES — a
+     *  new chain rooted at the alternative (the re-roll shape applied to
+     *  chains). The root match takes precedence when an attempt is both a
+     *  chain's root and another chain's selected candidate (a branched
+     *  alternative later selected in its parent chain): the root IS the
+     *  chain the take anchors. Nothing marks stale — an empty slot consumes
+     *  no reference state (the appendStepSlot precedent). */
+    createWindowSlot: (documentId: string, sourceAttemptId: string, expectedRevision: number) => {
+      if (!isUuid(sourceAttemptId)) throw new AnimationRuleError('The source attempt id must be a UUID.', 400)
+      return authorCommand(documentId, expectedRevision, (body) => {
+        requireExtendSource(documentId, sourceAttemptId)
+        const chain = body.chains.find((entry) => entry.rootAttemptId === sourceAttemptId)
+          ?? body.chains.find((entry) => entry.windows.some((window) => window.selectedCandidateId === sourceAttemptId))
+        const slot: WindowSlot = { id: randomUUID(), order: 0, attempts: [], selectedCandidateId: null, lock: false, sourceAttemptId, stale: false, staleReasons: [] }
+        if (chain) {
+          slot.order = chain.windows.reduce((max, window) => Math.max(max, window.order), -1) + 1
+          chain.windows.push(slot)
+        } else {
+          body.chains.push({ rootAttemptId: sourceAttemptId, windows: [slot] })
+        }
+      })
+    },
+
+    /** The window selection command (§4 — the selection family's window
+     *  member, expectedRevision-gated, lock-guarded): sets the slot's OWN
+     *  selection truth; landing never calls this. A REAL change marks the
+     *  windows whose selected ancestry runs through the DISPLACED attempt
+     *  stale ('ancestry') — never rebinding them: descendants bind frozen
+     *  source attempts, and those rows never change (§4's ancestry rule).
+     *  A no-op re-select writes nothing (§5.3 reserves marks for actual
+     *  changes); re-selecting an earlier choice back adds no NEW marks —
+     *  marks are monotonic, and the DERIVED mismatch (chainMismatch) reads
+     *  consistent again on its own. */
+    selectWindowCandidate: (documentId: string, windowSlotId: string, attemptId: string, expectedRevision: number) => {
+      if (!isUuid(windowSlotId)) throw new AnimationRuleError('The window slot id must be a UUID.', 400)
+      if (!isUuid(attemptId)) throw new AnimationRuleError('The attempt id must be a UUID.', 400)
+      return authorCommand(documentId, expectedRevision, (body) => {
+        const { chain, slot } = requireWindowSlot(body, windowSlotId)
+        if (!slot.attempts.includes(attemptId)) {
+          throw new AnimationRuleError(`Attempt ${attemptId} is not an alternative of window slot ${windowSlotId}.`, 404)
+        }
+        if (slot.lock) {
+          throw new AnimationRuleError(`Window slot ${windowSlotId} is locked — unlock it before changing its selection.`, 400)
+        }
+        if (slot.selectedCandidateId === attemptId) return false
+        const displaced = slot.selectedCandidateId
+        slot.selectedCandidateId = attemptId
+        if (displaced !== null) markAncestryDescendants(chain, new Set([displaced]), 'ancestry')
+      })
+    },
+
+    /** The window lock (§4 — "lockable by the same lock class"): a locked
+     *  window's SELECTION cannot change without an explicit unlock;
+     *  membership (landing alternatives) stays legal, exactly like a
+     *  locked key's candidates (§11.2). The lock never hides a mismatch —
+     *  the derived state is not a command. */
+    setWindowLock: (documentId: string, windowSlotId: string, locked: boolean, expectedRevision: number) => {
+      if (!isUuid(windowSlotId)) throw new AnimationRuleError('The window slot id must be a UUID.', 400)
+      if (typeof locked !== 'boolean') throw new AnimationRuleError('locked must be a boolean.', 400)
+      return authorCommand(documentId, expectedRevision, (body) => {
+        requireWindowSlot(body, windowSlotId).slot.lock = locked
+      })
+    },
+
+    /** The explicit binding change (§5 ruling 3 + the maintainer's
+     *  clarification — the ABSOLUTE contract): rebind edits the DOCUMENT,
+     *  never a frozen attempt. The slot's RECORDED SOURCE re-points to the
+     *  named in-chain attempt — producing the NEXT attempt's binding
+     *  source, which the next submission into this slot freezes (Task 5's
+     *  extend route); the attempts already in the slot keep their own
+     *  frozen sources, captions, recipes, and provenance byte-unchanged
+     *  (the append-only trigger enforces the row half; this command never
+     *  touches the body's frozen records either). The rebound slot and its
+     *  ancestry-descendants mark 'ancestry' — a distinct document mutation
+     *  with its own revision bump and descendant staleness, exactly §5's
+     *  letter. The order guard keeps sources strictly earlier in the
+     *  chain: a binding source at or after the window itself would make
+     *  the ancestry walk cyclic. */
+    rebindContinuation: (documentId: string, windowSlotId: string, sourceAttemptId: string, expectedRevision: number) => {
+      if (!isUuid(windowSlotId)) throw new AnimationRuleError('The window slot id must be a UUID.', 400)
+      if (!isUuid(sourceAttemptId)) throw new AnimationRuleError('The source attempt id must be a UUID.', 400)
+      return authorCommand(documentId, expectedRevision, (body) => {
+        const { chain, slot } = requireWindowSlot(body, windowSlotId)
+        requireExtendSource(documentId, sourceAttemptId)
+        if (sourceAttemptId !== chain.rootAttemptId) {
+          const sourceSlot = chain.windows.find((window) => window.attempts.includes(sourceAttemptId))
+          if (!sourceSlot) {
+            throw new AnimationRuleError(`Attempt ${sourceAttemptId} is neither the root of, nor an alternative in, this chain — a rebind resolves a mismatch inside one chain (extend the other chain instead).`, 400)
+          }
+          if (sourceSlot.order >= slot.order) {
+            throw new AnimationRuleError(`A window's binding source must precede it in the chain — attempt ${sourceAttemptId} lives in window order ${sourceSlot.order}, at or after this window (order ${slot.order}).`, 400)
+          }
+        }
+        if (slot.sourceAttemptId === sourceAttemptId) return false
+        slot.sourceAttemptId = sourceAttemptId
+        markWindowStale(slot, 'ancestry')
+        markAncestryDescendants(chain, new Set(slot.attempts), 'ancestry')
+      })
+    },
+
     // attempts — separate rows, their OWN revision; completion events are
     // not user edits (§11.2) -------------------------------------------------
     /** The recovery read's attempt half (the route pairs it with the
@@ -1093,11 +1317,21 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       } else if (tool === 'tween') {
         // The landed tween clip attaches its attempt to the target step slot —
         // the slot's attempt alternatives grow; the selected rolling
-        // reference stays an explicit command.
+        // reference stays an explicit command. An EXTENSION attempt (the
+        // extension lane, §4) targets a WINDOW slot instead: the same attach
+        // semantics, the same explicit-selection rule (landing adds an
+        // alternative; it never selects and never marks anything stale —
+        // alternatives invalidate no one), takes preserved (§8.3).
         const span = body.spans.find((entry) => entry.stepSlots.some((step) => step.id === targetId))
-        const slot = span?.stepSlots.find((step) => step.id === targetId)
-        if (!span || !slot) throw new AnimationRuleError(`The attempt's target step slot ${targetId} no longer exists in the document.`, 404)
-        if (!slot.attempts.includes(attemptIdValue)) slot.attempts.push(attemptIdValue)
+        const stepSlot = span?.stepSlots.find((step) => step.id === targetId)
+        const windowSlot = stepSlot ? null : body.chains.flatMap((chain) => chain.windows).find((window) => window.id === targetId) ?? null
+        if (stepSlot) {
+          if (!stepSlot.attempts.includes(attemptIdValue)) stepSlot.attempts.push(attemptIdValue)
+        } else if (windowSlot) {
+          if (!windowSlot.attempts.includes(attemptIdValue)) windowSlot.attempts.push(attemptIdValue)
+        } else {
+          throw new AnimationRuleError(`The attempt's target slot ${targetId} (a tween step slot or an extension window slot) no longer exists in the document.`, 404)
+        }
       }
       // 'sequence' clips surface through editorial selection — no body change.
 
