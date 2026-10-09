@@ -60,17 +60,21 @@ import {
 } from './store'
 import type { CompletionOwner } from './completion-owner'
 import {
+  AnimationModelEvidenceError,
   AnimationModelResolutionError,
   type ModelEnumerations,
   modelOverrides,
   modelsFromSnapshotSettings,
+  type ModelFolderResolver,
   resolveAnimationModels,
+  resolvedIdentities,
   type ResolvedAnimationModels,
 } from './models'
 import { sanitizeForUser } from '../logSanitize'
 import {
   ANIMATION_OPERATING_POINT,
   buildAnimationGraph,
+  carryRequested,
   engineInputName,
   MOTION_CONTEXT_SAVE_CLASS,
   type AnimationGraph,
@@ -78,8 +82,8 @@ import {
 } from '../../shared/animation/graphs'
 import { COMPILER_VERSION, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../../shared/animation/compiler'
 import type { CompiledCaption, HeroContext, SequenceContext, TweenContext } from '../../shared/animation/compiler'
-import { animationInputHash, engineOutputCarryPath } from '../../shared/animation/types'
-import type { AnimationTool, AssetReference, AttemptContinuationView, AttemptExecutionState, ContinuationArtifactRecord, FrozenAttemptSnapshot, MediumString } from '../../shared/animation/types'
+import { animationInputHash, engineOutputCarryPath, isUuid, parseModelContentIdentities } from '../../shared/animation/types'
+import type { AnimationTool, AssetReference, AttemptContinuationView, AttemptExecutionState, ContinuationArtifactRecord, FrozenAttemptSnapshot, MediumString, ModelContentIdentity } from '../../shared/animation/types'
 import { runTool } from '../datasets/probe'
 
 // ---------------------------------------------------------------------------
@@ -993,6 +997,85 @@ export function requireContinuationArtifact(deps: { store: AnimationStore; blobs
 }
 
 // ---------------------------------------------------------------------------
+// content-identity compatibility (extension lane Task 3, spec §6 — the
+// fail-closed target-execution comparison)
+// ---------------------------------------------------------------------------
+
+/** §6's named drift refusal: the TARGET's freshly resolved execution
+ *  configuration does not match the binding's frozen identities. The
+ *  message names the drifted artifact (the model NAME — the alias — and
+ *  both digests), states why filenames do not suffice, and names the
+ *  paths forward. Dispatch fails the attempt with it as the durable
+ *  failureReason; the Extend preflight (Task 5's route site) surfaces the
+ *  same named refusal before anything is spent. */
+export class ContinuationIdentityDriftError extends Error {
+  readonly artifact: string
+  constructor(artifact: string, detail: string) {
+    super(`The continuation binding's frozen model identities do not match the freshly resolved execution configuration (spec §6): ${detail} Filenames alias — content identities are digests of the exact weights, and what sits behind an unchanged name changed. The attempt is refused; re-land the source on the current weights or explicitly rebind the continuation.`)
+    this.name = 'ContinuationIdentityDriftError'
+    this.artifact = artifact
+  }
+}
+
+/** §6's target-execution comparison — the check that matters at dispatch.
+ *  Every frozen identity must still resolve under the same name at the same
+ *  digest, and the fresh set must hold nothing the binding did not freeze:
+ *  a name that no longer resolves, a name whose digest moved (the
+ *  aliased-weights case — weights replaced under an unchanged filename), or
+ *  a freshly resolved name the binding never froze are ALL named refusals.
+ *  A name-only match is never a pass; digest equality is the only pass. */
+export function compareModelIdentities(frozen: ModelContentIdentity[], fresh: ModelContentIdentity[]): void {
+  const freshByName = new Map(fresh.map((identity) => [identity.name, identity]))
+  for (const identity of frozen) {
+    const now = freshByName.get(identity.name)
+    if (now === undefined) {
+      throw new ContinuationIdentityDriftError(
+        identity.name,
+        `"${identity.name}" (frozen at digest ${identity.digest}, ${identity.bytes} bytes) no longer resolves in the engine's current configuration — the weights this binding froze have no successor under their name.`,
+      )
+    }
+    if (now.digest !== identity.digest) {
+      throw new ContinuationIdentityDriftError(
+        identity.name,
+        `"${identity.name}" was frozen at digest ${identity.digest} (${identity.bytes} bytes) but now resolves to digest ${now.digest} (${now.bytes} bytes) — the weights behind the unchanged name were replaced.`,
+      )
+    }
+  }
+  const frozenNames = new Set(frozen.map((identity) => identity.name))
+  for (const identity of fresh) {
+    if (!frozenNames.has(identity.name)) {
+      throw new ContinuationIdentityDriftError(
+        identity.name,
+        `"${identity.name}" resolves freshly but the binding froze nothing under that name — the target's configuration is not the one the source ran on.`,
+      )
+    }
+  }
+}
+
+/** The frozen continuation binding a TARGET snapshot carries (Task 3's
+ *  seed; Task 4's ContinuationBinding widens the block). Null when absent
+ *  (every non-extension attempt), the narrowed pair when present, and a
+ *  NAMED rule refusal when malformed — the frozen record is trusted
+ *  storage, but a corrupt or hand-edited row fails CLOSED at the gate,
+ *  never a silent pass. */
+function continuationBindingOf(snapshot: FrozenAttemptSnapshot): { sourceAttemptId: string; modelIdentities: ModelContentIdentity[] } | null {
+  const raw = (snapshot as { continuationBinding?: unknown }).continuationBinding
+  if (raw === undefined) return null
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new AnimationRuleError('The frozen continuation binding is malformed (not an object).', 400)
+  }
+  const sourceAttemptId = (raw as Record<string, unknown>).sourceAttemptId
+  if (!isUuid(sourceAttemptId)) {
+    throw new AnimationRuleError('The frozen continuation binding must name its source attempt by UUID.', 400)
+  }
+  const modelIdentities = parseModelContentIdentities((raw as Record<string, unknown>).modelIdentities)
+  if (modelIdentities === null) {
+    throw new AnimationRuleError('The frozen continuation binding must carry well-formed model content identities (name, 64-hex digest, positive byte count).', 400)
+  }
+  return { sourceAttemptId, modelIdentities }
+}
+
+// ---------------------------------------------------------------------------
 // the service
 // ---------------------------------------------------------------------------
 
@@ -1030,11 +1113,18 @@ export function createAnimationRenderingService(deps: {
   /** The frame-extraction binary (the same re-resolved-per-call seam the
    *  exporter uses): on-demand extraction of a video-only listing's frame. */
   ffmpegPath: () => string
+  /** The identity-evidence locator (extension lane Task 3): the LOCAL folder
+   *  each model kind's weight files live in, re-resolved per call so settings
+   *  changes apply without a restart. Wired from the studio's configured
+   *  model roots (the same folders fetches land in — engine-scanned by
+   *  construction); '' means unconfigured, and unconfigured is the named
+   *  evidence refusal wherever an identity is demanded. */
+  modelFolder: ModelFolderResolver
   compile: { hero: typeof compileHeroCaption; tween: typeof compileTweenCaption; sequence: typeof compileSequenceCaption }
   emit: (type: string, payload: unknown) => void
   now?: () => number
 }): AnimationRenderingService {
-  const { store, engine, owner, blobs, compile, emit, ffmpegPath } = deps
+  const { store, engine, owner, blobs, compile, emit, ffmpegPath, modelFolder } = deps
   const now = deps.now ?? Date.now
 
   /** §7.2.2 validation — everything checked BEFORE anything is persisted.
@@ -1092,6 +1182,11 @@ export function createAnimationRenderingService(deps: {
     } else if (snapshot.settings !== undefined) {
       throw new AnimationRuleError('The frozen snapshot settings must be an object.', 400)
     }
+    // The extension lane's binding seed (Task 3): shape-checked HERE so a
+    // malformed block never persists; the semantic gates (the source's
+    // artifact resolving, the identities matching) fire at dispatch —
+    // §7's preflight-and-dispatch discipline.
+    continuationBindingOf(snapshot)
     // Reference assets must be readable NOW (§7.2.2 "exist and are
     // accessible") — the engine upload reads these bytes right after this.
     for (const reference of snapshot.references) {
@@ -1138,7 +1233,7 @@ export function createAnimationRenderingService(deps: {
    *  document that moves mid-submission leaves the freeze CONSISTENT at the
    *  entry revision; an honest same-key retry after the move resolves
    *  different references and hash-conflicts (the existing 409). */
-  function stampedSnapshot(input: AttemptInput, models: ResolvedAnimationModels | null, document: AnimationDocumentRow | null): FrozenAttemptSnapshot {
+  function stampedSnapshot(input: AttemptInput, models: ResolvedAnimationModels | null, document: AnimationDocumentRow | null, identities: ModelContentIdentity[] | null): FrozenAttemptSnapshot {
     const body = document?.body
     const overrides = isRecord(input.snapshot.settings) ? input.snapshot.settings : {}
     const width = typeof overrides.width === 'number' ? overrides.width : body?.settings.outputWidth ?? ANIMATION_OPERATING_POINT.width
@@ -1147,8 +1242,15 @@ export function createAnimationRenderingService(deps: {
     const asString = (value: unknown, fallback: string): string => (typeof value === 'string' && value.length > 0 ? value : fallback)
     const asInt = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback)
     const asFloat = (value: unknown, fallback: number): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback)
+    // modelIdentities is SERVER-STAMPED truth (like the resolved model
+    // names beside it): a client-supplied value is dropped here, and the
+    // stamp re-adds it only when the submit-time preflight actually
+    // digested the weights. The input hash still covers the RECEIVED
+    // snapshot, so a retry keeps matching whatever it carried.
+    const received: FrozenAttemptSnapshot = { ...input.snapshot }
+    delete received.modelIdentities
     return {
-      ...input.snapshot,
+      ...received,
       settings: {
         ...input.snapshot.settings,
         bindingVersion: document?.body.activeBindingVersion ?? 0,
@@ -1171,6 +1273,7 @@ export function createAnimationRenderingService(deps: {
         loraStrength: asFloat(overrides.loraStrength, ANIMATION_OPERATING_POINT.loraStrength),
         ...(models !== null ? models : {}),
       },
+      ...(identities !== null ? { modelIdentities: identities } : {}),
     }
   }
 
@@ -1244,12 +1347,42 @@ export function createAnimationRenderingService(deps: {
         // went terminal behind it aborts WITHOUT engine contact.
         if (abortIfTerminal(attemptId)) return 'aborted'
       }
+      // One enumeration fetch per dispatch, shared by the (possibly
+      // deferred) model resolution and the continuation gate below — both
+      // are correctness-critical reads and both pass force.
+      let enumerations: ModelEnumerations | null = null
+      const freshEnumerations = async (): Promise<ModelEnumerations> => {
+        if (enumerations === null) enumerations = await engine.modelEnumerations({ force: true })
+        return enumerations
+      }
       const models = modelsFromSnapshotSettings(snapshot.settings) ?? resolveAnimationModels({
         tool: snapshot.tool,
-        enumerations: await engine.modelEnumerations({ force: true }),
+        enumerations: await freshEnumerations(),
         overrides: modelOverrides(snapshot.settings),
       })
       if (abortIfTerminal(attemptId)) return 'aborted'
+      // THE CONTINUATION GATE (extension lane Task 3, spec §6/§7): an
+      // extension attempt's dispatch re-establishes BOTH continuation
+      // truths before a graph leaves — AVAILABILITY (the registered carry
+      // still resolves by digest, through Task 2's one seam — no second
+      // resolver exists) and COMPATIBILITY (the target's FRESHLY resolved
+      // identities must match the binding's frozen ones; checking only
+      // that the source matched its own record is insufficient — weights
+      // replaced under an unchanged name refuse HERE, by name). Every
+      // refusal below is definitive: named, persisted as the durable
+      // failureReason, nothing submitted.
+      const continuation = continuationBindingOf(snapshot)
+      if (continuation !== null) {
+        requireContinuationArtifact({ store, blobs }, continuation.sourceAttemptId)
+        const identities = await resolvedIdentities({
+          tool: snapshot.tool,
+          enumerations: await freshEnumerations(),
+          overrides: modelOverrides(snapshot.settings),
+          modelFolder,
+        })
+        if (abortIfTerminal(attemptId)) return 'aborted'
+        compareModelIdentities(continuation.modelIdentities, identities)
+      }
       const graph: AnimationGraph = buildAnimationGraph(snapshot, frozenBuildSettings(snapshot, models))
       sent = true // past this point the /prompt has left (or failed leaving) — the outcome is the engine's to know
       const { engineJobId } = await engine.submitGraph(graph, attemptId)
@@ -1274,6 +1407,25 @@ export function createAnimationRenderingService(deps: {
         // by construction — the repair path is the reason text itself).
         store.setAttemptExecution(attemptId, { state: 'failed', failureReason: failure.message })
         emit('animation.attempt.failed', { attemptId, documentId, reason: 'model-resolution', detail: failure.message })
+        return 'failed'
+      }
+      if (failure instanceof ContinuationUnavailableError) {
+        // The continuation gate's availability half: the registered carry no
+        // longer resolves by digest. Definitive (a re-drive cannot fix a
+        // gone artifact — §7's explicit options are the recovery), the
+        // named reason persisted; the SOURCE's own row flipped `unavailable`
+        // by the seam itself, its playable state untouched.
+        store.setAttemptExecution(attemptId, { state: 'failed', failureReason: failure.message })
+        emit('animation.attempt.failed', { attemptId, documentId, reason: 'continuation-unavailable', detail: failure.message })
+        return 'failed'
+      }
+      if (failure instanceof AnimationModelEvidenceError || failure instanceof ContinuationIdentityDriftError) {
+        // The continuation gate's compatibility half: identity evidence
+        // missing, or the freshly resolved weights drifted from the
+        // binding's frozen identities (the aliased-weights case). Definitive
+        // and named — never retried into a maybe.
+        store.setAttemptExecution(attemptId, { state: 'failed', failureReason: failure.message })
+        emit('animation.attempt.failed', { attemptId, documentId, reason: 'continuation-compatibility', detail: failure.message })
         return 'failed'
       }
       if (failure instanceof AnimationEngineValidationError) {
@@ -1363,7 +1515,30 @@ export function createAnimationRenderingService(deps: {
         preflight = null
       }
 
-      const snapshot = stampedSnapshot(input, preflight, frozenDocument)
+      // The identity stamp (extension lane Task 3, spec §5): a CARRYING
+      // snapshot declares itself a future continuation SOURCE, so its
+      // frozen record carries the digested identities Task 5's binding
+      // will copy verbatim — captured at SOURCE-SUBMIT time so weights
+      // replaced later (even before the extend) still refuse the
+      // extension. Missing evidence does NOT hold the render hostage (the
+      // §7 independence principle): the stamp simply does not land, the
+      // named event below records why, and any later extend refuses named
+      // on the missing evidence instead of passing on the name alone.
+      let preflightIdentities: ModelContentIdentity[] | null = null
+      let identityGap: string | null = null
+      if (carryRequested(input.snapshot)) {
+        if (preflight === null) {
+          identityGap = 'model resolution deferred — the engine was unreachable at submit, so the weights could not be digested'
+        } else {
+          try {
+            preflightIdentities = await resolvedIdentities({ tool: input.tool, models: preflight, modelFolder })
+          } catch (failure) {
+            identityGap = failure instanceof Error ? failure.message : String(failure)
+          }
+        }
+      }
+
+      const snapshot = stampedSnapshot(input, preflight, frozenDocument, preflightIdentities)
       const attemptId = randomUUID()
       const recorded = store.recordAttempt({
         id: attemptId,
@@ -1393,6 +1568,14 @@ export function createAnimationRenderingService(deps: {
         return { attemptId: recorded.attempt.id, created: false }
       }
       emit('animation.attempt.persisted', { attemptId, documentId: input.documentId, tool: input.tool })
+      // The observable half of the identity stamp's gap (never a silent
+      // drop): a carrying attempt whose record carries NO identities can
+      // never seed a binding — the event names the attempt and the cause;
+      // Task 6 owns whatever client surface it earns. Server-internal for
+      // now, like Task 2's registration events.
+      if (identityGap !== null && snapshot.modelIdentities === undefined) {
+        emit('animation.attempt.continuation-identity-missing', { attemptId, documentId: input.documentId, tool: input.tool, reason: identityGap.slice(0, 2000) })
+      }
 
       // Dispatch (shared with the reconcile redispatch): reference bytes
       // reach the engine's input folder, then the graph built from the

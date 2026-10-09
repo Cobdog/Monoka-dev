@@ -152,6 +152,32 @@ export type FrozenAttemptSnapshot = {
     preservation: string
     overrides: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
   }
+  /** EXTENSION-LANE sources only (spec 2026-10-08 §5/§6, lane Task 3): the
+   *  RESOLVED MODEL CONTENT IDENTITIES — sha-256 digests of the exact weight
+   *  files the attempt renders on, not their filenames. SERVER-STAMPED at
+   *  submit for carrying snapshots whenever the submit-time preflight could
+   *  resolve AND digest them; absent otherwise (an engine unreachable at
+   *  submit, or the models-evidence root unconfigured) — and an attempt
+   *  whose frozen record lacks them can never seed a continuation binding:
+   *  the extend preflight refuses named (identity evidence missing), never a
+   *  name-only pass. This is the record Task 5's binding copies verbatim, so
+   *  a source rendered under weights later replaced under an unchanged name
+   *  still refuses the extension at dispatch (§6's target-execution
+   *  comparison). Plain attempts leave it unset — the standing lane never
+   *  digests anything. */
+  modelIdentities?: ModelContentIdentity[]
+  /** EXTENSION-LANE targets only (spec §5/§6, lane Task 3 — the frozen
+   *  binding's SEED; Task 4's ContinuationBinding widens this block with the
+   *  window coordinates, the recipe, and the conditioning record): the
+   *  source attempt whose carried tail this window conditions on, plus the
+   *  SOURCE's frozen model identities (copied verbatim from the source's
+   *  `modelIdentities` at binding creation). At dispatch the target's
+   *  freshly resolved identities must MATCH this set — filenames alias;
+   *  weights replaced under an unchanged name refuse by name. */
+  continuationBinding?: {
+    sourceAttemptId: string
+    modelIdentities: ModelContentIdentity[]
+  }
 }
 
 export type AttemptExecutionState = 'queued' | 'rendering' | 'preparing' | 'ready' | 'failed' | 'cancelled' | 'interrupted' | 'reconciling'
@@ -278,6 +304,54 @@ export function readCarrySaveRecipe(bytes: Uint8Array): string | null {
   if (typeof metadata !== 'object' || metadata === null) return null
   const format = (metadata as { format?: unknown }).format
   return typeof format === 'string' && format.length > 0 ? format : null
+}
+
+// ---------------------------------------------------------------------------
+// model content identities (the extension lane, spec §5/§6 — "content
+// identities (digests), not filenames")
+// ---------------------------------------------------------------------------
+
+/** The content identity of ONE resolved model artifact: the enumerated NAME
+ *  (aliases — weights replaced under an unchanged name keep the name), the
+ *  sha-256 DIGEST of the weight-file bytes (the identity of record), and the
+ *  file's BYTE SIZE. The continuation binding freezes these verbatim and the
+ *  target-execution comparison at dispatch matches against the frozen set —
+ *  a name-only match is never a pass. */
+export type ModelContentIdentity = { name: string; digest: string; bytes: number }
+
+/** 64 lowercase hex chars — the shape every sha-256 digest in this lane
+ *  carries (the artifact record's digest and every model identity's). */
+const SHA256_HEX_RE = /^[0-9a-f]{64}$/
+
+/** A filename-shaped identity name's sane ceiling — enumeration entries are
+ *  engine-served filenames; anything past this is not a name this module
+ *  records (refusal MESSAGES cap tighter, at the server's sanitizer). */
+const MAX_IDENTITY_NAME_LENGTH = 512
+
+export function parseModelContentIdentity(value: unknown): ModelContentIdentity | null {
+  if (!isRecord(value)) return null
+  const { name, digest, bytes } = value
+  if (!isNonEmptyString(name) || name.length > MAX_IDENTITY_NAME_LENGTH) return null
+  if (typeof digest !== 'string' || !SHA256_HEX_RE.test(digest)) return null
+  if (!isPositiveInt(bytes)) return null
+  return { name, digest, bytes }
+}
+
+/** A frozen identity SET: a non-empty array of well-formed identities with
+ *  unique names (the four resolver slots, one identity each). Null on any
+ *  malformation — the caller refuses named, never a partial pass. */
+export function parseModelContentIdentities(value: unknown): ModelContentIdentity[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null
+  const identities: ModelContentIdentity[] = []
+  const names = new Set<string>()
+  for (const raw of value) {
+    const identity = parseModelContentIdentity(raw)
+    if (identity === null) return null
+    if (names.has(identity.name)) return null
+    names.add(identity.name)
+    identities.push(identity)
+  }
+  return identities
 }
 
 // ---------------------------------------------------------------------------

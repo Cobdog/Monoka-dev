@@ -40,8 +40,13 @@
  * count and length before they enter a message, so a pathological engine
  * cannot smuggle prose through a "filename").
  */
+import { createHash } from 'node:crypto'
+import { createReadStream } from 'node:fs'
+import { stat } from 'node:fs/promises'
+import { resolve, sep } from 'node:path'
+import { pipeline } from 'node:stream/promises'
 import { ANIMATION_MODEL_DEFAULTS } from '../../shared/animation/graphs'
-import type { AnimationTool } from '../../shared/animation/types'
+import type { AnimationTool, ModelContentIdentity } from '../../shared/animation/types'
 
 /** The engine's own enumeration of what its loader nodes will accept —
  *  sourced server-side from /object_info (UNETLoader's unet_name,
@@ -287,4 +292,166 @@ export function modelsFromSnapshotSettings(settings: unknown): ResolvedAnimation
   const videoVae = record.videoVae
   if (!isNonEmptyString(baseModel) || !isNonEmptyString(adapterLora) || !isNonEmptyString(textEncoder) || !isNonEmptyString(videoVae)) return null
   return { baseModel, adapterLora, textEncoder, videoVae }
+}
+
+// ---------------------------------------------------------------------------
+// content identities (extension lane Task 3, spec §5/§6) — the digesting seam
+// ---------------------------------------------------------------------------
+
+/** The engine-side model FOLDER a slot's weights live in — ComfyUI's own
+ *  folder_names_and_paths vocabulary (the folders its /models/{kind} routes
+ *  list), not a studio invention: `unet` slots load from diffusion_models,
+ *  `clip` from text_encoders, `vae` from vae, `lora` from loras. */
+export type ModelFolderKind = 'diffusion_models' | 'text_encoders' | 'vae' | 'loras'
+
+/** Locates the LOCAL folder one evidence kind's weights live in — the v1
+ *  identity-evidence contract (the design investigation's outcome, recorded
+ *  in the lane docs): the engine can ENUMERATE names (/object_info) and STAT
+ *  files (/experiment/models: name + mtime + size) but serves NO digest of
+ *  model weights anywhere in its API surface (verified against the pinned
+ *  canonical checkout + the comfyui-api capture), and /view deliberately
+ *  serves only the input/output/temp dirs — never the model folders. The
+ *  only honest digest source is therefore the weight files themselves, read
+ *  through the folders the studio already configures as the fetch-landing
+ *  roots (the same folders the engine scans: a fetch that lands there is
+ *  what makes a file enumerable). The studio runs beside the engine on the
+ *  same box — this resolver is wired from those settings. '' (empty) means
+ *  UNCONFIGURED, and unconfigured is the named evidence refusal, never a
+ *  name-only pass. */
+export type ModelFolderResolver = (kind: ModelFolderKind) => string
+
+/** The named refusal (spec §5: "identity evidence missing"): a slot RESOLVED
+ *  — the engine enumerates the name — but the weight file's bytes cannot be
+ *  read to digest (the folder is unconfigured, or holds no readable file at
+ *  the enumerated name; an enumerated name pointing at a missing file is the
+ *  standing alias hazard the wave-1 resolver already documents). The message
+ *  is composed from fixed technical prose and capped filename/path-shaped
+ *  values — the same sanitization-by-construction as the resolution refusal. */
+export class AnimationModelEvidenceError extends Error {
+  readonly slot: string
+  readonly resolvedName: string
+  readonly folderKind: ModelFolderKind
+  readonly folder: string
+  constructor(details: { slot: string; name: string; folderKind: ModelFolderKind; folder: string }) {
+    super(composeEvidenceRefusal(details))
+    this.name = 'AnimationModelEvidenceError'
+    this.slot = details.slot
+    this.resolvedName = details.name
+    this.folderKind = details.folderKind
+    this.folder = details.folder
+  }
+}
+
+function composeEvidenceRefusal(details: { slot: string; name: string; folderKind: ModelFolderKind; folder: string }): string {
+  const where = details.folder === ''
+    ? "no models folder is configured for it (the studio's models root is empty for that kind)"
+    : `the configured folder (${safeName(details.folder)}) holds no readable weight file at that name`
+  return `Identity evidence is missing for the animation lane's ${details.slot} slot: the engine enumerates "${safeName(details.name)}" but ${where}. Content identities are DIGESTS of the resolved weights, not filenames — where the evidence is unavailable the compatibility check refuses (never a name-only pass). Point the studio's models root at the engine's models directory (the folder its /models/${details.folderKind} route lists) or place the enumerated file there.`
+}
+
+/** The slot → evidence-folder mapping (one table, beside the ladders it
+ *  serves). Order is the identity list's documented order. */
+const SLOT_EVIDENCE_FOLDERS: ReadonlyArray<{ slot: keyof ResolvedAnimationModels; kind: ModelFolderKind }> = [
+  { slot: 'baseModel', kind: 'diffusion_models' },
+  { slot: 'adapterLora', kind: 'loras' },
+  { slot: 'textEncoder', kind: 'text_encoders' },
+  { slot: 'videoVae', kind: 'vae' },
+]
+
+/** Joins an enumerated name (which may carry subfolder segments — ComfyUI
+ *  enumerates relative paths) under its folder, refusing any name that
+ *  would escape the folder ('..' / absolute / empty segments) — a
+ *  pathological enumeration can never turn the evidence read into an
+ *  arbitrary-file digest. */
+function weightFilePath(folder: string, name: string): string | null {
+  const segments = name.split(/[\\/]/).map((segment) => segment.trim()).filter((segment) => segment.length > 0)
+  if (segments.length === 0 || segments.some((segment) => segment === '..' || segment === '.')) return null
+  const root = resolve(folder)
+  const resolved = resolve(folder, ...segments)
+  if (resolved !== root && !resolved.startsWith(root + sep)) return null
+  return resolved
+}
+
+/** The identity cache: keyed by ABSOLUTE PATH, trusted only while the
+ *  file's (mtimeNs, size) stat pair is unchanged — a cache hit is never
+ *  trusted past the file's mtime, so a replaced file re-hashes. Weight
+ *  files are gigabytes; without this the hot submit path would re-hash
+ *  them per attempt. Bounded FIFO (insertion order): 4 identities per
+ *  attempt means even a long-lived server rotates it slowly. The residual
+ *  (accepted, like every stat-keyed cache): bytes swapped while preserving
+ *  nanosecond mtime AND size — not a shape any real file operation has. */
+const identityCache = new Map<string, { statKey: string; identity: ModelContentIdentity }>()
+const IDENTITY_CACHE_MAX = 512
+
+/** Digests ONE weight file (streaming — the file can be gigabytes, so it is
+ *  never buffered whole; the fetcher's sha256File precedent) through the
+ *  stat-keyed cache. Null when the file cannot be read (absent, not a
+ *  regular file, or vanishing between the stat and the stream — an
+ *  unreadable file IS missing evidence) — the caller's named evidence
+ *  refusal, never a hash of nothing and never an unclassified transport
+ *  error. */
+async function digestWeightFile(absPath: string, name: string): Promise<ModelContentIdentity | null> {
+  const fileStat = await stat(absPath, { bigint: true }).catch(() => null)
+  if (fileStat === null || !fileStat.isFile()) return null
+  const statKey = `${fileStat.mtimeNs}:${fileStat.size}`
+  const cached = identityCache.get(absPath)
+  if (cached !== undefined && cached.statKey === statKey) return cached.identity
+  const hash = createHash('sha256')
+  const hashed = await pipeline(createReadStream(absPath), hash as unknown as NodeJS.WritableStream).catch(() => null)
+  if (hashed === null) return null
+  const identity: ModelContentIdentity = { name, digest: hash.digest('hex'), bytes: Number(fileStat.size) }
+  if (identityCache.size >= IDENTITY_CACHE_MAX && !identityCache.has(absPath)) {
+    const oldest = identityCache.keys().next().value
+    if (oldest !== undefined) identityCache.delete(oldest)
+  }
+  identityCache.set(absPath, { statKey, identity })
+  return identity
+}
+
+/** Digests the RESOLVED weights — the extension lane's one identity seam
+ *  (spec §5 "the resolved model content identities"): resolves the four
+ *  slots (through the caller's already-resolved set when it holds one — the
+ *  submit-time preflight's — otherwise through the standing ladder against
+ *  fresh enumerations, which may throw the wave-1 resolution refusal), then
+ *  reads and sha-256-digests each resolved name's weight file through the
+ *  configured evidence folder. Fail-closed by construction: a slot whose
+ *  file cannot be read throws the NAMED evidence refusal — there is no
+ *  name-only identity anywhere in this seam's output. */
+export async function resolvedIdentities(input: {
+  tool: AnimationTool
+  modelFolder: ModelFolderResolver
+  /** The caller's already-resolved set (the submit preflight's) — when
+   *  present the ladder is not re-run and `enumerations` is unused. */
+  models?: ResolvedAnimationModels
+  /** Required when `models` is absent: the fresh enumeration the ladder
+   *  resolves against (dispatch passes `force`-fetched truth). */
+  enumerations?: ModelEnumerations
+  overrides?: Partial<ResolvedAnimationModels>
+}): Promise<ModelContentIdentity[]> {
+  if (input.models === undefined && input.enumerations === undefined) {
+    throw new Error("resolvedIdentities needs either the caller's resolved model set or the engine enumerations.")
+  }
+  const models = input.models ?? resolveAnimationModels({
+    tool: input.tool,
+    enumerations: input.enumerations as ModelEnumerations,
+    overrides: input.overrides,
+  })
+  const identities: ModelContentIdentity[] = []
+  for (const evidence of SLOT_EVIDENCE_FOLDERS) {
+    const name = models[evidence.slot]
+    const folder = input.modelFolder(evidence.kind)
+    if (folder === '') {
+      throw new AnimationModelEvidenceError({ slot: evidence.slot, name, folderKind: evidence.kind, folder: '' })
+    }
+    const file = weightFilePath(folder, name)
+    if (file === null) {
+      throw new AnimationModelEvidenceError({ slot: evidence.slot, name, folderKind: evidence.kind, folder })
+    }
+    const identity = await digestWeightFile(file, name)
+    if (identity === null) {
+      throw new AnimationModelEvidenceError({ slot: evidence.slot, name, folderKind: evidence.kind, folder })
+    }
+    identities.push(identity)
+  }
+  return identities
 }

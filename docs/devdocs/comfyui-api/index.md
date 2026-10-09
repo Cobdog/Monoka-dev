@@ -187,3 +187,36 @@ Recorded by the assumption register (`docs/audit/assumption-register-2026-09-21.
 2. **Qwen-Image-2.1 (`QwenImage21` classes in `nodes_qwen.py`, PR #16400 landed 2026-09-19): first ships in v0.37.0** (6 class references at that tag; zero at v0.35.x/v0.36.0 — consistent with the qwen assessment's day-one finding that v0.36.0 lacked them; v0.37.0 is the "first tagged release carrying #16400" its revisit trigger waited for — see that doc's addendum).
 
 **Policy output (recorded in the register §2):** re-capture fixtures/captures per ADOPTED TAG (never per calendar, never from docs-site version strings); new-family registry rows carry a per-class `minComfyVersion` verified at tag level; the shared install bumps to the latest TAG (v0.37.0) when the audio/Qwen adoption tasks dispatch — one bump unblocks both families.
+### ADDENDUM (2026-10-09) — there is NO digest/hash surface for model weights; identity evidence must read the files
+
+Recorded while building the animation extension lane's content identities
+(spec 2026-10-08 §5/§6, lane Task 3). The lane needs sha-256 content
+identities of the RESOLVED weight files (digests, not filenames — weights
+replaced under an unchanged name must fail compatibility). Checked against
+the canonical shared install at v0.37.4 (`/home/agent/comfyui`, read
+verbatim — no engine contact):
+
+- **No route digests model weights.** `/object_info` (combo lists) and
+  `/models/{folder}` enumerate NAMES; `/experiment/models/{folder}`
+  (app/model_manager.py:28-52) serves the richest per-file record —
+  `{name, pathIndex, modified, created, size}` — mtime+size, never a hash;
+  `/view_metadata/{folder}?filename=` returns the file's AUTHORED
+  safetensors `__metadata__` (not tamper-evident, frequently absent —
+  404 unless metadata exists). ComfyUI-Manager 4.2.2 adds nothing
+  (its capture has no sha256/digest surface either).
+- **`/view` cannot serve model folders.** `view_image` resolves only the
+  input/output/temp directory types (`folder_paths.get_directory_by_type`)
+  plus the assets system's `blake3:` hashes — model weights are never
+  servable as bytes through the HTTP API.
+
+**Consequence (the v1 contract this lane shipped):** the studio digests the
+weight FILES through the locally-configured per-kind model roots (the same
+folders its fetches land in — engine-scanned by construction; the studio
+runs beside the engine on the same box), caching by
+(path, mtimeNs, size) so the hot submit path never re-hashes gigabytes.
+An unconfigured root or an unreadable enumerated name is a NAMED refusal
+(identity evidence missing) — never a name-only pass. Server-side seam:
+`server/animation/models.ts` `resolvedIdentities`. If a future revision
+grows a real digest surface (e.g. `/experiment/models` gaining a hash
+field), the swap is localized to that one seam. Verify-on: any
+`/experiment/models` shape change; a new model-manager route.
