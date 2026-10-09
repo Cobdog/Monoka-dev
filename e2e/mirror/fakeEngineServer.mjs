@@ -67,11 +67,25 @@
  * IMAGE per conditioning frame — the frame-addressed listing the studio's
  * frame preparer/extractor contract consumes (see graphClipLength).
  *
+ * The carry save model (the extension lane's Task 1, spec 2026-10-08 §7):
+ * a graph containing the pack's MiniMaxH3MotionContextSaveLatent gets the
+ * REAL engine's in-graph save behavior modeled — at render completion the
+ * engine writes a synthetic safetensors-shaped carry file at the node's own
+ * path under a DISK-BACKED output directory (the pack's path math: prefix
+ * folder + the clip_index fixed-slot suffix), served through /view by
+ * (subfolder, filename) exactly like a real output-folder file. The file
+ * NEVER enters the history outputs listing — the node returns its path as
+ * an execution output with no history-UI receipt, which is the gap the
+ * studio's deterministic-path receipt contract closes. The output dir is
+ * derived from (profile, port) so it SURVIVES a restart, like a real
+ * engine's output folder on disk.
+ *
  * NEVER point this at anything GPU-adjacent: it is a plain node HTTP+ws
  * server, and the studio that talks to it must run with an ISOLATED home.
  */
 import fs from 'node:fs'
 import http from 'node:http'
+import os from 'node:os'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { fileURLToPath } from 'node:url'
@@ -93,6 +107,15 @@ if (!port || !profilePath) {
   process.exit(2)
 }
 const profile = JSON.parse(fs.readFileSync(path.resolve(repoRoot, profilePath), 'utf8'))
+
+// The engine's DISK-BACKED output directory — where the carry save model
+// writes its files (see the header). Derived from (profile, port) so a
+// restart on the same port KEEPS it: a real engine's output folder lives on
+// disk and survives the process, and the extension lane's receipt contract
+// depends on the saved file outliving the render (a studio crash between
+// the engine's write and the owner's registration still finds the file).
+const outputDir = path.resolve(os.tmpdir(), `fake-engine-output-${profile.id}-${port}`)
+fs.mkdirSync(outputDir, { recursive: true })
 
 // ---------------------------------------------------------------- stock schemas (the REAL capture)
 const fixture = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts/fixtures/engine-object-info.json'), 'utf8'))
@@ -310,10 +333,69 @@ const queueRemaining = () => (running ? 1 : 0) + pending.length
 
 /** The save-tail node ids a graph will execute — the engine's own
  *  outputs_to_execute, carried by BOTH the queue tuples and the history
- *  tuple (docs/devdocs/comfyui-api §2/§3). */
+ *  tuple (docs/devdocs/comfyui-api §2/§3). The pack's carry Save node is an
+ *  OUTPUT_NODE like any save tail (the captured fixture says so), so a
+ *  carrying graph lists it here too. */
 const outputsToExecuteOf = (graph) => Object.entries(graph ?? {})
-  .filter(([, node]) => node && typeof node === 'object' && (node.class_type === 'SaveVideo' || node.class_type === 'SaveImage'))
+  .filter(([, node]) => node && typeof node === 'object'
+    && (node.class_type === 'SaveVideo' || node.class_type === 'SaveImage' || node.class_type === 'MiniMaxH3MotionContextSaveLatent'))
   .map(([id]) => id)
+
+/** A synthetic carry file in the pack's REAL container shape: safetensors
+ *  framing (u64 LE header length + JSON header + payload) whose metadata
+ *  carries the pack's save-format id and whose video/audio tensor entries
+ *  partition a profile-sized payload (profile.carryFile.bytes, shapes sized
+ *  by the graph's clip length). Nothing loads the tensors — the studio
+ *  digests bytes — but the framing is the true shape, so metadata reads (the
+ *  save-recipe version) behave for real. */
+function syntheticCarryBytes(graph, jobNumber) {
+  const length = graphClipLength(graph)
+  const payloadBytes = profile.carryFile?.bytes ?? 8192
+  const payload = Buffer.alloc(payloadBytes)
+  for (let i = 0; i < payloadBytes; i += 1) payload[i] = (i * 31 + jobNumber * 7) & 0xff
+  const videoBytes = Math.floor(payloadBytes * 0.9)
+  const header = {
+    __metadata__: { format: profile.carryFile?.format ?? 'h3_motion_context_av_v1' },
+    video: { dtype: 'F16', shape: [length, 16, 48, 84], data_offsets: [0, videoBytes] },
+    audio: { dtype: 'F16', shape: [2, Math.max(3, length)], data_offsets: [videoBytes, payloadBytes] },
+  }
+  const headerBuf = Buffer.from(JSON.stringify(header), 'utf8')
+  const framed = Buffer.alloc(8 + headerBuf.length + payloadBytes)
+  framed.writeBigUInt64LE(BigInt(headerBuf.length), 0)
+  headerBuf.copy(framed, 8)
+  payload.copy(framed, 8 + headerBuf.length)
+  return framed
+}
+
+/** The in-graph carry save, modeled (spec §7): when the submitted graph
+ *  contains the pack's Save node, the engine writes the carry file AT RENDER
+ *  COMPLETION to the node's own path — the pack's path math mirrored
+ *  (filename_prefix folders under the output dir; clip_index > 0 is the
+ *  fixed slot <name>_<%05d>.safetensors, index 0 the run-numbered old
+ *  behaviour with its trailing underscore). Called ONLY on the success path:
+ *  an errored, hung, or interrupted run writes nothing (the no-file shape —
+ *  the named "continuation not produced" condition downstream). */
+function writeCarryArtifact(graph, jobNumber) {
+  let saveNode = null
+  for (const entry of Object.values(graph ?? {})) {
+    if (entry && typeof entry === 'object' && entry.class_type === 'MiniMaxH3MotionContextSaveLatent') { saveNode = entry; break }
+  }
+  if (!saveNode) return
+  const inputs = saveNode.inputs ?? {}
+  const prefix = typeof inputs.filename_prefix === 'string' && inputs.filename_prefix.length > 0
+    ? inputs.filename_prefix
+    : 'h3_context/clip'
+  const clipIndex = Number.isInteger(inputs.clip_index) ? inputs.clip_index : 1
+  const parts = prefix.split('/').filter(Boolean)
+  const name = parts.pop() ?? 'clip'
+  const slot = clipIndex > 0
+    ? `${name}_${String(clipIndex).padStart(5, '0')}.safetensors`
+    : `${name}_${String(jobNumber).padStart(5, '0')}_.safetensors`
+  const folder = parts.join('/')
+  const target = folder ? path.join(outputDir, folder, slot) : path.join(outputDir, slot)
+  fs.mkdirSync(path.dirname(target), { recursive: true })
+  fs.writeFileSync(target, syntheticCarryBytes(graph, jobNumber))
+}
 
 /** Starts the next PENDING job the moment the slot frees (completion,
  *  error, interrupt) — the queue semantics a real ComfyUI serves. */
@@ -426,6 +508,10 @@ function runPrompt(job) {
         }
       }
     }
+    // The in-graph carry save (extension lane §7): the pack's Save node
+    // executes with the render — a carrying graph writes its carry file at
+    // completion, before the executed/success events close the job.
+    writeCarryArtifact(graph, n)
     send({ type: 'executing', data: { prompt_id: promptId, node: 'MiniMaxH3ImageToVideo' } })
     send({ type: 'executed', data: { prompt_id: promptId, node: 'save', output: { images } } })
     send({ type: 'execution_success', data: { prompt_id: promptId } })
@@ -592,7 +678,22 @@ async function handle(req, res) {
 
     if (url.pathname === '/view') {
       const filename = url.searchParams.get('filename') ?? ''
+      const subfolder = url.searchParams.get('subfolder') ?? ''
+      const type = url.searchParams.get('type') ?? 'output'
       const file = viewFiles.get(filename)
+      if (!file && type === 'output' && filename) {
+        // The disk-backed output folder (the carry save model): the real
+        // engine serves saved output files by (subfolder, filename) off its
+        // output directory — the receipt fetch's addressing. Containment-
+        // checked: a request may never walk out of the output tree.
+        const resolved = path.resolve(outputDir, subfolder, filename)
+        if (resolved.startsWith(outputDir + path.sep) && fs.existsSync(resolved)) {
+          const bytes = fs.readFileSync(resolved)
+          res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(bytes.length) })
+          res.end(req.method === 'HEAD' ? undefined : bytes)
+          return
+        }
+      }
       if (!file) { res.writeHead(404); res.end(); return }
       res.writeHead(200, { 'content-type': file.mime, 'content-length': String(file.bytes.length) })
       res.end(req.method === 'HEAD' ? undefined : file.bytes)

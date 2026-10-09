@@ -72,6 +72,7 @@ import {
   ANIMATION_OPERATING_POINT,
   buildAnimationGraph,
   engineInputName,
+  MOTION_CONTEXT_SAVE_CLASS,
   type AnimationGraph,
   type GraphBuildSettings,
 } from '../../shared/animation/graphs'
@@ -694,15 +695,19 @@ enumerationTtlMs?: number }): EnginePort {
 }
 
 /** Rewrites every save-tail node's filename_prefix under the attempt's own
- *  directory: `animation/<attemptId>/clip`. Pure + defensive — unknown graph
- *  shapes pass through unchanged (the extra_data carrier still rides). */
+ *  directory: `animation/<attemptId>/clip`. The pack's carry Save node
+ *  (extension lane, spec §7) joins the stamped set — its `animation/carry`
+ *  marker becomes `animation/<attemptId>/carry`, so the engine writes the
+ *  carry file at engineOutputCarryPath(attemptId), the deterministic
+ *  receipt. Pure + defensive — unknown graph shapes pass through unchanged
+ *  (the extra_data carrier still rides). */
 function stampAttemptOnGraph(graph: unknown, attemptId: string): unknown {
   if (!graph || typeof graph !== 'object') return graph
   const clone: Record<string, unknown> = {}
   for (const [id, node] of Object.entries(graph as Record<string, unknown>)) {
     if (node && typeof node === 'object' && !Array.isArray(node)) {
       const entry = node as { class_type?: unknown; inputs?: Record<string, unknown> }
-      if (entry.class_type === 'SaveVideo' || entry.class_type === 'SaveImage') {
+      if (entry.class_type === 'SaveVideo' || entry.class_type === 'SaveImage' || entry.class_type === MOTION_CONTEXT_SAVE_CLASS) {
         const inputs = { ...(entry.inputs ?? {}) }
         const existing = typeof inputs.filename_prefix === 'string' ? inputs.filename_prefix : 'output'
         const tail = existing.split('/').filter(Boolean).pop() ?? 'clip'
@@ -720,7 +725,7 @@ function graphCarriesPrefix(graph: Record<string, unknown>, prefix: string): boo
   for (const node of Object.values(graph)) {
     if (!node || typeof node !== 'object') continue
     const entry = node as { class_type?: unknown; inputs?: Record<string, unknown> }
-    if (entry.class_type === 'SaveVideo' || entry.class_type === 'SaveImage') {
+    if (entry.class_type === 'SaveVideo' || entry.class_type === 'SaveImage' || entry.class_type === MOTION_CONTEXT_SAVE_CLASS) {
       if (typeof entry.inputs?.filename_prefix === 'string' && entry.inputs.filename_prefix.startsWith(prefix)) return true
     }
   }

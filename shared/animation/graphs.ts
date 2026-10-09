@@ -31,6 +31,7 @@
  * references instead of duplicating them engine-side.
  */
 import type { AnimationTool, AssetReference, FacingTerm, FrozenAttemptSnapshot } from './types'
+import { CARRY_SAVE_PREFIX, CARRY_SAVE_SLOT } from './types'
 
 /** A ComfyUI prompt graph: node id → { class_type, inputs } — the same shape
  *  src/lib/engineContract.ts validates against the captured object_info. */
@@ -160,6 +161,26 @@ function nonNegativeInt(value: unknown, fallback: number): number {
 
 function stringIn(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.length > 0 ? value : fallback
+}
+
+/** The pack's in-graph save class (ComfyUI-H3-Motion-Context, registry row
+ *  h3-motion-context) — the extension lane's carry producer (spec §7): the
+ *  Save node needs the sampler's LIVE AV tensor, so it executes INSIDE the
+ *  source render graph and the ENGINE writes the file during the render
+ *  itself — never the completion owner, post-hoc. Exported for the engine
+ *  port's save-tail stamping (rendering.ts), which gives the node its
+ *  per-attempt prefix exactly like the media save tail. */
+export const MOTION_CONTEXT_SAVE_CLASS = 'MiniMaxH3MotionContextSaveLatent'
+
+/** The carry build flag (spec §7 "the source render carries; a plain render
+ *  doesn't"): an execution-relevant intent, so it freezes into the
+ *  snapshot's settings like every other dial (fix M-6's doctrine — replay,
+ *  recovery, and the input hash all reproduce it) and ONLY the tween
+ *  builder reads it, per the adapter scope (§3: hero/sequence need
+ *  adapter-specific probes before they may carry). */
+function carryRequested(snapshot: FrozenAttemptSnapshot): boolean {
+  const settings = isRecord(snapshot.settings) ? snapshot.settings : {}
+  return settings.carry === true
 }
 
 export type GraphReference = {
@@ -324,13 +345,16 @@ export function buildHeroGraph(snapshot: FrozenAttemptSnapshot, settings: GraphB
 
 /** TWEEN — MiniMaxH3ReferenceToVideo with rolling-near (Reference 1) +
  *  fixed-far (Reference 2): the far ref is context-that-leans, held constant
- *  per span while the near ref rolls (§6.4). */
+ *  per span while the near ref rolls (§6.4). The tween lane ALONE carries
+ *  (the extension lane's adapter scope): when the frozen snapshot sets the
+ *  carry build flag, the pack's Save node rides the graph beside the media
+ *  save tail (see the carry block below). */
 export function buildTweenGraph(snapshot: FrozenAttemptSnapshot, settings: GraphBuildSettings): AnimationGraph {
   if (snapshot.tool !== 'tween') throw new Error(`buildTweenGraph compiles tween attempts — this snapshot's tool is "${snapshot.tool}".`)
   const [rollingNear, fixedFar] = referencesFor(snapshot, ['rolling-near', 'fixed-far'])
   const { width, height } = dimensionsOf(snapshot, settings)
   const extras = conditioningExtrasOf(snapshot)
-  return buildSkeleton({
+  const graph = buildSkeleton({
     tool: 'tween',
     settings: snapshot.settings,
     build: settings,
@@ -355,6 +379,24 @@ export function buildTweenGraph(snapshot: FrozenAttemptSnapshot, settings: Graph
       }
     },
   })
+  // The extension lane's carry tail (spec §7): the Save node consumes the
+  // sampler's LIVE AV latent — node 15's output 0, the same tensor VAEDecode
+  // consumes (wiring the sampler output straight into a conditioning input
+  // would be a cycle, which is exactly why the carry crosses submissions
+  // through disk). The prefix is the PRE-STAMP marker: the port's attempt-id
+  // stamping rewrites it under animation/<attemptId>/, so the file lands at
+  // engineOutputCarryPath(attemptId) — the deterministic receipt (types.ts).
+  if (carryRequested(snapshot)) {
+    graph['20'] = {
+      class_type: MOTION_CONTEXT_SAVE_CLASS,
+      inputs: {
+        latent: ['15', 0],
+        filename_prefix: CARRY_SAVE_PREFIX,
+        clip_index: CARRY_SAVE_SLOT,
+      },
+    }
+  }
+  return graph
 }
 
 /** SEQUENCE — MiniMaxH3ReferenceToVideo with the window endpoints (start =
