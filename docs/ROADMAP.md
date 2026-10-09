@@ -14,6 +14,30 @@ of small-friction fixes never got them past "enter a prompt, pick video, execute
 fail." The response is a full audit + remediation program, with the maintainer's
 stated stakes: remediate, or the project gets scrapped and restarted fresh.
 
+> **FRONTIER UPDATE (2026-10-09) — the prime feature shipped; the extension lane opened.**
+> Since the 10-05 refresh: the **component-vocabulary round merged to main** (the
+> `component-vocabulary` branch's destiny fulfilled) and on top of it the
+> **animation-authoring module** (k2q0n9s, closed through the done-gate 2026-10-08)
+> shipped complete: 16 blind-reviewed tasks, the live independent review's
+> three-wave response, the Codex external pass's 12 Importants fixed in three
+> batches — and **proven on the real engine**: the three-lane gate (model
+> resolution through the engine's own enumeration, extraction MD5-parity vs
+> independent ffmpeg, restart recovery, zero duplicate executions) plus the
+> cancellation contract. The **extension lane** (motion continuation into new
+> time) is the active increment: Set L's blind comparison chose Motion Context
+> tail conditioning 9/9; the feasibility + strategic audits and three maintainer
+> spec rounds produced the approved spec r3 (§7's owned carry artifact, content
+> identities, window-slot semantics, the v1 shipping gates); the implementation
+> plan's tasks dispatch (T1 in flight; all fake-engine, zero GPU). **GPU state**:
+> the card is the maintainer's; queued for the next window are the Set M re-run
+> with the frame-0 anchor gate (the diagnosis: the DMD schedule is bimodal per
+> seed on OOD line art — the methods land when the schedule lands) and the
+> extension probes (join tuning + the single-lane ending, killed mid-run for the
+> card, resumable). The open menu: the registered evals (Omnichar CHAR
+> CPU-first, X2 VAE, TDE), true-CFG headroom, Veda adoption, the vision judge
+> pass. Evidence map: the SDD ledgers under .superpowers/sdd/, the audit + set
+> docs under docs/research/ and docs/audit/.
+
 > **FRONTIER UPDATE (2026-10-05) — the program is merged; the state since.** The
 > remediation program's four waves, the follow-on sweeps (truth surfaces,
 > centralization, perfect-state), and the CI fixes all landed and **merged to main
