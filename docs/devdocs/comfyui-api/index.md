@@ -193,7 +193,7 @@ Recorded while building the animation extension lane's content identities
 (spec 2026-10-08 §5/§6, lane Task 3). The lane needs sha-256 content
 identities of the RESOLVED weight files (digests, not filenames — weights
 replaced under an unchanged name must fail compatibility). Checked against
-the canonical shared install at v0.37.4 (`/home/agent/comfyui`, read
+the canonical shared install at v0.39.0 (`/home/agent/comfyui`, read
 verbatim — no engine contact):
 
 - **No route digests model weights.** `/object_info` (combo lists) and
