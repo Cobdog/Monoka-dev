@@ -364,13 +364,13 @@ export function createCompletionOwner(deps: {
       // explicit action (or a later boot sweep) re-drives it. The clip above
       // stays landed and playable regardless.
       store.setAttemptContinuation(attemptId, { state: 'registering', error: lastError })
-      emit('animation.attempt.continuation-registration-failed', { attemptId, error: lastError })
+      emit('animation.attempt.continuation-registration-failed', { attemptId, documentId: attempt.documentId, error: lastError })
       return 'failed'
     } catch (bookend) {
       // A bookend failure (one of the two state writes itself — the IO
       // class): the row keeps whatever truth it holds for the sweep or the
       // explicit retry to re-drive; the event names the observed cause.
-      emit('animation.attempt.continuation-registration-failed', { attemptId, error: bookend instanceof Error ? bookend.message : String(bookend) })
+      emit('animation.attempt.continuation-registration-failed', { attemptId, documentId: attempt.documentId, error: bookend instanceof Error ? bookend.message : String(bookend) })
       return 'failed'
     } finally {
       registeringCarry.delete(attemptId)

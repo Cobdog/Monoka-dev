@@ -73,6 +73,30 @@ export type AttemptStateView = {
   sequenceActions?: string[]
   sequencePreservation?: string
   sequenceOverrides?: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
+  /** EXTENSION rows (extension lane Task 6): the frozen binding's source
+   *  attempt (the chainMismatch walk's edge truth — `sourceOf` resolves
+   *  through this) plus the re-roll truth (§4's split: Retry resubmits
+   *  byte-identically, a New alternative changes only the seed — both read
+   *  this block) and the window's GENERATED length (the carry preview's
+   *  source geometry; the DELIVERED count is `candidate.frameCount`).
+   *  `targetId` IS the window slot the take lands in. */
+  extension?: {
+    sourceAttemptId: string
+    targetLength: number
+    movement: string
+    preservation: string
+    overrides: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
+    anchors: Array<{ reference: 'rolling-near' | 'fixed-far'; frame: number }>
+  }
+  /** The frozen references' asset ids in role order (the discontinuity
+   *  advisory's frozen half — compared against the chain's root span's
+   *  CURRENT selected keys, Task 5's ruling b). */
+  referenceAssetIds?: string[]
+  /** EXTENSION-LANE sources: whether the frozen snapshot carries the
+   *  resolved-identity stamp — false is the named continuation-identity-
+   *  missing condition (Task 3's carried ruling); the Extend gate surfaces
+   *  it. Absent on non-carrying rows. */
+  modelIdentitiesStamped?: boolean
   caption: string
   compilerVersion: string
   execution: AttemptExecutionState
@@ -303,6 +327,48 @@ export const animationApi = {
    *  snapshot. Same key + different inputs answers AnimationConflict. */
   submit: (input: { documentId: string; tool: AnimationTool; targetId: string; draft: DraftInput }, idempotencyKey: string, options?: { seed?: number }) =>
     post<{ attemptId: string; created: boolean }>('/api/lan/animation/attempts', { ...input, idempotencyKey, ...(options?.seed !== undefined ? { seed: options.seed } : {}) }),
+
+  /** The EXTEND submission (extension lane §4/§5, Task 5's route): the
+   *  window slot (its RECORDED source must agree with `sourceAttemptId`),
+   *  the target window's full generated length on the 17k+5 grid (validated
+   *  against the OVERLAP RECIPE, never the source's length), and the
+   *  window's own draft — the server compiles the time-shifted caption and
+   *  freezes the whole binding server-side. `idempotencyKey`: §7.2.2's
+   *  semantics — the SAME key + identical inputs answers the existing row
+   *  ({ created: false }), the lost-response Retry; a New alternative rides
+   *  a FRESH key plus an EXPLICIT changed seed. */
+  extend: (input: {
+    documentId: string
+    windowSlotId: string
+    sourceAttemptId: string
+    targetLength: number
+    draft: { movement: string; preservation: string; overrides: SessionOverrideInput; anchors?: Array<{ reference: 'rolling-near' | 'fixed-far'; frame: number }> }
+  }, idempotencyKey: string, options?: { seed?: number }) =>
+    post<{ attemptId: string; created: boolean }>('/api/lan/animation/extend', { ...input, idempotencyKey, ...(options?.seed !== undefined ? { seed: options.seed } : {}) }),
+
+  /** The extension-chain command family (§4, lane Task 4): `create-window`
+   *  mints the slot the next extension lands into (answers the MINTED
+   *  windowSlotId + its chainRoot); `rebind` re-points a window's recorded
+   *  source (the explicit binding change — the mismatch banner's second
+   *  resolution); `lock`/`unlock` guard a window's selection like a key's. */
+  chainsCommand: async (documentId: string, op: 'create-window' | 'rebind' | 'lock' | 'unlock', payload: Record<string, unknown>, expectedRevision: number): Promise<{ document: AnimationDocumentView; windowSlotId?: string; chainRoot?: string }> => {
+    const body = await post<{ document: unknown; windowSlotId?: unknown; chainRoot?: unknown }>('/api/lan/animation/chains', { documentId, op, ...payload, expectedRevision })
+    const view = await documentOf(body)
+    if (op === 'create-window' && (typeof body.windowSlotId !== 'string' || !body.windowSlotId)) {
+      throw new AnimationHttpError(500, 'The chains create-window response was malformed — no minted window slot id.')
+    }
+    return {
+      document: view,
+      ...(op === 'create-window' && typeof body.windowSlotId === 'string' ? { windowSlotId: body.windowSlotId } : {}),
+      ...(typeof body.chainRoot === 'string' ? { chainRoot: body.chainRoot } : {}),
+    }
+  },
+
+  /** The window slot's EXPLICIT selection (§4 — selectWindowCandidate,
+   *  expectedRevision-gated, lock-guarded server-side): the slot's own
+   *  selection truth, never implicit in landing. */
+  selectWindowCandidate: (documentId: string, windowSlotId: string, attemptId: string, expectedRevision: number) =>
+    post<{ document: unknown }>('/api/lan/animation/select/window-candidate', { documentId, windowSlotId, attemptId, expectedRevision }).then(documentOf),
 
   attemptState: async (attemptId: string): Promise<AttemptStateView> => {
     const body = await call<{ attempt: AttemptStateView }>(`/api/lan/animation/attempt?id=${encodeURIComponent(attemptId)}`)

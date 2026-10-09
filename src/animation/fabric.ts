@@ -13,7 +13,7 @@
  */
 import { subscribe } from '../lib/useRealtime'
 import type { RealtimeEnvelope } from '../types'
-import type { AttemptExecutionState } from '../../shared/animation/types'
+import type { AttemptContinuationView, AttemptExecutionState } from '../../shared/animation/types'
 
 /** The attempt execution vocabulary (§7.3) — the wire's closed set; an
  *  envelope carrying anything else is malformed and drops. */
@@ -23,6 +23,11 @@ function isExecutionState(value: unknown): value is AttemptExecutionState {
   return typeof value === 'string' && EXECUTION_STATES.has(value)
 }
 
+/** The continuation readiness vocabulary (the extension lane §8) — the
+ *  registration envelope's closed set: the three states registration can
+ *  settle into (the retryable registering, ready, not-produced). */
+const CONTINUATION_STATES: ReadonlySet<string> = new Set(['registering', 'ready', 'not-produced'])
+
 export type AnimationEvent =
   | { type: 'attempt-state'; documentId: string; attemptId: string; execution: AttemptExecutionState; progress?: { value: number; max: number } }
   /** candidateId is the MINTED document candidate id (hero landings — the
@@ -30,6 +35,14 @@ export type AnimationEvent =
    *  tool mints nothing (tween correlates by attemptId, sequence surfaces
    *  through editorial selection) — never the engine artifact path. */
   | { type: 'attempt-ready'; documentId: string; attemptId: string; candidateId: string | null }
+  /** The extension lane's two-readiness landing (§7/§8, Task 2's envelope
+   *  decision — wired by Task 6): the DETACHED carry registration settled.
+   *  `continuation` is the attempt row's own continuation view shape (state
+   *  + artifact?/error?), patched in place exactly like attempt-state
+   *  patches execution — without this envelope the Extend gate would wait
+   *  on a refresh nothing triggers (registration completes AFTER
+   *  attempt-ready, which already re-read once). */
+  | { type: 'continuation-state'; documentId: string; attemptId: string; continuation: AttemptContinuationView }
   | { type: 'document-changed'; documentId: string; revision: number; reason: string }
   | { type: 'reconciliation'; attemptId: string; outcome: string }
   /** The fabric's synthetic drop/reconnect notice (per-channel seq gap or a
@@ -64,6 +77,17 @@ function parseAnimationEvent(envelope: RealtimeEnvelope): AnimationEvent | null 
       if (!isId(documentId) || !isId(attemptId)) return null
       if (candidateId !== null && !isId(candidateId)) return null
       return { type: 'attempt-ready', documentId, attemptId, candidateId }
+    }
+    case 'continuation-state': {
+      const { documentId, attemptId, state, artifact, error } = payload
+      if (!isId(documentId) || !isId(attemptId)) return null
+      if (typeof state !== 'string' || !CONTINUATION_STATES.has(state)) return null
+      const continuation: AttemptContinuationView = { state: state as AttemptContinuationView['state'] }
+      if (isRecord(artifact) && isId(artifact.artifactId) && isId(artifact.digest)) {
+        continuation.artifact = { artifactId: artifact.artifactId, digest: artifact.digest }
+      }
+      if (typeof error === 'string') continuation.error = error
+      return { type: 'continuation-state', documentId, attemptId, continuation }
     }
     case 'document-changed': {
       const { documentId, revision, reason } = payload

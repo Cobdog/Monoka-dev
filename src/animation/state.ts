@@ -304,6 +304,37 @@ type AnimationSessionState = {
    *  authoring during an export is safe by design — the export tracks its
    *  own phase instead. True = the package downloaded. */
   exportSequence(acknowledgeStale: boolean): Promise<boolean>
+  // Extension lane (Task 6, spec §4/§5) — the Extend interaction's commands.
+  /** The deliberate Extend: submits a continuation window conditioned on the
+   *  named landed take's carried tail. Resolves the window FIRST — the
+   *  chain's trailing EMPTY window for this source when one stands (a
+   *  refused or interrupted submission left exactly that), else a freshly
+   *  minted one (the root/selected append, the unselected branch) — then
+   *  POSTs the extend. The IDEMPOTENCY KEY is the CALLER's (the ExtendPanel
+   *  mints it and holds the submission for §4's Retry — the lost-response
+   *  re-POST needs the SAME key and the SAME window, so its identity must
+   *  outlive this call). */
+  extendTake(sourceAttemptId: string, draft: { targetLength: number; movement: string; preservation: string; overrides: SessionOverrideInput; anchors?: Array<{ reference: 'rolling-near' | 'fixed-far'; frame: number }> }, idempotencyKey: string): Promise<ExtensionOutcome>
+  /** §4's RETRY half — the identical submission (§7.2.2: a lost response,
+   *  never a new take): the SAME idempotency key, inputs, and WINDOW
+   *  re-POSTed. The server answers the row its dispatch already gated
+   *  ({ created: false }) when the take exists, or dispatches it when the
+   *  request never arrived. */
+  retryExtendSubmission(submission: ExtensionSubmission): Promise<{ attemptId: string; created: boolean; windowSlotId: string } | null>
+  /** §4's NEW-ALTERNATIVE half — a deliberate, explicitly-changed seed (a
+   *  fresh key + an explicit fresh seed; the frozen draft resubmitted
+   *  byte-identically, so only the seed varies). Lands as a retained
+   *  alternative of the window; the slot's selection never moves. */
+  rerollExtension(attemptId: string): Promise<{ attemptId: string } | null>
+  /** The window slot's EXPLICIT selection (§4 — never implicit in landing);
+   *  lock-guarded client-side, a genuine no-op on the already-selected take. */
+  selectWindowCandidate(windowSlotId: string, attemptId: string): Promise<boolean>
+  /** The window lock (the key lock's own class). */
+  toggleWindowLock(windowSlotId: string, locked: boolean): Promise<boolean>
+  /** The explicit binding change (§5 ruling 3) — the mismatch banner's
+   *  second resolution: re-points the window's RECORDED source to the named
+   *  in-chain attempt; the next submission into the slot freezes it. */
+  rebindWindow(windowSlotId: string, sourceAttemptId: string): Promise<boolean>
   /** The assembled sequence's order (§9): the FULL new order, a permutation
    *  of the current contribution ids. */
   reorderContributions(orderedIds: string[]): Promise<boolean>
@@ -563,6 +594,43 @@ function reviewDraftOf(document: AnimationDocumentView, spanId: string, spanHint
   const binding = document.body.bindingHistory.find((entry) => entry.version === document.body.activeBindingVersion) ?? null
   const medium: MediumString = span?.overrides.medium ?? binding?.medium ?? ANIMATION_MEDIA[0]!
   return { movement: span?.intent.movement ?? '', preservation: span?.intent.preservation ?? '', overrides: { medium } }
+}
+
+/** One Extend submission's wire truth — the record the ExtendPanel holds for
+ *  §4's Retry (the SAME key + identical inputs re-POSTed; §7.2.2's lost-
+ *  response semantics, never a new take). */
+export type ExtensionSubmission = {
+  windowSlotId: string
+  sourceAttemptId: string
+  targetLength: number
+  draft: { movement: string; preservation: string; overrides: SessionOverrideInput; anchors?: Array<{ reference: 'rolling-near' | 'fixed-far'; frame: number }> }
+  idempotencyKey: string
+}
+
+/** The Extend command's answer: either the submitted take, or the retryable
+ *  failure — the window RESOLVED and the POST fired but never settled (the
+ *  submission record rides out so the panel's Retry re-POSTs the same key
+ *  against the same window), or null when nothing fired (the named refusal
+ *  already landed on the command-error surface; a retry would repeat it). */
+export type ExtensionOutcome =
+  | { ok: true; attemptId: string; windowSlotId: string }
+  | { ok: false; submission: ExtensionSubmission | null }
+
+/** The named disable reason for the Extend action on a landed take (§4 —
+ *  "disabled with named reasons when not continuation-ready"): null = the
+ *  action opens. ONE table so the review panel, the window review, and the
+ *  adapter's pre-gate name the same conditions the same way. */
+export function extendGateReason(attempt: { continuation: { state: string; error?: string }; modelIdentitiesStamped?: boolean }): string | null {
+  const state = attempt.continuation.state
+  if (state === 'ready') {
+    return attempt.modelIdentitiesStamped === true
+      ? null
+      : 'Continuation identity evidence is missing — this take rendered without resolved model digests, so it can never seed an extension. Re-land the source on the current weights and extend that take.'
+  }
+  if (state === 'absent') return 'This take carried no tail (a plain render) — only renders submitted with the carry flag hold one to extend.'
+  if (state === 'registering') return `The carried tail is still registering${attempt.continuation.error !== undefined ? ` (last error: ${attempt.continuation.error})` : ''} — Extend opens once registration lands.`
+  if (state === 'not-produced') return 'This take\'s in-graph save never completed (not produced) — it can never seed an extension; generate a new take of the step instead.'
+  return 'The registered carry no longer resolves (continuation unavailable) — re-land the source chain; the clip itself stays playable.'
 }
 
 export const useAnimationSessionStore = create<AnimationSessionState>()((set, get) => {
@@ -1504,6 +1572,231 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     }
   },
 
+  // ---- the extension lane's commands (Task 6, spec §4/§5) ------------------
+
+  extendTake: async (sourceAttemptId, draft, idempotencyKey) => {
+    const ticket = openTicket
+    // The click SERIALIZES behind any command in flight (the intent persist's
+    // park doctrine — never a silent busy-refusal of the primary action).
+    const nothingFired: ExtensionOutcome = { ok: false, submission: null }
+    while (get().busy && ticket === openTicket) await whenIdle()
+    if (ticket !== openTicket) return nothingFired
+    const current = get().document
+    if (current === null) {
+      set({ commandError: 'The animation document is no longer open — the submission stopped. Reopen it and submit again.' })
+      return nothingFired
+    }
+    const source = current.attempts.find((entry) => entry.attemptId === sourceAttemptId) ?? null
+    if (source === null) {
+      set({ commandError: 'That take is no longer among this document\'s attempts — reload picked up a change.' })
+      return nothingFired
+    }
+    if (!draft.movement.trim()) {
+      set({ commandError: 'The extension\'s movement text needs content before submission.' })
+      return nothingFired
+    }
+    if (!draft.preservation.trim()) {
+      set({ commandError: 'The extension\'s preservation text needs content before submission.' })
+      return nothingFired
+    }
+    if (!idempotencyKey.trim() || idempotencyKey.length > 400) {
+      set({ commandError: 'The submission needs its idempotency key.' })
+      return nothingFired
+    }
+    // The named gate — the same conditions the button's disable names (the
+    // module's honest-affordance idiom: a stale click fires a named refusal,
+    // never a doomed command).
+    const gate = extendGateReason(source)
+    if (gate !== null) {
+      set({ commandError: gate })
+      return nothingFired
+    }
+    set({ busy: true, commandError: null })
+    // The submission record, hoisted so the FAILURE arm can hand the panel
+    // the exact window its POST named (§4's Retry re-POSTs the SAME key
+    // against the SAME window — re-resolving could mint a different one and
+    // 409 the key).
+    let submission: ExtensionSubmission | null = null
+    try {
+      // The window resolution — the chain's trailing EMPTY window for this
+      // source when one stands (a refused/interrupted submission left exactly
+      // that; the continueChain doctrine applied to chains), else a freshly
+      // minted one (the server's root/selected append, the unselected branch).
+      let windowSlotId: string | null = null
+      for (const chain of current.body.chains) {
+        const empty = chain.windows.find((window) => window.sourceAttemptId === sourceAttemptId && window.attempts.length === 0)
+        if (empty !== undefined) { windowSlotId = empty.id; break }
+      }
+      if (windowSlotId === null) {
+        const created = await animationApi.chainsCommand(current.id, 'create-window', { sourceAttemptId }, get().document?.revision ?? 0)
+        if (ticket !== openTicket) return nothingFired
+        windowSlotId = created.windowSlotId ?? null
+        if (windowSlotId === null) {
+          set({ busy: false, commandError: 'The window creation answer carried no minted slot id — nothing was submitted.' })
+          return nothingFired
+        }
+        // The mint's document lands (the rebase surface stays honest), then
+        // the submission owns its own busy window — the continueChain idiom.
+        set({ document: created.document, conflict: null, attemptState: seedAttemptState(created.document.attempts) })
+      }
+      submission = {
+        windowSlotId,
+        sourceAttemptId,
+        targetLength: draft.targetLength,
+        draft: { movement: draft.movement, preservation: draft.preservation, overrides: draft.overrides, ...(draft.anchors !== undefined && draft.anchors.length > 0 ? { anchors: draft.anchors } : {}) },
+        // The CALLER's key (the ExtendPanel minted it — the same key must
+        // ride the panel's lost-response Retry, so it outlives this call).
+        idempotencyKey,
+      }
+      const submitted = await animationApi.extend(
+        { documentId: current.id, windowSlotId, sourceAttemptId, targetLength: draft.targetLength, draft: submission.draft },
+        idempotencyKey,
+      )
+      if (ticket !== openTicket) return nothingFired
+      // The attempt row reaches the view through the durable read (the
+      // document body moved only when a window minted — already adopted).
+      set({ busy: false })
+      void get().refresh()
+      return { ok: true, attemptId: submitted.attemptId, windowSlotId }
+    } catch (error) {
+      await failCommand(error, ticket)
+      // The window resolved and the POST FIRED but never settled — the
+      // retryable shape: the record rides out so the panel's Retry re-POSTs
+      // the SAME key against the SAME window (§7.2.2, never a new take).
+      return { ok: false, submission }
+    }
+  },
+
+  retryExtendSubmission: async (submission) => {
+    const current = get().document
+    if (!current || get().busy) return null
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // §4's Retry: the IDENTICAL request — same key, same inputs — so the
+      // server's idempotency answers the row its dispatch already gated
+      // (created: false) or dispatches the one that never arrived. A fresh
+      // key here would mint a duplicate take: exactly the conflation §4
+      // forbids.
+      const submitted = await animationApi.extend(
+        { documentId: current.id, windowSlotId: submission.windowSlotId, sourceAttemptId: submission.sourceAttemptId, targetLength: submission.targetLength, draft: submission.draft },
+        submission.idempotencyKey,
+      )
+      if (ticket !== openTicket) return null
+      set({ busy: false })
+      void get().refresh()
+      return { attemptId: submitted.attemptId, created: submitted.created, windowSlotId: submission.windowSlotId }
+    } catch (error) {
+      await failCommand(error, ticket)
+      return null
+    }
+  },
+
+  rerollExtension: async (attemptId) => {
+    const current = get().document
+    if (!current) return null
+    const row = current.attempts.find((entry) => entry.attemptId === attemptId) ?? null
+    if (row === null || row.extension === undefined) {
+      set({ commandError: 'That extension take carries no frozen draft to re-roll from (a row the older build froze) — author a fresh Extend instead.' })
+      return null
+    }
+    // The one-render-per-window guard (the sequence lane's own): a re-roll of
+    // THIS window waits for its own landing.
+    const inFlight = current.attempts.find((entry) => entry.tool === 'tween' && entry.targetId === row.targetId && IN_FLIGHT.has(entry.execution))
+    if (inFlight !== undefined) {
+      set({ commandError: 'A take of this window is already in flight — review its landing before generating another.' })
+      return null
+    }
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // §4's New alternative: the frozen draft resubmitted BYTE-IDENTICALLY,
+      // a fresh key, and an EXPLICIT changed seed — the seed change is part
+      // of THIS command, never an implicit re-roll behavior.
+      const seed = crypto.getRandomValues(new Uint32Array(1))[0]!
+      const submitted = await animationApi.extend(
+        {
+          documentId: current.id,
+          windowSlotId: row.targetId,
+          sourceAttemptId: row.extension.sourceAttemptId,
+          targetLength: row.extension.targetLength,
+          draft: { movement: row.extension.movement, preservation: row.extension.preservation, overrides: row.extension.overrides, ...(row.extension.anchors.length > 0 ? { anchors: row.extension.anchors } : {}) },
+        },
+        `anim-ext-${row.extension.sourceAttemptId.slice(0, 8)}-${crypto.randomUUID()}`,
+        { seed },
+      )
+      if (ticket !== openTicket) return null
+      set({ busy: false })
+      void get().refresh()
+      return { attemptId: submitted.attemptId, windowSlotId: row.targetId }
+    } catch (error) {
+      await failCommand(error, ticket)
+      return null
+    }
+  },
+
+  selectWindowCandidate: async (windowSlotId, attemptId) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const slot = current.body.chains.flatMap((chain) => chain.windows).find((window) => window.id === windowSlotId) ?? null
+    if (slot === null) {
+      set({ commandError: 'That window slot no longer exists in the document — reload picked up a change.' })
+      return false
+    }
+    if (!slot.attempts.includes(attemptId)) {
+      set({ commandError: 'That take is not an alternative of this window — reload picked up a change.' })
+      return false
+    }
+    if (slot.lock) {
+      set({ commandError: 'This window is locked — unlock it before changing its selection.' })
+      return false
+    }
+    if (slot.selectedCandidateId === attemptId) return true
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      const view = await animationApi.selectWindowCandidate(current.id, windowSlotId, attemptId, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  toggleWindowLock: async (windowSlotId, locked) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      const { document: view } = await animationApi.chainsCommand(current.id, locked ? 'lock' : 'unlock', { windowSlotId }, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
+  rebindWindow: async (windowSlotId, sourceAttemptId) => {
+    const current = get().document
+    if (!current || get().busy) return false
+    const ticket = openTicket
+    set({ busy: true, commandError: null })
+    try {
+      // §5 ruling 3: the explicit binding change — a distinct document
+      // mutation with its own revision bump and descendant staleness; the
+      // NEXT submission into the slot freezes the re-pointed source.
+      const { document: view } = await animationApi.chainsCommand(current.id, 'rebind', { windowSlotId, sourceAttemptId }, get().document?.revision ?? 0)
+      if (ticket !== openTicket) return false
+      set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
+      return true
+    } catch (error) {
+      return failCommand(error, ticket)
+    }
+  },
+
   createEmptyDocument: async (projectId) => {
     if (get().busy) return false
     set({ busy: true, commandError: null })
@@ -1585,6 +1878,30 @@ export function useAnimationDocument(documentId: string, projectId = '') {
         }
         return
       }
+      if (event.type === 'continuation-state') {
+        if (store.document?.id === event.documentId) {
+          // The registration envelope patches the row's continuation IN PLACE
+          // (the attempt-state patch's own idiom — registration completes
+          // after attempt-ready, so nothing else would re-read the row); an
+          // unknown attempt triggers the durable re-read instead, never a
+          // synthesized partial row.
+          const document = store.document
+          const known = document.attempts.some((entry) => entry.attemptId === event.attemptId)
+          if (known) {
+            useAnimationSessionStore.setState({
+              document: {
+                ...document,
+                attempts: document.attempts.map((entry) => entry.attemptId === event.attemptId
+                  ? { ...entry, continuation: event.continuation }
+                  : entry),
+              },
+            })
+          } else {
+            void store.refresh()
+          }
+        }
+        return
+      }
       if (event.type === 'resync') {
         void store.refresh()
         return
@@ -1625,6 +1942,12 @@ export function useAnimationDocument(documentId: string, projectId = '') {
       reorderContributions: session.reorderContributions,
       removeContribution: session.removeContribution,
       exportSequence: session.exportSequence,
+      extendTake: session.extendTake,
+      retryExtendSubmission: session.retryExtendSubmission,
+      rerollExtension: session.rerollExtension,
+      selectWindowCandidate: session.selectWindowCandidate,
+      toggleWindowLock: session.toggleWindowLock,
+      rebindWindow: session.rebindWindow,
       createEmptyDocument: session.createEmptyDocument,
       retry: session.retry,
       clearCommandError: session.clearCommandError,

@@ -40,6 +40,7 @@ import { Refusal } from '../ui/Refusal'
 import { documentsApi } from '../canvas/api'
 import type { Span } from '../../shared/animation/types'
 import { IN_FLIGHT, REVIEW_STATUS } from './reviewStatus'
+import { extendGateReason } from './state'
 import type { AttemptStateView } from './client'
 
 /** The T10-M4 "new take" indicator (wave 2b), shared by all three review
@@ -91,6 +92,10 @@ export type ReviewPanelProps = {
   /** §11.4's explicit preparation retry — re-prepares the proposed frame
    *  WITHOUT re-rendering. */
   onRetryPreparation(): void
+  /** The EXTENSION lane's action (§4): opens the Extend flow with THIS take
+   *  as the source — disabled with its named reason while the take is not
+   *  continuation-ready (the gate's one table names it). */
+  onExtend(): void
   /** T10-M4 (wave 2b): the strip's LAST take when it is fresher than the
    *  subject — announced with a "new" chip, never auto-selected (§8.2). */
   newTakeAttemptId?: string | null
@@ -99,10 +104,14 @@ export type ReviewPanelProps = {
   onDismissNewTake(attemptId: string): void
 }
 
-export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, busy, onSelectTake, onSelectFrame, onContinue, onReroll, onRetryPreparation, newTakeAttemptId = null, onDismissNewTake }: ReviewPanelProps) {
+export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, busy, onSelectTake, onSelectFrame, onContinue, onReroll, onRetryPreparation, onExtend, newTakeAttemptId = null, onDismissNewTake }: ReviewPanelProps) {
   const status = REVIEW_STATUS[attempt.execution]
   const candidate = attempt.candidate
   const proposedFrame = attempt.preparation.proposedFrameIndex
+  // The extension lane's gate (§4 — "disabled with named reasons when not
+  //  continuation-ready"): ONE table names the condition here, on the
+  //  window review, and at the adapter's pre-gate alike.
+  const extendReason = extendGateReason(attempt)
   // The durable selection names THIS take — the §7.1 continuation gate.
   const selectionIsThisTake = slotSelection !== null && slotSelection.attemptId === attempt.attemptId
   // ...AND the subject must be the chain's FRONTIER — the LAST slot holding
@@ -282,7 +291,25 @@ export function ReviewPanel({ attempt, span, stepIndex, slotSelection, takes, bu
         >
           Generate another take
         </Button>
+        {/* The extension lane's Extend action (§4): beside the standing
+            actions, never a timeline drag, never automatic. The disable is
+            NAMED (the two-readiness lifecycle's honest surface): a take not
+            continuation-ready says which condition holds and what would
+            change it. */}
+        <Button
+          variant="secondary" className="anim-btn"
+          busy={busy}
+          disabled={busy || extendReason !== null}
+          data-anim-review-extend
+          title={extendReason ?? 'Open the Extend flow — a new window conditioned on this take\'s carried tail'}
+          onClick={onExtend}
+        >
+          Extend this take
+        </Button>
       </div>
+      {extendReason !== null && attempt.execution === 'ready' && (
+        <p className="anim-note" data-anim-review-extend-reason>{extendReason}</p>
+      )}
 
       {/* The frozen caption (F2's surfacing): what this attempt MEANT when it
           was submitted — later edits are the next draft, never its meaning. */}

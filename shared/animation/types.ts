@@ -222,6 +222,22 @@ export type FrozenAttemptSnapshot = {
    *  a write to this field on an existing row (the append-only trigger
    *  enforces the row half of that contract). */
   continuationBinding?: ContinuationBinding | ContinuationBindingSeed
+  /** EXTENSION-LANE targets only (spec §4, lane Task 6): the authored draft
+   *  frozen verbatim — the window's own motion intent (movement +
+   *  preservation authored against the window's time base) plus the
+   *  resolved overrides and the validated anchors. The sequence lane's own
+   *  precedent (a draft that owns no span has the frozen attempt as its
+   *  only durable home): the extension re-roll pair — Retry (identical,
+   *  §7.2.2) and New alternative (explicitly changed seed) — resubmits
+   *  this block byte-identically, so only the seed varies between takes.
+   *  The caption and the compiled TIME section live in `caption`; the raw
+   *  draft here is the RESUBMISSION input, never re-derived from it. */
+  extension?: {
+    movement: string
+    preservation: string
+    overrides: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
+    anchors: Array<{ reference: 'rolling-near' | 'fixed-far'; frame: number }>
+  }
 }
 
 export type AttemptExecutionState = 'queued' | 'rendering' | 'preparing' | 'ready' | 'failed' | 'cancelled' | 'interrupted' | 'reconciling'

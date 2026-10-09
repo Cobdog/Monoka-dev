@@ -35,8 +35,8 @@ import { Lock, LockOpen, Sprout } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Chip } from '../ui/Chip'
 import { documentsApi } from '../canvas/api'
-import type { BindingVersion, KeyCandidate } from '../../shared/animation/types'
-import type { TimelineModel, TimelineReviewPosition } from './timelineModel'
+import type { BindingVersion, ChainMismatch, KeyCandidate } from '../../shared/animation/types'
+import type { ChainSurface, TimelineModel, TimelineReviewPosition } from './timelineModel'
 
 export type TimelineProps = {
   timeline: TimelineModel
@@ -49,10 +49,23 @@ export type TimelineProps = {
   playhead: TimelineReviewPosition
   /** True while a timeline command is in flight (the store's busy). */
   busy: boolean
+  /** The extension chains (§4's chain surface — Task 6): window slots in
+   *  order per chain, the derived mismatch, the assembled preview. */
+  chains: ChainSurface | null
+  /** The chain window under review (a window slot id), or null. */
+  selectedWindowId: string | null
   onSelectKey(keyId: string): void
   onSelectSpan(spanId: string): void
   onToggleLock(keyId: string, locked: boolean): void
   onSeedInitialKey(): void
+  /** Opens a chain window's review (§4 — per-slot selection lives there). */
+  onSelectWindow(windowSlotId: string): void
+  /** The mismatch banner's FIRST resolution (§4): reselect the ancestor
+   *  window's compatible take (`expectedSelection`). */
+  onReselectAncestor(mismatch: ChainMismatch): void
+  /** The mismatch banner's SECOND resolution (§5 ruling 3): explicitly
+   *  rebind the descendant window to the ancestor's CURRENT selection. */
+  onRebindWindow(mismatch: ChainMismatch): void
 }
 
 /** The candidate's image, or the honest placeholder when there is nothing
@@ -112,7 +125,119 @@ const selectOnKey = (onSelect: () => void) => (event: ReactKeyboardEvent<HTMLEle
   }
 }
 
-export function Timeline({ timeline, binding, selectedId, playhead, busy, onSelectKey, onSelectSpan, onToggleLock, onSeedInitialKey }: TimelineProps) {
+/** §4's chain surface: one row per extension chain — the root take, the
+ *  window slots in order (each with its takes count, its own selection
+ *  truth, its stale mark), the assembled preview along the ONE selected
+ *  path, and the DERIVED mismatch banner with its two explicit resolutions.
+ *  A mismatch NEVER silently assembles: the banner replaces the assembled
+ *  total. Locks never hide it (derived truth is not a command). */
+function ChainBand({ surface, selectedWindowId, busy, onSelectWindow, onReselectAncestor, onRebindWindow }: {
+  surface: ChainSurface
+  selectedWindowId: string | null
+  busy: boolean
+  onSelectWindow(windowSlotId: string): void
+  onReselectAncestor(mismatch: ChainMismatch): void
+  onRebindWindow(mismatch: ChainMismatch): void
+}) {
+  if (surface.chains.length === 0) return null
+  return (
+    <div className="anim-chains" data-anim-chains aria-label="The extension chains">
+      {surface.chains.map((view) => {
+        const mismatch = view.mismatch
+        // The banner's second resolution needs the ancestor's CURRENT
+        // selection as the rebind target; a null selection (or a source
+        // outside this chain) names itself instead of offering a doomed
+        // command.
+        const ancestorSlot = mismatch !== null && mismatch.ancestorSlotId !== null
+          ? view.chain.windows.find((window) => window.id === mismatch.ancestorSlotId) ?? null
+          : null
+        const rebindTarget = ancestorSlot !== null ? ancestorSlot.selectedCandidateId : null
+        return (
+          <section key={view.chain.rootAttemptId} className="anim-chain" data-anim-chain={view.chain.rootAttemptId}>
+            <header className="anim-chain-header">
+              <strong>Extension chain</strong>
+              <span className="anim-note" data-anim-chain-assembled={view.assembled !== null ? String(view.assembled.deliveredFrames) : 'blocked'}>
+                rooted at this span&apos;s take — {view.windows.length} {view.windows.length === 1 ? 'window' : 'windows'}
+                {view.assembled !== null
+                  ? ` · ${view.assembled.deliveredFrames} delivered frames along the selected path (root + ${view.assembled.windows})`
+                  : ''}
+              </span>
+              {view.rootProblem !== null && <span className="anim-note" role="status" data-anim-chain-root-problem>{view.rootProblem}</span>}
+            </header>
+            <div className="anim-chain-windows" role="group" aria-label="The chain's windows in order">
+              {view.windows.map((window, index) => (
+                <button
+                  key={window.slot.id}
+                  type="button"
+                  className="anim-chain-window"
+                  data-anim-chain-window={window.slot.id}
+                  data-anim-window-order={window.slot.order}
+                  data-anim-selected={window.slot.id === selectedWindowId ? 'true' : 'false'}
+                  data-anim-window-stale={window.slot.stale ? 'true' : 'false'}
+                  data-anim-window-mismatch={mismatch !== null && mismatch.windowSlotId === window.slot.id ? 'true' : 'false'}
+                  data-anim-window-review-pending={window.reviewPending ? 'true' : 'false'}
+                  disabled={busy}
+                  title={`Window ${index + 1} — ${window.takes.length} ${window.takes.length === 1 ? 'take' : 'takes'}${window.slot.selectedCandidateId !== null ? '; the selected take drives the assembled preview' : window.reviewPending ? '; a landed take awaits your selection' : ''}${window.slot.stale ? ` (stale: ${window.slot.staleReasons.join(', ')})` : ''}`}
+                  onClick={() => onSelectWindow(window.slot.id)}
+                >
+                  window {index + 1}
+                  <span className="anim-chain-window-meta">
+                    {window.takes.length} {window.takes.length === 1 ? 'take' : 'takes'}
+                    {window.slot.selectedCandidateId !== null ? ' · selected' : window.reviewPending ? ' · ready to review' : ''}
+                  </span>
+                  {mismatch !== null && mismatch.windowSlotId === window.slot.id && <span className="anim-chain-window-flag">mismatch</span>}
+                </button>
+              ))}
+            </div>
+            {/* §4's named stale/mismatch state — surfaced, never silently
+                assembled past. The two explicit resolutions; the banner
+                stands regardless of locks (a lock never hides a mismatch). */}
+            {mismatch !== null && (
+              <div className="anim-chain-mismatch" role="alert" data-anim-chain-mismatch>
+                <p className="anim-chain-mismatch-title">Ancestry mismatch — the assembled preview stops here</p>
+                <p className="anim-note">
+                  Window {view.windows.findIndex((window) => window.slot.id === mismatch.windowSlotId) + 1}&apos;s selected take was conditioned on a frozen source that its ancestor window no longer selects. Assembling would join unrelated ancestry; nothing rebinds by itself.
+                </p>
+                <div className="anim-chain-mismatch-actions">
+                  <Button
+                    variant="secondary" className="anim-btn"
+                    busy={busy}
+                    disabled={busy || ancestorSlot === null || ancestorSlot.lock}
+                    data-anim-mismatch-reselect
+                    title={ancestorSlot === null
+                      ? 'The frozen source is not a member of this chain — reselecting has nothing to restore here'
+                      : ancestorSlot.lock
+                        ? 'The ancestor window is locked — unlock it before changing its selection (the lock never hides the mismatch)'
+                        : 'Reselect the ancestor window\'s compatible take — the recorded edge becomes the selected path again'}
+                    onClick={() => onReselectAncestor(mismatch)}
+                  >
+                    Reselect the compatible ancestry
+                  </Button>
+                  <Button
+                    variant="secondary" className="anim-btn"
+                    busy={busy}
+                    disabled={busy || rebindTarget === null}
+                    data-anim-mismatch-rebind
+                    title={ancestorSlot === null
+                      ? 'The frozen source is not a member of this chain — extend that chain instead'
+                      : rebindTarget === null
+                        ? 'The ancestor window selects nothing yet — select one of its takes first'
+                        : 'Explicitly rebind this window to the ancestor\'s CURRENT selection — the next submission into it freezes that source (a distinct document mutation with its own revision bump)'}
+                    onClick={() => onRebindWindow(mismatch)}
+                  >
+                    Rebind to the current selection
+                  </Button>
+                </div>
+              </div>
+            )}
+          </section>
+        )
+      })}
+    </div>
+  )
+}
+
+export function Timeline({ timeline, binding, selectedId, playhead, busy, chains, selectedWindowId, onSelectKey, onSelectSpan, onToggleLock, onSeedInitialKey, onSelectWindow, onReselectAncestor, onRebindWindow }: TimelineProps) {
   if (timeline.keys.length === 0) {
     return (
       <div className="anim-timeline" data-anim-timeline>
@@ -249,6 +374,10 @@ export function Timeline({ timeline, binding, selectedId, playhead, busy, onSele
           )
         })}
       </div>
+      {/* The extension chains' surface (§4, Task 6) — under the track: the
+          chains root at this timeline's takes, their windows are new time
+          beyond the spans. */}
+      <ChainBand surface={chains ?? { chains: [] }} selectedWindowId={selectedWindowId} busy={busy} onSelectWindow={onSelectWindow} onReselectAncestor={onReselectAncestor} onRebindWindow={onRebindWindow} />
     </div>
   )
 }

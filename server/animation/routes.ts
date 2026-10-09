@@ -197,6 +197,31 @@ export function animationFabricEmitter(emitAnimation: (type: string, payload: un
         })
         return
       }
+      case 'animation.attempt.continuation-ready':
+      case 'animation.attempt.continuation-not-produced':
+      case 'animation.attempt.continuation-registration-failed': {
+        // The extension lane's two-readiness landing (Task 2's events — the
+        // envelope decision Task 6 owns: WIRED). Registration is DETACHED
+        // after the ready transition, so NOTHING else re-fetches the
+        // document when it settles — without this envelope the client's
+        // Extend gate would wait on a refresh that never comes. The payload
+        // is the continuation VIEW's own shape (state + artifact?/error?),
+        // patched in place client-side exactly like attempt-state patches
+        // execution; the durable read stays the truth a malformed or
+        // missing envelope falls back to.
+        if (!isNonEmptyString(payload.attemptId) || !isNonEmptyString(payload.documentId)) return
+        const state = type === 'animation.attempt.continuation-ready'
+          ? 'ready'
+          : type === 'animation.attempt.continuation-not-produced' ? 'not-produced' : 'registering'
+        const envelope: Record<string, unknown> = { documentId: payload.documentId, attemptId: payload.attemptId, state }
+        if (state === 'ready' && isRecord(payload.artifact)
+          && typeof payload.artifact.artifactId === 'string' && typeof payload.artifact.digest === 'string') {
+          envelope.artifact = { artifactId: payload.artifact.artifactId, digest: payload.artifact.digest }
+        }
+        if (state === 'registering' && typeof payload.error === 'string') envelope.error = payload.error
+        emitAnimation('continuation-state', envelope)
+        return
+      }
       default:
         // preparation/lifecycle detail events stay server-internal: the
         // attempt-state envelopes they sit between are the re-fetch signal.
@@ -891,13 +916,15 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
 
       // ---- §4/§9: the time-shifted caption (the sampled window's time base)
       const overrides = parseOverrides(draft.overrides)
+      const movement = boundedText(draft.movement, 'The movement text')
+      const preservation = boundedText(draft.preservation, 'The preservation text')
       let compiled: ReturnType<AnimationRenderingService['compileCaption']>
       try {
         const context: ExtensionContext = {
           rollingReference: { assetReference: near.assetReference, pose: { poseDescription: near.poseDescription, facing: near.facing } },
           farReference: { assetReference: far.assetReference, pose: { poseDescription: far.poseDescription, facing: far.facing } },
-          movementStep: boundedText(draft.movement, 'The movement text'),
-          preservation: boundedText(draft.preservation, 'The preservation text'),
+          movementStep: movement,
+          preservation,
           overrides,
           window: { sampledLength: targetLength, pinnedLength: plan.headTrim, fps: document.body.settings.fps },
         }
@@ -964,6 +991,11 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
         },
         documentRevision: document.revision,
         continuationBinding: buildBinding(0),
+        // §4's re-roll split (lane Task 6): the authored draft frozen verbatim
+        // — the sequence lane's precedent (a spanless draft's only durable
+        // home is the frozen attempt), so Retry resubmits byte-identically
+        // and a New alternative changes ONLY the seed by construction.
+        extension: { movement, preservation, overrides, anchors },
       }
       const seed = body.seed !== undefined ? body.seed : Number.parseInt(animationInputHash(seedless).slice(0, 8), 16) >>> 0
       const binding = buildBinding(seed)
@@ -1003,7 +1035,14 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
         if (failure instanceof AnimationModelResolutionError || failure instanceof AnimationModelEvidenceError || failure instanceof ContinuationIdentityDriftError) {
           throw new AnimationRuleError(failure.message, 400)
         }
-        throw failure
+        // Task 5's review M-2 (landed with Task 6, whose surfaces carry the
+        // name client-side): an UNREACHABLE engine at the fresh-identity
+        // resolution answers NAMED here. The submit route defers the same
+        // condition into its sweep (a plain render needs no before-dispatch
+        // identity truth); the extend preflight is deliberately fail-fast —
+        // nothing is spent before the engine answers — and the asymmetry is
+        // now named at the surface instead of surfacing as a structural 500.
+        throw new AnimationRuleError(`The extension's compatibility preflight could not read the engine's current models (${failure instanceof Error ? failure.message : String(failure)}) — the Extend action refuses before spending anything; retry once the engine is reachable.`, 400)
       }
 
       // ---- the dispatch: exactly the standing submission path (the service's

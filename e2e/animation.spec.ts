@@ -3636,3 +3636,394 @@ test('a wide-but-short viewport with the update panel open keeps every surface r
   expect(seedBox!.y + seedBox!.height).toBeLessThanOrEqual(601)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
+
+// ---------------------------------------------------------------------------
+// The extension lane (Task 6, spec 2026-10-08-animation-extension-lane-design.md
+// §4): the CLIENT end to end — the Extend interaction (the carry preview's
+// two clocks, the pinned tail in source coordinates, the preflight verdicts
+// inline), the chain surface on the timeline (window slots in order,
+// per-slot selection), the named mismatch banner with its TWO explicit
+// resolutions, the re-roll split on the wire, and the assembled preview
+// honoring one selected path.
+// ---------------------------------------------------------------------------
+
+const ANIMATION_H3_PROFILE = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'e2e/mirror/profiles/animation-h3.json'), 'utf8')) as {
+  loaderEnumerations: Record<string, string[]>
+}
+
+/** The identity-evidence fixtures the stamped world needs (the routes suite
+ *  (q)'s own shape): the fake engine's enumerated names as readable weight
+ *  files under a scratch models root, pointed at through the settings the
+ *  shared server reads — restored in every leg's finally. */
+async function stageExtensionEvidence(request: APIRequestContext) {
+  const root = path.join(process.cwd(), 'test-home', `ext-evidence-${Date.now()}-${uuid().slice(0, 6)}`)
+  const folders: Record<string, string> = { unet: 'diffusion_models', clip: 'text_encoders', vae: 'vae', lora: 'loras' }
+  for (const [slot, kind] of Object.entries(folders)) {
+    for (const name of ANIMATION_H3_PROFILE.loaderEnumerations[slot] ?? []) {
+      const file = path.join(root, kind, ...name.split('/').filter(Boolean))
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, Buffer.from(`e2e-ext-evidence-weight:${kind}:${name}`))
+    }
+  }
+  const original = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  await request.post('/api/lan/settings', { data: { settings: { ...original, modelRoot: root } } })
+  return original
+}
+
+const attemptContinuation = async (request: APIRequestContext, attemptId: string) =>
+  ((await (await request.get(`/api/lan/animation/attempt?id=${attemptId}`)).json()) as { attempt: { execution: string; continuation: { state: string }; candidate: { frameCount: number } | null } }).attempt
+
+/** A landed, CARRYING, STAMPED tween source over the span the inspector
+ *  seeds — the chain's root. Waits the two-readiness pair (ready +
+ *  continuation ready) before answering. */
+async function seedCarryingSource(request: APIRequestContext, projectId: string, name: string) {
+  const seeded = await seedInspectorDocument(request, projectId, name)
+  const idem = `e2e-ext-src-${Date.now()}-${uuid().slice(0, 8)}`
+  const submitted = await request.post('/api/lan/animation/attempts', {
+    data: {
+      documentId: seeded.documentId, tool: 'tween', targetId: seeded.stepSlotId, idempotencyKey: idem,
+      draft: { tool: 'tween', targetStepSlotId: seeded.stepSlotId, movementStep: 'she breaks into a run, coat flaring behind her', overrides: { medium: 'clean line on white' }, carry: true },
+    },
+  })
+  expect(submitted.ok(), `the carrying source submits (${await submitted.text()})`).toBe(true)
+  const sourceAttemptId = ((await submitted.json()) as { attemptId: string }).attemptId
+  await expect.poll(async () => {
+    const view = await attemptContinuation(request, sourceAttemptId)
+    return view.execution === 'ready' && view.continuation.state === 'ready' && view.candidate !== null
+  }, { timeout: 30_000 }).toBe(true)
+  return { ...seeded, sourceAttemptId }
+}
+
+/** One extension INTO a known window (the new-alternative shape — the same
+ *  recorded source, a fresh key + an explicit seed): the API-driven legs'
+ *  building block. */
+async function apiExtendInto(request: APIRequestContext, documentId: string, windowSlotId: string, sourceAttemptId: string, targetLength: number, movement: string, seed?: number) {
+  const idem = `e2e-ext-${Date.now()}-${uuid().slice(0, 8)}`
+  const submitted = await request.post('/api/lan/animation/extend', {
+    data: {
+      documentId, windowSlotId, sourceAttemptId, targetLength, idempotencyKey: idem,
+      draft: { movement, preservation: 'the coat hem and the earring hold', overrides: { medium: 'clean line on white' } },
+      ...(seed !== undefined ? { seed } : {}),
+    },
+  })
+  expect(submitted.ok(), `the extend submits (${await submitted.text()})`).toBe(true)
+  const attemptId = ((await submitted.json()) as { attemptId: string }).attemptId
+  await expect.poll(async () => (await attemptContinuation(request, attemptId)).execution, { timeout: 45_000 }).toBe('ready')
+  return { windowSlotId, attemptId, idempotencyKey: idem }
+}
+
+/** One extension of a source that holds no window yet: mints the window,
+ *  then submits into it. */
+async function apiExtend(request: APIRequestContext, documentId: string, sourceAttemptId: string, targetLength: number, movement: string, seed?: number) {
+  const window = await request.post('/api/lan/animation/chains', {
+    data: { op: 'create-window', documentId, sourceAttemptId, expectedRevision: (await readAnimationDocument(request, documentId)).document.revision },
+  })
+  expect(window.ok(), `create-window lands (${await window.text()})`).toBe(true)
+  const windowSlotId = ((await window.json()) as { windowSlotId: string }).windowSlotId
+  return { windowSlotId, ...await apiExtendInto(request, documentId, windowSlotId, sourceAttemptId, targetLength, movement, seed) }
+}
+
+/** The document's revision (the revision-gated API selects need the fresh
+ *  one each time). */
+const revisionOf = async (request: APIRequestContext, documentId: string) => (await readAnimationDocument(request, documentId)).document.revision
+
+/** One window-slot selection over the raw route. */
+async function apiSelectWindow(request: APIRequestContext, documentId: string, windowSlotId: string, attemptId: string) {
+  const landed = await request.post('/api/lan/animation/select/window-candidate', {
+    data: { documentId, windowSlotId, attemptId, expectedRevision: await revisionOf(request, documentId) },
+  })
+  expect(landed.ok(), `the window selection lands (${await landed.text()})`).toBe(true)
+}
+
+/** The chain windows of a document, flat (the assertions' read shape). */
+const chainWindowsOf = async (request: APIRequestContext, documentId: string) =>
+  ((await readAnimationDocument(request, documentId)).document.body as unknown as { chains: Array<{ windows: Array<{ id: string; attempts: string[]; selectedCandidateId: string | null; sourceAttemptId: string; stale: boolean; staleReasons: string[] }> }> }).chains
+    .flatMap((chain) => chain.windows)
+
+test('the §4 Extend interaction — the carry preview\'s two clocks, the verdicts inline, the submit, the review on the window slot (extension)', async ({ page, request }) => {
+  test.setTimeout(150_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  const originalEvidence = await stageExtensionEvidence(request)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-ext-${Date.now()}`
+    const seeded = await seedCarryingSource(request, projectId, 'The extend slice')
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    // The source take's review: the Extend action stands beside the others,
+    // ENABLED (the two-readiness pair landed) — the fabric's continuation
+    // envelope / the durable read flipped it without any reload.
+    await timeline.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    const review = page.locator('[data-anim-review]')
+    await expect(review).toBeVisible({ timeout: 15_000 })
+    await expect(review).toHaveAttribute('data-anim-review-attempt', seeded.sourceAttemptId)
+    const extendButton = review.locator('[data-anim-review-extend]')
+    await expect(extendButton).toBeEnabled({ timeout: 15_000 })
+    // No chain exists yet — the band is absent (never an empty scaffold).
+    await expect(page.locator('[data-anim-chains]')).toHaveCount(0)
+
+    // OPEN the flow: the panel mounts with the carry preview.
+    await extendButton.click()
+    const panel = page.locator('[data-anim-extend]')
+    await expect(panel).toBeVisible()
+    await expect(panel).toHaveAttribute('data-anim-extend-source', seeded.sourceAttemptId)
+    // §4's overlap math in BOTH clocks (the 22-frame source, the 56 target).
+    await expect(panel.locator('[data-anim-extend-generated]')).toHaveText('56')
+    await expect(panel.locator('[data-anim-extend-delivered]')).toHaveText('34')
+    await expect(panel.locator('[data-anim-extend-pinned-tail]')).toContainText('frames 0–22')
+    // The prompt-time shift disclosure (§4/§9 — the caption's TIME section).
+    await expect(panel.locator('[data-anim-extend-time-shift]')).toContainText('delivery starts at sampled frame 22')
+    // The preflight verdicts inline: every one a NAMED pass.
+    for (const name of ['Carry', 'Identity evidence', 'Overlap recipe', 'Anchors']) {
+      await expect(panel.locator(`[data-anim-extend-verdict="${name}"]`)).toHaveAttribute('data-anim-verdict-pass', 'true')
+    }
+    // The recipe refusal names itself INLINE when the target leaves the grid.
+    await panel.locator('[data-anim-extend-length]').fill('50')
+    await expect(panel.locator('[data-anim-extend-recipe-refusal]')).toContainText('17k+5')
+    await expect(panel.locator('[data-anim-extend-verdict="Overlap recipe"]')).toHaveAttribute('data-anim-verdict-pass', 'false')
+    await panel.locator('[data-anim-extend-length]').fill('56')
+
+    // SUBMIT: the panel closes, the review follows to the WINDOW SLOT.
+    const MOVEMENT = 'the run carries through the junction, coat settling'
+    await panel.locator('[data-anim-extend-movement]').fill(MOVEMENT)
+    await panel.locator('[data-anim-extend-preservation]').fill('the coat hem and the earring hold')
+    await panel.locator('[data-anim-extend-submit]').click()
+    const windowReview = page.locator('[data-anim-window-review]')
+    await expect(windowReview).toBeVisible({ timeout: 15_000 })
+    await expect(windowReview).toHaveAttribute('data-anim-review-state', /queued|reconciling|rendering|preparing|ready/, { timeout: 15_000 })
+    // The chain band appeared: ONE window, in order, awaiting review.
+    const chainWindow = page.locator('[data-anim-chain-window]')
+    await expect(chainWindow).toHaveCount(1)
+    await expect(chainWindow.first()).toHaveAttribute('data-anim-window-review-pending', 'true')
+    // The landing: the delivered 34-frame clip on the window's review, the
+    // frozen geometry line naming both counts.
+    await expect(windowReview).toHaveAttribute('data-anim-review-state', 'ready', { timeout: 45_000 })
+    await expect(windowReview.locator('[data-anim-window-geometry]')).toContainText('56 generated')
+    await expect(windowReview.locator('[data-anim-window-geometry]')).toContainText('34 delivered')
+    const clip = windowReview.locator('[data-anim-review-clip]')
+    await expect(clip).toBeVisible()
+    // NOTHING auto-selected (§4): the explicit selection is the user's act.
+    await expect(windowReview.locator('[data-anim-window-select]')).toBeEnabled()
+    await windowReview.locator('[data-anim-window-select]').click()
+    await expect(chainWindow.first()).toHaveAttribute('data-anim-window-review-pending', 'false')
+    // The assembled preview names the ONE selected path: 22 + 34 delivered.
+    await expect(page.locator('[data-anim-chain-assembled]')).toHaveAttribute('data-anim-chain-assembled', '56')
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalEvidence } }).catch(() => undefined)
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('the §4 mismatch — a reselected ancestor derives the NAMED banner; both explicit resolutions answer (extension)', async ({ page, request }) => {
+  test.setTimeout(150_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  const originalEvidence = await stageExtensionEvidence(request)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-mismatch-${Date.now()}`
+    const seeded = await seedCarryingSource(request, projectId, 'The mismatch slice')
+    // The chain, API-driven — the ORDER matters: W2's create-window resolves
+    // through W1's SELECTION (extending a SELECTED candidate appends to the
+    // chain; an unselected one would BRANCH), so A1 is selected BEFORE W2
+    // mints. W1 then gains the A2 ALTERNATIVE (the same recorded source, a
+    // fresh key + explicit seed); W2's B conditions on A1's carried tail.
+    const a1 = await apiExtend(request, seeded.documentId, seeded.sourceAttemptId, 56, 'the stride opens through the hips')
+    await apiSelectWindow(request, seeded.documentId, a1.windowSlotId, a1.attemptId)
+    const b = await apiExtend(request, seeded.documentId, a1.attemptId, 56, 'the run eases into the turn')
+    await apiSelectWindow(request, seeded.documentId, b.windowSlotId, b.attemptId)
+    const a2 = await apiExtendInto(request, seeded.documentId, a1.windowSlotId, seeded.sourceAttemptId, 39, 'a shorter breath of the same run', 12345)
+
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    await expect(page.locator('[data-anim-chains]')).toBeVisible({ timeout: 15_000 })
+    // The consistent chain assembles its ONE selected path (22 + 34 + 34).
+    await expect(page.locator('[data-anim-chain-assembled]').first()).toHaveAttribute('data-anim-chain-assembled', '90')
+    await expect(page.locator('[data-anim-chain-mismatch]')).toHaveCount(0)
+
+    // RESELECT the ancestor: W1 moves off A1's edge — the DERIVED mismatch.
+    await apiSelectWindow(request, seeded.documentId, a1.windowSlotId, a2.attemptId)
+    // The document-changed envelope drives the re-read; the banner names the
+    // state and the assembled preview STOPS (never a silent assembly).
+    const banner = page.locator('[data-anim-chain-mismatch]')
+    await expect(banner).toBeVisible({ timeout: 15_000 })
+    await expect(banner).toContainText('mismatch')
+    await expect(page.locator('[data-anim-chain-assembled]').first()).toHaveAttribute('data-anim-chain-assembled', 'blocked')
+    const mismatchWindow = page.locator('[data-anim-window-mismatch="true"]')
+    await expect(mismatchWindow).toHaveCount(1)
+
+    // RESOLUTION 1 — reselect the compatible ancestry: the recorded edge
+    // becomes the selected path again; the banner clears itself.
+    await banner.locator('[data-anim-mismatch-reselect]').click()
+    await expect(banner).toHaveCount(0, { timeout: 15_000 })
+    await expect(page.locator('[data-anim-chain-assembled]').first()).toHaveAttribute('data-anim-chain-assembled', '90')
+
+    // Re-create the mismatch, then RESOLUTION 2 — the explicit rebind: the
+    // window's RECORDED SOURCE re-points to the ancestor's CURRENT selection.
+    await apiSelectWindow(request, seeded.documentId, a1.windowSlotId, a2.attemptId)
+    await expect(banner).toBeVisible({ timeout: 15_000 })
+    await banner.locator('[data-anim-mismatch-rebind]').click()
+    // Task 4's ruling (b), pinned at the surface: the rebind produces the
+    // NEXT submission's binding source — the mismatch STANDS between the
+    // rebind and the new take's selection (a slot-source derivation would
+    // silently assemble unrelated ancestry). The document truth moved:
+    const rebound = (await chainWindowsOf(request, seeded.documentId)).find((window) => window.id === b.windowSlotId)
+    expect(rebound?.sourceAttemptId).toBe(a2.attemptId, 'the rebind produced the NEXT submission\'s binding source — never a write to the frozen row')
+    expect(rebound?.stale).toBe(true)
+    expect(rebound?.staleReasons).toContain('ancestry')
+    await expect(banner).toBeVisible({ timeout: 15_000 })
+    // The recovery COMPLETES through the re-pointed window: a new take
+    // submitted against the recorded source, then selected — the walk reads
+    // the new take's frozen edge and the banner clears.
+    const c = await apiExtendInto(request, seeded.documentId, b.windowSlotId, a2.attemptId, 56, 'the turn completes on the new edge')
+    await apiSelectWindow(request, seeded.documentId, b.windowSlotId, c.attemptId)
+    await expect(banner).toHaveCount(0, { timeout: 15_000 })
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalEvidence } }).catch(() => undefined)
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('the §4 re-roll split on the wire — Retry is the identical submission, a new alternative is the explicitly-changed seed (extension)', async ({ page, request }) => {
+  test.setTimeout(150_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  const originalEvidence = await stageExtensionEvidence(request)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-reroll-${Date.now()}`
+    const seeded = await seedCarryingSource(request, projectId, 'The re-roll slice')
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    await timeline.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    const review = page.locator('[data-anim-review]')
+    await expect(review).toBeVisible({ timeout: 15_000 })
+    await expect(review.locator('[data-anim-review-extend]')).toBeEnabled({ timeout: 15_000 })
+
+    // The wire captures: every /extend POST's body (key + seed).
+    const extendBodies: Array<{ idempotencyKey: string; seed?: number }> = []
+    page.on('request', (route) => {
+      if (!route.url().includes('/api/lan/animation/extend')) return
+      const data = route.postDataJSON() as { idempotencyKey?: string; seed?: number }
+      if (data?.idempotencyKey !== undefined) extendBodies.push({ idempotencyKey: data.idempotencyKey, ...(data.seed !== undefined ? { seed: data.seed } : {}) })
+    })
+
+    // The FIRST submission: the response is LOST after the server worked —
+    // route.fetch performs the real request, the app's fetch sees a reset.
+    await review.locator('[data-anim-review-extend]').click()
+    const panel = page.locator('[data-anim-extend]')
+    await expect(panel).toBeVisible()
+    await panel.locator('[data-anim-extend-movement]').fill('the run carries through the junction')
+    await panel.locator('[data-anim-extend-preservation]').fill('the coat hem and the earring hold')
+    await page.route('**/api/lan/animation/extend', async (route) => {
+      await route.fetch()
+      await route.abort('connectionreset')
+    }, { times: 1 })
+    await panel.locator('[data-anim-extend-submit]').click()
+    // §4's Retry: the SAME key + identical inputs — the refusal offers it.
+    const retryRefusal = panel.locator('[data-refusal-satisfy]')
+    await expect(retryRefusal).toBeVisible({ timeout: 15_000 })
+    // The take LANDED server-side (the engine worked once) while the panel
+    // holds the unsent-looking response.
+    await expect.poll(async () => Object.keys(await engine.historyAll()).length, { timeout: 30_000 }).toBe(2)
+    await retryRefusal.click()
+    // The retry resolves idempotently: the window review mounts on the SAME
+    // take, the engine still holds exactly the one extension record.
+    const windowReview = page.locator('[data-anim-window-review]')
+    await expect(windowReview).toBeVisible({ timeout: 15_000 })
+    await expect(windowReview).toHaveAttribute('data-anim-review-state', /queued|reconciling|rendering|preparing|ready/, { timeout: 15_000 })
+    await expect(windowReview).toHaveAttribute('data-anim-review-state', 'ready', { timeout: 45_000 })
+    expect(Object.keys(await engine.historyAll())).toHaveLength(2, 'the retry answered the row its dispatch already gated — no second render')
+    expect(extendBodies).toHaveLength(2)
+    expect(extendBodies[1]!.idempotencyKey).toBe(extendBodies[0]!.idempotencyKey, 'the Retry rides the SAME idempotency key')
+    expect(extendBodies[1]!.seed).toBeUndefined()
+    const firstWindow = (await chainWindowsOf(request, seeded.documentId))[0]!
+    expect(firstWindow.attempts).toHaveLength(1, 'no duplicate take was minted')
+
+    // The NEW ALTERNATIVE: a deliberate action with an EXPLICITLY changed
+    // seed — a fresh key, the frozen draft byte-identical.
+    await windowReview.locator('[data-anim-window-reroll]').click()
+    await expect(windowReview.locator('[data-anim-review-take]')).toHaveCount(2, { timeout: 30_000 })
+    await expect(windowReview).toHaveAttribute('data-anim-review-state', 'ready', { timeout: 45_000 })
+    await expect.poll(async () => Object.keys(await engine.historyAll()).length, { timeout: 30_000 }).toBe(3)
+    expect(extendBodies).toHaveLength(3)
+    expect(extendBodies[2]!.idempotencyKey).not.toBe(extendBodies[0]!.idempotencyKey, 'a fresh key — never the retry key')
+    expect(typeof extendBodies[2]!.seed).toBe('number', 'the seed change is part of the alternative-creation command')
+    const takesWindow = (await chainWindowsOf(request, seeded.documentId))[0]!
+    expect(takesWindow.attempts).toHaveLength(2)
+    expect(takesWindow.selectedCandidateId, 'the alternative never moves the selection (§8.2)').toBeNull()
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalEvidence } }).catch(() => undefined)
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('the assembled preview honors ONE selected path — the chain follows the window\'s own selection (extension)', async ({ page, request }) => {
+  test.setTimeout(150_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  const originalEvidence = await stageExtensionEvidence(request)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-path-${Date.now()}`
+    const seeded = await seedCarryingSource(request, projectId, 'The path slice')
+    // ONE window holding TWO alternatives: a 56-target (delivered 34) and a
+    // 39-target (delivered 17). The slot's own selection is the path.
+    const long = await apiExtend(request, seeded.documentId, seeded.sourceAttemptId, 56, 'the stride opens through the hips')
+    const short = await apiExtendInto(request, seeded.documentId, long.windowSlotId, seeded.sourceAttemptId, 39, 'a shorter breath of the same run', 777)
+    await apiSelectWindow(request, seeded.documentId, long.windowSlotId, long.attemptId)
+
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    await expect(page.locator('[data-anim-chains]')).toBeVisible({ timeout: 15_000 })
+    // The selected path: root 22 + the LONG alternative's 34.
+    await expect(page.locator('[data-anim-chain-assembled]').first()).toHaveAttribute('data-anim-chain-assembled', '56')
+    const windows = page.locator('[data-anim-chain-window]')
+    await expect(windows).toHaveCount(1)
+    await expect(windows.first()).toHaveAttribute('data-anim-window-order', '0')
+
+    // The window review: the subject is the NEWEST take (the module's
+    // default — nothing steals a review the user hasn't held), while the
+    // SELECTED marker follows the slot's DURABLE selection (the LONG take).
+    await windows.first().click()
+    const windowReview = page.locator('[data-anim-window-review]')
+    await expect(windowReview).toBeVisible({ timeout: 15_000 })
+    await expect(windowReview).toHaveAttribute('data-anim-review-attempt', short.attemptId)
+    await expect(windowReview.locator(`[data-anim-review-take="${long.attemptId}"]`)).toHaveAttribute('data-anim-take-selected', 'true')
+    await expect(windowReview.locator(`[data-anim-review-take="${short.attemptId}"]`)).toHaveAttribute('data-anim-take-selected', 'false')
+
+    // Switch the SUBJECT to the LONG take (a view act — the selection
+    // marker must NOT move), then make the SHORT take the window's EXPLICIT
+    // selection: the assembled preview re-derives through the ONE selected
+    // path (22 + 17).
+    await windowReview.locator(`[data-anim-review-take="${long.attemptId}"]`).click()
+    await expect(windowReview).toHaveAttribute('data-anim-review-attempt', long.attemptId)
+    await expect(windowReview.locator(`[data-anim-review-take="${long.attemptId}"]`)).toHaveAttribute('data-anim-take-selected', 'true')
+    // Back to the SHORT take as the subject, and select it explicitly.
+    await windowReview.locator(`[data-anim-review-take="${short.attemptId}"]`).click()
+    await expect(windowReview).toHaveAttribute('data-anim-review-attempt', short.attemptId)
+    await windowReview.locator('[data-anim-window-select]').click()
+    await expect(windowReview.locator(`[data-anim-review-take="${short.attemptId}"]`)).toHaveAttribute('data-anim-take-selected', 'true')
+    await expect(page.locator('[data-anim-chain-assembled]').first()).toHaveAttribute('data-anim-chain-assembled', '39', { timeout: 15_000 })
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalEvidence } }).catch(() => undefined)
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
