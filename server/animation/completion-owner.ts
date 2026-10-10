@@ -370,10 +370,15 @@ export function createCompletionOwner(deps: {
           }
           const saveRecipeVersion = readCarrySaveRecipe(bytes)
           if (saveRecipeVersion === null) {
-            // The file exists but is not the pack's container: a verification
-            // failure, the RETRYABLE class (bounded, then explicit) — never
-            // registered on a guess.
-            throw new Error('the saved carry file does not carry the pack\'s safetensors metadata (its save-recipe version is unreadable) — the artifact cannot be registered unverified')
+            // The file exists but is not the pack's container — the STRICT
+            // read (Codex batch B, audit M-6): the framing must carry the
+            // save-format metadata AND the structurally loadable video/audio
+            // tensor family (a tensorless or shape-divergent header is the
+            // integrity refusal — the file could never load through the
+            // pack's own deserialization contract). A verification failure,
+            // the RETRYABLE class (bounded, then explicit) — never registered
+            // on a guess.
+            throw new Error('the saved carry file is not the pack\'s carry container (its safetensors framing must carry the save-format metadata and a structurally valid video/audio tensor family — a tensorless or shape-divergent file could never load) — the artifact cannot be registered unverified')
           }
           const digest = createHash('sha256').update(bytes).digest('hex')
           const registered = blobs.registerBytes('latent', bytes, `carry-${attemptId}.safetensors`)

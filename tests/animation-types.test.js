@@ -400,23 +400,84 @@ test('animationInputHash is order-stable and difference-sensitive', () => {
   assert.notEqual(animationInputHash({ ...snapshot, settings: { steps: 6, cfg: 3.5, seed: 42, extra: 1 } }), baseline, 'an added settings key differs')
 })
 
-// The extension lane's receipt-verify half (Task 2): the save-recipe version
-// is read FROM the carry file's own safetensors metadata — the pack's framing
-// (u64 LE header length + JSON header), parsed environment-neutrally.
-test('readCarrySaveRecipe reads the pack metadata from the safetensors framing; malformation refuses', () => {
-  const framed = (header) => {
+// The extension lane's receipt-verify half (Task 2), made STRICT by Codex
+// batch B (audit M-6): the save-recipe version is read FROM the carry file's
+// own safetensors metadata — the pack's framing (u64 LE header length + JSON
+// header), parsed environment-neutrally — AND the header must match the
+// pack's carry SHAPE CLASS: the video+audio nested-tensor family, its
+// declared shapes agreeing with the payload bytes (the real Load node's
+// deserialization contract: nodes.py load() refuses a file missing either
+// stream, and safetensors itself refuses incoherent offsets). A tensorless
+// header carrying only the format string — the audit's reproduced hole — or
+// a shape-divergent one is NOT the pack's container: registration proves
+// loadability, never just plumbing.
+test('readCarrySaveRecipe reads the pack metadata from a STRUCTURALLY VALID carry container; the tensorless and shape-divergent families refuse (audit M-6)', () => {
+  // The fixture builder sizes the payload to the header's own maximum data
+  // offset — a container whose framing can honestly hold what it declares
+  // (an explicit payloadBytes OVERRIDES, for the past-the-end leg).
+  const framed = (header, payloadBytes = 0) => {
     const headerBuf = Buffer.from(JSON.stringify(header), 'utf8')
-    const buf = Buffer.alloc(8 + headerBuf.length + 16)
+    const declared = Math.max(0, ...Object.entries(header)
+      .filter(([name]) => name !== '__metadata__')
+      .flatMap(([, entry]) => (entry && typeof entry === 'object' ? entry.data_offsets ?? [0] : [0])))
+    const span = payloadBytes > 0 ? payloadBytes : declared
+    const buf = Buffer.alloc(8 + headerBuf.length + span)
     buf.writeBigUInt64LE(BigInt(headerBuf.length), 0)
     headerBuf.copy(buf, 8)
     return buf
   }
-  const withMetadata = framed({ __metadata__: { format: 'h3_motion_context_av_v1' }, video: { dtype: 'F16', shape: [22, 16, 48, 84], data_offsets: [0, 14] } })
-  assert.equal(readCarrySaveRecipe(withMetadata), 'h3_motion_context_av_v1', 'the metadata format is the save-recipe version, read from the file')
+  const videoBytes = 22 * 16 * 48 * 84 * 2 // 2,838,528 — the audit's own arithmetic
+  const audioBytes = 2 * 22 * 2
+  const validCarry = {
+    __metadata__: { format: 'h3_motion_context_av_v1' },
+    video: { dtype: 'F16', shape: [22, 16, 48, 84], data_offsets: [0, videoBytes] },
+    audio: { dtype: 'F16', shape: [2, 22], data_offsets: [videoBytes, videoBytes + audioBytes] },
+  }
+  const withMetadata = framed(validCarry)
+  assert.equal(withMetadata.length, 8 + JSON.stringify(validCarry).length + videoBytes + audioBytes, 'the fixture allocates the full declared payload (a real ~2.8 MB 22-frame carry)')
+  assert.equal(readCarrySaveRecipe(withMetadata), 'h3_motion_context_av_v1', 'a structurally valid container reads its save-recipe version from the file')
   assert.equal(readCarrySaveRecipe(framed({})), null, 'no metadata block refuses')
   assert.equal(readCarrySaveRecipe(framed({ __metadata__: {} })), null, 'no format key refuses')
   assert.equal(readCarrySaveRecipe(framed({ __metadata__: { format: '' } })), null, 'an empty format refuses')
   assert.equal(readCarrySaveRecipe(framed({ __metadata__: { format: 7 } })), null, 'a non-string format refuses')
+
+  // THE SHAPE-CLASS REFUSALS (audit M-6): a header carrying ONLY the format
+  // string — no tensor entries — is not the pack's container; so is every
+  // shape-divergent form. The pre-fix reader accepted all of these.
+  assert.equal(readCarrySaveRecipe(framed({ __metadata__: { format: 'h3_motion_context_av_v1' } })), null, 'a TENSORLESS header refuses — the metadata alone never proves a carry (the audit\'s reproduced hole)')
+  assert.equal(
+    readCarrySaveRecipe(framed({ __metadata__: { format: 'h3_motion_context_av_v1' }, video: { dtype: 'F16', shape: [22, 16, 48, 84], data_offsets: [0, 7372] } })),
+    null,
+    'the audit\'s exact shape-divergence refuses: 22f F16 video DECLARING 2,838,528 bytes over a 7,372-byte region',
+  )
+  assert.equal(
+    readCarrySaveRecipe(framed({ __metadata__: { format: 'h3_motion_context_av_v1' }, video: validCarry.video })),
+    null,
+    'a video-only header refuses — the pack\'s Load contract demands BOTH streams',
+  )
+  assert.equal(
+    readCarrySaveRecipe(framed({ __metadata__: { format: 'h3_motion_context_av_v1' }, video: { ...validCarry.video, dtype: 'F16X' } })),
+    null,
+    'an unknown dtype refuses — an unsizeable tensor is never a pass',
+  )
+  assert.equal(
+    readCarrySaveRecipe(framed({ __metadata__: { format: 'h3_motion_context_av_v1' }, video: validCarry.video, audio: { dtype: 'F16', shape: [2, 22], data_offsets: [videoBytes + 16, videoBytes + 16 + audioBytes] } })),
+    null,
+    'a non-contiguous region run refuses — the safetensors loader\'s own offset discipline',
+  )
+  assert.equal(
+    readCarrySaveRecipe(framed({ __metadata__: { format: 'h3_motion_context_av_v1' }, video: validCarry.video, audio: { dtype: 'F16', shape: [2, 22], data_offsets: [videoBytes, videoBytes + audioBytes] } }, videoBytes + audioBytes - 1)),
+    null,
+    'regions past the actual payload refuse — the framing must hold what it declares',
+  )
+  // A zero-element stream stays a legal safetensors shape (the pack could
+  // save an empty tail); the family check is structural, not size-minimal.
+  assert.equal(
+    readCarrySaveRecipe(framed({ __metadata__: { format: 'h3_motion_context_av_v1' }, video: validCarry.video, audio: { dtype: 'F16', shape: [2, 0], data_offsets: [videoBytes, videoBytes] } })),
+    'h3_motion_context_av_v1',
+    'a coherent zero-span audio entry is still the pack family — structural, not size-minimal',
+  )
+
   // Framing malformation: short bytes, a header length past the buffer, and
   // garbage JSON all refuse — never a guessed version.
   assert.equal(readCarrySaveRecipe(Buffer.alloc(4)), null, 'shorter than the framing prefix')

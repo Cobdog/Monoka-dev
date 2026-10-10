@@ -345,15 +345,74 @@ export type AttemptContinuationRow = {
   error?: string
 }
 
+/** The safetensors dtype table (dtype string → bytes per element) the carry
+ *  container may declare. A dtype outside this table cannot be sized, so a
+ *  header declaring it fails the shape-class read — fail-closed, never a
+ *  pass on an unsizeable tensor. */
+const SAFETENSOR_DTYPE_BYTES: Readonly<Record<string, number>> = {
+  F64: 8, F32: 4, F16: 2, BF16: 2,
+  I64: 8, I32: 4, I16: 2, I8: 1, U8: 1,
+  BOOL: 1, F8_E4M3: 1, F8_E5M2: 1,
+}
+
+/** One tensor descriptor's declared byte span, when the descriptor is
+ *  internally coherent: a KNOWN dtype, a shape of non-negative integers, and
+ *  data_offsets [begin, end] whose span equals the shape's element count
+ *  times the dtype's width — the safetensors invariant the loader itself
+ *  enforces ("the declared shapes and the payload bytes agree"). Null on any
+ *  divergence (the audit's exact hole: a header declaring 22f F16 video —
+ *  2,838,528 bytes — over a 7,372-byte region). */
+function carryTensorSpan(raw: unknown): { begin: number; end: number } | null {
+  if (!isRecord(raw)) return null
+  if (typeof raw.dtype !== 'string' || !(raw.dtype in SAFETENSOR_DTYPE_BYTES)) return null
+  const width = SAFETENSOR_DTYPE_BYTES[raw.dtype]
+  const shape = raw.shape
+  if (!Array.isArray(shape) || shape.length === 0 || !shape.every((dimension) => Number.isInteger(dimension) && dimension >= 0)) return null
+  const offsets = raw.data_offsets
+  if (!Array.isArray(offsets) || offsets.length !== 2 || !offsets.every((offset) => Number.isInteger(offset) && offset >= 0)) return null
+  const [begin, end] = offsets as [number, number]
+  if (end < begin) return null
+  const elements = shape.reduce((product, dimension) => product * dimension, 1)
+  if (end - begin !== elements * width) return null
+  return { begin, end }
+}
+
+/** The carry container's SHAPE CLASS (Codex batch B, audit M-6): the header
+ *  must carry the pack's nested-tensor family — BOTH the `video` and the
+ *  `audio` stream (the real Load node's own deserialization contract,
+ *  nodes.py load(): "missing video/audio streams" is its refusal) — and
+ *  every declared tensor must be loadable safetensors: coherent descriptors
+ *  (see carryTensorSpan) whose byte regions run contiguously from the
+ *  payload's start in header order, exactly the discipline the safetensors
+ *  loader validates (the "Invalid data offset" family), all within the
+ *  actual payload. A tensorless header (metadata alone) or a
+ *  shape-divergent one is NOT the pack's container, whatever its format
+ *  string says — registration must prove loadability, never just plumbing. */
+function carryHeaderMatchesShapeClass(header: Record<string, unknown>, payloadBytes: number): boolean {
+  if (!isRecord(header.video) || !isRecord(header.audio)) return false
+  let cursor = 0
+  for (const [name, raw] of Object.entries(header)) {
+    if (name === '__metadata__') continue
+    const span = carryTensorSpan(raw)
+    if (span === null || span.begin !== cursor) return false
+    cursor = span.end
+  }
+  return cursor <= payloadBytes
+}
+
 /** Reads the pack's save-format id out of a carry file's safetensors framing
  *  — the receipt contract's VERIFY half: a record's saveRecipeVersion is read
  *  FROM THE FILE's own metadata (nodes.py _write_safetensors stamps
  *  {"__metadata__":{"format":...}} into every carry), never a studio-side
- *  guess. Null on any shape that is not the pack's container (short bytes, a
- *  header length past the buffer, unparseable JSON, no metadata format) —
- *  a file that fails this read fails registration, whatever its bytes hash
- *  to. Pure + environment-neutral (ES builtins + TextDecoder only), like the
- *  rest of this module. */
+ *  guess. The read is STRICT (audit M-6): beyond the framing itself (short
+ *  bytes, a header length past the buffer, unparseable JSON, no metadata
+ *  format), the header must match the pack's carry SHAPE CLASS — the
+ *  video+audio tensor family, structurally loadable (see
+ *  carryHeaderMatchesShapeClass). Null on any shape that is not the pack's
+ *  container — a file that fails this read fails registration (the
+ *  integrity-refusal family), whatever its bytes hash to. Pure +
+ *  environment-neutral (ES builtins + TextDecoder only), like the rest of
+ *  this module. */
 export function readCarrySaveRecipe(bytes: Uint8Array): string | null {
   if (bytes.length < 8) return null
   const headerLength = Number(new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getBigUint64(0, true))
@@ -368,7 +427,9 @@ export function readCarrySaveRecipe(bytes: Uint8Array): string | null {
   const metadata = (header as { __metadata__?: unknown }).__metadata__
   if (typeof metadata !== 'object' || metadata === null) return null
   const format = (metadata as { format?: unknown }).format
-  return typeof format === 'string' && format.length > 0 ? format : null
+  if (typeof format !== 'string' || format.length === 0) return null
+  if (!carryHeaderMatchesShapeClass(header as Record<string, unknown>, bytes.length - 8 - headerLength)) return null
+  return format
 }
 
 // ---------------------------------------------------------------------------

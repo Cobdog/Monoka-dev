@@ -398,25 +398,36 @@ const outputsToExecuteOf = (graph) => Object.entries(graph ?? {})
     && (node.class_type === 'SaveVideo' || node.class_type === 'SaveImage' || node.class_type === 'MiniMaxH3MotionContextSaveLatent'))
   .map(([id]) => id)
 
-/** A synthetic carry file in the pack's REAL container shape: safetensors
- *  framing (u64 LE header length + JSON header + payload) whose metadata
- *  carries the pack's save-format id and whose video/audio tensor entries
- *  partition a profile-sized payload (profile.carryFile.bytes, shapes sized
- *  by the graph's clip length). Nothing loads the tensors — the studio
- *  digests bytes — but the framing is the true shape, so metadata reads (the
- *  save-recipe version) behave for real. */
+/** A synthetic carry file in the pack's REAL container shape — STRUCTURALLY
+ *  VALID (Codex batch B, audit M-6): safetensors framing (u64 LE header
+ *  length + JSON header + payload) whose metadata carries the pack's
+ *  save-format id and whose video/audio tensor entries are sized BY THE
+ *  DECLARED SHAPES (F16 video [length,16,48,84] + F16 audio [2,max(3,length)]
+ *  — a 22-frame window allocates its full 2,838,616 declared bytes; a
+ *  56-frame extension window ~7.2 MB), so the declared shapes and the
+ *  payload bytes AGREE and the file passes the pack's own deserialization
+ *  contract (the real Load node's video/audio requirement + safetensors'
+ *  offset discipline; the studio's strict reader stands in for it
+ *  server-side). The pre-fix mirror partitioned a fixed 6 KB payload under
+ *  2.8 MB shapes — registration proved plumbing, never loadability. Nothing
+ *  loads the tensors — the studio digests bytes — but the container is now
+ *  the true shape throughout. */
 function syntheticCarryBytes(graph, jobNumber) {
   // The carried latent is the SAMPLER's raw window — pre-trim (the pack's
   // Save node sits on the sampler output, beside the decode/trim chain).
   const length = sampledClipLength(graph)
-  const payloadBytes = profile.carryFile?.bytes ?? 8192
+  const elementBytes = 2 // F16
+  const videoShape = [length, 16, 48, 84]
+  const audioShape = [2, Math.max(3, length)]
+  const videoBytes = videoShape.reduce((product, dimension) => product * dimension, 1) * elementBytes
+  const audioBytes = audioShape.reduce((product, dimension) => product * dimension, 1) * elementBytes
+  const payloadBytes = videoBytes + audioBytes
   const payload = Buffer.alloc(payloadBytes)
   for (let i = 0; i < payloadBytes; i += 1) payload[i] = (i * 31 + jobNumber * 7) & 0xff
-  const videoBytes = Math.floor(payloadBytes * 0.9)
   const header = {
     __metadata__: { format: profile.carryFile?.format ?? 'h3_motion_context_av_v1' },
-    video: { dtype: 'F16', shape: [length, 16, 48, 84], data_offsets: [0, videoBytes] },
-    audio: { dtype: 'F16', shape: [2, Math.max(3, length)], data_offsets: [videoBytes, payloadBytes] },
+    video: { dtype: 'F16', shape: videoShape, data_offsets: [0, videoBytes] },
+    audio: { dtype: 'F16', shape: audioShape, data_offsets: [videoBytes, payloadBytes] },
   }
   const headerBuf = Buffer.from(JSON.stringify(header), 'utf8')
   const framed = Buffer.alloc(8 + headerBuf.length + payloadBytes)
