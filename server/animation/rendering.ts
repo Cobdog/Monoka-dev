@@ -590,7 +590,7 @@ enumerationTtlMs?: number }): EnginePort {
             found = true
           }
         }
-        if (entry.class_type === 'MiniMaxH3MotionContext') {
+        if (entry.class_type === MOTION_CONTEXT_CLASS) {
           const trim = Number(entry.inputs?.context_length)
           if (Number.isInteger(trim) && trim > 0) {
             frames -= trim
