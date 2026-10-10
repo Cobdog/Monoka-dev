@@ -119,13 +119,26 @@ export type AttemptInput = {
  *  status_str the engine writes: a real interruption lands in history as
  *  `status_str:"error"` + `completed:false` with an `execution_interrupted`
  *  message appended (main.py:375-379, execution.py:693-699) — the parser
- *  reads the message so a user Stop is never classified a render failure. */
+ *  reads the message so a user Stop is never classified a render failure.
+ *  `failure` rides ERROR records (audit I-2): the executor's own
+ *  execution_error message names the node that threw (execution.py:700-712
+ *  — node_id/node_type/exception_type), and `outputs` may ride an error
+ *  record whose failing node is the carry save: the executor records every
+ *  output node that completed BEFORE the failure (ui_node_outputs survives
+ *  the break; history_result is built unconditionally, execution.py:826-834
+ *  + main.py:367-374) — the partial-output truth the completion owner's
+ *  named condition reads. */
 export type EngineJobStatus = {
   status: 'running' | 'done' | 'error' | 'interrupted' | 'lost'
+  /** ERROR records: the node class the engine's own execution_error message
+   *  names as having thrown (never a guess — absent when the record carries
+   *  no parseable message). */
+  failure?: { nodeClass: string; exceptionType?: string }
   /** Output artifacts with their registered KIND (task 11): an
    *  image-sequence listing resolves per-frame IMAGE assets through the
    *  frame preparer/extractor contract below, while outputs[0] stays the
-   *  primary artifact the candidate lands from. */
+   *  primary artifact the candidate lands from. On an ERROR record,
+   *  outputs ride ONLY the carry-save-failed shape (see the type header). */
   outputs?: Array<{ relPath: string; frameCount: number; kind: 'image' | 'video' }>
 }
 
@@ -550,6 +563,26 @@ enumerationTtlMs?: number }): EnginePort {
     return 'running'
   }
 
+  /** The failing node an ERROR record's own execution_error message names
+   *  (audit I-2 — the honest detection, never a guess): handle_execution_
+   *  error appends (event, data) tuples whose data carries node_type (the
+   *  class) and exception_type (execution.py:700-712); absent when the
+   *  record's messages hold no parseable entry. */
+  function recordFailureOf(record: Record<string, unknown>): EngineJobStatus['failure'] | undefined {
+    const statusObject = typeof record.status === 'object' && record.status !== null ? (record.status as { messages?: unknown }) : {}
+    if (!Array.isArray(statusObject.messages)) return undefined
+    for (const entry of statusObject.messages) {
+      if (!Array.isArray(entry) || entry[0] !== 'execution_error') continue
+      const data = typeof entry[1] === 'object' && entry[1] !== null ? (entry[1] as { node_type?: unknown; exception_type?: unknown }) : null
+      if (data === null || typeof data.node_type !== 'string' || data.node_type.length === 0) continue
+      return {
+        nodeClass: data.node_type,
+        ...(typeof data.exception_type === 'string' && data.exception_type.length > 0 ? { exceptionType: data.exception_type } : {}),
+      }
+    }
+    return undefined
+  }
+
   function recordFiles(record: Record<string, unknown>): EngineOutputFile[] {
     const outputs = record.outputs
     const files: EngineOutputFile[] = []
@@ -738,7 +771,26 @@ enumerationTtlMs?: number }): EnginePort {
         if (!record) return { status: 'lost' }
       }
       const status = recordStatus(record)
-      if (status !== 'done') return { status }
+      if (status !== 'done') {
+        // THE PARTIAL-OUTPUT TRUTH (audit I-2): an error record's outputs
+        // are surfaced ONLY when the engine's own message names the carry
+        // save as the failing node — the one failure class where a
+        // completed-before-the-failure media output means "the render
+        // succeeded; only the carry write failed" (the completion owner's
+        // named condition). Every other error keeps the standing
+        // no-outputs shape (a sampler OOM holds no output nodes' records
+        // anyway — the outputs map only ever holds OUTPUT nodes' UI).
+        const failure = status === 'error' ? recordFailureOf(record) : undefined
+        if (failure !== undefined && failure.nodeClass === MOTION_CONTEXT_SAVE_CLASS && recordFiles(record).length > 0) {
+          const job = await materialize(engineJobId, record)
+          return {
+            status,
+            failure,
+            outputs: job.files.map((file) => ({ relPath: file.relPath, frameCount: job.frameCount, kind: file.kind })),
+          }
+        }
+        return failure === undefined ? { status } : { status, failure }
+      }
       const job = await materialize(engineJobId, record)
       return {
         status: 'done',
