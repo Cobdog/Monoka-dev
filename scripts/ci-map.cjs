@@ -55,6 +55,7 @@ const REPO = path.resolve(__dirname, '..')
 const SUITES = {
   'animation-assembly': { build: null, windows: false, python: false, ffmpeg: false },
   'animation-compiler': { build: null, windows: false, python: false, ffmpeg: false },
+  'animation-continuation-overlay': { build: 'server', windows: false, python: false, ffmpeg: false },
   'animation-rendering': { build: 'server', windows: false, python: false, ffmpeg: true },
   'animation-export': { build: 'full', windows: false, python: false, ffmpeg: true },
   'animation-routes': { build: 'full', windows: false, python: false, ffmpeg: true },
@@ -262,7 +263,7 @@ const RULES = [
   },
   {
     match: ['shared/animation/types.ts'],
-    suites: ['animation-types', 'animation-store', 'animation-compiler', 'animation-rendering'],
+    suites: ['animation-types', 'animation-store', 'animation-compiler', 'animation-rendering', 'animation-continuation-overlay'],
     reason: 'the animation domain types + guards — the store suite drives parseAnimationDocumentBody + the candidate parser through every authoring command and landing; the compiler suite compiles through the closed vocabularies; the rendering suite behaviorally pins the extension lane\'s identity types (the snapshot-carried modelIdentities + continuationBinding seed and their parsers, lane Task 3); the types suite owns the parser/malformation pins directly, including lane Task 4\'s chain parsers, the full ContinuationBinding record, and the chainMismatch walk.',
   },
   {
@@ -292,7 +293,7 @@ const RULES = [
   { match: ['server/animation/rendering.ts', 'server/animation/completion-owner.ts'], suites: ['animation-rendering', 'animation-routes'], reason: 'the rendering service + the shared completion owner — the rendering suite runs their dispatch/observation/landing/reconciliation paths for real against the fake engine; the routes suite reaches them through the real server process (submit/getState/cancel/extract-frame + boot reconcile).' },
   { match: ['server/animation/models.ts'], suites: ['animation-rendering', 'animation-routes'], reason: 'the registry-driven model resolver (wave 1, the live review #1) — the rendering suite pins the pure ladder truth (exact defaults, differing enumerations, overrides, dead slots) plus the submit-time preflight end to end; the routes suite pins the named 400 over HTTP and the resolved names on the received graph.' },
   { match: ['server/animation/export.ts'], suites: ['animation-assembly', 'animation-export'], reason: 'the export pipeline (task 14, spec §11.3) — its own suite owns it end to end: the pure gate + manifest derivations and the real assembly (server + fake engine + ffmpeg) over HTTP; task 15a added the assembly-agreement suite, which drives the same gate against the preview (the shared-edge pin).' },
-  { match: ['server/animation/routes.ts'], suites: ['animation-routes'], reason: 'the animation HTTP block — a pure handler mounted by core.ts; its suite boots the real server against the fake engine.' },
+  { match: ['server/animation/routes.ts'], suites: ['animation-routes', 'animation-continuation-overlay'], reason: 'the animation HTTP block — a pure handler mounted by core.ts; its suite boots the real server against the fake engine. The continuation-overlay suite (Codex batch C, audit M-7) pins the fabric emitter continuation envelopes (the settlement-generation stamp) out of the built module.' },
   { match: ['server/documents.ts', 'server/documentArchive.ts'], suites: ['documents', 'animation-store'], reason: 'document store + zip archive — the animation round-trip (spec §11.3) rides the same archive, exercised by the animation-store suite.' },
   { match: ['server/realtime.ts'], suites: ['realtime', 'manager-install', 'animation-routes'], reason: 'the fabric — WS realtime framing/delivery; the Manager cm-queue event normalizer (0pktw5h) is exercised by the manager-install suite too, and the animation channel + emitAnimation + the engine-event tap (animation module task 5) are driven end-to-end by the animation-routes suite.' },
   { match: ['server/llm/**'], suites: ['llm'], reason: 'LLM family registry + providers.' },
@@ -345,6 +346,12 @@ const RULES = [
   },
   { match: ['src/lib/camera/**'], suites: ['camera'], reason: 'camera path model + parity goldens.' },
   { match: ['src/poserig/**'], suites: ['poserig'], reason: 'pose rig domain (logic modules; PoseRigApp.tsx rides the dir).' },
+  {
+    match: ['src/animation/state.ts', 'src/animation/fabric.ts'],
+    suites: ['animation-continuation-overlay', 'animation-assembly', 'animation-stage-breakpoint', 'animation-timeline-model'],
+    forceE2e: true,
+    reason: "the animation session adapter + the fabric parser (k2q0n9s) — the continuation-overlay suite (Codex batch C, audit M-7) pins the reconcile ledger stamp-ordered precedence and the envelope parse against the built emitter, so it rides every diff of these two; the rest of the fan-out + the e2e escalation are the tree rule own (below), kept identical here.",
+  },
   {
     match: ['src/animation/**'],
     suites: ['animation-assembly', 'animation-stage-breakpoint', 'animation-timeline-model'],

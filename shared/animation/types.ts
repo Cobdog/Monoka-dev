@@ -325,11 +325,24 @@ export type ContinuationArtifactHandle = { artifactId: string; digest: string }
 /** The view's continuation field (the client mirror imports this — one
  *  definition; the server's AttemptStateView and src/animation/client.ts
  *  change together). `error` surfaces only in the retryable registering
- *  shape, mirroring the preparation view's error. */
+ *  shape, mirroring the preparation view's error.
+ *
+ *  `stamp` is the SETTLEMENT GENERATION (Codex batch C, audit 2026-10-09's
+ *  M-7): the attempt row's `own_revision` at the write that last settled
+ *  this continuation — monotonic per row by construction (every continuation
+ *  write bumps it), carried on BOTH the fetched row and the registration
+ *  envelope so the client's reconcile can order them. A retryable fetched
+ *  state with a NEWER stamp is fresher truth than the ledger's envelope and
+ *  must not be overlaid backward — the lost-envelope corner (an old E1
+ *  overlaying fetched E2 forever, no envelope left in flight to heal it)
+ *  self-heals on the next resync instead. Absent on pre-stamp shapes (old
+ *  rows' views through old builds): the reconcile falls back to the ledger
+ *  overlay, exactly the pre-M-7 behavior. */
 export type AttemptContinuationView = {
   state: AttemptContinuationState
   artifact?: ContinuationArtifactHandle
   error?: string
+  stamp?: number
 }
 
 /** The persisted per-attempt continuation record (animation_attempt's

@@ -221,8 +221,8 @@ export function createCompletionOwner(deps: {
       setExecution(attempt, 'failed', { failureReason: reason })
       emit('animation.attempt.failed', { attemptId: attempt.id, documentId: attempt.documentId, reason: carryFailure ? 'carry-save-failure' : 'engine-error' })
       if (carryFailure) {
-        store.setAttemptContinuation(attempt.id, { state: 'not-produced' })
-        emit('animation.attempt.continuation-not-produced', { attemptId: attempt.id, documentId: attempt.documentId })
+        const stamp = store.setAttemptContinuation(attempt.id, { state: 'not-produced' })
+        emit('animation.attempt.continuation-not-produced', { attemptId: attempt.id, documentId: attempt.documentId, stamp })
       }
       return 'error'
     }
@@ -364,8 +364,8 @@ export function createCompletionOwner(deps: {
             // No file at the receipt path: the pack's Save node never
             // completed inside the source render — §7's named condition,
             // terminal for THIS attempt, playable preserved.
-            store.setAttemptContinuation(attemptId, { state: 'not-produced' })
-            emit('animation.attempt.continuation-not-produced', { attemptId, documentId: attempt.documentId })
+            const stamp = store.setAttemptContinuation(attemptId, { state: 'not-produced' })
+            emit('animation.attempt.continuation-not-produced', { attemptId, documentId: attempt.documentId, stamp })
             return 'not-produced'
           }
           const saveRecipeVersion = readCarrySaveRecipe(bytes)
@@ -389,11 +389,12 @@ export function createCompletionOwner(deps: {
             saveRecipeVersion,
             producedAt: Date.now(),
           }
-          store.setAttemptContinuation(attemptId, { state: 'ready', artifact, relPath: registered.relPath })
+          const stamp = store.setAttemptContinuation(attemptId, { state: 'ready', artifact, relPath: registered.relPath })
           emit('animation.attempt.continuation-ready', {
             attemptId,
             documentId: attempt.documentId,
             artifact: { artifactId: artifact.artifactId, digest: artifact.digest },
+            stamp,
           })
           return 'ready'
         } catch (failure) {
@@ -404,8 +405,8 @@ export function createCompletionOwner(deps: {
       // the row keeps the retryable `registering` state plus the reason — the
       // explicit action (or a later boot sweep) re-drives it. The clip above
       // stays landed and playable regardless.
-      store.setAttemptContinuation(attemptId, { state: 'registering', error: lastError })
-      emit('animation.attempt.continuation-registration-failed', { attemptId, documentId: attempt.documentId, error: lastError })
+      const stamp = store.setAttemptContinuation(attemptId, { state: 'registering', error: lastError })
+      emit('animation.attempt.continuation-registration-failed', { attemptId, documentId: attempt.documentId, error: lastError, stamp })
       return 'failed'
     } catch (bookend) {
       // A bookend failure (one of the two state writes itself — the IO

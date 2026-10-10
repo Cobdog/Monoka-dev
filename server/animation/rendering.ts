@@ -1954,6 +1954,10 @@ export function createAnimationRenderingService(deps: {
           state: attempt.continuation.state,
           ...(attempt.continuation.artifact !== undefined ? { artifact: { artifactId: attempt.continuation.artifact.artifactId, digest: attempt.continuation.artifact.digest } } : {}),
           ...(attempt.continuation.error !== undefined ? { error: attempt.continuation.error } : {}),
+          // The settlement generation (M-7): the row's own_revision — every
+          // continuation write bumps it, so the client's reconcile can order
+          // this fetched truth against its ledger's envelope stamps.
+          stamp: attempt.ownRevision,
         },
         candidate: attempt.result ? attempt.result.candidate : null,
       }

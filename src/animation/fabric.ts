@@ -79,7 +79,7 @@ function parseAnimationEvent(envelope: RealtimeEnvelope): AnimationEvent | null 
       return { type: 'attempt-ready', documentId, attemptId, candidateId }
     }
     case 'continuation-state': {
-      const { documentId, attemptId, state, artifact, error } = payload
+      const { documentId, attemptId, state, artifact, error, stamp } = payload
       if (!isId(documentId) || !isId(attemptId)) return null
       if (typeof state !== 'string' || !CONTINUATION_STATES.has(state)) return null
       const continuation: AttemptContinuationView = { state: state as AttemptContinuationView['state'] }
@@ -87,6 +87,10 @@ function parseAnimationEvent(envelope: RealtimeEnvelope): AnimationEvent | null 
         continuation.artifact = { artifactId: artifact.artifactId, digest: artifact.digest }
       }
       if (typeof error === 'string') continuation.error = error
+      // The settlement generation (M-7): an envelope-stamped ordering key —
+      // absent on pre-stamp envelopes (older builds), and a non-number is
+      // malformed, never a guessed zero.
+      if (typeof stamp === 'number') continuation.stamp = stamp
       return { type: 'continuation-state', documentId, attemptId, continuation }
     }
     case 'document-changed': {

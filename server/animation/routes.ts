@@ -208,7 +208,9 @@ export function animationFabricEmitter(emitAnimation: (type: string, payload: un
         // is the continuation VIEW's own shape (state + artifact?/error?),
         // patched in place client-side exactly like attempt-state patches
         // execution; the durable read stays the truth a malformed or
-        // missing envelope falls back to.
+        // missing envelope falls back to. `stamp` is the settlement
+        // generation (M-7) — the write's own_revision, carried so the
+        // client's reconcile can order this envelope against fetched rows.
         if (!isNonEmptyString(payload.attemptId) || !isNonEmptyString(payload.documentId)) return
         const state = type === 'animation.attempt.continuation-ready'
           ? 'ready'
@@ -219,6 +221,7 @@ export function animationFabricEmitter(emitAnimation: (type: string, payload: un
           envelope.artifact = { artifactId: payload.artifact.artifactId, digest: payload.artifact.digest }
         }
         if (state === 'registering' && typeof payload.error === 'string') envelope.error = payload.error
+        if (typeof payload.stamp === 'number') envelope.stamp = payload.stamp
         emitAnimation('continuation-state', envelope)
         return
       }

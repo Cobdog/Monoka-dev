@@ -151,6 +151,19 @@ const sameContinuation = (a: AttemptContinuationView, b: AttemptContinuationView
   && a.error === b.error
   && a.artifact?.digest === b.artifact?.digest
 
+/** True when the FETCHED retryable state is fresher than the ledger's
+ *  envelope — the M-7 staleness tiebreaker. The stamp is the settlement
+ *  generation (the attempt row's own_revision at the write): every
+ *  continuation write bumps it, so a fetched stamp strictly greater than the
+ *  ledger's means a settlement happened AFTER the envelope this client
+ *  handled — fetched truth wins, and the lost-envelope corner (an old E1
+ *  overlaying fetched E2 indefinitely, no envelope left in flight to heal
+ *  it) self-heals on this very resync. Ordering is only decidable when BOTH
+ *  sides carry stamps; anything else keeps the pre-M-7 overlay precedence
+ *  (the I-1 race guard stands unchanged for legacy shapes). */
+const fetchedRetryableIsNewer = (fetched: AttemptContinuationView, seen: AttemptContinuationView): boolean =>
+  typeof fetched.stamp === 'number' && typeof seen.stamp === 'number' && fetched.stamp > seen.stamp
+
 /** Re-applies the ledger over a freshly landed document view. Three safety
  *  properties make the re-apply honest, not just optimistic:
  *  - a landed row already at `unavailable` is NEVER overwritten — that state
@@ -164,23 +177,41 @@ const sameContinuation = (a: AttemptContinuationView, b: AttemptContinuationView
  *    settled row on every resync refresh, with no envelope left in flight
  *    to heal it). The ledger is SUPERSEDED with the settled truth so later
  *    reconciles no-op;
- *  - any brief revert of a NEWER landed truth inside the retryable window
- *    is self-healing by construction: the envelope carrying that truth
- *    either already updated the ledger (no revert happens) or is still in
- *    flight and patches the row the moment it arrives. Returns the SAME
- *    object when nothing applies (no re-render, no loop). */
-function reconcileContinuations(document: AnimationDocumentView): AnimationDocumentView {
+ *  - inside the RETRYABLE window the stamps order the two truths (M-7): a
+ *    fetched retryable state whose settlement generation is NEWER than the
+ *    ledger's envelope wins and supersedes the ledger — the corner a LOST
+ *    RETRYABLE envelope opens (the server retried registration past what
+ *    this client observed; that envelope never arrived) would otherwise
+ *    overlay the fetched newer truth backward forever, with no envelope
+ *    left in flight to heal it. The older-or-unknowable fetched row is
+ *    still overlaid (the I-1 race: a read that predates the envelope's
+ *    write), and any brief revert of a newer landed truth stays
+ *    self-healing by construction — the envelope carrying that truth either
+ *    already updated the ledger or is still in flight and patches the row
+ *    when it arrives. Returns the SAME object when nothing applies (no
+ *    re-render, no loop). Exported for the unit family's M-7 pin (the
+ *    E1-shown/E2-truth/lost-envelope reproduction) — pure over its two
+ *    arguments. */
+export function reconcileContinuations(document: AnimationDocumentView, ledger: Map<string, AttemptContinuationView> = continuationLedger): AnimationDocumentView {
   let changed = false
   const attempts = document.attempts.map((entry) => {
-    const seen = continuationLedger.get(entry.attemptId)
+    const seen = ledger.get(entry.attemptId)
     if (seen === undefined || sameContinuation(seen, entry.continuation)) return entry
     // Fetched states that can never be stale (registration is one-shot):
     // the settled pair and the derived miss stand over any ledger entry.
     if (entry.continuation.state === 'ready' || entry.continuation.state === 'not-produced') {
-      continuationLedger.set(entry.attemptId, entry.continuation)
+      ledger.set(entry.attemptId, entry.continuation)
       return entry
     }
     if (entry.continuation.state === 'unavailable') return entry
+    // M-7: the retryable window is stamp-ordered — a fetched retryable row
+    // NEWER than the ledger's envelope is the truth (the lost-envelope
+    // corner heals here); it supersedes the ledger so later reconciles
+    // no-op.
+    if (fetchedRetryableIsNewer(entry.continuation, seen)) {
+      ledger.set(entry.attemptId, entry.continuation)
+      return entry
+    }
     changed = true
     return { ...entry, continuation: seen }
   })
