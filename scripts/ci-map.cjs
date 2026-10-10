@@ -77,6 +77,7 @@ const SUITES = {
   'engine-contract': { build: null, windows: false, python: false, ffmpeg: false },
   'engine-families': { build: null, windows: false, python: false, ffmpeg: false },
   enginewatch: { build: null, windows: false, python: false, ffmpeg: false },
+  'extension-gate': { build: null, windows: false, python: false, ffmpeg: false },
   'field-classes': { build: null, windows: false, python: false, ffmpeg: false },
   fetcher: { build: 'full', windows: true, python: false, ffmpeg: false },
   'gallery-matrices': { build: null, windows: false, python: false, ffmpeg: false },
@@ -223,6 +224,11 @@ const RULES = [
     match: ['tests/lib/styleSheet.cjs'],
     suites: SHEET_USERS,
     reason: 'the shared styles.css :root parser + recipe walker every kit suite reads the sheet through.',
+  },
+  {
+    match: ['tests/lib/extensionGateLib.mjs'],
+    suites: ['extension-gate'],
+    reason: 'the extension gate driver pure core (Codex batch C, audit I-4/I-5) — the in-graph arm transform, the parity comparison, and the continuation-ready predicate; the extension-gate suite pins it, and the GPU-session driver imports it back.',
   },
   {
     match: ['scripts/copy-llm-families.cjs'],
