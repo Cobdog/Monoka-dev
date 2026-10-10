@@ -1,5 +1,5 @@
 // The extension gate driver's unit-family pin (Codex batch C, the pre-gates
-// audit 2026-10-09's I-4). The REAL legs are controller-run on the GPU
+// audit 2026-10-09's I-4/I-5). The REAL legs are controller-run on the GPU
 // (test-results/experiments/extension-gate/gate.mjs, the gitignored scratch
 // driver); this suite pins the driver's PURE core (tests/lib/
 // extensionGateLib.mjs — one definition the driver imports right back) so
@@ -12,13 +12,16 @@
 //     verdict (exact / within-tolerance / diverged / inconclusive-fails),
 //     so G1's exit result carries the measured comparison, never a frame
 //     count alone;
+//   - I-5: attemptSatisfies — the continuation-ready predicate (the second
+//     extension may only fire after the first's continuation-ready is
+//     observed; execution-ready alone is the flake the audit named);
 //   - the engine /history graph extraction, defensive over both the
 //     documented real-engine tuple and this repo's fake-engine tuple.
 
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import {
-  buildInGraphArm, compareDeliveredFrames, graphDimensions,
+  attemptSatisfies, buildInGraphArm, compareDeliveredFrames, graphDimensions,
   graphLoadsCarryPath, graphSavesWithPrefix, historyGraphOf, meanDeltaE76,
   parityVerdict, psnrFromMse, rekeyGraph, srgbToLab, upstreamConeOf,
 } from './lib/extensionGateLib.mjs'
@@ -227,4 +230,23 @@ test('I-4 the metric primitives: PSNR and CIE76 dE behave at the anchors', () =>
   const midGray = srgbToLab(128, 128, 128)
   assert.ok(Math.abs(midGray[0] - 53.59) < 0.1, `sRGB 128 is L*≈53.6 (got ${midGray[0].toFixed(2)})`)
   assert.equal(meanDeltaE76(frame(40), frame(40)), 0, 'identical frames are dE 0')
+})
+
+// ---- I-5: the continuation-ready ordering predicate -----------------------------
+
+test('I-5 attemptSatisfies: execution-ready alone is NOT continuation-ready — the second submission waits', () => {
+  // The healthy-implementation flake the audit named: playable (ready)
+  // while the detached registration is still settling (registering).
+  const landedButRegistering = { execution: 'ready', continuation: { state: 'registering' } }
+  assert.equal(attemptSatisfies(landedButRegistering, { execution: 'ready', continuation: 'ready' }), false)
+  // The ordering the gate asserts: BOTH halves observed before submitting.
+  const continuationReady = { execution: 'ready', continuation: { state: 'ready' } }
+  assert.equal(attemptSatisfies(continuationReady, { execution: 'ready', continuation: 'ready' }), true)
+  // The want without a continuation clause is the plain execution wait.
+  assert.equal(attemptSatisfies(landedButRegistering, { execution: 'ready' }), true)
+  assert.equal(attemptSatisfies(continuationReady, { execution: 'ready' }), true)
+  // Not-ready shapes never satisfy.
+  assert.equal(attemptSatisfies({ execution: 'rendering', continuation: { state: 'ready' } }, { execution: 'ready', continuation: 'ready' }), false)
+  assert.equal(attemptSatisfies(null, { execution: 'ready' }), false)
+  assert.equal(attemptSatisfies({ execution: 'ready' }, { execution: 'ready', continuation: 'ready' }), false, 'a missing continuation never satisfies a continuation want')
 })
