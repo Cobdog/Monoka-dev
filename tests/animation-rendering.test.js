@@ -220,7 +220,7 @@ import {
   engineInputName,
 } from '../shared/animation/graphs'
 import { COMPILER_VERSION, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../shared/animation/compiler'
-import { CONTINUATION_SAVE_RECIPE_VERSION, animationInputHash, engineOutputCarryPath } from '../shared/animation/types'
+import { CONTINUATION_SAVE_RECIPE_VERSION, animationInputHash, engineOutputCarryPath, readCarrySaveRecipe } from '../shared/animation/types'
 
 const REAL_INFO = require(path.join(REPO, 'scripts/fixtures/engine-object-info.json')).nodes
 
@@ -2458,16 +2458,26 @@ test('(x) a landed carry render leaves the file at engineOutputCarryPath with a 
   assert.equal(firstFetch.status, 200, 'the saved carry file is served at the deterministic path')
   const carryBytes = Buffer.from(await firstFetch.arrayBuffer())
 
-  // The file is the pack's container shape: safetensors framing whose
-  // metadata carries the save-format id (the record's saveRecipeVersion is
-  // READ FROM THE FILE) and whose payload is the profile-driven size.
+  // The file is the pack's container shape — STRUCTURALLY VALID (Codex batch
+  // B, audit M-6): safetensors framing whose metadata carries the save-format
+  // id (the record's saveRecipeVersion is READ FROM THE FILE) and whose
+  // declared video/audio tensor shapes SIZE THE PAYLOAD EXACTLY — the bytes
+  // agree with the declaration, so the artifact would load through the pack's
+  // own deserialization contract (the studio's strict reader stands in for
+  // it server-side). The pre-fix mirror declared 2.8 MB shapes over a 6 KB
+  // payload — registration proved plumbing, never loadability.
   const headerLength = Number(carryBytes.readBigUInt64LE(0))
   const header = JSON.parse(carryBytes.subarray(8, 8 + headerLength).toString('utf8'))
   assert.equal(header.__metadata__.format, CONTINUATION_SAVE_RECIPE_VERSION, "the file's metadata carries the pack's save-format id")
   assert.ok(header.video && header.audio, "the synthetic carry models the pack's two-stream AV shape")
-  const profileSpec = JSON.parse(fs.readFileSync(path.join(REPO, 'e2e/mirror/profiles/animation-h3.json'), 'utf8'))
-  assert.equal(carryBytes.length, 8 + headerLength + profileSpec.carryFile.bytes, 'the payload is the profile-driven size')
-  assert.equal(header.audio.data_offsets[1], profileSpec.carryFile.bytes, 'the tensor offsets partition the payload exactly')
+  const declaredBytes = (entry) => entry.shape.reduce((product, dimension) => product * dimension, 1) * 2 // F16
+  const videoSpan = header.video.data_offsets[1] - header.video.data_offsets[0]
+  const audioSpan = header.audio.data_offsets[1] - header.audio.data_offsets[0]
+  assert.equal(videoSpan, declaredBytes(header.video), 'the declared video shape sizes its byte span exactly')
+  assert.equal(audioSpan, declaredBytes(header.audio), 'the declared audio shape sizes its byte span exactly')
+  assert.equal(carryBytes.length, 8 + headerLength + videoSpan + audioSpan, 'the payload is exactly the declared tensors — no orphan bytes, no shortfall')
+  assert.equal(header.audio.data_offsets[0], videoSpan, 'the tensor offsets partition the payload contiguously from zero')
+  assert.equal(readCarrySaveRecipe(carryBytes), CONTINUATION_SAVE_RECIPE_VERSION, 'the mirror artifact passes the STRICT reader — the pack-family container, loadable shape class (audit M-6)')
 
   // The receipt record the owner registers (Task 2's row): the digest is
   // sha256 over the SAVED BYTES, and it VERIFIES — a re-fetch at the same
