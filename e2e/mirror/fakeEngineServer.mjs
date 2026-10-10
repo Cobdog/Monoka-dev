@@ -249,6 +249,25 @@ const state = {
   // succeeded, the exact world the studio's named "continuation not-produced"
   // condition settles from (the deterministic receipt path holds no file).
   omitCarrySave: false,
+  // The carry-save THROW shape (Codex batch A, audit I-2 — modeled on the
+  // canonical executor's VERIFIED semantics). Two values:
+  //   true — the CANONICAL scheduling: the carry save is an OUTPUT_NODE
+  //     whose only input is the sampler while the media save chain needs the
+  //     decode first, so the output-first pick (comfy_execution/graph.py
+  //     ux_friendly_pick_node) stages the carry save BEFORE VAEDecode/
+  //     SaveVideo can run; its exception aborts the job with NO outputs
+  //     (no output node completed before the failure) and the
+  //     execution_error message names the Save class. The carry file is
+  //     never written (the pack's tmp-then-replace never creates the
+  //     destination on a throwing write).
+  //   'with-media' — the REORDERED/fault-tolerant engine the pack's upstream
+  //     ask would deliver (and the executor's partial-output mechanics
+  //     already record): the media save completed BEFORE the carry save
+  //     threw, so the failed job's record carries the media output beside
+  //     the same named error — the exact partial-output shape the studio's
+  //     landed playable+not-produced arm reads.
+  // Non-carrying graphs are unaffected either way.
+  failCarrySave: false,
   // While >0, every /view read of the DISK-BACKED output tree (the carry
   // receipt fetch — the registration's own read) is delayed this many ms: a
   // deterministic registration-settlement window for the race legs (the
@@ -444,6 +463,45 @@ function startNextPending() {
   runPrompt(pending.shift())
 }
 
+/** One video job's output listing, written into /view: a graph whose save
+ *  tail is SaveImage nodes (the image workbench's packet ladder) receives
+ *  one PNG per SaveImage node; a video job lists its clip FIRST (the
+ *  primary artifact the studio's landing consumes), then — unless videoOnly
+ *  — the decoded frames as output IMAGES (the frame-addressed listing of an
+ *  image-sequence-capable engine; videoOnly strips them: the REAL engine's
+ *  save-tail shape, where the studio's preparer/extractor must DECODE
+ *  frames out of the registered clip through ffmpeg). Shared by the success
+ *  path and the carry-throw knob's 'with-media' variant (audit I-2 — the
+ *  media output a reordered engine records before the carry save throws). */
+function videoJobOutputs(n, graph) {
+  const graphNodes = Object.values(graph ?? {})
+  const saveImageCount = graphNodes.filter((node) => node && typeof node === 'object' && node.class_type === 'SaveImage').length
+  const wantImages = state.outputKind === 'image' || saveImageCount > 0
+  const images = []
+  if (wantImages) {
+    const count = Math.max(1, saveImageCount)
+    for (let i = 0; i < count; i += 1) {
+      const filename = `ComfyUI_${String(n).padStart(5, '0')}_${i}.png`
+      viewFiles.set(filename, { bytes: pngGradient(768, 432, n * 7 + i * 31), mime: 'image/png' })
+      images.push({ filename, subfolder: '', type: 'output' })
+    }
+    return images
+  }
+  const length = graphClipLength(graph)
+  const filename = `ComfyUI_${String(n).padStart(5, '0')}_.mp4`
+  viewFiles.set(filename, { bytes: sampleMp4, mime: 'video/mp4' })
+  images.push({ filename, subfolder: '', type: 'output' })
+  if (!state.videoOnly) {
+    const listedFrames = Math.max(0, length - (state.underdeliverFrames | 0))
+    for (let frame = 0; frame < listedFrames; frame += 1) {
+      const frameName = `ComfyUI_${String(n).padStart(5, '0')}_frame${String(frame).padStart(3, '0')}.png`
+      viewFiles.set(frameName, { bytes: pngGradient(768, 432, n * 7 + frame * 31), mime: 'image/png' })
+      images.push({ filename: frameName, subfolder: '', type: 'output' })
+    }
+  }
+  return images
+}
+
 function runPrompt(job) {
   const { promptId, graph, extraData, queueNumber, outputsToExecute } = job
   const my = { ...job, timer: null, interrupted: false }
@@ -455,7 +513,7 @@ function runPrompt(job) {
   // appended: execution_start, then execution_success | execution_error.
   // (The interrupt path writes its own canonical record — see
   // interruptRunning.)
-  const finishRecord = (images, status) => {
+  const finishRecord = (images, status, errorOverride) => {
     const messages = [['execution_start', { prompt_id: promptId }]]
     if (status === 'success') messages.push(['execution_success', { prompt_id: promptId }])
     else messages.push(['execution_error', {
@@ -468,6 +526,7 @@ function runPrompt(job) {
       traceback: 'fake traceback',
       current_inputs: {},
       current_outputs: [],
+      ...(errorOverride ?? {}),
     }])
     const write = () => histories.set(promptId, {
       prompt: [queueNumber, promptId, graph, extraData, outputsToExecute],
@@ -512,42 +571,37 @@ function runPrompt(job) {
       tick(advance, state.stepDelayMs)
       return
     }
+    // The carry-save THROW (audit I-2): the pack's Save node throws at the
+    // sampler's completion. Under the CANONICAL scheduling (true) it is
+    // staged BEFORE the decode/media chain can run (the output-first pick),
+    // so the abort records NO outputs; under 'with-media' the reorder the
+    // pack's upstream ask would deliver let the media save complete first,
+    // so the failed job's record carries the media output. The carry file is
+    // never written either way (the pack's tmp-then-replace never creates
+    // the destination on a throwing write).
+    const carrySaveId = Object.keys(graph ?? {}).find((id) => graph[id] && typeof graph[id] === 'object' && graph[id].class_type === 'MiniMaxH3MotionContextSaveLatent') ?? null
+    if (state.failCarrySave && carrySaveId !== null) {
+      const n = jobCounter
+      const carryError = {
+        node_id: carrySaveId,
+        node_type: 'MiniMaxH3MotionContextSaveLatent',
+        exception_type: 'OSError',
+        exception_message: '[Errno 28] No space left on device during the carry safetensors write',
+      }
+      const images = state.failCarrySave === 'with-media' ? videoJobOutputs(n, graph) : []
+      send({ type: 'executing', data: { prompt_id: promptId, node: carrySaveId } })
+      send({ type: 'execution_error', data: { prompt_id: promptId, ...carryError, traceback: 'fake traceback', current_inputs: {} } })
+      finishRecord(images, 'error', carryError)
+      send({ type: 'status', data: { status: { exec_info: { queue_remaining: queueRemaining() } } } })
+      running = null
+      startNextPending()
+      return
+    }
     // done — emit output(s) and close the job. Graph-aware: a graph whose
     // save tail is SaveImage nodes (the image workbench's packet ladder)
     // receives one PNG per SaveImage node; a video graph receives the mp4.
     const n = jobCounter
-    const graphNodes = Object.values(graph ?? {})
-    const saveImageCount = graphNodes.filter((node) => node && typeof node === 'object' && node.class_type === 'SaveImage').length
-    const wantImages = state.outputKind === 'image' || saveImageCount > 0
-    const images = []
-    if (wantImages) {
-      const count = Math.max(1, saveImageCount)
-      for (let i = 0; i < count; i += 1) {
-        const filename = `ComfyUI_${String(n).padStart(5, '0')}_${i}.png`
-        viewFiles.set(filename, { bytes: pngGradient(768, 432, n * 7 + i * 31), mime: 'image/png' })
-        images.push({ filename, subfolder: '', type: 'output' })
-      }
-    } else {
-      // A video job lists its clip FIRST (the primary artifact the studio's
-      // landing consumes), then — unless videoOnly — the decoded frames as
-      // output IMAGES: the frame-addressed listing of an image-sequence-
-      // capable engine. videoOnly strips the frame images: the REAL engine's
-      // save-tail shape, where the studio's preparer/extractor must DECODE
-      // frames out of the registered clip (ffmpeg) instead of picking them
-      // from the listing.
-      const length = graphClipLength(graph)
-      const filename = `ComfyUI_${String(n).padStart(5, '0')}_.mp4`
-      viewFiles.set(filename, { bytes: sampleMp4, mime: 'video/mp4' })
-      images.push({ filename, subfolder: '', type: 'output' })
-      if (!state.videoOnly) {
-        const listedFrames = Math.max(0, length - (state.underdeliverFrames | 0))
-        for (let frame = 0; frame < listedFrames; frame += 1) {
-          const frameName = `ComfyUI_${String(n).padStart(5, '0')}_frame${String(frame).padStart(3, '0')}.png`
-          viewFiles.set(frameName, { bytes: pngGradient(768, 432, n * 7 + frame * 31), mime: 'image/png' })
-          images.push({ filename: frameName, subfolder: '', type: 'output' })
-        }
-      }
-    }
+    const images = videoJobOutputs(n, graph)
     // The in-graph carry save (extension lane §7): the pack's Save node
     // executes with the render — a carrying graph writes its carry file at
     // completion, before the executed/success events close the job. The

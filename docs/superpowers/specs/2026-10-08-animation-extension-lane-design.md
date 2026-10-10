@@ -271,6 +271,36 @@ render → review → a SEPARATE Extend submission, including the eviction
 case (the artifact removed between preflight and dispatch — the dispatch
 refuses by name, the clip playable throughout).
 
+**Amendment (2026-10-10, Codex batch A / audit I-2 — the engine-level
+carve-out, from a read-only investigation of the canonical install):**
+the "a carry failure never holds the playable clip hostage" contract is
+scoped to everything DOWNSTREAM of the engine (registration,
+availability, export — §7's letter holds there in full). For an
+IN-ENGINE carry-save EXCEPTION the executor's own semantics govern, and
+they are:
+- the executor records PARTIAL outputs: every output node that completed
+  before the failing node rides the failed job's history record
+  (execution.py builds `history_result` from `ui_node_outputs`
+  unconditionally, main.py writes it with `status_str:"error"`); the
+  studio HONORS that truth — a failed job whose history holds the media
+  output and whose failure class names the carry save lands **playable +
+  not-produced**, no re-render;
+- but the canonical executor TODAY never produces that record for this
+  failure class: the scheduler prefers OUTPUT nodes among ready nodes
+  (`ux_friendly_pick_node`), and the carry save — an output node whose
+  only input is the sampler — becomes ready BEFORE the decode→media-save
+  chain, so a throwing carry write aborts the job with the clip still
+  unrendered. `outputs_to_execute` ordering cannot change this (the seed
+  order does not override the output-first pick, and the list itself is
+  hash-set order). The honest ceiling is therefore the NAMED failure:
+  the attempt fails with a reason naming the carry-save class (the
+  re-roll decision is informed — a re-roll regenerates both the clip and
+  the carry) and the row's continuation settles `not-produced`.
+- the upstream ask, recorded: the pack's own fault-tolerance (a
+  non-throwing save, or a save ordered after the media save) is what
+  would make the studio's landed arm reachable on a real engine; the
+  studio side of that contract already stands.
+
 ## 8. The two-readiness lifecycle
 
 A landed extension attempt carries two independent readiness flags:

@@ -43,7 +43,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { AssetReference, ContinuationArtifactRecord } from '../../shared/animation/types'
 import { readCarrySaveRecipe } from '../../shared/animation/types'
-import { carryRequested } from '../../shared/animation/graphs'
+import { carryRequested, MOTION_CONTEXT_SAVE_CLASS } from '../../shared/animation/graphs'
 import { AnimationRuleError, type AnimationAttemptRow, type AnimationStore } from './store'
 import type { AnimationBlobSink, EnginePort, EngineJobStatus } from './rendering'
 
@@ -190,12 +190,40 @@ export function createCompletionOwner(deps: {
       return 'lost'
     }
     if (status.status === 'error') {
-      // The durable failure detail (wave 1, the live review's #6): the
-      // engine's own history carries no structured reason for an execution
-      // error, so the named reason states exactly what was observed — never
-      // invented detail, never raw engine output.
-      setExecution(attempt, 'failed', { failureReason: 'The engine reported an execution error while rendering this attempt (the engine\'s history record holds the error status). A re-roll starts a fresh take.' })
-      emit('animation.attempt.failed', { attemptId: attempt.id, documentId: attempt.documentId, reason: 'engine-error' })
+      // THE CARRY-SAVE FAILURE (audit I-2, spec §7's amendment): when the
+      // engine's own execution_error message names the pack's Save node as
+      // the node that threw AND the attempt carried, the failure class is
+      // the named carry-write failure — the sampling itself had completed.
+      // Two worlds, both honest:
+      //   - the record HOLDS the media output (the executor records every
+      //     output node that completed before the failure — a reordered or
+      //     fault-tolerant engine reaches this today): the named §7
+      //     condition — the video LANDS playable, no re-render, and the
+      //     registration kick settles not-produced from the empty receipt
+      //     path (the pack's tmp-then-replace never creates the destination
+      //     on a throwing write);
+      //   - the record holds NO output (the canonical engine's scheduling:
+      //     the output-first pick stages the carry save BEFORE the decode/
+      //     media-save chain, so the abort takes the clip with it): the
+      //     attempt fails with the reason NAMING the carry class — the
+      //     re-roll decision is informed (a re-roll regenerates both) — and
+      //     the row's continuation settles not-produced directly (a failed
+      //     row never enters the registration machinery, which requires a
+      //     landed result).
+      const carryFailure = status.failure?.nodeClass === MOTION_CONTEXT_SAVE_CLASS && carryRequested(attempt.snapshot)
+      if (carryFailure && (status.outputs ?? []).length > 0) {
+        await landOutputs(attempt, status.outputs!)
+        return 'done'
+      }
+      const reason = carryFailure
+        ? `The engine aborted this render at the in-graph carry save — the ${MOTION_CONTEXT_SAVE_CLASS} node threw${status.failure?.exceptionType !== undefined ? ` (${status.failure.exceptionType})` : ''} while writing the carry artifact. The sampling itself had completed, but the executor aborts the whole job on any node exception and stages the carry save before the media save chain, so the rendered clip was lost with it (the named engine limitation, spec §7's amendment). A re-roll regenerates both the clip and the carry.`
+        : 'The engine reported an execution error while rendering this attempt (the engine\'s history record holds the error status). A re-roll starts a fresh take.'
+      setExecution(attempt, 'failed', { failureReason: reason })
+      emit('animation.attempt.failed', { attemptId: attempt.id, documentId: attempt.documentId, reason: carryFailure ? 'carry-save-failure' : 'engine-error' })
+      if (carryFailure) {
+        store.setAttemptContinuation(attempt.id, { state: 'not-produced' })
+        emit('animation.attempt.continuation-not-produced', { attemptId: attempt.id, documentId: attempt.documentId })
+      }
       return 'error'
     }
     if (status.status === 'interrupted') {
@@ -217,6 +245,15 @@ export function createCompletionOwner(deps: {
       emit('animation.attempt.failed', { attemptId: attempt.id, documentId: attempt.documentId, reason: 'engine-reported-done-without-outputs' })
       return 'error'
     }
+    await landOutputs(attempt, outputs)
+    return 'done'
+  }
+
+  /** The landing tail the done path and the carry-failure-with-outputs arm
+   *  share (§8.2 landing + §11.4 preparation + the §7/§8 readiness split):
+   *  prepare → land the PRIMARY artifact → propose the review frame → ready
+   *  → the detached carry-registration kick. */
+  async function landOutputs(attempt: AnimationAttemptRow, outputs: NonNullable<EngineJobStatus['outputs']>): Promise<void> {
     setExecution(attempt, 'preparing')
     // The PRIMARY artifact (outputs[0]) is the clip the candidate lands from;
     // its kind rides the artifact itself (a video-first listing — the
@@ -243,7 +280,6 @@ export function createCompletionOwner(deps: {
     // event) hostage. The synchronous prologue below writes `registering`
     // before the first await, which is what makes the split observable.
     if (carryRequested(attempt.snapshot)) void registerCarryArtifact(attempt.id)
-    return 'done'
   }
 
   /** The proposed-frame preparation with bounded auto-retry (§11.4): the

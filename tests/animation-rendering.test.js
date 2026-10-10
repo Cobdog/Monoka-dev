@@ -3204,3 +3204,112 @@ test('(z8) a matching engine copy stages NOTHING — the read-through optimizati
   assert.equal(fs.statSync(file).mtimeMs, mtime, 'the engine copy was NOT re-written — a digest-matching copy is the read-through cache §7 blesses')
   assert.equal(await engineRecordCount(), before + 1, 'exactly one engine submission')
 })
+
+// ---------------------------------------------------------------------------
+// (w) the carry-save FAILURE (Codex batch A, audit I-2) — the §7
+//     independence for the in-graph save's own exception class, landed on
+//     the engine's VERIFIED semantics (the read-only investigation of the
+//     canonical install):
+//       · the executor RECORDS partial outputs (every output node that
+//         completed before the failing node rides the failed job's history),
+//         and the studio honors them: a failed job whose history holds the
+//         media output and whose failure class names the carry save lands
+//         PLAYABLE + not-produced — no re-render;
+//       · but the canonical scheduler TODAY stages the carry save BEFORE the
+//         decode/media chain (the output-first pick), so the mirror's
+//         failCarrySave knob models the abort with NO outputs — the honest
+//         ceiling: the NAMED failure (the reason names the carry class, a
+//         re-roll regenerates both) + the row's continuation settles
+//         not-produced directly.
+// ---------------------------------------------------------------------------
+test('(w1) the REAL semantics — a throwing carry save aborts the job before the media save: the NAMED failure, not-produced settled directly, never a re-render', async () => {
+  const { doc, step, revision } = carryDocFixture('Whiskey-one')
+  await engineControl({ failCarrySave: true })
+  try {
+    const before = await engineRecordCount()
+    const submitted = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, revision) }, 'idem-w1')
+    const failed = await waitAttemptState(submitted.attemptId, ['failed'], 'the carry-save abort failing the attempt')
+
+    // THE NAMED REASON: the engine's own execution_error message names the
+    // pack's Save class — carried verbatim into the durable reason with the
+    // honest statement of what was lost and what a re-roll regenerates.
+    assert.match(failed.execution.failureReason, /MiniMaxH3MotionContextSaveLatent/, 'the reason names the failing node class (never a guess)')
+    assert.match(failed.execution.failureReason, /OSError/, 'the engine\'s exception type rides the reason')
+    assert.match(failed.execution.failureReason, /sampling itself had completed/, 'the reason states the render class honestly')
+    assert.match(failed.execution.failureReason, /re-roll regenerates both/, 'the reason informs the re-roll decision')
+    assert.ok(events.some((event) => event.type === 'animation.attempt.failed' && event.payload.attemptId === submitted.attemptId && event.payload.reason === 'carry-save-failure'), 'the named failure event fired')
+
+    // The row's truthful record: nothing landed, the save never completed —
+    // continuation settles not-produced DIRECTLY (a failed row never enters
+    // the registration machinery).
+    const row = anim.getAttempt(submitted.attemptId)
+    assert.equal(row.result, null, 'the clip was lost with the job — the engine-level ceiling the spec amendment names')
+    assert.equal(row.continuation.state, 'not-produced', 'the continuation records the never-completed save')
+    assert.ok(events.some((event) => event.type === 'animation.attempt.continuation-not-produced' && event.payload.attemptId === submitted.attemptId), 'the fabric seam observed the named condition')
+
+    // NEVER A RE-RENDER: exactly one engine record, and an absence window
+    // over the count.
+    assert.equal(await engineRecordCount(), before + 1, 'exactly one engine submission')
+    await sleep(300)
+    assert.equal(await engineRecordCount(), before + 1, 'no re-render fired for the carry-save failure')
+  } finally {
+    await engineControl({ failCarrySave: false })
+  }
+})
+
+test('(w2) the named condition\'s MACHINERY — a failed job whose history HOLDS the media output lands playable + not-produced, no re-render', async () => {
+  // The REORDERED-engine world (the pack's fault-tolerance upstream ask):
+  // the mirror's 'with-media' variant records the media output beside the
+  // same named carry error — the exact partial-output shape the executor's
+  // mechanics produce whenever the media save precedes the failing carry
+  // save. The full production path runs: the PORT parses the record and
+  // surfaces the outputs, the OWNER lands them.
+  const { doc, step, revision } = carryDocFixture('Whiskey-two')
+  await engineControl({ failCarrySave: 'with-media' })
+  try {
+    const before = await engineRecordCount()
+    const submitted = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: carrySnapshot(step, revision) }, 'idem-w2')
+    const jobId = anim.getAttempt(submitted.attemptId).engineJobId
+    assert.ok(jobId, 'the dispatch claimed its engine job')
+
+    // THE NAMED CONDITION: the video LANDS — playable, prepared, never
+    // re-rendered — and the registration kick settles not-produced from the
+    // empty receipt path (the throwing write never created the file).
+    const landed = await waitAttemptState(submitted.attemptId, ['ready'], 'the media output of the failed job landing playable')
+    assert.ok(landed.result, 'the candidate landed from the failed job\'s history output')
+    assert.equal(landed.result.candidate.frameCount, 22)
+    assert.equal(anim.getAttempt(submitted.attemptId).preparation.state, 'proposed', 'the standing review lifecycle ran whole')
+    await waitContinuation(submitted.attemptId, ['not-produced'], 'the registration settling not-produced from the empty receipt')
+    assert.equal(await engineRecordCount(), before + 1, 'exactly one engine submission — no re-render')
+    const view = service.getState(submitted.attemptId)
+    assert.equal(view.execution, 'ready', 'the view answers playable')
+    assert.equal(view.continuation.state, 'not-produced', 'the two-readiness pair: playable + not-produced')
+  } finally {
+    await engineControl({ failCarrySave: false })
+  }
+})
+
+test('(w3) the PORT\'s honest parse — the failing class surfaces from the record\'s own message; outputs ride ONLY the carry-save shape', async () => {
+  // A record whose execution_error names the sampler class (the mirror's
+  // failMode error): the class surfaces, no outputs ride it, and the owner's
+  // generic reason stands — a plain render's continuation is untouched.
+  const { doc, step, revision } = carryDocFixture('Whiskey-three')
+  const tweenSnap = makeTweenSnapshot(step, revision)
+  await engineControl({ failMode: 'error' })
+  try {
+    const submitted = await service.submit({ documentId: doc.id, tool: 'tween', targetId: step, snapshot: tweenSnap }, 'idem-w3')
+    const jobId = anim.getAttempt(submitted.attemptId).engineJobId
+    await waitUntil(async () => (await engineRecord(jobId)) !== null, 10_000, 'the error record landing')
+    const status = await engineClient.history(jobId)
+    assert.equal(status.status, 'error')
+    assert.deepEqual(status.failure, { nodeClass: 'MiniMaxH3ImageToVideo', exceptionType: 'OOM' }, 'the failing class parses from the record\'s own message')
+    assert.equal(status.outputs, undefined, 'a non-carry failure surfaces NO outputs — the standing shape')
+    const failed = await waitAttemptState(submitted.attemptId, ['failed'], 'the generic engine error failing the attempt')
+    assert.match(failed.execution.failureReason, /execution error/, 'the generic reason stands for the generic class')
+    assert.ok(!events.some((event) => event.type === 'animation.attempt.failed' && event.payload.reason === 'carry-save-failure' && event.payload.attemptId === submitted.attemptId), 'no carry-failure event for the generic class')
+    const row = anim.getAttempt(submitted.attemptId)
+    assert.equal(row.continuation.state, 'absent', 'a plain render\'s continuation is untouched by the error branch')
+  } finally {
+    await engineControl({ failMode: null })
+  }
+})
