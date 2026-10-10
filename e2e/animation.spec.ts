@@ -1,6 +1,7 @@
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { randomUUID } from 'node:crypto'
 import { spawn, type ChildProcess } from 'node:child_process'
 import type { AddressInfo } from 'node:net'
@@ -4374,6 +4375,93 @@ test('the LOST settling envelope — a fetched terminal registration stands over
     if (relaunched !== null) await stopChild(relaunched)
     if (rebound !== null) await rebound.kill()
     await studio.stop()
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+// ---------------------------------------------------------------------------
+// Codex batch A, audit I-1 — the editorial/export integration: the extension
+// lane's output reaches ASSEMBLY & EXPORT. A landed, selected extension
+// appears in the picker (labeled by its chain position), the window-lane
+// contribution command lands, the export assembles the extension's DELIVERED
+// frames, and the manifest names the chain lineage (§11.3's provenance).
+// ---------------------------------------------------------------------------
+test('a landed extension enters Assembly & export through its window — the picker, the contribution, the exported manifest\'s chain lineage (extension, audit I-1)', async ({ page, request }) => {
+  test.setTimeout(210_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  const originalEvidence = await stageExtensionEvidence(request)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-i1-${Date.now()}`
+    const seeded = await seedCarryingSource(request, projectId, 'The window editorial slice')
+    // The extension into the chain's first window (56 sampled, 34 delivered),
+    // then the window's explicit selection — the reproduction's landed +
+    // selected shape.
+    const extended = await apiExtend(request, seeded.documentId, seeded.sourceAttemptId, 56, 'the stride carries through the junction')
+    await apiSelectWindow(request, seeded.documentId, extended.windowSlotId, extended.attemptId)
+    const extensionView = await attemptContinuation(request, extended.attemptId)
+    expect(extensionView.candidate!.frameCount, 'the delivered 34-frame window landed').toBe(34)
+
+    // THE PICKER: the assembly disclosure lists the extension take, labeled
+    // by its chain position — the audit's zero-contributable-clips
+    // reproduction, now offering the clip.
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    await openAssembly(page)
+    const panel = page.locator('[data-anim-editorial]')
+    await expect(panel).toBeVisible({ timeout: 15_000 })
+    const clipRow = panel.locator(`[data-anim-editorial-clip="${extended.attemptId}"]`)
+    await expect(clipRow).toBeVisible()
+    await expect(clipRow.locator('.anim-editorial-clip-source')).toContainText('Extension window 1')
+    await expect(clipRow.locator('.anim-editorial-clip-source')).toContainText('34 frames')
+
+    // THE CONTRIBUTION COMMAND: the window lane lands through the UI — the
+    // ordered list gains the row, the preview totals the delivered frames.
+    await clipRow.locator('[data-anim-editorial-in]').fill('0')
+    await clipRow.locator('[data-anim-editorial-out]').fill('34')
+    await clipRow.locator('[data-anim-editorial-hold]').fill('2')
+    await clipRow.locator('[data-anim-editorial-add]').click()
+    await expect(panel.locator('[data-anim-editorial-total]')).toHaveText('36 frames — 1.5 s at 24 fps', { timeout: 10_000 })
+    await expect(panel.locator('[data-anim-editorial-rows] [data-anim-editorial-row]')).toHaveCount(1)
+
+    // THE EXPORT: the package downloads, and its manifest names the chain
+    // lineage (§11.3's provenance — the window, its position, the chain
+    // root, and the frozen binding's source attempt).
+    const exportPanel = page.locator('[data-anim-export]')
+    await expect(exportPanel.locator('[data-anim-export-blocked]')).toHaveCount(0)
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      exportPanel.locator('[data-anim-export-submit]').click(),
+    ])
+    expect(download.suggestedFilename()).toMatch(/-36f\.zip$/)
+    const archivePath = await download.path()
+    const archive = archivePath ? fs.readFileSync(archivePath) : Buffer.alloc(0)
+    // The archive reader (the server's own documentArchive module) — loaded
+    // through a file URL so the manifest's truth is read by the same code
+    // that wrote it, never a hand-rolled ZIP walk.
+    const archiveModule = await import(pathToFileURL(path.join(process.cwd(), 'dist-server', 'server', 'documentArchive.js')).href) as { unpackZip?: (bytes: Buffer) => Map<string, Buffer>, default?: { unpackZip: (bytes: Buffer) => Map<string, Buffer> } }
+    const unpackZip = archiveModule.unpackZip ?? archiveModule.default!.unpackZip
+    const entries = unpackZip(archive)
+    const manifestEntry = entries.get('manifest.json')
+    expect(manifestEntry, 'the package carries the manifest').toBeDefined()
+    const manifest = JSON.parse(manifestEntry!.toString('utf8')) as {
+      manifestVersion: number
+      contributions: Array<{ windowSlotId: string | null; attemptId: string; attempt: { lineage: { windowSlotId?: string; windowOrder?: number; chainRootAttemptId?: string; sourceAttemptId?: string } } }>
+    }
+    expect(manifest.manifestVersion).toBe(2)
+    expect(manifest.contributions).toHaveLength(1)
+    const [contribution] = manifest.contributions
+    expect(contribution.windowSlotId).toBe(extended.windowSlotId)
+    expect(contribution.attempt.lineage.windowSlotId).toBe(extended.windowSlotId)
+    expect(contribution.attempt.lineage.windowOrder).toBe(1)
+    expect(contribution.attempt.lineage.chainRootAttemptId).toBe(seeded.sourceAttemptId)
+    expect(contribution.attempt.lineage.sourceAttemptId).toBe(seeded.sourceAttemptId)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalEvidence } }).catch(() => undefined)
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
     engineExited = await engine.kill()
   }
   expect(engineExited).toBe(true)

@@ -142,7 +142,7 @@ function makeBody() {
       },
     ],
     activeBindingVersion: 1,
-    editorial: [{ id: uuid(), spanId: span, attemptId: attemptEditorial, inFrame: 0, outFrame: 18, holdDuration: 4 }],
+    editorial: [{ id: uuid(), spanId: span, windowSlotId: null, attemptId: attemptEditorial, inFrame: 0, outFrame: 18, holdDuration: 4 }],
     settings: { outputWidth: 1280, outputHeight: 720, fps: 24, steps: 3 },
   }
 }

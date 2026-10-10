@@ -872,8 +872,8 @@ export function AnimationApp() {
                       clips={editorialClips}
                       assembled={assembledSequence}
                       busy={busy}
-                      onContribute={(spanId, attemptId, inFrame, outFrame, holdDuration) =>
-                        void session.commands.contributeClip(spanId, attemptId, inFrame, outFrame, holdDuration)}
+                      onContribute={(spanId, windowSlotId, attemptId, inFrame, outFrame, holdDuration) =>
+                        void session.commands.contributeClip(spanId, attemptId, inFrame, outFrame, holdDuration, windowSlotId)}
                       onReorder={(orderedIds) => void session.commands.reorderContributions(orderedIds)}
                       onRemove={(contributionId) => void session.commands.removeContribution(contributionId)}
                     />

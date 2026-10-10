@@ -71,8 +71,12 @@ import type { AnimationDocumentBody, FrozenAttemptSnapshot } from '../../shared/
 import { assemblyDocumentProblems, assemblyEntryVerdict, EXPORT_FPS, MAX_EXPORT_FRAMES } from '../../shared/animation/assembly'
 
 /** The manifest's own format version — bumped when the manifest SHAPE
- *  changes (distinct from the document schema version it also records). */
-export const ANIMATION_EXPORT_MANIFEST_VERSION = 1
+ *  changes (distinct from the document schema version it also records).
+ *  v2: the window contribution lane (audit I-1) — `windowSlotId` beside
+ *  `spanId` on every contribution, and the extension lineage quadruple
+ *  (windowSlotId, windowOrder, chainRootAttemptId, sourceAttemptId) on the
+ *  contributing attempt's lineage block. */
+export const ANIMATION_EXPORT_MANIFEST_VERSION = 2
 
 // Task 15a: the export constants and the LENGTH/EDGE refusal semantics live
 // in shared/animation/assembly.ts — one derivation for the gate and the
@@ -91,6 +95,7 @@ export type ExportSegmentSpec = {
   contributionId: string
   attemptId: string
   spanId: string | null
+  windowSlotId: string | null
   inFrame: number
   outFrame: number
   holdDuration: number
@@ -148,24 +153,33 @@ export type ExportAttemptFacts = Pick<AnimationAttemptRow, 'id' | 'tool' | 'targ
 }
 
 /** The stale reasons of ONE contribution, resolved from the frozen truth:
- *  a tween lane rides its span's staleness marking (§8.3), a SPANLESS
- *  (sequence) lane derives its staleness from drift at freeze time (Codex
- *  I8 — the spanless selection has no span to carry marks, so binding,
- *  settings, and endpoint drift are computed HERE, against the frozen
- *  document), and BOTH lanes honor §8.2's earlierRevision flag — the
- *  LANDING's own verdict, computed against the revision that stood when the
- *  take landed. Deliberately NOT freeze-time REVISION drift on either lane:
- *  revisions move for unrelated reasons (assembly decisions themselves bump
- *  them — §9), so drift alone would mark every take stale after any edit;
- *  the flag captures exactly the race it names (the document moved between
- *  the render's submission and its landing), and the spanless drift checks
- *  name the INPUTS a render consumed (binding version, output settings,
- *  endpoint drawings), not the revision counter. */
+ *  a tween lane rides its span's staleness marking (§8.3), an EXTENSION
+ *  lane rides its chain window's own marking (the span rule's exact twin —
+ *  audit I-1: the window carries 'ancestry'/'intent'/'binding'/'settings'
+ *  marks the lane's Task 4 vocabulary defines), a SPANLESS (sequence) lane
+ *  derives its staleness from drift at freeze time (Codex I8 — the spanless
+ *  selection has no span to carry marks, so binding, settings, and endpoint
+ *  drift are computed HERE, against the frozen document), and EVERY lane
+ *  honors §8.2's earlierRevision flag — the LANDING's own verdict, computed
+ *  against the revision that stood when the take landed. Deliberately NOT
+ *  freeze-time REVISION drift on any lane: revisions move for unrelated
+ *  reasons (assembly decisions themselves bump them — §9), so drift alone
+ *  would mark every take stale after any edit; the flag captures exactly
+ *  the race it names (the document moved between the render's submission
+ *  and its landing), and the spanless drift checks name the INPUTS a render
+ *  consumed (binding version, output settings, endpoint drawings), not the
+ *  revision counter. */
 function staleReasonsOf(entry: AnimationDocumentBody['editorial'][number], attempt: ExportAttemptFacts, document: AnimationDocumentRow): string[] {
   const reasons: string[] = []
+  // The pre-I-1 wire shape carries no windowSlotId — absence reads as the
+  // spanless lane (the parser's widening read, mirrored at every gate read).
+  const windowSlotId = entry.windowSlotId ?? null
   if (entry.spanId !== null) {
     const span = document.body.spans.find((candidate) => candidate.id === entry.spanId)
     if (span?.stale) reasons.push(...span.staleReasons.length > 0 ? span.staleReasons : ['stale'])
+  } else if (windowSlotId !== null) {
+    const slot = document.body.chains.flatMap((chain) => chain.windows).find((candidate) => candidate.id === windowSlotId)
+    if (slot?.stale) reasons.push(...slot.staleReasons.length > 0 ? slot.staleReasons : ['stale'])
   } else {
     reasons.push(...spanlessDriftReasons(attempt, document))
   }
@@ -232,6 +246,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function sourceLabel(entry: AnimationDocumentBody['editorial'][number], attempt: ExportAttemptFacts | null, document: AnimationDocumentRow): string {
   if (attempt === null) return `contribution ${entry.id.slice(0, 8)} (attempt ${entry.attemptId.slice(0, 8)} — no such attempt row)`
   if (attempt.tool === 'tween') {
+    // The window lane first (audit I-1): an extension take's target is a
+    // chain window slot, never a span's step slot — the span walk below
+    // would mislabel it "?" where the window position is the truth.
+    const windowSlotId = entry.windowSlotId ?? null
+    if (windowSlotId !== null) {
+      const chain = document.body.chains.find((candidate) => candidate.windows.some((window) => window.id === windowSlotId))
+      const order = chain?.windows.find((window) => window.id === windowSlotId)?.order
+      return `Extension window ${order === undefined ? '?' : order + 1} of the chain rooted at attempt ${chain?.rootAttemptId.slice(0, 8) ?? '?'} (attempt ${entry.attemptId.slice(0, 8)})`
+    }
     const span = document.body.spans.find((candidate) => candidate.id === entry.spanId)
     const stepIndex = span?.stepSlots.findIndex((slot) => slot.id === attempt.targetId)
     return `Tween step ${stepIndex === undefined || stepIndex < 0 ? '?' : stepIndex + 1} of span ${entry.spanId?.slice(0, 8) ?? '?'} (attempt ${entry.attemptId.slice(0, 8)})`
@@ -309,6 +332,8 @@ export function deriveExportPlan(
       contributionId: entry.id,
       attemptId: entry.attemptId,
       spanId: entry.spanId,
+      // Absence (the pre-I-1 wire shape) reads as the spanless lane.
+      windowSlotId: entry.windowSlotId ?? null,
       inFrame: entry.inFrame,
       outFrame: entry.outFrame,
       holdDuration: entry.holdDuration,
@@ -368,6 +393,14 @@ export type ManifestAttemptLineage = {
     stepSlotIndex?: number
     windowStartKeyId?: string
     windowEndKeyId?: string
+    /** The extension lane's provenance (§11.3, audit I-1): the chain window
+     *  the take landed into, its 1-based position in the chain, the chain's
+     *  root attempt, and the frozen binding's source attempt — the chain
+     *  lineage the exported frames rode in on. */
+    windowSlotId?: string
+    windowOrder?: number
+    chainRootAttemptId?: string
+    sourceAttemptId?: string
   }
   landed: {
     assetReference: { assetId: string; relPath: string | null; kind: string }
@@ -409,6 +442,7 @@ export type ExportManifest = {
     contributionId: string
     attemptId: string
     spanId: string | null
+    windowSlotId: string | null
     inFrame: number
     outFrame: number
     holdDuration: number
@@ -444,6 +478,19 @@ export function buildManifest(input: {
       const index = span?.stepSlots.findIndex((slot) => slot.id === attempt.targetId) ?? -1
       if (index >= 0) lineage.stepSlotIndex = index
     }
+    if (segment.windowSlotId !== null) {
+      // The extension lane's provenance (audit I-1, §11.3): the chain
+      // window + position from the frozen body, and the frozen binding's
+      // source attempt from the attempt's own record — the chain lineage
+      // the exported frames rode in on, never a recomputation.
+      lineage.windowSlotId = segment.windowSlotId
+      const chain = body.chains.find((candidate) => candidate.windows.some((window) => window.id === segment.windowSlotId))
+      const window = chain?.windows.find((candidate) => candidate.id === segment.windowSlotId)
+      if (chain !== undefined) lineage.chainRootAttemptId = chain.rootAttemptId
+      if (window !== undefined) lineage.windowOrder = window.order + 1
+      const binding = (attempt.snapshot as { continuationBinding?: { sourceAttemptId?: unknown } }).continuationBinding
+      if (isRecord(binding) && typeof binding.sourceAttemptId === 'string') lineage.sourceAttemptId = binding.sourceAttemptId
+    }
     if (attempt.snapshot.sequence !== undefined) {
       lineage.windowStartKeyId = attempt.snapshot.sequence.windowStartKeyId
       lineage.windowEndKeyId = attempt.snapshot.sequence.windowEndKeyId
@@ -466,6 +513,7 @@ export function buildManifest(input: {
       contributionId: segment.contributionId,
       attemptId: segment.attemptId,
       spanId: segment.spanId,
+      windowSlotId: segment.windowSlotId,
       inFrame: segment.inFrame,
       outFrame: segment.outFrame,
       holdDuration: segment.holdDuration,

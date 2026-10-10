@@ -116,9 +116,10 @@ export type EditorialPanelProps = {
   /** The assembled sequence (timelineModel.deriveAssembledSequence). */
   assembled: AssembledSequence
   busy: boolean
-  /** The §9 selection: a clip's portion + hold rides the document (the
-   *  tween lane names its span; the sequence lane is spanless). */
-  onContribute(spanId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number): void
+  /** The §9 selection: a clip's portion + hold rides the document — the
+   *  lane names exactly one target (the tween lane its span, the extension
+   *  lane its chain window, the sequence lane neither). */
+  onContribute(spanId: string | null, windowSlotId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number): void
   /** The §9 reorder — the full new order. */
   onReorder(orderedIds: string[]): void
   /** The removal — the list is an authored document, never append-only. */
@@ -198,7 +199,7 @@ export function EditorialPanel({ clips, assembled, busy, onContribute, onReorder
               onApply={() => {
                 const parsed = validDraft(draftOf(rowDrafts[entry.contributionId], { inFrame: String(entry.inFrame), outFrame: String(entry.outFrame), holdDuration: String(entry.holdDuration) }))
                 if (parsed === null) return
-                onContribute(entry.spanId, entry.attemptId, parsed.inFrame, parsed.outFrame, parsed.holdDuration)
+                onContribute(entry.spanId, entry.windowSlotId, entry.attemptId, parsed.inFrame, parsed.outFrame, parsed.holdDuration)
               }}
               onMoveUp={() => move(index, index - 1)}
               onMoveDown={() => move(index, index + 1)}
@@ -239,7 +240,7 @@ export function EditorialPanel({ clips, assembled, busy, onContribute, onReorder
                   title={clip.contributionId !== null
                     ? 'Re-choose this clip\'s portion (the existing row updates)'
                     : 'Contribute this portion to the assembled sequence'}
-                  onClick={() => { if (parsed !== null) onContribute(clip.spanId, clip.attemptId, parsed.inFrame, parsed.outFrame, parsed.holdDuration) }}
+                  onClick={() => { if (parsed !== null) onContribute(clip.spanId, clip.windowSlotId, clip.attemptId, parsed.inFrame, parsed.outFrame, parsed.holdDuration) }}
                 >
                   {clip.contributionId !== null ? 'Update portion' : 'Add to sequence'}
                 </Button>

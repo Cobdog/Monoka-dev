@@ -214,19 +214,26 @@ export type EditorialAttemptSummary = {
   targetId: string
   /** SEQUENCE rows: the frozen window's end key (the label's second half). */
   windowEndKeyId?: string
+  /** EXTENSION rows (audit I-1): the frozen binding's source attempt (the
+   *  chain identity the root walk resolves the owning span through) and the
+   *  frozen draft's movement (the clip's detail line). */
+  extension?: { sourceAttemptId: string; movement: string }
   /** The landed clip's frame count — null until the take has landed. */
   candidate: { frameCount: number } | null
 }
 
 /** One landed clip the picker offers: a TWEEN take rides its owning span
- *  (spanId names it, stepIndex is the 1-based slot position), a SEQUENCE
- *  window take is spanless (spanId null, §11.2). `contributionId` names the
- *  existing contribution when this clip is already in the list. Hero takes
- *  never appear — their product is a key drawing (§5.2), and the store
- *  refuses the lane; the picker never offers a doomed command. */
+ *  (spanId names it, stepIndex is the 1-based slot position), an EXTENSION
+ *  take rides its chain window (windowSlotId names it — audit I-1: the
+ *  lane's output reaches editorial assembly), a SEQUENCE window take is
+ *  spanless (both null, §11.2). `contributionId` names the existing
+ *  contribution when this clip is already in the list. Hero takes never
+ *  appear — their product is a key drawing (§5.2), and the store refuses
+ *  the lane; the picker never offers a doomed command. */
 export type ContributableClip = {
   attemptId: string
   spanId: string | null
+  windowSlotId: string | null
   stepIndex: number | null
   label: string
   detail: string
@@ -243,16 +250,39 @@ export function deriveContributableClips(body: AnimationDocumentBody, attempts: 
     if (attempt.candidate === null) continue
     if (attempt.tool === 'tween') {
       const span = body.spans.find((entry) => entry.stepSlots.some((slot) => slot.id === attempt.targetId))
-      if (!span) continue // orphaned (its span left) — the store would refuse
-      const stepIndex = span.stepSlots.findIndex((slot) => slot.id === attempt.targetId) + 1
+      if (span) {
+        const stepIndex = span.stepSlots.findIndex((slot) => slot.id === attempt.targetId) + 1
+        clips.push({
+          attemptId: attempt.attemptId,
+          spanId: span.id,
+          windowSlotId: null,
+          stepIndex,
+          label: `Tween step ${stepIndex} — key #${orderOf(span.fromKeyId) ?? '?'} → key #${orderOf(span.toKeyId) ?? '?'}`,
+          detail: span.intent.movement,
+          frameCount: attempt.candidate.frameCount,
+          contributionId: body.editorial.find((entry) => entry.spanId === span.id && entry.attemptId === attempt.attemptId)?.id ?? null,
+        })
+        continue
+      }
+      // The extension lane's window take (audit I-1): the tween-tool attempt
+      // whose target is a chain WINDOW slot — a first-class editorial source
+      // whose chain identity rides along (the root walk resolves the span
+      // the chain roots on, so the label names the position the same way the
+      // tween lane names its step).
+      const chain = (body.chains ?? []).find((entry) => entry.windows.some((window) => window.id === attempt.targetId))
+      if (!chain) continue // orphaned (its span AND its window left) — the store would refuse
+      const slot = chain.windows.find((window) => window.id === attempt.targetId)!
+      const root = extensionRootAttempt(attempts, attempt.attemptId)
+      const rootSpan = root === null ? null : body.spans.find((entry) => entry.stepSlots.some((step) => step.id === root.targetId)) ?? null
       clips.push({
         attemptId: attempt.attemptId,
-        spanId: span.id,
-        stepIndex,
-        label: `Tween step ${stepIndex} — key #${orderOf(span.fromKeyId) ?? '?'} → key #${orderOf(span.toKeyId) ?? '?'}`,
-        detail: span.intent.movement,
+        spanId: null,
+        windowSlotId: slot.id,
+        stepIndex: null,
+        label: `Extension window ${slot.order + 1} — chain key #${rootSpan === null ? '?' : orderOf(rootSpan.fromKeyId) ?? '?'} → key #${rootSpan === null ? '?' : orderOf(rootSpan.toKeyId) ?? '?'}`,
+        detail: attempt.extension?.movement ?? '',
         frameCount: attempt.candidate.frameCount,
-        contributionId: body.editorial.find((entry) => entry.spanId === span.id && entry.attemptId === attempt.attemptId)?.id ?? null,
+        contributionId: body.editorial.find((entry) => entry.windowSlotId === slot.id && entry.attemptId === attempt.attemptId)?.id ?? null,
       })
       continue
     }
@@ -260,11 +290,12 @@ export function deriveContributableClips(body: AnimationDocumentBody, attempts: 
       clips.push({
         attemptId: attempt.attemptId,
         spanId: null,
+        windowSlotId: null,
         stepIndex: null,
         label: `Sequence window — key #${orderOf(attempt.targetId) ?? '?'} → key #${attempt.windowEndKeyId === undefined ? '?' : orderOf(attempt.windowEndKeyId) ?? '?'}`,
         detail: '',
         frameCount: attempt.candidate.frameCount,
-        contributionId: body.editorial.find((entry) => entry.spanId === null && entry.attemptId === attempt.attemptId)?.id ?? null,
+        contributionId: body.editorial.find((entry) => entry.spanId === null && (entry.windowSlotId ?? null) === null && entry.attemptId === attempt.attemptId)?.id ?? null,
       })
     }
   }
@@ -282,6 +313,7 @@ export type AssembledContribution = {
   contributionId: string
   attemptId: string
   spanId: string | null
+  windowSlotId: string | null
   label: string
   detail: string
   inFrame: number
@@ -336,6 +368,9 @@ export function deriveAssembledSequence(body: AnimationDocumentBody, attempts: R
       contributionId: entry.id,
       attemptId: entry.attemptId,
       spanId: entry.spanId,
+      // The pre-I-1 wire shape carries no field — absence reads as the
+      // spanless lane (the parser's widening read, mirrored here).
+      windowSlotId: entry.windowSlotId ?? null,
       label,
       detail: clip?.detail ?? '',
       inFrame: entry.inFrame,
@@ -396,7 +431,7 @@ export type ExtensionAttemptFacts = {
  *  without the view's extension block) resolves to null — chainMismatch
  *  treats that as consistent (the derivation is best-effort at the client;
  *  the server's own walk refuses loudly where it matters). */
-function extensionSourceOf(attempts: ReadonlyArray<ExtensionAttemptFacts>): (attemptId: string) => string | null {
+function extensionSourceOf<T extends SourceBearingAttemptRow>(attempts: ReadonlyArray<T>): (attemptId: string) => string | null {
   return (attemptId) => attempts.find((entry) => entry.attemptId === attemptId)?.extension?.sourceAttemptId ?? null
 }
 
@@ -564,9 +599,14 @@ export type ExtendPreview = {
   ready: boolean
 }
 
+/** The minimal row shape the ancestry walks read (the binding's frozen
+ *  source) — ExtensionAttemptFacts and EditorialAttemptSummary are both
+ *  structural supersets. */
+type SourceBearingAttemptRow = { attemptId: string; extension?: { sourceAttemptId: string } }
+
 /** The root-span walk (the route's own `rootTakeOf`, mirrored): the source's
  *  binding edges back to the PLAIN take the chain roots on. */
-function extensionRootAttempt(attempts: ReadonlyArray<ExtensionAttemptFacts>, sourceAttemptId: string): ExtensionAttemptFacts | null {
+function extensionRootAttempt<T extends SourceBearingAttemptRow>(attempts: ReadonlyArray<T>, sourceAttemptId: string): T | null {
   const seen = new Set<string>()
   let current = sourceAttemptId
   for (;;) {

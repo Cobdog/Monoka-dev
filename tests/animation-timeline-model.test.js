@@ -409,6 +409,68 @@ test('deriveContributableClips lists the landed tween and sequence clips with th
   assert.equal(clips.find((clip) => clip.attemptId === tweenTake.attemptId).contributionId, null)
 })
 
+// The pre-gates audit's I-1 (Codex batch A): a LANDED extension take — a
+// tween-tool attempt whose target is a chain WINDOW slot — is a first-class
+// editorial source. Before the fix the tween branch demanded a span owning
+// the target as a step slot, window takes were silently omitted, and the
+// lane's output never reached Assembly & export (the Codex reproduction:
+// zero contributable clips).
+test('deriveContributableClips lists a landed extension take through its chain window — the I-1 red pin (audit I-1)', () => {
+  const startCandidate = candidate('import')
+  const endCandidate = candidate('import')
+  const keyA = keySlot(0, { candidates: [startCandidate], selectedCandidateId: startCandidate.id })
+  const keyB = keySlot(1, { candidates: [endCandidate], selectedCandidateId: endCandidate.id })
+  const step = stepSlot()
+  const theSpan = spanOf(keyA.id, keyB.id, { stepSlots: [step] })
+  const rootTake = { attemptId: uuid(), tool: 'tween', targetId: step.id, candidate: { frameCount: 22 } }
+  step.attempts.push(rootTake.attemptId)
+  const window = windowSlot(0, { sourceAttemptId: rootTake.attemptId })
+  const extTake = {
+    attemptId: uuid(),
+    tool: 'tween',
+    targetId: window.id,
+    candidate: { frameCount: 34 },
+    extension: { sourceAttemptId: rootTake.attemptId, movement: 'the stride carries through the junction' },
+  }
+  window.attempts.push(extTake.attemptId)
+  const body = bodyOf([keyA, keyB], [theSpan])
+  body.chains = [chainOf(rootTake.attemptId, [window])]
+
+  let clips = deriveContributableClips(body, [rootTake, extTake])
+  assert.deepEqual(clips.map((clip) => clip.attemptId), [rootTake.attemptId, extTake.attemptId], 'both lanes list: the plain tween take AND the extension take')
+  assert.equal(clips[1].windowSlotId, window.id, 'the extension clip names its chain window')
+  assert.equal(clips[1].spanId, null, 'the extension clip rides no span')
+  assert.equal(clips[1].stepIndex, null)
+  assert.ok(clips[1].label.includes('Extension window 1'), `the label names the chain position (${clips[1].label})`)
+  assert.ok(clips[1].label.includes('key #0 → key #1'), `the label carries the chain's root-span keys (${clips[1].label})`)
+  assert.equal(clips[1].detail, 'the stride carries through the junction', 'the detail carries the frozen window movement')
+  assert.equal(clips[1].frameCount, 34, 'the delivered frames are the clip the picker offers')
+  assert.equal(clips[1].contributionId, null)
+
+  // An existing window-lane contribution flags its clip (the picker's
+  // "already in the list" truth keys on the window lane, not the span).
+  body.editorial.push({ id: uuid(), spanId: null, windowSlotId: window.id, attemptId: extTake.attemptId, inFrame: 0, outFrame: 34, holdDuration: 0 })
+  clips = deriveContributableClips(body, [rootTake, extTake])
+  assert.equal(clips.find((clip) => clip.attemptId === extTake.attemptId).contributionId, body.editorial[0].id)
+
+  // An orphaned window take (its chain left the document) is NOT offered —
+  // the store's lane rule would refuse it; the picker never shows a doomed
+  // command (the tween lane's orphan rule, extended).
+  body.chains = []
+  clips = deriveContributableClips(body, [rootTake, extTake])
+  assert.deepEqual(clips.map((clip) => clip.attemptId), [rootTake.attemptId], 'the orphaned window take disappears with its chain')
+
+  // The assembled sequence carries the window lane through: the entry's
+  // windowSlotId rides on the contribution row the strip renders.
+  body.chains = [chainOf(rootTake.attemptId, [window])]
+  const assembled = deriveAssembledSequence(body, [rootTake, extTake])
+  assert.equal(assembled.contributions.length, 1)
+  assert.equal(assembled.contributions[0].windowSlotId, window.id, 'the assembled row keeps its window identity')
+  assert.ok(assembled.contributions[0].label.includes('Extension window 1'), `the assembled row keeps the chain label (${assembled.contributions[0].label})`)
+  assert.equal(assembled.totalFrames, 34, 'the extension\'s delivered frames assemble')
+  assert.deepEqual(assembled.problems, [], 'an in-range window contribution carries no problems')
+})
+
 test('deriveAssembledSequence concatenates the ordered list with holds in output frames (task 13, §11.3)', () => {
   const startCandidate = candidate('import')
   const endCandidate = candidate('import')
