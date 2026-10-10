@@ -2375,3 +2375,59 @@ test('(r) the extend preflights — the collision names the anchor, availability
   assert.equal(echoed.status, 400)
   assert.match(echoed.body.error, /server-side/)
 })
+
+// ---------------------------------------------------------------------------
+// (s) the editorial window lane over HTTP (Codex batch A, audit I-1): the
+//     landed extension take of (q)'s chain enters the editorial list through
+//     its WINDOW — the wire shape (windowSlotId beside spanId), the refusal
+//     family, and the widened lane-refusal copy.
+// ---------------------------------------------------------------------------
+test('(s) a landed extension take contributes through its window slot over HTTP (audit I-1)', async () => {
+  assert.ok(qState, '(q) ran first — the shared fixture exists')
+  const apiS = qState.api
+  const before = (await apiS.get(`/api/lan/animation/document?id=${docQ.id}`)).body.document
+  let revision = before.revision
+
+  // The window's explicit selection (§4) — the reproduction's "landed +
+  // selected" shape.
+  const selected = await apiS.post('/api/lan/animation/select/window-candidate', { documentId: docQ.id, windowSlotId: qWindowId, attemptId: qExtensionId, expectedRevision: revision })
+  assert.equal(selected.status, 200, `the window selection lands (${selected.body.error ?? ''})`)
+  revision = selected.body.document.revision
+
+  // THE WIRE LANE: windowSlotId names the chain window; spanId stays null.
+  const contributed = await apiS.post('/api/lan/animation/select/clip-contribution', {
+    documentId: docQ.id, spanId: null, windowSlotId: qWindowId, attemptId: qExtensionId, inFrame: 0, outFrame: 34, holdDuration: 1, expectedRevision: revision,
+  })
+  assert.equal(contributed.status, 200, `the window-lane contribution lands (${contributed.body.error ?? ''})`)
+  const editorialS = contributed.body.document.body.editorial
+  assert.equal(editorialS.length, 1)
+  assert.deepEqual(
+    { spanId: editorialS[0].spanId, windowSlotId: editorialS[0].windowSlotId, attemptId: editorialS[0].attemptId },
+    { spanId: null, windowSlotId: qWindowId, attemptId: qExtensionId },
+    'the entry names its window lane whole',
+  )
+  revision = contributed.body.document.revision
+
+  // The refusal family over the wire.
+  const both = await apiS.post('/api/lan/animation/select/clip-contribution', {
+    documentId: docQ.id, spanId: before.body.spans[0].id, windowSlotId: qWindowId, attemptId: qExtensionId, inFrame: 0, outFrame: 8, holdDuration: 0, expectedRevision: revision,
+  })
+  assert.equal(both.status, 400)
+  assert.match(both.body.error, /exactly one lane/)
+  const wrongWindow = await apiS.post('/api/lan/animation/select/clip-contribution', {
+    documentId: docQ.id, spanId: null, windowSlotId: qWindowId, attemptId: qState.secondExtensionId, inFrame: 0, outFrame: 8, holdDuration: 0, expectedRevision: revision,
+  })
+  assert.equal(wrongWindow.status, 404)
+  assert.match(wrongWindow.body.error, /not an alternative of window slot/, 'a take of ANOTHER window does not ride this one')
+  const laneless = await apiS.post('/api/lan/animation/select/clip-contribution', {
+    documentId: docQ.id, spanId: null, attemptId: qExtensionId, inFrame: 0, outFrame: 8, holdDuration: 0, expectedRevision: revision,
+  })
+  assert.equal(laneless.status, 400)
+  assert.match(laneless.body.error, /through its window slot/, 'the laneless tween refusal now names BOTH lanes it could ride')
+
+  // The editorial REMOVE still drops it (the authored-list semantics hold on
+  // the widened lane).
+  const removed = await apiS.post('/api/lan/animation/editorial', { documentId: docQ.id, op: 'remove', contributionId: editorialS[0].id, expectedRevision: revision })
+  assert.equal(removed.status, 200, `the window-lane contribution removes (${removed.body.error ?? ''})`)
+  assert.equal(removed.body.document.body.editorial.length, 0)
+})

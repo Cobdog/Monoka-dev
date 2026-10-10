@@ -350,7 +350,7 @@ type AnimationSessionState = {
    *  frames. Tween clips ride their owning span; sequence window takes ride
    *  the spanless lane (spanId null). One contribution per (span, attempt) —
    *  re-choosing updates in place. */
-  contributeClip(spanId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number): Promise<boolean>
+  contributeClip(spanId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number, windowSlotId?: string | null): Promise<boolean>
   /** Task 14 — the export surface (§11.3): assembles and downloads the
    *  review ZIP (sequence.mp4 + manifest.json). Deliberately NOT
    *  busy-gated: the server FREEZES the document truth before assembly, so
@@ -1541,7 +1541,7 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     }
   },
 
-  contributeClip: async (spanId, attemptId, inFrame, outFrame, holdDuration) => {
+  contributeClip: async (spanId, attemptId, inFrame, outFrame, holdDuration, windowSlotId) => {
     const current = get().document
     if (!current || get().busy) return false
     // The shape the store enforces anyway — naming it here keeps the panel's
@@ -1557,7 +1557,7 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     try {
       // Editorial timing is an assembly decision (§9) — no staleness, no
       // generation promises; the upsert lands the portion and the hold.
-      const view = await animationApi.selectClipContribution(current.id, spanId, attemptId, inFrame, outFrame, holdDuration, get().document?.revision ?? 0)
+      const view = await animationApi.selectClipContribution(current.id, spanId, attemptId, inFrame, outFrame, holdDuration, get().document?.revision ?? 0, windowSlotId ?? null)
       if (ticket !== openTicket) return false
       set({ document: view, conflict: null, busy: false, attemptState: seedAttemptState(view.attempts) })
       return true

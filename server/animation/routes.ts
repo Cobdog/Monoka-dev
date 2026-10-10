@@ -1321,11 +1321,13 @@ export function createAnimationRoutes(deps: AnimationRouteDeps): (request: Incom
         if (!isNonNegativeInt(inFrame) || !isNonNegativeInt(outFrame) || !isNonNegativeInt(holdDuration)) {
           throw new AnimationRuleError('inFrame, outFrame, and holdDuration must be non-negative integers.', 400)
         }
-        // The spanless lane (task 13): a sequence window's clip contributes
-        // with NO span — `spanId: null` on the wire; anything non-null must
-        // still be a UUID naming the tween lane's owning span.
+        // The lane family (task 13 + audit I-1): a sequence window's clip
+        // contributes with NO span (`spanId: null`); a tween names its owning
+        // span; an extension take names its chain WINDOW (`windowSlotId` —
+        // absent on the wire reads as null, the older client's shape).
         const spanId = body.spanId === null ? null : uuidField(body, 'spanId')
-        return store.selectClipContribution(documentIdFrom(body), spanId, uuidField(body, 'attemptId'), inFrame, outFrame, holdDuration, expectedRevision)
+        const windowSlotId = body.windowSlotId === undefined || body.windowSlotId === null ? null : uuidField(body, 'windowSlotId')
+        return store.selectClipContribution(documentIdFrom(body), spanId, uuidField(body, 'attemptId'), inFrame, outFrame, holdDuration, expectedRevision, windowSlotId)
       })
     }
 

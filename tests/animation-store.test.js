@@ -648,7 +648,7 @@ test('(g) selectRollingReference sets the step slot pointer and never creates a 
   assert.equal(row.body.editorial.length, 1)
   assert.deepEqual(
     row.body.editorial[0],
-    { id: row.body.editorial[0].id, spanId: spanG.id, attemptId: attemptG1.attempt.id, inFrame: 0, outFrame: 18, holdDuration: 4 },
+    { id: row.body.editorial[0].id, spanId: spanG.id, windowSlotId: null, attemptId: attemptG1.attempt.id, inFrame: 0, outFrame: 18, holdDuration: 4 },
   )
   const editorialId = row.body.editorial[0].id
   const staleBefore = row.body.spans[0].staleReasons.slice()
@@ -1685,4 +1685,80 @@ test('(k8) a corrupt snapshot or malformed binding mid-ancestry aborts the walk 
     'a displacement whose walk crosses the malformed binding aborts loudly',
   )
   assert.equal(anim.getDocument(docK.id).body.chains[0].windows[0].selectedCandidateId, a1, 'the refused displacement persisted nothing')
+})
+
+// ---------------------------------------------------------------------------
+// (k9) the editorial window lane (Codex batch A, audit I-1): a landed
+//      extension take enters the editorial list through its chain window —
+//      the same exist + document + slot-attached validation family the span
+//      path runs. Before the fix the server rejected both available paths
+//      (span membership fails for window targets; spanId null refused
+//      tween-tool clips), so the lane's output could never reach export.
+// ---------------------------------------------------------------------------
+test('(k9) selectClipContribution accepts a landed extension take through its window slot (audit I-1)', () => {
+  const doc = anim.createDocument({ projectId, name: 'Kilo-nine-editorial', binding: makeBinding() })
+  const keyOne = uuid()
+  const keyTwo = uuid()
+  let row = anim.addKeyCandidate(doc.id, keyOne, makeCandidate(), 0)
+  row = anim.addKeyCandidate(doc.id, keyTwo, makeCandidate(), row.revision)
+  row = anim.selectKeyCandidate(doc.id, keyOne, row.body.keys.find((k) => k.id === keyOne).candidates[0].id, row.revision)
+  row = anim.selectKeyCandidate(doc.id, keyTwo, row.body.keys.find((k) => k.id === keyTwo).candidates[0].id, row.revision)
+  row = anim.insertSpan(doc.id, { fromKeyId: keyOne, toKeyId: keyTwo, intent: { movement: 'walks two steps', preservation: 'silhouette intact' } }, row.revision)
+  const step = row.body.spans[0].stepSlots[0].id
+  const rootRecorded = recordAttemptSimple(anim, doc.id, 'tween', step, 'idem-k9-root', { documentRevision: row.revision })
+  anim.landCandidate(rootRecorded.attempt.id, { assetReference: { assetId: 'clip-k9-root', relPath: 'takes/clip-k9-root.mp4', kind: 'video' }, frameCount: 22, earlierRevision: false })
+  row = anim.createWindowSlot(doc.id, rootRecorded.attempt.id, anim.getDocument(doc.id).revision)
+  const window = row.body.chains[0].windows[0]
+  const ext = recordLandedExtension(anim, doc.id, window.id, 'idem-k9-ext', makeFullBinding(rootRecorded.attempt.id), row.revision)
+  const plainTween = recordAttemptSimple(anim, doc.id, 'tween', step, 'idem-k9-plain', { documentRevision: row.revision })
+  anim.landCandidate(plainTween.attempt.id, { assetReference: { assetId: 'clip-k9-plain', relPath: 'takes/clip-k9-plain.mp4', kind: 'video' }, frameCount: 22, earlierRevision: false })
+  row = anim.getDocument(doc.id)
+
+  // THE RED PIN: the extension take contributes through its window slot —
+  // spanId stays null, windowSlotId names the lane.
+  row = anim.selectClipContribution(doc.id, null, ext.id, 0, 34, 2, row.revision, window.id)
+  assert.equal(row.body.editorial.length, 1)
+  assert.deepEqual(
+    row.body.editorial[0],
+    { id: row.body.editorial[0].id, spanId: null, windowSlotId: window.id, attemptId: ext.id, inFrame: 0, outFrame: 34, holdDuration: 2 },
+    'the window-lane entry lands whole',
+  )
+  const editorialId = row.body.editorial[0].id
+
+  // One contribution per (lane, attempt): re-choosing UPDATES in place.
+  row = anim.selectClipContribution(doc.id, null, ext.id, 4, 30, 0, row.revision, window.id)
+  assert.equal(row.body.editorial.length, 1)
+  assert.equal(row.body.editorial[0].id, editorialId)
+  assert.deepEqual(
+    { inFrame: row.body.editorial[0].inFrame, outFrame: row.body.editorial[0].outFrame, holdDuration: row.body.editorial[0].holdDuration },
+    { inFrame: 4, outFrame: 30, holdDuration: 0 },
+  )
+
+  // The refusal family — the span path's own shapes, mirrored:
+  row = anim.getDocument(doc.id)
+  assert.throws(
+    () => anim.selectClipContribution(doc.id, null, plainTween.attempt.id, 0, 8, 0, row.revision, window.id),
+    (err) => err.status === 404 && /not an alternative of window slot/.test(err.message),
+    'a step-slot take is not attached to the window — a 404, never a silent entry',
+  )
+  assert.throws(
+    () => anim.selectClipContribution(doc.id, null, ext.id, 0, 8, 0, row.revision, uuid()),
+    (err) => err.status === 404 && /No extension window slot/.test(err.message),
+    'an unknown window slot is a 404',
+  )
+  assert.throws(
+    () => anim.selectClipContribution(doc.id, row.body.spans[0].id, ext.id, 0, 8, 0, row.revision, window.id),
+    (err) => err.status === 400 && /exactly one lane/.test(err.message),
+    'naming BOTH the span and the window is a 400 — one lane per entry',
+  )
+  assert.throws(
+    () => anim.selectClipContribution(doc.id, null, ext.id, 0, 8, 0, row.revision),
+    (err) => err.status === 400 && /through its window slot/.test(err.message),
+    'a tween-tool clip with NO lane named refuses, naming both lanes it could ride',
+  )
+  assert.throws(
+    () => anim.selectClipContribution(doc.id, null, rootRecorded.attempt.id, 0, 8, 0, row.revision, window.id),
+    (err) => err.status === 404,
+    'the chain ROOT (a step-slot take) does not ride the window lane either',
+  )
 })

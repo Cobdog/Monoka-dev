@@ -311,12 +311,13 @@ export const animationApi = {
   annotateRollingReference: (documentId: string, spanId: string, stepSlotId: string, annotation: { poseDescription: string | null; facing: FacingTerm | null }, expectedRevision: number) =>
     post<{ document: unknown }>('/api/lan/animation/annotate/rolling-reference', { documentId, spanId, stepSlotId, annotation, expectedRevision }).then(documentOf),
 
-  /** The editorial contribution selection (§7.2.1 command 3, task 13): a
-   *  TWEEN clip contributes through its span; `spanId: null` names the
-   *  SPANLESS lane (a sequence window take, §11.2). One contribution per
-   *  (span, attempt) — re-choosing updates in place. */
-  selectClipContribution: (documentId: string, spanId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number, expectedRevision: number) =>
-    post<{ document: unknown }>('/api/lan/animation/select/clip-contribution', { documentId, spanId, attemptId, inFrame, outFrame, holdDuration, expectedRevision }).then(documentOf),
+  /** The editorial contribution selection (§7.2.1 command 3, task 13 +
+   *  audit I-1): a TWEEN clip contributes through its span; an EXTENSION
+   *  take through its chain `windowSlotId`; both null names the SPANLESS
+   *  lane (a sequence window take, §11.2). One contribution per (lane,
+   *  attempt) — re-choosing updates in place. */
+  selectClipContribution: (documentId: string, spanId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number, expectedRevision: number, windowSlotId: string | null = null) =>
+    post<{ document: unknown }>('/api/lan/animation/select/clip-contribution', { documentId, spanId, attemptId, inFrame, outFrame, holdDuration, expectedRevision, ...(windowSlotId !== null ? { windowSlotId } : {}) }).then(documentOf),
 
   /** The editorial-list commands (task 13, §9): `reorder` carries the FULL
    *  new order (a permutation of the contribution ids — the ordered list IS

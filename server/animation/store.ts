@@ -1037,15 +1037,22 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       })
     },
 
-    /** The editorial list's lane rules (task 13, §9/§11.2): a spanId names
-     *  the TWEEN lane (the attempt must be attached to that span's step
-     *  slots); spanId NULL names the SPANLESS lane — a whole-scene render
-     *  whose clip IS the contribution (a sequence window take; §11.2: a
-     *  sequence attempt owns no span, the task-2 widening the ledger named).
-     *  Hero clips ride neither: their product is a KEY DRAWING (§5.2), not a
-     *  sequence contribution. */
-    selectClipContribution: (documentId: string, spanId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number, expectedRevision: number) => {
+    /** The editorial list's lane rules (task 13, §9/§11.2 + audit I-1): a
+     *  spanId names the TWEEN lane (the attempt must be attached to that
+     *  span's step slots); a windowSlotId names the EXTENSION lane (the
+     *  landed window take must be an alternative of that chain window — the
+     *  same exist + document + slot-attached validation family the span path
+     *  runs); at most ONE of the two may be set; both null names the
+     *  SPANLESS lane — a whole-scene render whose clip IS the contribution
+     *  (a sequence window take; §11.2: a sequence attempt owns no span, the
+     *  task-2 widening the ledger named). Hero clips ride none of the three:
+     *  their product is a KEY DRAWING (§5.2), not a sequence contribution. */
+    selectClipContribution: (documentId: string, spanId: string | null, attemptId: string, inFrame: number, outFrame: number, holdDuration: number, expectedRevision: number, windowSlotId: string | null = null) => {
       if (spanId !== null && !isUuid(spanId)) throw new AnimationRuleError('The span id must be a UUID (or null for a whole-scene clip).', 400)
+      if (windowSlotId !== null && !isUuid(windowSlotId)) throw new AnimationRuleError('The window slot id must be a UUID (or null).', 400)
+      if (spanId !== null && windowSlotId !== null) {
+        throw new AnimationRuleError('A contribution rides exactly one lane — name the span OR the extension window slot, never both.', 400)
+      }
       if (!isUuid(attemptId)) throw new AnimationRuleError('The attempt id must be a UUID.', 400)
       for (const [name, value] of [['inFrame', inFrame], ['outFrame', outFrame], ['holdDuration', holdDuration]] as const) {
         if (!isNonNegativeInt(value)) throw new AnimationRuleError(`${name} must be a non-negative integer.`, 400)
@@ -1064,25 +1071,30 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
           if (!span.stepSlots.some((step) => step.attempts.includes(attemptId))) {
             throw new AnimationRuleError(`Attempt ${attemptId} is not attached to span ${spanId}.`, 404)
           }
+        } else if (windowSlotId !== null) {
+          const { slot } = requireWindowSlot(body, windowSlotId)
+          if (!slot.attempts.includes(attemptId)) {
+            throw new AnimationRuleError(`Attempt ${attemptId} is not an alternative of window slot ${windowSlotId}.`, 404)
+          }
         } else {
           const tool = str(attemptRow.tool)
           if (tool === 'tween') {
-            throw new AnimationRuleError('A tween clip contributes through its span — name the span that owns its step slot.', 400)
+            throw new AnimationRuleError('A tween clip contributes through its span, and an extension take through its window slot — name the one that owns the take.', 400)
           }
           if (tool !== 'sequence') {
             throw new AnimationRuleError(`A ${tool} render does not contribute to the assembled sequence — the hero lane's product is a key drawing (§5.2).`, 400)
           }
         }
-        // One contribution per (span, attempt): re-choosing a portion UPDATES
+        // One contribution per (lane, attempt): re-choosing a portion UPDATES
         // (id stable), a different clip contributes a second entry. Editorial
         // timing is an assembly decision (§9) — it marks nothing stale.
-        const existing = body.editorial.find((entry) => entry.spanId === spanId && entry.attemptId === attemptId)
+        const existing = body.editorial.find((entry) => entry.spanId === spanId && entry.windowSlotId === windowSlotId && entry.attemptId === attemptId)
         if (existing) {
           existing.inFrame = inFrame
           existing.outFrame = outFrame
           existing.holdDuration = holdDuration
         } else {
-          body.editorial.push({ id: randomUUID(), spanId, attemptId, inFrame, outFrame, holdDuration })
+          body.editorial.push({ id: randomUUID(), spanId, windowSlotId, attemptId, inFrame, outFrame, holdDuration })
         }
       })
     },

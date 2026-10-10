@@ -16,9 +16,10 @@
  * connects key slots": a selectedCandidateId must live in its own slot, a
  * rolling reference must name one of its slot's attempts, a window slot's
  * selection must name one of its own alternatives (extension lane Task 4),
- * an editorial contribution must name an existing span (or carry spanId
- * null — the spanless whole-scene lane, task 13), an activeBindingVersion
- * must be
+ * an editorial contribution must name an existing span, an existing chain
+ * window, or neither (spanId/windowSlotId both null — the spanless
+ * whole-scene lane, task 13; at most one may be set, audit I-1), an
+ * activeBindingVersion must be
  * carried by the binding history (empty history allows only version 0 — the
  * pre-binding document), and entity ids are unique within their collection.
  * NOT enforced here (deliberately): editorial inFrame/outFrame ordering —
@@ -137,10 +138,14 @@ export type BindingInput = { characterDescription: string; referenceAssetIds: st
 /** One contribution in the document's ordered editorial list (§9/§11.2): the
  *  clip this entry contributes (attemptId), the portion (inFrame..outFrame,
  *  start-inclusive/end-exclusive integer frames), and the hold
- *  (holdDuration, in output frames). spanId names the owning span for a
- *  tween clip's contribution; NULL names a whole-scene render (a sequence
- *  window take — §11.2: a sequence attempt owns no span, task 13). */
-export type EditorialContribution = { id: string; spanId: string | null; attemptId: string; inFrame: number; outFrame: number; holdDuration: number }
+ *  (holdDuration, in output frames). The lane is named by at most ONE of
+ *  two ids: spanId names the owning span for a tween clip's contribution;
+ *  windowSlotId names the extension chain window a landed extension take
+ *  contributes through (the pre-gates audit's I-1 — window targets are
+ *  first-class editorial sources, their chain identity riding along for
+ *  provenance); BOTH null names a whole-scene render (a sequence window
+ *  take — §11.2: a sequence attempt owns no span, task 13). */
+export type EditorialContribution = { id: string; spanId: string | null; windowSlotId: string | null; attemptId: string; inFrame: number; outFrame: number; holdDuration: number }
 
 export type AnimationDocumentBody = {
   keys: KeySlot[]
@@ -854,19 +859,24 @@ function parseExtensionChain(value: unknown): ExtensionChain | null {
   return { rootAttemptId, windows: parsedWindows }
 }
 
-function parseEditorialContribution(value: unknown, spanIds: ReadonlySet<string>): EditorialContribution | null {
+function parseEditorialContribution(value: unknown, spanIds: ReadonlySet<string>, windowIds: ReadonlySet<string>): EditorialContribution | null {
   if (!isRecord(value)) return null
   const { id, spanId, attemptId, inFrame, outFrame, holdDuration } = value
   if (!isUuid(id)) return null
-  // spanId null = the spanless lane (a sequence window take, task 13); a
-  // non-null id must name an existing span.
+  // The lane family: spanId names the tween lane's span, windowSlotId the
+  // extension lane's chain window (absent on rows the older build wrote —
+  // the widening read: absence IS the spanless/sequence shape); at most one
+  // of the two may be set, and a set id must name an existing entity.
+  const windowSlotId = value.windowSlotId === undefined ? null : value.windowSlotId
   if (spanId !== null && (!isUuid(spanId) || !spanIds.has(spanId))) return null
+  if (windowSlotId !== null && (!isUuid(windowSlotId) || !windowIds.has(windowSlotId))) return null
+  if (spanId !== null && windowSlotId !== null) return null
   if (!isUuid(attemptId)) return null
   if (!isNonNegativeInt(inFrame)) return null
   if (!isNonNegativeInt(outFrame)) return null
   if (!isNonNegativeInt(holdDuration)) return null
   // inFrame/outFrame ordering deliberately unchecked — see the module header.
-  return { id, spanId, attemptId, inFrame, outFrame, holdDuration }
+  return { id, spanId, windowSlotId, attemptId, inFrame, outFrame, holdDuration }
 }
 
 function parseAnimationSettings(value: unknown): AnimationDocumentBody['settings'] | null {
@@ -915,12 +925,14 @@ export function parseAnimationDocumentBody(value: unknown): AnimationDocumentBod
   // widening-read family — a widening read, never a downgrade), and the
   // store's persist always materializes the field. Present-but-malformed
   // refuses like any other collection: unique roots, window ids unique
-  // across the whole document (one window slot id, one slot).
+  // across the whole document (one window slot id, one slot). The window-id
+  // set is hoisted for the editorial parser below (a contribution's
+  // windowSlotId names one of these slots).
   const parsedChains: ExtensionChain[] = []
+  const windowIds = new Set<string>()
   if (chains !== undefined) {
     if (!Array.isArray(chains)) return null
     const roots = new Set<string>()
-    const windowIds = new Set<string>()
     for (const raw of chains) {
       const chain = parseExtensionChain(raw)
       if (!chain) return null
@@ -952,7 +964,7 @@ export function parseAnimationDocumentBody(value: unknown): AnimationDocumentBod
   const parsedEditorial: EditorialContribution[] = []
   const editorialIds = new Set<string>()
   for (const raw of editorial) {
-    const contribution = parseEditorialContribution(raw, spanIds)
+    const contribution = parseEditorialContribution(raw, spanIds, windowIds)
     if (!contribution) return null
     if (editorialIds.has(contribution.id)) return null
     editorialIds.add(contribution.id)

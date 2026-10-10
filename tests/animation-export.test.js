@@ -280,6 +280,67 @@ test('(a) segmentFilter pins the exact conform chain, and buildManifest carries 
   assert.ok(manifest.contributions[1].attempt.idempotencyKey, "the attempt's idempotency key rides")
 })
 
+// Codex batch A, audit I-1 — the WINDOW lane end to end at the gate and the
+// manifest: a landed extension take (a tween-tool render whose target is a
+// chain window slot) passes the tween-class validation, assembles its
+// delivered frames, rides its WINDOW's staleness (never the spanless drift
+// derivation), and the manifest's lineage carries the chain + source
+// attempt §11.3 owes.
+test('(a) the window lane — a landed extension take assembles, rides its window marks, and the manifest names the chain lineage (audit I-1)', () => {
+  const extensionAttempt = () => ({
+    id: 'att-ext',
+    tool: 'tween',
+    idempotencyKey: 'idem-att-ext',
+    inputHash: 'i'.repeat(64),
+    targetId: 'window-1',
+    snapshot: {
+      tool: 'tween', targetId: 'window-1', references: [], caption: 'c', compilerVersion: '1', settings: {}, documentRevision: 4,
+      continuationBinding: { sourceAttemptId: 'att-root', modelIdentities: [{ name: 'base.safetensors', digest: 'd'.repeat(64), bytes: 8 }] },
+    },
+    execution: { state: 'ready' },
+    result: { candidate: { id: null, assetReference: videoRef(), frameCount: 34, earlierRevision: false } },
+  })
+  const chainedDocument = (windowOverrides = {}) => syntheticDocument({ body: {
+    chains: [{ rootAttemptId: 'att-root', windows: [{ id: 'window-1', order: 0, attempts: ['att-ext'], selectedCandidateId: 'att-ext', lock: false, sourceAttemptId: 'att-root', stale: false, staleReasons: [], ...windowOverrides }] }],
+    editorial: [{ id: 'contrib-ext', spanId: null, windowSlotId: 'window-1', attemptId: 'att-ext', inFrame: 0, outFrame: 34, holdDuration: 2 }],
+  } })
+
+  // The gate: clean pass, the delivered frames + hold assemble, the label
+  // names the chain position (never a step-slot "?").
+  const plan = deriveExportPlan(chainedDocument(), [extensionAttempt()], resolveEverything)
+  assert.deepEqual(plan.refusals, [], 'a landed window take passes the tween-class validation — it IS a tween-lane render')
+  assert.deepEqual(plan.stale, [], 'a fresh window marks nothing stale')
+  assert.equal(plan.totalFrames, 34 + 2, 'the extension\'s delivered frames + the hold')
+  assert.equal(plan.segments[0].windowSlotId, 'window-1')
+  assert.match(plan.segments[0].sourceRelPath, /canvas-blobs/, 'the segment resolves its media like any lane')
+  const stalePlan = deriveExportPlan(chainedDocument({ stale: true, staleReasons: ['ancestry'] }), [extensionAttempt()], resolveEverything)
+  assert.deepEqual(
+    stalePlan.stale.map((entry) => entry.reasons),
+    [['ancestry']],
+    'a stale window surfaces for acknowledgment through its OWN marks — never the spanless drift derivation',
+  )
+
+  // The manifest: the lineage quadruple §11.3 owes — the window, its
+  // 1-based position, the chain root, and the frozen binding's source.
+  const manifest = buildManifest({
+    document: chainedDocument(),
+    attempts: [extensionAttempt()],
+    plan,
+    videoSha256: 'v'.repeat(64),
+    videoFrameCount: plan.totalFrames,
+    sourceHashes: new Map([['att-ext', 'e'.repeat(64)]]),
+    frozenAt: 123,
+    staleAcknowledged: false,
+  })
+  assert.equal(manifest.contributions[0].windowSlotId, 'window-1', 'the contribution names its window lane')
+  const lineage = manifest.contributions[0].attempt.lineage
+  assert.equal(lineage.windowSlotId, 'window-1')
+  assert.equal(lineage.windowOrder, 1, 'the 1-based chain position')
+  assert.equal(lineage.chainRootAttemptId, 'att-root')
+  assert.equal(lineage.sourceAttemptId, 'att-root', 'the frozen binding\'s source attempt — the chain lineage verbatim')
+  assert.equal(lineage.spanId, undefined, 'no span lineage on the window lane')
+})
+
 // ---------------------------------------------------------------------------
 // (b) the real pipeline — server + fake engine + ffmpeg over HTTP
 // ---------------------------------------------------------------------------
