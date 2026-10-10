@@ -1464,8 +1464,11 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
      *  owner owns the state machine exactly as it owns preparation's. A
      *  `ready`/`unavailable` write carries the artifact record (validated
      *  whole — its sourceAttemptId must name THIS row); `error` is capped at
-     *  the same 2000 the execution failureReason allows. */
-    setAttemptContinuation: (attemptId: string, continuation: { state: AttemptContinuationState; artifact?: ContinuationArtifactRecord; relPath?: string; error?: string }) => {
+     *  the same 2000 the execution failureReason allows. Returns the row's
+     *  new `own_revision` — the SETTLEMENT GENERATION the registration
+     *  envelope stamps (M-7): the write bumps it, so the returned value
+     *  orders this write against every later one. */
+    setAttemptContinuation: (attemptId: string, continuation: { state: AttemptContinuationState; artifact?: ContinuationArtifactRecord; relPath?: string; error?: string }): number => {
       const row = statements.attempt.get(attemptId ?? '') as Record<string, unknown> | undefined
       if (!row) throw new AnimationRuleError(`No attempt with id ${attemptId}.`, 404)
       if (!CONTINUATION_STATES.has(continuation?.state)) throw new AnimationRuleError(`Unknown continuation state ${String(continuation?.state)}.`, 400)
@@ -1482,6 +1485,8 @@ export function createAnimationStore(db: Database.Database, options: { appVersio
       if (continuation.relPath !== undefined) next.relPath = continuation.relPath
       if (continuation.error !== undefined) next.error = continuation.error.slice(0, 2000)
       statements.setAttemptContinuation.run(JSON.stringify(next), now(), attemptId)
+      const settled = statements.attempt.get(attemptId) as Record<string, unknown> | undefined
+      return Number(settled?.own_revision ?? 0)
     },
 
     attemptsInFlight: (): AnimationAttemptRow[] =>
