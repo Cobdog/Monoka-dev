@@ -75,6 +75,18 @@ family WARNs (combining-compatible but distribution duties — record the
 decision before committing to one); CC-BY is permissive-but-attribution (never
 vendorable); anything NC/proprietary/missing FAILs.
 
+### §2 addendum — Python eval-time dependencies (experiment scripts; nothing shipped)
+
+Not npm deps and not vendored — executed by committed experiment scripts from
+a gitignored venv under `test-results/experiments/`; never bundled, so no
+LICENSES.md row. Row lands here in the same commit as the script that
+declares the dependency (the lockstep discipline, applied by hand where the
+audit's machine surface does not reach).
+
+| Component | Source / revision | License as stated | Mode | Verdict |
+| --- | --- | --- | --- | --- |
+| `omnichar-sdk` 0.1.1 | PyPI (source read at `omnichar/ComfyUI-Omnichar@main` `packages/omnichar-sdk`, 2026-10-10) | **Apache-2.0 — deliberately**: the package carries its own verbatim Apache LICENSE *inside the otherwise GPL-3.0 repo*, the README states "Apache-2.0. The rest of the repository, including the node pack, is GPL-3.0-or-later", and the PyPI wheel declares `License-Expression: Apache-2.0` — triple-verified at the source `[API-2026-10-10]`. Zero-dep base install (`[images]` extra = Pillow only) | eval-time dependency (the CHAR eval, `test-results/experiments/char-eval/scripts/char_eval.py`; [research/omnichar-char-eval-results.md](../research/omnichar-char-eval-results.md)) | clean — the permissive floor; vendor-eligible if native `.char` support (assessment §5.2) ever wants it in-tree. The REPO around it is GPL-3.0 (the node pack) — that part stays fetch-consent per the tier table in [research/omnichar-assessment.md](../research/omnichar-assessment.md) |
+
 ## 3. Vendored, ported, and first-party code (ships in this repo)
 
 | Component | Source / pin | License as stated | Mode | Obligations (and how met) | Blast radius |
