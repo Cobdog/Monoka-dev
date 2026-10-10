@@ -168,6 +168,20 @@ export type EnginePort = {
    *  condition); a THROW is an unreachable/refusing engine, the retryable
    *  registration-failure class. */
   fetchCarryArtifact(attemptId: string): Promise<Buffer | null>
+  /** THE STAGE-BACK (extension lane §7, Task 5 review I-1 — landed Task 7):
+   *  writes the DIGEST-VERIFIED registered bytes into the engine's OUTPUT
+   *  folder at engineOutputCarryPath(attemptId), through the real
+   *  /upload/image contract (multipart fields type=output + subfolder +
+   *  overwrite=true, server.py:400-447: the type field routes the write into
+   *  folder_paths.get_output_directory(), containment-checked, overwrite
+   *  bypassing the collision-rename). The engine's folder is a read-through
+   *  cache of the registered artifact — when it lost the file (a cleaned
+   *  output folder, a re-driven rewrite), dispatch stages the truth back in
+   *  BEFORE the consumer graph ships, so the bytes the Load node reads are
+   *  always the digest-verified bytes. A THROW is the unreachable/refusing
+   *  engine — the dispatch's uncertain/never-delivered classes, never a
+   *  silent consumption of unverified bytes. */
+  stageCarryArtifact(attemptId: string, bytes: Buffer): Promise<void>
   /** The engine's OWN enumeration of what its loader nodes accept — THE
    *  registry the animation lane resolves its model slots against (wave 1,
    *  the live review's #1: never a pinned filename, never another
@@ -226,6 +240,12 @@ export type AttemptStateView = {
     preservation: string
     overrides: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
     anchors: Array<{ reference: 'rolling-near' | 'fixed-far'; frame: number }>
+    /** The binding's frozen HEAD TRIM (the pinned head's frame count —
+     *  delivered frame 0 is sampled frame headTrim): exposed so the surfaces
+     *  display frozen geometry instead of re-deriving it beside the truth
+     *  (Task 6 review M-3, closed Task 7). Present on every row this lane
+     *  froze; omitted only on malformed/absent binding fields. */
+    headTrim?: number
   }
   /** The frozen references' asset ids in role order (the references in
    *  force at freeze — read-only surface truth). The extension lane's
@@ -787,6 +807,32 @@ enumerationTtlMs?: number }): EnginePort {
       return Buffer.from(await response.arrayBuffer())
     },
 
+    async stageCarryArtifact(attemptId, bytes) {
+      // The verified capture (docs/devdocs/comfyui-api §5, server.py:400-447):
+      // /upload/image routes by the multipart `type` FIELD — get_dir_by_type
+      // maps output → folder_paths.get_output_directory() — honoring
+      // `subfolder` (normpath'd, commonpath-checked against the output dir)
+      // and `overwrite` ("true"/"1" writes the exact name, bypassing the
+      // collision-rename that would otherwise fork a divergent copy to
+      // "carry_00001 (1).safetensors" and leave the consumed bytes divergent).
+      // The uploadReference shape, pointed at the output tree.
+      const rel = engineOutputCarryPath(attemptId)
+      const parts = rel.split('/')
+      const filename = parts.pop() ?? ''
+      const subfolder = parts.join('/')
+      const form = new FormData()
+      form.append('image', new Blob([new Uint8Array(bytes)], { type: 'application/octet-stream' }), filename)
+      form.append('type', 'output')
+      form.append('subfolder', subfolder)
+      form.append('overwrite', 'true')
+      const response = await fetch(`${base}/upload/image`, { method: 'POST', body: form }) // throws on unreachable
+      if (!response.ok) throw new Error(`the engine's /upload/image answered ${response.status} staging ${filename}`)
+      const answer = await response.json().catch(() => null) as { name?: unknown; subfolder?: unknown; type?: unknown } | null
+      if (answer === null || answer.name !== filename || answer.subfolder !== subfolder || answer.type !== 'output') {
+        throw new Error(`the engine's /upload/image staged the carry at an unexpected destination (${JSON.stringify(answer)}) — refusing to point the consumer graph at an unverified path`)
+      }
+    },
+
     async modelEnumerations(force) {
       if (!force?.force && enumerationCache !== null && Date.now() - enumerationCache.at < enumerationTtlMs) {
         return enumerationCache.value
@@ -1049,6 +1095,39 @@ export function requireContinuationArtifact(deps: { store: AnimationStore; blobs
   return record
 }
 
+/** §7's consumer-side truth (Task 5 review I-1, landed by the lane's Task 7):
+ *  the bytes the extension graph's Load node consumes must be the
+ *  DIGEST-VERIFIED REGISTERED artifact — the engine's output folder is a
+ *  read-through cache of it, never the source of truth. The dispatch gate
+ *  calls this immediately before the graph ships: it resolves availability
+ *  through the ONE seam above (no second resolver), fetches the engine's
+ *  copy through the receipt contract, and STAGES the registered blob back
+ *  into the engine when the copy is absent or digest-divergent (a cleaned
+ *  output folder; a re-drive of the source that rewrote the file) — so
+ *  eviction between registration and consumption can never turn into an
+ *  unnamed engine-side execution failure, and a rewritten engine file can
+ *  never silently diverge from the binding's frozen digest. The PREFLIGHT
+ *  stays read-only (the bare seam): staging is a dispatch-time act, exactly
+ *  where the ruling placed it. */
+export async function stageContinuationArtifact(
+  deps: { store: AnimationStore; blobs: AnimationBlobSink; engine: Pick<EnginePort, 'fetchCarryArtifact' | 'stageCarryArtifact'> },
+  attemptId: string,
+): Promise<ContinuationArtifactRecord> {
+  const record = requireContinuationArtifact(deps, attemptId)
+  // The verified bytes: the same row the seam just digested. A null read here
+  // means the blob vanished between the seam's verification and this read —
+  // the named unavailable condition, re-armed through the same class.
+  const row = deps.store.getAttempt(attemptId)
+  const bytes = row !== null && row.continuation.relPath !== undefined ? deps.blobs.readBlob(row.continuation.relPath) : null
+  if (bytes === null) throw new ContinuationUnavailableError(record.artifactId, record.digest, attemptId)
+  const engineCopy = await deps.engine.fetchCarryArtifact(attemptId)
+  const engineDigest = engineCopy === null ? null : createHash('sha256').update(engineCopy).digest('hex')
+  if (engineDigest !== record.digest) {
+    await deps.engine.stageCarryArtifact(attemptId, bytes)
+  }
+  return record
+}
+
 // ---------------------------------------------------------------------------
 // content-identity compatibility (extension lane Task 3, spec §6 — the
 // fail-closed target-execution comparison)
@@ -1160,7 +1239,15 @@ function extensionRowOf(snapshot: FrozenAttemptSnapshot): Pick<AttemptStateView,
       || typeof entry.frame !== 'number' || !Number.isInteger(entry.frame) || entry.frame < 0) return null
     anchors.push({ reference: entry.reference as 'rolling-near' | 'fixed-far', frame: entry.frame })
   }
-  return { extension: { sourceAttemptId, targetLength: settings.length, movement: draft.movement, preservation: draft.preservation, overrides, anchors } }
+  // The frozen head trim (Task 6 review M-3, closed Task 7): the binding's
+  // own number, exposed so the surfaces never RE-DERIVE geometry the route
+  // froze (targetLength − landed frameCount fabricates a mapping mid-flight;
+  // the frozen count is truth at every execution state). Omitted when a
+  // malformed row carries none — the consumers treat absence as "not shown",
+  // never as zero.
+  const headTrim = (binding as Record<string, unknown>).headTrim
+  const frozenHeadTrim = typeof headTrim === 'number' && Number.isInteger(headTrim) && headTrim >= 0 ? headTrim : undefined
+  return { extension: { sourceAttemptId, targetLength: settings.length, movement: draft.movement, preservation: draft.preservation, overrides, anchors, ...(frozenHeadTrim !== undefined ? { headTrim: frozenHeadTrim } : {}) } }
 }
 
 // ---------------------------------------------------------------------------
@@ -1461,7 +1548,14 @@ export function createAnimationRenderingService(deps: {
       // failureReason, nothing submitted.
       const continuation = continuationBindingOf(snapshot)
       if (continuation !== null) {
-        requireContinuationArtifact({ store, blobs }, continuation.sourceAttemptId)
+        // Availability through the ONE seam, then THE STAGE-BACK (Task 5
+        // review I-1): the engine's copy of the carry is fetched through the
+        // receipt contract and re-staged from the DIGEST-VERIFIED registered
+        // blob when absent or divergent — the consumed bytes are the
+        // registered artifact's bytes, the engine folder only the read-through
+        // (§7's letter, now true at the one place it is consumed).
+        await stageContinuationArtifact({ store, blobs, engine }, continuation.sourceAttemptId)
+        if (abortIfTerminal(attemptId)) return 'aborted'
         const identities = await resolvedIdentities({
           tool: snapshot.tool,
           enumerations: await freshEnumerations(),

@@ -381,6 +381,9 @@ export type ExtensionAttemptFacts = {
     preservation: string
     overrides: { medium: string; scene?: string; camera?: { description: string; reason: string } }
     anchors: Array<{ reference: 'rolling-near' | 'fixed-far'; frame: number }>
+    /** The binding's frozen head trim (Task 6 review M-3): the delivered-tail
+     *  display reads the FROZEN number, never a re-derivation. */
+    headTrim?: number
   }
   continuation: AttemptContinuationView
   modelIdentitiesStamped?: boolean
@@ -426,6 +429,15 @@ export type ChainView = {
    *  path — null while the mismatch stands (the banner replaces it; never a
    *  silent assembly from unrelated ancestry). */
   assembled: { windows: number; deliveredFrames: number } | null
+  /** WHY the assembled total is absent, when it is (Task 6 review M-5,
+   *  closed Task 7 — the states are distinct truth, never one 'blocked'):
+   *  'mismatch' — the derived ancestry banner stands (the assembly is
+   *  REFUSED); 'in-flight' — a member of the selected path (the root or a
+   *  selected take) has not landed its candidate yet (the assembly is
+   *  PENDING, and computes when the landing does); 'root-missing' — the
+   *  chain's root row left the document (named separately by rootProblem).
+   *  Null when `assembled` holds the total. */
+  assembledAbsentReason: 'mismatch' | 'in-flight' | 'root-missing' | null
 }
 
 export type ChainSurface = { chains: ChainView[] }
@@ -468,13 +480,28 @@ export function deriveChainSurface(body: AnimationDocumentBody, attempts: Readon
       windows,
       mismatch: chainMismatch(chain, sourceOf),
       assembled: null,
+      assembledAbsentReason: null,
     })
   }
   // The assembled preview per chain (only when the walk is consistent): the
   // selected path's delivered frames — root clip + every window's SELECTED
-  // take, the exact path the next extension conditions on.
+  // take, the exact path the next extension conditions on. The absent reason
+  // (M-5) is derived in the same pass: the total's absence is either the
+  // REFUSED assembly (the mismatch banner) or a PENDING one (a path member
+  // still in flight) — distinct truth, surfaced distinctly.
   for (const view of chains) {
-    if (view.mismatch !== null || view.root === null || view.root.candidate === null) continue
+    if (view.mismatch !== null) {
+      view.assembledAbsentReason = 'mismatch'
+      continue
+    }
+    if (view.root === null) {
+      view.assembledAbsentReason = 'root-missing'
+      continue
+    }
+    if (view.root.candidate === null) {
+      view.assembledAbsentReason = 'in-flight'
+      continue
+    }
     let deliveredFrames = view.root.candidate.frameCount
     let selectedWindows = 0
     for (const window of view.windows) {
@@ -488,6 +515,7 @@ export function deriveChainSurface(body: AnimationDocumentBody, attempts: Readon
       selectedWindows += 1
     }
     if (selectedWindows >= 0) view.assembled = { windows: selectedWindows, deliveredFrames }
+    else view.assembledAbsentReason = 'in-flight'
   }
   return { chains }
 }
@@ -679,10 +707,10 @@ export function deriveExtendPreview(
     // The delivered-tail display derives through the ONE mapping's inverse
     // (continuationGeneratedFrame defines d + trim = g, so d = g − trim): a
     // plain root delivers its whole window (trim 0); an extension source's
-    // trim is its frozen generated length minus its landed delivered count.
-    const trim = source.extension !== undefined && source.candidate !== null && source.execution === 'ready'
-      ? source.extension.targetLength - source.candidate.frameCount
-      : 0
+    // trim is its binding's FROZEN headTrim (Task 6 review M-3, closed Task 7
+    // — the view exposes it), never a re-derivation off the landed count, so
+    // the mapping is truthful MID-FLIGHT too.
+    const trim = source.extension?.headTrim ?? 0
     const delivered = trim > 0
       ? { start: generatedStart - trim, end: generatedEnd - trim }
       : { start: generatedStart, end: generatedEnd }

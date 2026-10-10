@@ -593,6 +593,7 @@ export function createStudioServer(paths: StudioServerPaths) {
       queuedJobIds: () => enginePortFor().queuedJobIds(),
       uploadReference: (assetId, bytes) => enginePortFor().uploadReference(assetId, bytes),
       fetchCarryArtifact: (attemptId) => enginePortFor().fetchCarryArtifact(attemptId),
+      stageCarryArtifact: (attemptId, bytes) => enginePortFor().stageCarryArtifact(attemptId, bytes),
       modelEnumerations: (options) => enginePortFor().modelEnumerations(options),
     }
     // The fabric seam: internal service/owner events adapt onto the

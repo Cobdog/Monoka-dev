@@ -183,8 +183,8 @@ export function ExtendPanel({ source, body, attempts, bindingMedium, busy, onSub
         )}
         {preview.pinnedTail !== null && (
           <p className="anim-note" data-anim-extend-pinned-tail>
-            Pinned tail: this take&apos;s frames {preview.pinnedTail.generated.start}–{preview.pinnedTail.generated.end} (generated coordinates — the latent&apos;s own world){deliveredTail !== null && deliveredTail.start !== preview.pinnedTail.generated.start
-              ? `; in delivered frames that is ${deliveredTail.start}–${deliveredTail.end} (the user&apos;s world, through the frozen d = g − trim mapping)`
+            Pinned tail: this take&apos;s frames {preview.pinnedTail.generated.start} up to {preview.pinnedTail.generated.end} — the half-open window [{preview.pinnedTail.generated.start}, {preview.pinnedTail.generated.end}), {preview.pinnedTail.generated.end - preview.pinnedTail.generated.start} frames in generated coordinates (the latent&apos;s own world){deliveredTail !== null && deliveredTail.start !== preview.pinnedTail.generated.start
+              ? `; in delivered frames that is ${deliveredTail.start} up to ${deliveredTail.end} (the user&apos;s world, through the frozen d = g − trim mapping)`
               : ''}.
           </p>
         )}
@@ -420,7 +420,9 @@ export function WindowReview({ attempt, window: slot, windowIndex, takes, busy, 
       )}
       {attempt.extension !== undefined && (
         <p className="anim-note" data-anim-window-geometry>
-          Window geometry frozen at submission: {attempt.extension.targetLength} generated · {candidate?.frameCount ?? '—'} delivered · pinned head {attempt.extension.targetLength - (candidate?.frameCount ?? attempt.extension.targetLength)} frames — delivered frame 0 is sampled frame {attempt.extension.targetLength - (candidate?.frameCount ?? attempt.extension.targetLength)}.
+          Window geometry frozen at submission: {attempt.extension.targetLength} generated · {candidate?.frameCount ?? '—'} delivered{attempt.extension.headTrim !== undefined
+            ? ` · pinned head ${attempt.extension.headTrim} frames — delivered frame 0 is sampled frame ${attempt.extension.headTrim}`
+            : ''}.
         </p>
       )}
 
