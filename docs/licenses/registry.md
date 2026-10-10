@@ -284,6 +284,28 @@ needs.
 | **VGGT-Omega** (`vggt_omega_1b_512.pt`, facebook/VGGT-Omega — Meridian's REQUIRED geometry dependency) | **gated:manual** (HF access request + acceptance) + **Meta FAIR Noncommercial Research License v1** — noncommercial-only on the materials AND their outputs/results (quoted in Meridian `docs/installation.md` §2; LICENSE.txt sits behind the gate — anonymous fetch 401) `[API-2026-10-04]` | **maintainer-staged, FLAGGED** — the ledger's "VGGT-FAIR-NC surfaces at consent" confirmed: it rides the dependency, not the Meridian weights (§5a) |
 | `Anime2Realsim__H3.safetensors` (CivitAI model 2783657, version "Minimax H3 ref2v v1.0" id 3356617 — J5) | **CivitAI user-upload terms**, per-model flags: no-credit OK, commercial OK (Image/Rent/RentCivit/Sell/SellMerge), derivatives OK `[API-2026-10-04]`; metadata anonymously readable but the download is login-walled (401) — API sha256 `BCE58949…DE2A3E` recorded for post-download verification | **maintainer-staged** (user's own download, the CivitAI user-fetch class) |
 | UniLumos (`unilumos.pt` + `vae.pth` + `models_t5_umt5-xxl-enc-bf16.pth`, Alibaba-DAMO-Academy/UniLumos — J8's relight challenger) | weights tag **apache-2.0** `[API-2026-10-04]`; the CODE repo (github.com/alibaba-damo-academy/Lumos-Custom, NeurIPS'25 / arXiv 2511.01678) has **NO LICENSE file** — fresh-eyes' "code unlicensed → fetch-weights + own glue" stands; **gated:auto** (any logged-in HF account) | **maintainer-staged** (11.4 GB of the repo is a bf16 umt5-xxl; whether our local fp8 substitutes is unproven — J8's call) |
+### 5j. The TDE lane (caption-verifier eval — imajev-4b on Qwen3.5-4B, CPU-only, 2026-10-10)
+
+Fetched 2026-10-10 for the TDE (task 7tn1tvp; the ledger's "THE TDE
+REGISTERED" row), the Set D/J verified-path discipline: HF API sizes,
+LFS-etag sha256s on the weights, git-blob oids on the small files, all
+verified after download; the adapter cross-checked against the upstream
+`SHA256SUMS` (8/8 PASS). Staged under `/home/agent/models/tde-dl/` (fetch
+script `/home/agent/models/tde-fetch.sh`, log beside it) — eval-local only,
+never linked into the engine's model dirs. The registration's
+"Qwen3.5-4B int8" resolved to the pack's Comfy-single-file convrot build
+(`nomadoor/Qwen3.5` → `text_encoders/qwen3.5_4b_int8_convrot.safetensors`) —
+**not fetched**: it loads only through the ComfyUI runtime; the eval ran the
+official torch serving path on the HF-layout pinned checkpoint with local
+dynamic int8 (disclosed deviation, [tde-results.md](../research/tde-results.md) §0).
+
+| Asset | License record | Mode |
+| --- | --- | --- |
+| `Qwen3.5-4B` backbone @ `851bf6e8` (the frozen pin in imajev-4b's adapter_config + RELEASE-SPEC) | **Apache-2.0** (tag + LICENSE read at fetch) `[API-2026-10-10]` | fetch-consent (eval-local) |
+| `imajev-4b` — LoRA adapter + 256-code decision readout + calibration files @ `f8d8234c` | **Apache-2.0** (model card; the repo ships no separate LICENSE file — recorded as stated) `[API-2026-10-10]` | fetch-consent (eval-local) |
+| `mohit67890/imajev` — the code (torch scoring/calibration path the eval imports verbatim) | **Apache-2.0** (LICENSE read from the fetched tree) `[LOCAL 2026-10-10]` | eval-time dependency (imported from the staged copy by `test-results/experiments/tde/scripts/tde_common.py`; nothing vendored, nothing shipped) |
+| `nomadoor/ComfyUI-TypedDecision` — the pack (the engine-lane integration reference; cross-read against the official path) | **MIT** (LICENSE read from the fetched tree) `[LOCAL 2026-10-10]` | fetch-consent (reference copy) |
+
 ## 6. Fonts, icons, cursor (the shibui plan — none shipped yet)
 
 Planned per [shibui-fonts-icons.md](../research/shibui-fonts-icons.md); rows
