@@ -156,7 +156,9 @@ function ChainBand({ surface, selectedWindowId, busy, onSelectWindow, onReselect
           <section key={view.chain.rootAttemptId} className="anim-chain" data-anim-chain={view.chain.rootAttemptId}>
             <header className="anim-chain-header">
               <strong>Extension chain</strong>
-              <span className="anim-note" data-anim-chain-assembled={view.assembled !== null ? String(view.assembled.deliveredFrames) : view.assembledAbsentReason === 'mismatch' ? 'blocked' : 'awaiting'}>
+              <span className="anim-note" data-anim-chain-assembled={view.assembled !== null
+                ? String(view.assembled.deliveredFrames)
+                : view.assembledAbsentReason === 'mismatch' ? 'blocked' : view.assembledAbsentReason === 'root-missing' ? 'root-missing' : 'awaiting'}>
                 rooted at this span&apos;s take — {view.windows.length} {view.windows.length === 1 ? 'window' : 'windows'}
                 {view.assembled !== null
                   ? ` · ${view.assembled.deliveredFrames} delivered frames along the selected path (root + ${view.assembled.windows})`

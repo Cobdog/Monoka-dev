@@ -151,21 +151,36 @@ const sameContinuation = (a: AttemptContinuationView, b: AttemptContinuationView
   && a.error === b.error
   && a.artifact?.digest === b.artifact?.digest
 
-/** Re-applies the ledger over a freshly landed document view. Two safety
+/** Re-applies the ledger over a freshly landed document view. Three safety
  *  properties make the re-apply honest, not just optimistic:
  *  - a landed row already at `unavailable` is NEVER overwritten — that state
  *    is derived server-side at checks and emits no envelope, so a ledger
  *    entry can never legitimately move it backward;
- *  - any brief revert of a NEWER landed truth is self-healing by
- *    construction: the envelope carrying that truth either already updated
- *    the ledger (no revert happens) or is still in flight and patches the
- *    row the moment it arrives. Returns the SAME object when nothing
- *    applies (no re-render, no loop). */
+ *  - a landed row already TERMINAL for registration (`ready` /
+ *    `not-produced`) is never overwritten either — settlement is one-shot
+ *    and never regresses, so fetched terminal truth is never stale (Task 7
+ *    review I-1R: the corner a LOST settling envelope opens — the ledger's
+ *    retryable `registering`+error entry would otherwise re-revert the
+ *    settled row on every resync refresh, with no envelope left in flight
+ *    to heal it). The ledger is SUPERSEDED with the settled truth so later
+ *    reconciles no-op;
+ *  - any brief revert of a NEWER landed truth inside the retryable window
+ *    is self-healing by construction: the envelope carrying that truth
+ *    either already updated the ledger (no revert happens) or is still in
+ *    flight and patches the row the moment it arrives. Returns the SAME
+ *    object when nothing applies (no re-render, no loop). */
 function reconcileContinuations(document: AnimationDocumentView): AnimationDocumentView {
   let changed = false
   const attempts = document.attempts.map((entry) => {
     const seen = continuationLedger.get(entry.attemptId)
-    if (seen === undefined || entry.continuation.state === 'unavailable' || sameContinuation(seen, entry.continuation)) return entry
+    if (seen === undefined || sameContinuation(seen, entry.continuation)) return entry
+    // Fetched states that can never be stale (registration is one-shot):
+    // the settled pair and the derived miss stand over any ledger entry.
+    if (entry.continuation.state === 'ready' || entry.continuation.state === 'not-produced') {
+      continuationLedger.set(entry.attemptId, entry.continuation)
+      return entry
+    }
+    if (entry.continuation.state === 'unavailable') return entry
     changed = true
     return { ...entry, continuation: seen }
   })

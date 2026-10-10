@@ -4,7 +4,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { spawn, type ChildProcess } from 'node:child_process'
 import type { AddressInfo } from 'node:net'
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, request as playwrightRequest, type APIRequestContext, type Page } from '@playwright/test'
 
 // Animation-authoring module, task 6 (k2q0n9s, spec
 // docs/superpowers/specs/2026-10-06-animation-authoring-module-design.md
@@ -1001,6 +1001,9 @@ type FakeEngine = {
  *  preempted (a worker abort, a fixture teardown failure) must never leave
  *  an orphan behind — the sweep is the second belt. */
 const liveEngines = new Set<ChildProcess>()
+/** Every live DEDICATED studio child (the lost-envelope leg's restartable
+ *  instances) — the same orphan-discipline belt. */
+const liveStudios = new Set<ChildProcess>()
 
 test.afterAll(async () => {
   for (const engine of liveEngines) {
@@ -1012,6 +1015,16 @@ test.afterAll(async () => {
       })
     }
     liveEngines.delete(engine)
+  }
+  for (const studio of liveStudios) {
+    if (studio.exitCode === null && studio.signalCode === null) {
+      studio.kill('SIGINT')
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => { studio.kill('SIGKILL'); resolve() }, 5_000)
+        studio.once('exit', () => { clearTimeout(timer); resolve() })
+      })
+    }
+    liveStudios.delete(studio)
   }
 })
 
@@ -1062,6 +1075,65 @@ async function pointAtEngine(request: APIRequestContext, enginePort: number) {
   const original = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
   await request.post('/api/lan/settings', { data: { settings: { ...original, comfyUrl: `http://127.0.0.1:${enginePort}` } } })
   return original
+}
+
+type DedicatedStudio = {
+  url: string
+  port: number
+  home: string
+  /** SIGINT + wait for exit — the restart half of the boot-sweep drive. */
+  stop(): Promise<boolean>
+  child: ChildProcess
+}
+
+/** A DEDICATED studio instance (own scratch home under the ignored
+ *  test-home, ephemeral loopback port) a leg can RESTART mid-test: the
+ *  lost-envelope leg needs the boot sweep's registration resume — the one
+ *  production re-drive of a registering row — and a studio restart is what
+ *  orphans the settling envelope server-side (emitted while the page's
+ *  socket is down; the fabric never replays). The same webServer recipe the
+ *  config boots the shared server with (dist must exist — `pnpm build`). */
+async function startDedicatedStudio(slug: string): Promise<DedicatedStudio> {
+  const holder = http.createServer(() => undefined)
+  const port = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const home = path.join(process.cwd(), 'test-home', `studio-${slug}-${Date.now()}-${uuid().slice(0, 6)}`)
+  const child = spawnStudio(port, home)
+  await expect.poll(async () => {
+    try { const response = await fetch(`http://127.0.0.1:${port}/api/lan/settings`); return response.ok } catch { return false }
+  }, { timeout: 30_000 }).toBe(true)
+  return { url: `http://127.0.0.1:${port}`, port, home, child, stop: () => stopChild(child) }
+}
+
+function spawnStudio(port: number, home: string): ChildProcess {
+  const child = spawn('node', [path.join(process.cwd(), 'dist-server/server/index.js')], {
+    env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(port), MINIMAX_NO_HTTPS: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  // Drain + keep the boot log (the engine spawn's own pattern): a stopped
+  // reader would block the child once the pipe fills, and a failed boot
+  // names itself here instead of as an opaque connection refusal.
+  let log = ''
+  child.stdout?.on('data', (chunk: Buffer) => { log += chunk.toString() })
+  child.stderr?.on('data', (chunk: Buffer) => { log += chunk.toString() })
+  child.once('exit', (code, signal) => {
+    liveStudios.delete(child)
+    try { fs.appendFileSync(path.join(home, 'boot.log'), `\n[exit code=${code} signal=${signal} pid=${child.pid}]\n${log}`) } catch { /* diagnostic only */ }
+    if (log.includes('EADDRINUSE')) throw new Error(`the dedicated studio failed to bind port ${port}: ${log}`)
+  })
+  liveStudios.add(child)
+  return child
+}
+
+/** SIGINT + a bounded wait for exit (the engine kill()'s own shape). */
+async function stopChild(child: ChildProcess): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return true
+  child.kill('SIGINT')
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => { child.kill('SIGKILL'); resolve() }, 5_000)
+    child.once('exit', () => { clearTimeout(timer); resolve() })
+  })
+  return child.exitCode !== null || child.signalCode !== null
 }
 
 type SliceDocument = {
@@ -4199,6 +4271,109 @@ test('the settled continuation survives the refresh that raced it — the Extend
   } finally {
     await request.post('/api/lan/settings', { data: { settings: originalEvidence } }).catch(() => undefined)
     await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('the LOST settling envelope — a fetched terminal registration stands over the ledger\'s stale retryable entry (extension, T7 review I-1R)', async ({ page }) => {
+  test.setTimeout(240_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  // A DEDICATED studio (own home, own port): the boot sweep's registration
+  // resume is the one production re-drive of a registering row, and this leg
+  // must RESTART the studio to reach it — the shared webServer is untouchable.
+  const studio = await startDedicatedStudio('ext-lost-env')
+  const bRequest = await playwrightRequest.newContext({ baseURL: studio.url })
+  let relaunched: ReturnType<typeof spawnStudio> | null = null
+  let rebound: FakeEngine | null = null
+  let engineExited = false
+  let originalEvidence: Record<string, unknown> | null = null
+  try {
+    // Studio B's own settings: the identity evidence + the engine address.
+    // The widened carry /view window makes the registration's receipt fetch
+    // killable deterministically (the knob widens a real window, it does not
+    // invent one).
+    await engine.control({ carryViewDelayMs: 800 })
+    originalEvidence = await stageExtensionEvidence(bRequest)
+    await pointAtEngine(bRequest, engine.port)
+
+    const projectId = `anim-e2e-lostenv-${Date.now()}`
+    const seeded = await seedInspectorDocument(bRequest, projectId, 'The lost envelope slice')
+    await page.goto(`${studio.url}/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    await timeline.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    const review = page.locator('[data-anim-review]')
+    const extendButton = review.locator('[data-anim-review-extend]')
+
+    // ---- Round 1 — the FAILED registration, SEEN by the page. The render
+    // lands with the engine up (playable first, always); the engine dies
+    // inside the registration's delayed receipt fetch, the bounded retries
+    // exhaust against the dead port, and the registration-failed envelope
+    // reaches the page — the LEDGER now holds the retryable
+    // registering+error entry (observable through the gate's named disable).
+    const submitted = await bRequest.post('/api/lan/animation/attempts', {
+      data: {
+        documentId: seeded.documentId, tool: 'tween', targetId: seeded.stepSlotId, idempotencyKey: `e2e-lostenv-${Date.now()}-${uuid().slice(0, 8)}`,
+        draft: { tool: 'tween', targetStepSlotId: seeded.stepSlotId, movementStep: 'she breaks into a run, coat flaring behind her', overrides: { medium: 'clean line on white' }, carry: true },
+      },
+    })
+    expect(submitted.ok(), `the carrying source submits (${await submitted.text()})`).toBe(true)
+    const sourceAttemptId = ((await submitted.json()) as { attemptId: string }).attemptId
+    await expect.poll(async () => (await attemptContinuation(bRequest, sourceAttemptId)).execution, { timeout: 45_000 }).toBe('ready')
+    await engine.kill()
+    // The registering STATE and its last-error ride separate writes — the
+    // poll waits for the pair (the gate's named disable carries both).
+    await expect.poll(async () => {
+      const row = (await attemptContinuation(bRequest, sourceAttemptId)).continuation as { state: string; error?: string }
+      return row.state === 'registering' && row.error !== undefined ? 'failed-round-landed' : 'waiting'
+    }, { timeout: 30_000 }).toBe('failed-round-landed')
+    await expect(review).toBeVisible({ timeout: 15_000 })
+    await expect(extendButton).toBeDisabled()
+    await expect(extendButton).toHaveAttribute('title', /still registering/, { timeout: 15_000 })
+
+    // ---- Round 2 — the settlement, UNSEEN. The engine rebinds (the carry
+    // file survives on disk — the output dir keys by port), the page goes
+    // OFFLINE, and the studio restarts: the boot sweep's resume arm
+    // re-drives the registering row to ready, emitting the settling
+    // envelope while the page's socket is down. The fabric never replays —
+    // the ledger keeps its stale retryable entry while server truth is
+    // terminal.
+    const reboundEngine = await startFakeEngine(engine.port)
+    rebound = reboundEngine
+    await page.context().setOffline(true)
+    await studio.stop()
+    relaunched = spawnStudio(studio.port, studio.home)
+    // NOTE plain fetch (not the Playwright API context) and a refusal-tolerant
+    // poll: the relaunched studio takes ~a second to bind, and a connection
+    // refusal must read as "still booting", never abort the poll.
+    await expect.poll(async () => {
+      try {
+        const response = await fetch(`${studio.url}/api/lan/animation/attempt?id=${sourceAttemptId}`)
+        return ((await response.json()) as { attempt: { continuation: { state: string } } }).attempt.continuation.state
+      } catch {
+        return 'booting'
+      }
+    }, { timeout: 60_000 }).toBe('ready')
+
+    // ---- The corner, resolved: back online, the transport reopens, the
+    // fabric resyncs (every subscribed channel re-fetches), and the durable
+    // read carries the SETTLED terminal truth. The monotonicity guard lets
+    // it stand (superseding the ledger); without it the stale
+    // registering+error entry re-reverts the row on this refresh and every
+    // later one — the gate stuck on "still registering" for the session.
+    await page.context().setOffline(false)
+    await expect(extendButton).toBeEnabled({ timeout: 45_000 })
+    await expect(review).toHaveAttribute('data-anim-review-attempt', sourceAttemptId)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await page.context().setOffline(false).catch(() => undefined)
+    if (originalEvidence !== null) await bRequest.post('/api/lan/settings', { data: { settings: originalEvidence } }).catch(() => undefined)
+    await bRequest.dispose().catch(() => undefined)
+    if (relaunched !== null) await stopChild(relaunched)
+    if (rebound !== null) await rebound.kill()
+    await studio.stop()
     engineExited = await engine.kill()
   }
   expect(engineExited).toBe(true)
