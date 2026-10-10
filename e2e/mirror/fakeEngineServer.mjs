@@ -29,7 +29,8 @@
  *                    "underdeliverFrames":n,
  *                    "loaderEnumerations":{unet,clip,vae,lora}|null,
  *                    "hangObjectInfo":true|false,
- *                    "omitCarrySave":true|false}
+ *                    "omitCarrySave":true|false,
+ *                    "carryUploadTruncateBytes":n}
  *   GET  /__control — current state
  *
  * "loaderEnumerations" (wave 1) overrides the profile's loader combo lists
@@ -275,6 +276,19 @@ const state = {
   // registration write). A real engine's /view is not delayed; the knob only
   // widens a window that exists in production.
   carryViewDelayMs: 0,
+  // The TORN-UPLOAD shape (Codex batch B, audit I-3): while >0, an upload
+  // into the output tree whose filename is a .safetensors writes only the
+  // first N bytes of the body — the deterministic model of the canonical
+  // /upload/image write (server.py:441 opens the destination "wb" and
+  // writes; a torn or interleaved write leaves the file short while the
+  // handler still answers 200). The stage-back's read-back leg refuses on
+  // exactly this shape.
+  carryUploadTruncateBytes: 0,
+  // Every completed write into the DISK-BACKED output tree through
+  // /upload/image (type=output) increments this counter (read it via GET
+  // /__control) — observation only, no behavior: the concurrency legs prove
+  // ONE stage-back upload served two dispatches.
+  outputUploads: 0,
 }
 const control = (req, res, url) => {
   if (url.pathname === '/__control' && req.method === 'GET') {
@@ -874,7 +888,14 @@ async function handle(req, res) {
             index += 1
           }
         }
-        fs.writeFileSync(filepath, file.bytes)
+        // The torn-write knob (audit I-3): the carry stage-back's upload,
+        // left deliberately short — the deterministic shape of the engine's
+        // non-atomic write the studio's read-back must catch.
+        const written = state.carryUploadTruncateBytes > 0 && /\.safetensors$/.test(file.filename)
+          ? file.bytes.subarray(0, Math.min(file.bytes.length, state.carryUploadTruncateBytes))
+          : file.bytes
+        fs.writeFileSync(filepath, written)
+        state.outputUploads += 1
         return json(res, 200, { name, subfolder, type: uploadType })
       }
       viewFiles.set(file.filename, { bytes: file.bytes, mime: file.filename.endsWith('.png') ? 'image/png' : file.filename.match(/\.mp4$|\.webm$/) ? 'video/mp4' : 'application/octet-stream' })

@@ -1148,6 +1148,39 @@ export function requireContinuationArtifact(deps: { store: AnimationStore; blobs
   return record
 }
 
+/** I-3's named refusal (Codex batch B): the stage-back's READ-BACK failed —
+ *  the engine's copy did not read back at the registered digest after the
+ *  studio's own staging upload. The engine's /upload/image write is a plain
+ *  truncate-then-write (server.py:441 opens the destination "wb" and writes),
+ *  so a torn or interleaved write can leave the file short while the upload
+ *  still answers 200; consuming it would surface as an unnamed
+ *  safetensors failure mid-render. The dispatch refuses HERE, by name,
+ *  before any graph is pointed at the file; nothing was submitted, a
+ *  re-dispatch re-stages the verified bytes. */
+export class ContinuationStageBackError extends Error {
+  readonly artifactId: string
+  readonly expectedDigest: string
+  constructor(artifactId: string, expectedDigest: string, observed: string) {
+    super(`The staged continuation artifact ${artifactId} did not read back at its registered digest (expected ${expectedDigest}, observed ${observed}) — the engine's upload write truncates before it writes, so the staged copy is torn or short. The dispatch is refused and nothing was submitted; the clip stays playable, and a re-dispatch re-stages the verified bytes.`)
+    this.name = 'ContinuationStageBackError'
+    this.artifactId = artifactId
+    this.expectedDigest = expectedDigest
+  }
+}
+
+/** The in-flight stage-backs, keyed by the SOURCE attempt id — the artifact
+ *  identity the engine's deterministic destination path derives from
+ *  (engineOutputCarryPath), so one key is exactly one engine-side file.
+ *  Audit I-3's coordination: two extensions of one source dispatching
+ *  concurrently would otherwise both miss the eviction check and both upload,
+ *  and the second upload's truncate-then-write (server.py:441) reopens the
+ *  shared destination while the first graph's Load reads it — a corruption
+ *  window the engine's own write cannot close. Concurrent callers AWAIT the
+ *  single in-flight stage-back instead of racing it; the entry clears when
+ *  the flight settles (success or refusal), so a later dispatch re-checks
+ *  fresh and a failed stage-back never poisons the next attempt. */
+const stageBackFlights = new Map<string, Promise<ContinuationArtifactRecord>>()
+
 /** §7's consumer-side truth (Task 5 review I-1, landed by the lane's Task 7):
  *  the bytes the extension graph's Load node consumes must be the
  *  DIGEST-VERIFIED REGISTERED artifact — the engine's output folder is a
@@ -1161,8 +1194,29 @@ export function requireContinuationArtifact(deps: { store: AnimationStore; blobs
  *  unnamed engine-side execution failure, and a rewritten engine file can
  *  never silently diverge from the binding's frozen digest. The PREFLIGHT
  *  stays read-only (the bare seam): staging is a dispatch-time act, exactly
- *  where the ruling placed it. */
-export async function stageContinuationArtifact(
+ *  where the ruling placed it.
+ *
+ *  Per-artifact ATOMICITY (audit I-3): the check → upload → verify sequence
+ *  is one in-flight promise per source artifact — concurrent dispatches
+ *  share it rather than racing it — and every staging upload is followed by
+ *  a READ-BACK through the receipt contract whose digest must equal the
+ *  registered record's before the caller's graph may consume the file: the
+ *  engine's own write is not atomic, so the studio verifies its OWN writes
+ *  the same way it verifies the engine's. */
+export function stageContinuationArtifact(
+  deps: { store: AnimationStore; blobs: AnimationBlobSink; engine: Pick<EnginePort, 'fetchCarryArtifact' | 'stageCarryArtifact'> },
+  attemptId: string,
+): Promise<ContinuationArtifactRecord> {
+  const inFlight = stageBackFlights.get(attemptId)
+  if (inFlight !== undefined) return inFlight
+  const flight = stageBackArtifactOnce(deps, attemptId).finally(() => {
+    stageBackFlights.delete(attemptId)
+  })
+  stageBackFlights.set(attemptId, flight)
+  return flight
+}
+
+async function stageBackArtifactOnce(
   deps: { store: AnimationStore; blobs: AnimationBlobSink; engine: Pick<EnginePort, 'fetchCarryArtifact' | 'stageCarryArtifact'> },
   attemptId: string,
 ): Promise<ContinuationArtifactRecord> {
@@ -1177,6 +1231,18 @@ export async function stageContinuationArtifact(
   const engineDigest = engineCopy === null ? null : createHash('sha256').update(engineCopy).digest('hex')
   if (engineDigest !== record.digest) {
     await deps.engine.stageCarryArtifact(attemptId, bytes)
+    // THE READ-BACK (audit I-3): the engine's upload handler writes the
+    // destination non-atomically (server.py:441 — open "wb", then write), so
+    // the studio's OWN staging write gets the same verification every engine
+    // copy gets: re-fetch through the receipt contract and require the
+    // registered digest. A torn write refuses HERE, named, before any graph
+    // is dispatched against the file — never an unnamed safetensors failure
+    // inside the render.
+    const written = await deps.engine.fetchCarryArtifact(attemptId)
+    const writtenDigest = written === null ? null : createHash('sha256').update(written).digest('hex')
+    if (writtenDigest !== record.digest) {
+      throw new ContinuationStageBackError(record.artifactId, record.digest, writtenDigest ?? 'no file at the receipt path')
+    }
   }
   return record
 }
@@ -1652,6 +1718,18 @@ export function createAnimationRenderingService(deps: {
         // by the seam itself, its playable state untouched.
         store.setAttemptExecution(attemptId, { state: 'failed', failureReason: failure.message })
         emit('animation.attempt.failed', { attemptId, documentId, reason: 'continuation-unavailable', detail: failure.message })
+        return 'failed'
+      }
+      if (failure instanceof ContinuationStageBackError) {
+        // The stage-back's read-back refusal (audit I-3): the engine's copy
+        // did not read back at the registered digest after the studio's own
+        // staging upload — a torn write the engine's non-atomic /upload made
+        // possible. Definitive at THIS attempt and named: nothing was
+        // submitted, the unverified bytes were never pointed at a graph, and
+        // a re-dispatch re-stages the verified bytes. The SOURCE's row is
+        // untouched — its registered artifact stays the truth.
+        store.setAttemptExecution(attemptId, { state: 'failed', failureReason: failure.message })
+        emit('animation.attempt.failed', { attemptId, documentId, reason: 'continuation-stage-back', detail: failure.message })
         return 'failed'
       }
       if (failure instanceof AnimationModelEvidenceError || failure instanceof ContinuationIdentityDriftError) {
