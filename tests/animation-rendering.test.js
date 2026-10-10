@@ -241,6 +241,7 @@ const {
   decodeClipFrame,
   makeDocumentStoreBlobSink,
   makeFramePreparer,
+  stageContinuationArtifact,
 } = require(path.join(REPO, 'dist-server/server/animation/rendering.js'))
 const { createCompletionOwner } = require(path.join(REPO, 'dist-server/server/animation/completion-owner.js'))
 const {
@@ -3213,6 +3214,110 @@ test('(z8) a matching engine copy stages NOTHING — the read-through optimizati
   await waitAttemptState(target.attemptId, ['ready'], 'the happy-path extension rendering')
   assert.equal(fs.statSync(file).mtimeMs, mtime, 'the engine copy was NOT re-written — a digest-matching copy is the read-through cache §7 blesses')
   assert.equal(await engineRecordCount(), before + 1, 'exactly one engine submission')
+})
+
+// ---------------------------------------------------------------------------
+// (z9)-(z11) the CONCURRENT stage-back + the READ-BACK (Codex batch B, audit
+//     I-3): the engine's /upload/image write is a plain truncate-then-write
+//     (server.py:441 opens the destination "wb" and writes), so two
+//     extensions of one source dispatching past an eviction would both miss
+//     the check, both upload, and the second upload would reopen the shared
+//     destination while the first graph's Load reads it — a corruption
+//     window the engine's own write cannot close. The studio closes it
+//     studio-side: the check → upload → verify sequence is ONE in-flight
+//     promise per source artifact (concurrent dispatches AWAIT it, never
+//     race it), and every staging upload is read back through the receipt
+//     contract and digest-verified before any graph consumes the file.
+// ---------------------------------------------------------------------------
+
+test('(z9) the concurrent stage-back, driven deterministically — one artifact, two dispatches, ONE upload: the in-flight promise is shared, never raced (audit I-3)', async () => {
+  const source = await landCarrySource('Zulu-nine', 'idem-z9-source')
+  const record = anim.getAttempt(source.attemptId).continuation.artifact
+
+  // THE EVICTION: the engine's copy is gone — both dispatches' checks miss.
+  fs.rmSync(engineCarryFile(source.attemptId))
+
+  // The scripted engine double over the REAL store/blobs (the audit's
+  // interleaving, driven deterministically): a fetch answers absent until a
+  // stage writes, then serves the staged bytes exactly like the engine's own
+  // disk write. Both stageContinuationArtifact calls are made in ONE
+  // synchronous block, so both CHECKS provably complete before either UPLOAD
+  // begins — the exact both-miss interleaving.
+  const staged = []
+  const engineDouble = {
+    fetchCarryArtifact: async () => (staged.length > 0 ? staged[staged.length - 1] : null),
+    stageCarryArtifact: async (attemptId, bytes) => { staged.push(Buffer.from(bytes)) },
+  }
+  const [first, second] = await Promise.all([
+    stageContinuationArtifact({ store: anim, blobs: sink, engine: engineDouble }, source.attemptId),
+    stageContinuationArtifact({ store: anim, blobs: sink, engine: engineDouble }, source.attemptId),
+  ])
+  assert.equal(staged.length, 1, 'exactly ONE upload fired — the second dispatch AWAITED the in-flight stage-back instead of racing it (the truncating double-write never happened)')
+  assert.equal(first.artifactId, record.artifactId, 'the first dispatch proceeds on the verified record')
+  assert.equal(second.artifactId, record.artifactId, 'the second dispatch proceeds on the SAME verified record')
+  assert.ok(
+    staged[0].equals(documents.readBlob(anim.getAttempt(source.attemptId).continuation.relPath)),
+    'the one upload carried the digest-verified registered bytes',
+  )
+})
+
+test('(z10) two CONCURRENT extension dispatches through the production port — one evicted copy, still ONE upload; both render from the shared stage-back (audit I-3)', async () => {
+  const source = await landCarrySource('Zulu-ten', 'idem-z10-source')
+  const stamped = anim.getAttempt(source.attemptId).snapshot.modelIdentities
+  fs.rmSync(engineCarryFile(source.attemptId))
+
+  // The widened /view window keeps both dispatches' eviction checks inside
+  // the same miss window — the interleaving of the audit's reproduction,
+  // held open deterministically (a real engine's /view is not delayed; the
+  // knob only widens a window that exists in production).
+  await engineControl({ carryViewDelayMs: 250 })
+  try {
+    const uploadsBefore = (await engineFetch('/__control').then((r) => r.json())).outputUploads
+    const revision = anim.getDocument(source.doc.id).revision
+    const targets = await Promise.all([
+      service.submit({ documentId: source.doc.id, tool: 'tween', targetId: source.step, snapshot: extendSnapshot(source.step, revision, source.attemptId, stamped) }, 'idem-z10-a'),
+      service.submit({ documentId: source.doc.id, tool: 'tween', targetId: source.step, snapshot: extendSnapshot(source.step, revision, source.attemptId, stamped) }, 'idem-z10-b'),
+    ])
+    await waitAttemptState(targets[0].attemptId, ['ready'], 'the first extension landing from the staged bytes', 20_000)
+    await waitAttemptState(targets[1].attemptId, ['ready'], 'the second extension landing from the SAME staged bytes', 20_000)
+    const uploadsAfter = (await engineFetch('/__control').then((r) => r.json())).outputUploads
+    assert.equal(uploadsAfter - uploadsBefore, 1, 'exactly one carry upload served both dispatches — the shared stage-back closed the engine\'s non-atomic write window')
+    assert.equal(digestOf(fs.readFileSync(engineCarryFile(source.attemptId))), anim.getAttempt(source.attemptId).continuation.artifact.digest, 'the engine copy sits at the registered digest after the single stage')
+  } finally {
+    await engineControl({ carryViewDelayMs: 0 })
+  }
+})
+
+test('(z11) the torn stage-back write — the engine\'s upload truncates the file; the dispatch refuses NAMED before any graph consumes it (audit I-3, the read-back leg)', async () => {
+  const source = await landCarrySource('Zulu-eleven', 'idem-z11-source')
+  const stamped = anim.getAttempt(source.attemptId).snapshot.modelIdentities
+  fs.rmSync(engineCarryFile(source.attemptId))
+
+  // The torn write: the mirror's upload handler writes only the first 64
+  // bytes of the staged carry — the deterministic shape of server.py:441's
+  // truncate-then-write leaving the destination short while the upload still
+  // answers 200.
+  await engineControl({ carryUploadTruncateBytes: 64 })
+  try {
+    const before = await engineRecordCount()
+    const target = await service.submit(
+      { documentId: source.doc.id, tool: 'tween', targetId: source.step, snapshot: extendSnapshot(source.step, anim.getDocument(source.doc.id).revision, source.attemptId, stamped) },
+      'idem-z11-target',
+    )
+    const failed = await waitAttemptState(target.attemptId, ['failed'], 'the torn-write refusal failing the dispatch')
+    assert.match(failed.execution.failureReason, /did not read back at its registered digest/, 'the refusal names the read-back condition')
+    assert.match(failed.execution.failureReason, /nothing was submitted/, 'the refusal states the nothing-submitted fact')
+    assert.ok(
+      events.some((event) => event.type === 'animation.attempt.failed' && event.payload.attemptId === target.attemptId && event.payload.reason === 'continuation-stage-back'),
+      'the named failure event fired with the stage-back reason',
+    )
+    assert.equal(await engineRecordCount(), before, 'nothing was submitted — the unverified bytes were never pointed at a graph')
+    const sourceRow = anim.getAttempt(source.attemptId)
+    assert.equal(sourceRow.execution.state, 'ready', 'the source stays playable throughout')
+    assert.equal(sourceRow.continuation.state, 'ready', 'the registered artifact stays the truth — a torn engine write never flips it')
+  } finally {
+    await engineControl({ carryUploadTruncateBytes: 0 })
+  }
 })
 
 // ---------------------------------------------------------------------------
