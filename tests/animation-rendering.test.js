@@ -1972,6 +1972,7 @@ function gatedEnginePort(gateDep) {
     queuedJobIds: () => engineClient.queuedJobIds(),
     uploadReference: (assetId, bytes) => engineClient.uploadReference(assetId, bytes),
     fetchCarryArtifact: (attemptId) => engineClient.fetchCarryArtifact(attemptId),
+    stageCarryArtifact: (attemptId, bytes) => engineClient.stageCarryArtifact(attemptId, bytes),
     modelEnumerations: (options) => engineClient.modelEnumerations(options),
   }
   gateDep(port)
