@@ -54,3 +54,21 @@ system (the toolchain's standing "our own version" interest), and the
 first-party VDN integration (`vdn.apply`). Design work proceeds per the
 architectural path — context research first, then the dialogue, then the
 spec for the maintainer's review.
+
+## THE MEASUREMENT CORRECTION (the maintainer, 2026-10-09, hands-on)
+
+"a refmod really is just a collection of latents that are encoded with the H3
+VAE — in my testing a 30 image Refmod took less than a minute or two to compile."
+
+This dissolves the design map's first open question: "trained on demand" in
+the maintainer's framing = the COMPILE (VAE-encode) pass, not LoRA training.
+The fast surface is measured: ~1-2 minutes for 30 images, GPU-light (a VAE
+encode, not diffusion), schedulable. The hours-class trainer envelope answers
+a question nobody asked — the LoRA thread stays deferred where it was. VDN
+stays what it is (deployment acceleration, unrelated to the pack pipeline).
+
+**The slim design shape this settles:** pack = the encoded latent collection +
+subject descriptions + retention metadata; compile on demand (the encode
+pass, minutes-class); activate on demand (per-generation selection feeding
+the existing reference seams); persistence = the artifact store's standing
+carry pattern (multi-blob composition + lineage are the only gaps).
