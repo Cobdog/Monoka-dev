@@ -53,6 +53,18 @@ Modes and variants Monoka runs:
   then audios); the prompt must cite them in that same order — ordering
   mismatch is the #1 multi-character trap [DOC — docs.comfy.org native;
   COMM — r/comfyui multi-character thread].
+  - **Addendum (2026-10-10, CHAR eval): declare each reserved label ONCE.**
+    A bind line names every position (`<Picture 1> <Picture 2> <Picture 3>
+    show X, the same character in every image.`); later refer-backs go in
+    prose WITHOUT brackets ("Pictures 1 and 2 show X's face") — a repeated
+    bracketed `<Picture N>` REPLAYS the reference on H3. Measured into the
+    omnichar-sdk's pinned prompt goldens [DOC — third-party golden,
+    packages/omnichar-sdk `prompt.py`]; our round-trip eval pins it
+    ([omnichar-char-eval-results.md](../omnichar-char-eval-results.md)
+    G-PROMPT). Same source, voice lane: the `<Audio N>` bind reads "`<Audio
+    1>` is X's voice. X speaks in this voice, lips moving in sync with every
+    word." and a stored voice is sent only when the prompt has dialogue
+    (quoted line or speech verb) — noted for the future voice lane.
 - **Reference images are seen by the TE at 2 fps + full-res latent rows**;
   every reference is scaled to a 2048 px short edge budget (`ref_image_size`
   `match` = downscale to canvas for speed, `max` = keep up to 2048 short edge
