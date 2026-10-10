@@ -1,6 +1,6 @@
 /**
  * extensionGateLib — the extension gate driver's PURE core (Codex batch C,
- * the pre-gates audit 2026-10-09's I-4): the pieces of
+ * the pre-gates audit 2026-10-09's I-4/I-5): the pieces of
  * test-results/experiments/extension-gate/gate.mjs that must be pinnable in
  * the unit family (tests/extension-gate.test.js) — the graph transform that
  * builds the IN-GRAPH carry arm, the delivered-frame comparison that makes
@@ -345,4 +345,20 @@ export function parityVerdict(comparison, tolerance = PARITY_TOLERANCE) {
     return { pass: true, outcome: 'within-tolerance', detail }
   }
   return { pass: false, outcome: 'diverged', detail }
+}
+
+// ---- the I-5 ordering predicate ---------------------------------------------
+
+/** True when an attempt view satisfies a wait's want — the execution state
+ *  AND (when named) the continuation state. This is the predicate that
+ *  makes G5's second submission wait for the FIRST extension's
+ *  continuation-ready (registration is async after playable; a driver that
+ *  submits the second extension on execution-ready alone flakes on a
+ *  healthy implementation). Pure so the unit family can pin the ordering. */
+export function attemptSatisfies(attempt, want) {
+  if (!isRecord(attempt)) return false
+  const executionOk = attempt.execution === want.execution
+  const continuationOk = want.continuation === undefined
+    || (isRecord(attempt.continuation) && attempt.continuation.state === want.continuation)
+  return executionOk && continuationOk
 }
