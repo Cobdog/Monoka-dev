@@ -3773,7 +3773,7 @@ test('the §4 Extend interaction — the carry preview\'s two clocks, the verdic
     // §4's overlap math in BOTH clocks (the 22-frame source, the 56 target).
     await expect(panel.locator('[data-anim-extend-generated]')).toHaveText('56')
     await expect(panel.locator('[data-anim-extend-delivered]')).toHaveText('34')
-    await expect(panel.locator('[data-anim-extend-pinned-tail]')).toContainText('frames 0–22')
+    await expect(panel.locator('[data-anim-extend-pinned-tail]')).toContainText('frames 0 up to 22')
     // The prompt-time shift disclosure (§4/§9 — the caption's TIME section).
     await expect(panel.locator('[data-anim-extend-time-shift]')).toContainText('delivery starts at sampled frame 22')
     // The preflight verdicts inline: every one a NAMED pass.
@@ -4019,6 +4019,182 @@ test('the assembled preview honors ONE selected path — the chain follows the w
     await windowReview.locator('[data-anim-window-select]').click()
     await expect(windowReview.locator(`[data-anim-review-take="${short.attemptId}"]`)).toHaveAttribute('data-anim-take-selected', 'true')
     await expect(page.locator('[data-anim-chain-assembled]').first()).toHaveAttribute('data-anim-chain-assembled', '39', { timeout: 15_000 })
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalEvidence } }).catch(() => undefined)
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('the carry toggle authors a carrying source through the UI — author carry, land, Extend from the review surface (extension, T6 I-2)', async ({ page, request }) => {
+  test.setTimeout(180_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  const originalEvidence = await stageExtensionEvidence(request)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-carry-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'The carry toggle slice')
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    await timeline.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    const inspector = page.locator('[data-anim-inspector]')
+    await expect(inspector).toBeVisible({ timeout: 15_000 })
+
+    // THE TOGGLE (Task 6 review I-2): the inspector's carry switch — off by
+    // default, honestly labeled, kit-built. Turning it on is the authoring
+    // act that makes this render's take extendable.
+    const carryChip = inspector.locator('[data-anim-inspector-carry]')
+    await expect(carryChip).toHaveText(/plain render/)
+    await carryChip.click()
+    await expect(carryChip).toHaveText(/carries its tail/)
+
+    // Submit through the UI: the flag rides the draft, the route's freeze()
+    // merge is the one door it enters through.
+    await inspector.locator('[data-anim-inspector-submit]').click()
+    const review = page.locator('[data-anim-review]')
+    await expect(review).toBeVisible({ timeout: 15_000 })
+    const uiAttemptId = (await readAnimationDocument(request, seeded.documentId)).document.attempts.find((entry) => entry.tool === 'tween' && entry.targetId === seeded.stepSlotId)!.attemptId
+    await expect(review).toHaveAttribute('data-anim-review-attempt', uiAttemptId, { timeout: 15_000 })
+    // The two-readiness pair lands through the live envelopes — the Extend
+    // action stands ENABLED beside the others (never reachable through the
+    // API alone).
+    const extendButton = review.locator('[data-anim-review-extend]')
+    await expect(extendButton).toBeEnabled({ timeout: 45_000 })
+
+    // THE FULL UI PATH: Extend from the review surface.
+    await extendButton.click()
+    const panel = page.locator('[data-anim-extend]')
+    await expect(panel).toBeVisible()
+    await expect(panel.locator('[data-anim-extend-generated]')).toHaveText('56')
+    await panel.locator('[data-anim-extend-movement]').fill('the stride carries through the junction')
+    await panel.locator('[data-anim-extend-preservation]').fill('the coat hem holds')
+    await panel.locator('[data-anim-extend-submit]').click()
+    const windowReview = page.locator('[data-anim-window-review]')
+    await expect(windowReview).toBeVisible({ timeout: 15_000 })
+    // The frozen geometry line reads the binding's FROZEN head trim — present
+    // MID-FLIGHT too (Task 6 review M-3: never a fabricated mapping off the
+    // landed count), with the delivered count honestly unset until landing.
+    await expect(windowReview.locator('[data-anim-window-geometry]')).toContainText('56 generated')
+    await expect(windowReview.locator('[data-anim-window-geometry]')).toContainText('pinned head 22 frames')
+    await expect(windowReview).toHaveAttribute('data-anim-review-state', 'ready', { timeout: 45_000 })
+    await expect(windowReview.locator('[data-anim-window-geometry]')).toContainText('34 delivered')
+    await expect(windowReview.locator('[data-anim-window-geometry]')).toContainText('delivered frame 0 is sampled frame 22')
+
+    // M-1's discrimination (Task 6 review, closed Task 7): a SETTLED 400 is
+    // not a lost response — the panel never offers the Retry. The engine goes
+    // unreachable for the fresh-identity preflight: the extend POST answers
+    // the NAMED 400, the shell's command-error surface carries it, and the
+    // panel holds no "did not settle" refusal (that shape is reserved for a
+    // POST whose response never arrived — pinned by the re-roll leg).
+    const currentSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: { ...currentSettings, comfyUrl: 'http://127.0.0.1:9' } } })
+    const windowExtend = windowReview.locator('[data-anim-window-extend]')
+    await expect(windowExtend).toBeEnabled({ timeout: 30_000 })
+    await windowExtend.click()
+    const secondPanel = page.locator('[data-anim-extend]')
+    await expect(secondPanel).toBeVisible()
+    await secondPanel.locator('[data-anim-extend-movement]').fill('a second window from the junction take')
+    await secondPanel.locator('[data-anim-extend-preservation]').fill('the coat hem holds')
+    await secondPanel.locator('[data-anim-extend-submit]').click()
+    await expect(page.locator('[data-anim-command-error]')).toContainText('engine', { timeout: 15_000 })
+    await expect(secondPanel).not.toContainText('did not settle')
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalEvidence } }).catch(() => undefined)
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    engineExited = await engine.kill()
+  }
+  expect(engineExited).toBe(true)
+})
+
+test('the settled continuation survives the refresh that raced it — the Extend gate never waits on an already-landed registration (extension, T6 I-1)', async ({ page, request }) => {
+  test.setTimeout(180_000)
+  const problems = await trackErrors(page)
+  const engine = await startFakeEngine()
+  const originalSettings = await pointAtEngine(request, engine.port)
+  const originalEvidence = await stageExtensionEvidence(request)
+  let engineExited = false
+  try {
+    const projectId = `anim-e2e-race-${Date.now()}`
+    const seeded = await seedInspectorDocument(request, projectId, 'The registration race slice')
+    // Deterministic windows (the /__control knobs): a slowed render so the
+    // page's first read of the new row completes well inside the render, and
+    // a delayed carry /view so the registration settles PROVABLY after the
+    // attempt-ready refresh's server read.
+    await engine.control({ stepDelayMs: 150, carryViewDelayMs: 400 })
+    await page.goto(`/?images=1&view=animation&project=${projectId}&document=${seeded.documentId}`)
+    const timeline = page.locator('[data-anim-timeline]')
+    await expect(timeline).toBeVisible({ timeout: 15_000 })
+    await timeline.locator(`[data-anim-span="${seeded.spanId}"]`).click()
+    const review = page.locator('[data-anim-review]')
+
+    // The held-read instrument: while `hold` is on, every document GET is
+    // fetched IMMEDIATELY (its server read predates the registration write —
+    // the delayed /view guarantees it) and its response HELD until release.
+    let hold = false
+    const heldBodies: string[] = []
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    await page.route(`**/api/lan/animation/document?id=${seeded.documentId}*`, async (route) => {
+      const response = await route.fetch()
+      if (!hold) return route.fulfill({ response })
+      heldBodies.push(await response.text())
+      await gate
+      return route.fulfill({ response })
+    })
+
+    // Submit the carrying source over the API with the page LIVE: the row
+    // reaches the view through the first read (unenforced passthrough), so
+    // the continuation envelope later patches a KNOWN row.
+    const firstRead = page.waitForResponse((response) => response.request().method() === 'GET' && response.url().includes(`/api/lan/animation/document?id=${seeded.documentId}`))
+    const idem = `e2e-race-src-${Date.now()}-${uuid().slice(0, 8)}`
+    const submitted = await request.post('/api/lan/animation/attempts', {
+      data: {
+        documentId: seeded.documentId, tool: 'tween', targetId: seeded.stepSlotId, idempotencyKey: idem,
+        draft: { tool: 'tween', targetStepSlotId: seeded.stepSlotId, movementStep: 'she breaks into a run, coat flaring behind her', overrides: { medium: 'clean line on white' }, carry: true },
+      },
+    })
+    expect(submitted.ok(), `the carrying source submits (${await submitted.text()})`).toBe(true)
+    const sourceAttemptId = ((await submitted.json()) as { attemptId: string }).attemptId
+    await firstRead
+    // The read landed the row in the view; settle the store's set, then arm
+    // the hold — every later read (the attempt-ready refresh among them) is
+    // fetched now and answered later.
+    await page.waitForTimeout(150)
+    hold = true
+
+    // The landing: media ready fires the refresh (its server read sits
+    // BEFORE the registration write), the delayed registration then settles
+    // and its envelope patches the known row — the Extend action OPENS.
+    const extendButton = review.locator('[data-anim-review-extend]')
+    await expect(review).toBeVisible({ timeout: 15_000 })
+    await expect(extendButton).toBeEnabled({ timeout: 45_000 })
+
+    // THE PREMISE (non-vacuous proof): the held read's body really predates
+    // the registration — the row it carries is not ready.
+    expect(heldBodies.length, 'the racer read was held').toBeGreaterThan(0)
+    const heldRow = heldBodies.flatMap((body) => {
+      const parsed = JSON.parse(body) as { document: { attempts: Array<{ attemptId: string; continuation: { state: string } }> } }
+      return parsed.document.attempts.filter((entry) => entry.attemptId === sourceAttemptId)
+    })
+    expect(heldRow.length, 'the held reads carry the source row').toBeGreaterThan(0)
+    for (const row of heldRow) expect(row.continuation.state === 'ready', `the held read predates the registration (state ${row.continuation.state})`).toBe(false)
+
+    // THE RACE, driven: the stale response lands NOW — after the patch. The
+    // ledger reconcile re-applies the settled registration over the stale
+    // row; without it the gate would revert to "still registering" (one-shot
+    // settlement: nothing would re-emit it).
+    release()
+    // Negative observation window: the clobber, if any, is a store set in
+    // the response's microtasks — the window proves it never lands.
+    await page.waitForTimeout(400)
+    await expect(extendButton).toBeEnabled()
+    await expect(review).toHaveAttribute('data-anim-review-attempt', sourceAttemptId)
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
     await request.post('/api/lan/settings', { data: { settings: originalEvidence } }).catch(() => undefined)

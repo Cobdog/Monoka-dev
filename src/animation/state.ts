@@ -117,7 +117,7 @@ import { create } from 'zustand'
 import { animationApi, animationHref, AnimationConflict, AnimationHttpError, type AnimationDocumentView, type AnimationExportStalePrompt } from './client'
 import { subscribeAnimationEvents } from './fabric'
 import { documentsApi } from '../canvas/api'
-import { ANIMATION_MEDIA, type AssetReference, type AttemptExecutionState, type BindingInput, type FacingTerm, type KeyCandidate, type MediumString, type Span } from '../../shared/animation/types'
+import { ANIMATION_MEDIA, type AssetReference, type AttemptContinuationView, type AttemptExecutionState, type BindingInput, type FacingTerm, type KeyCandidate, type MediumString, type Span } from '../../shared/animation/types'
 import type { PoseRef, SessionOverrideInput } from '../../shared/animation/compiler'
 
 /** The states whose engine-side truth is not settled — the seeded attribute
@@ -132,6 +132,44 @@ function seedAttemptState(attempts: AnimationDocumentView['attempts']): AttemptE
     if (IN_FLIGHT.has(attempts[index].execution)) return attempts[index].execution
   }
   return attempts.length > 0 ? attempts[attempts.length - 1].execution : null
+}
+
+/** The continuation ledger (Task 6 review I-1, closed by the lane's Task 7):
+ *  the NEWEST continuation envelope per attempt. Registration settlement is
+ *  ONE-SHOT — the envelope is the only thing that ever emits it — so a
+ *  document read whose server side predates the registration write (the
+ *  attempt-ready refresh racing the settlement; its response landing after
+ *  the patch) must never be allowed to revert a row the client already saw:
+ *  the gate would wait on an already-landed registration until some
+ *  unrelated refresh healed it. Every document set reconciles against this
+ *  ledger (the store subscription below is the one interception point —
+ *  every landing site routes through it). */
+const continuationLedger = new Map<string, AttemptContinuationView>()
+
+const sameContinuation = (a: AttemptContinuationView, b: AttemptContinuationView): boolean =>
+  a.state === b.state
+  && a.error === b.error
+  && a.artifact?.digest === b.artifact?.digest
+
+/** Re-applies the ledger over a freshly landed document view. Two safety
+ *  properties make the re-apply honest, not just optimistic:
+ *  - a landed row already at `unavailable` is NEVER overwritten — that state
+ *    is derived server-side at checks and emits no envelope, so a ledger
+ *    entry can never legitimately move it backward;
+ *  - any brief revert of a NEWER landed truth is self-healing by
+ *    construction: the envelope carrying that truth either already updated
+ *    the ledger (no revert happens) or is still in flight and patches the
+ *    row the moment it arrives. Returns the SAME object when nothing
+ *    applies (no re-render, no loop). */
+function reconcileContinuations(document: AnimationDocumentView): AnimationDocumentView {
+  let changed = false
+  const attempts = document.attempts.map((entry) => {
+    const seen = continuationLedger.get(entry.attemptId)
+    if (seen === undefined || entry.continuation.state === 'unavailable' || sameContinuation(seen, entry.continuation)) return entry
+    changed = true
+    return { ...entry, continuation: seen }
+  })
+  return changed ? { ...document, attempts } : document
 }
 
 /** One prepared character from the global asset store (§4.1's "existing
@@ -223,7 +261,7 @@ type AnimationSessionState = {
    *  (a fresh idempotency key per deliberate click). Null = the failure
    *  surface already names it (or the session moved on — the open-race
    *  ticket guard). */
-  submitTweenStep(spanId: string, draft: { movement: string; preservation: string; overrides: SessionOverrideInput }, targetStepSlotId?: string): Promise<{ attemptId: string } | null>
+  submitTweenStep(spanId: string, draft: { movement: string; preservation: string; overrides: SessionOverrideInput; carry?: boolean }, targetStepSlotId?: string): Promise<{ attemptId: string } | null>
   /** Task 10 — the review panel's commands. */
   /** The EXPLICIT reference-frame selection (§7.2.1 command 2). A frame
    *  other than the prepared proposal rides §7.2.2's on-demand extraction
@@ -607,11 +645,15 @@ export type ExtensionSubmission = {
   idempotencyKey: string
 }
 
-/** The Extend command's answer: either the submitted take, or the retryable
- *  failure — the window RESOLVED and the POST fired but never settled (the
- *  submission record rides out so the panel's Retry re-POSTs the same key
- *  against the same window), or null when nothing fired (the named refusal
- *  already landed on the command-error surface; a retry would repeat it). */
+/** The Extend command's answer: either the submitted take, or the failure —
+ *  `submission` NON-null only for the UNSETTLED POST (the window resolved,
+ *  the request fired, the response never arrived — the submission record
+ *  rides out so the panel's Retry re-POSTs the same key against the same
+ *  window, §7.2.2's lost response), or null when the POST never fired or the
+ *  server ANSWERED it (a named 400 refusal or a 409 already on the
+ *  command-error/conflict surfaces; a retry would repeat it — Task 6 review
+ *  M-1: the settled/unsettled distinction the store's doc comment always
+ *  claimed, now implemented). */
 export type ExtensionOutcome =
   | { ok: true; attemptId: string; windowSlotId: string }
   | { ok: false; submission: ExtensionSubmission | null }
@@ -1002,12 +1044,17 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
     set({ busy: true, commandError: null })
     try {
       // A fresh idempotency key per deliberate click — §7.2.2's retry key
-      // belongs to a LOST RESPONSE, never to a user's explicit re-roll.
+      // belongs to a LOST RESPONSE, never to a user's explicit re-roll. The
+      // CARRY flag rides the draft (Task 6 review I-2, closed Task 7: the
+      // inspector's toggle is the authoring surface; the route's freeze()
+      // settings merge is the one door it enters through). Review-surface
+      // re-rolls submit plain — the toggle is a per-submission authoring act,
+      // and the Extend gate names the plain-render condition honestly.
       const submitted = await animationApi.submit({
         documentId: fresh.id,
         tool: 'tween',
         targetId: preview.targetStepSlotId,
-        draft: { tool: 'tween', targetStepSlotId: preview.targetStepSlotId, movementStep: draft.movement, overrides: draft.overrides },
+        draft: { tool: 'tween', targetStepSlotId: preview.targetStepSlotId, movementStep: draft.movement, overrides: draft.overrides, carry: draft.carry === true },
       }, `anim-tween-${spanId.slice(0, 8)}-${crypto.randomUUID()}`)
       if (ticket !== openTicket) return null
       // The attempt's state arrives through the fabric (attempt-state
@@ -1660,10 +1707,16 @@ export const useAnimationSessionStore = create<AnimationSessionState>()((set, ge
       return { ok: true, attemptId: submitted.attemptId, windowSlotId }
     } catch (error) {
       await failCommand(error, ticket)
-      // The window resolved and the POST FIRED but never settled — the
-      // retryable shape: the record rides out so the panel's Retry re-POSTs
-      // the SAME key against the SAME window (§7.2.2, never a new take).
-      return { ok: false, submission }
+      // Only the UNSETTLED POST holds a Retry (Task 6 review M-1, closed
+      // Task 7): a failure carrying an HTTP status SETTLED — the server
+      // answered (a named 400 refusal, a 409 on the conflict surface), and
+      // re-POSTing the same key would repeat exactly that answer. The
+      // retryable shape is the network failure after the window resolved —
+      // the response never arrived (§7.2.2's lost response), so the record
+      // rides out and the panel's Retry re-POSTs the SAME key against the
+      // SAME window.
+      const unsettled = !(error instanceof AnimationHttpError)
+      return { ok: false, submission: unsettled ? submission : null }
     }
   },
 
@@ -1839,6 +1892,21 @@ function whenIdle(): Promise<void> {
   })
 }
 
+/** THE CONTINUATION RECONCILE SUBSCRIPTION (Task 6 review I-1): every
+ *  document set — open, refresh, every command's landed view — passes
+ *  through here, and any attempt row whose ledger entry (a registration
+ *  envelope this client already handled) disagrees with the fetched truth is
+ *  re-patched in place. This is the narrow one-shot-settlement race's fix:
+ *  the attempt-ready refresh that raced the registration write can no longer
+ *  revert a `ready` row to `registering` for want of anything that would
+ *  re-emit it. Idempotent by construction (the reconciled document satisfies
+ *  the ledger, so the re-fired subscription is a no-op). */
+useAnimationSessionStore.subscribe((state, previous) => {
+  if (state.document === previous.document || state.document === null) return
+  const reconciled = reconcileContinuations(state.document)
+  if (reconciled !== state.document) useAnimationSessionStore.setState({ document: reconciled })
+})
+
 /** The shell's store connection (P07): opens the named document, owns the
  *  fabric subscription for as long as the caller is mounted, and hands back
  *  the document state + the command bag. A view/document switch is a full
@@ -1879,6 +1947,11 @@ export function useAnimationDocument(documentId: string, projectId = '') {
         return
       }
       if (event.type === 'continuation-state') {
+        // The ledger FIRST (Task 6 review I-1): whatever this handler does
+        // below, the document-set reconcile must know the newest envelope
+        // truth — a racing refresh response (read before the registration
+        // write) landing after this patch would otherwise revert the row.
+        continuationLedger.set(event.attemptId, event.continuation)
         if (store.document?.id === event.documentId) {
           // The registration envelope patches the row's continuation IN PLACE
           // (the attempt-state patch's own idiom — registration completes

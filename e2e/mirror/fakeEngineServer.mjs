@@ -249,6 +249,13 @@ const state = {
   // succeeded, the exact world the studio's named "continuation not-produced"
   // condition settles from (the deterministic receipt path holds no file).
   omitCarrySave: false,
+  // While >0, every /view read of the DISK-BACKED output tree (the carry
+  // receipt fetch — the registration's own read) is delayed this many ms: a
+  // deterministic registration-settlement window for the race legs (the
+  // attempt-ready refresh's server read then provably predates the
+  // registration write). A real engine's /view is not delayed; the knob only
+  // widens a window that exists in production.
+  carryViewDelayMs: 0,
 }
 const control = (req, res, url) => {
   if (url.pathname === '/__control' && req.method === 'GET') {
@@ -723,9 +730,13 @@ async function handle(req, res) {
         // checked: a request may never walk out of the output tree.
         const resolved = path.resolve(outputDir, subfolder, filename)
         if (resolved.startsWith(outputDir + path.sep) && fs.existsSync(resolved)) {
-          const bytes = fs.readFileSync(resolved)
-          res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(bytes.length) })
-          res.end(req.method === 'HEAD' ? undefined : bytes)
+          const serve = () => {
+            const bytes = fs.readFileSync(resolved)
+            res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(bytes.length) })
+            res.end(req.method === 'HEAD' ? undefined : bytes)
+          }
+          if (state.carryViewDelayMs > 0) setTimeout(serve, state.carryViewDelayMs)
+          else serve()
           return
         }
       }
@@ -736,13 +747,25 @@ async function handle(req, res) {
     }
 
     if (url.pathname === '/upload/image' && req.method === 'POST') {
+      // The REAL contract (server.py:400-447): the multipart `type` FIELD
+      // routes the write — get_dir_by_type maps input/temp/output onto the
+      // engine's own folders (an unknown value crashes the real handler with
+      // an unbound local → 500, modeled honestly here). `output` writes into
+      // the DISK-BACKED output tree under (subfolder, filename),
+      // containment-checked exactly like the real commonpath guard, with the
+      // real collision semantics: overwrite=true writes the exact name;
+      // otherwise a byte-identical duplicate is a no-op and a DIFFERENT file
+      // forks to "name (1).ext" — the fork the studio's stage-back must never
+      // rely on happening (it sends overwrite=true). `input` keeps the
+      // mirror's in-memory viewFiles behavior (the reference-upload path).
       const body = await readBody(req)
       const contentType = req.headers['content-type'] ?? ''
       const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType)
       if (!boundaryMatch) { res.writeHead(400); res.end(); return }
       const boundary = Buffer.from(`--${boundaryMatch[1] ?? boundaryMatch[2]}`)
       let start = body.indexOf(boundary)
-      const saved = []
+      const fields = new Map()
+      const files = []
       while (start >= 0) {
         const next = body.indexOf(boundary, start + boundary.length)
         if (next < 0) break
@@ -750,17 +773,47 @@ async function handle(req, res) {
         const headerEnd = part.indexOf('\r\n\r\n')
         if (headerEnd >= 0) {
           const header = part.subarray(0, headerEnd).toString('utf8')
-          const nameMatch = /filename="([^"]*)"/.exec(header)
-          if (nameMatch && nameMatch[1]) {
-            const filename = nameMatch[1]
-            const bytes = part.subarray(headerEnd + 4)
-            viewFiles.set(filename, { bytes, mime: filename.endsWith('.png') ? 'image/png' : filename.match(/\.mp4$|\.webm$/) ? 'video/mp4' : 'application/octet-stream' })
-            saved.push(filename)
+          const nameMatch = /name="([^"]*)"/.exec(header)
+          if (nameMatch) {
+            const fieldName = nameMatch[1]
+            const fileMatch = /filename="([^"]*)"/.exec(header)
+            if (fileMatch && fileMatch[1]) files.push({ fieldName, filename: fileMatch[1], bytes: part.subarray(headerEnd + 4) })
+            else fields.set(fieldName, part.subarray(headerEnd + 4).toString('utf8'))
           }
         }
         start = next
       }
-      return json(res, 200, saved.length ? { name: saved[0], subfolder: '', type: 'input' } : { name: 'upload.png', subfolder: '', type: 'input' })
+      const uploadType = fields.has('type') ? fields.get('type') : 'input'
+      if (uploadType !== 'input' && uploadType !== 'temp' && uploadType !== 'output') {
+        res.writeHead(500)
+        res.end()
+        return
+      }
+      const file = files.find((entry) => entry.fieldName === 'image') ?? files[0]
+      if (!file) { res.writeHead(400); res.end(); return }
+      if (uploadType === 'output') {
+        const subfolder = fields.get('subfolder') ?? ''
+        const overwrite = fields.get('overwrite') === 'true' || fields.get('overwrite') === '1'
+        const fullOutputFolder = path.resolve(outputDir, path.normalize(subfolder))
+        let filepath = path.resolve(fullOutputFolder, file.filename)
+        if (!(filepath === outputDir || filepath.startsWith(outputDir + path.sep))) { res.writeHead(400); res.end(); return }
+        if (!fs.existsSync(fullOutputFolder)) fs.mkdirSync(fullOutputFolder, { recursive: true })
+        let name = file.filename
+        if (!overwrite) {
+          let index = 1
+          while (fs.existsSync(filepath)) {
+            if (fs.existsSync(filepath) && fs.statSync(filepath).size === file.bytes.length && file.bytes.equals(fs.readFileSync(filepath))) break // the real duplicate-hash no-op
+            const split = path.extname(file.filename)
+            name = `${file.filename.slice(0, file.filename.length - split.length)} (${index})${split}`
+            filepath = path.join(fullOutputFolder, name)
+            index += 1
+          }
+        }
+        fs.writeFileSync(filepath, file.bytes)
+        return json(res, 200, { name, subfolder, type: uploadType })
+      }
+      viewFiles.set(file.filename, { bytes: file.bytes, mime: file.filename.endsWith('.png') ? 'image/png' : file.filename.match(/\.mp4$|\.webm$/) ? 'video/mp4' : 'application/octet-stream' })
+      return json(res, 200, { name: file.filename, subfolder: '', type: 'input' })
     }
 
     if (url.pathname === '/interrupt' && req.method === 'POST') {

@@ -87,6 +87,10 @@ export type AttemptStateView = {
     preservation: string
     overrides: { medium: MediumString; scene?: string; camera?: { description: string; reason: string } }
     anchors: Array<{ reference: 'rolling-near' | 'fixed-far'; frame: number }>
+    /** The binding's frozen head trim (Task 6 review M-3, closed Task 7) —
+     *  the pinned head's frame count, so the surfaces display frozen geometry
+     *  instead of re-deriving it beside the truth. */
+    headTrim?: number
   }
   /** The frozen references' asset ids in role order (the discontinuity
    *  advisory's frozen half — compared against the chain's root span's
@@ -136,7 +140,7 @@ export type AnimationBootstrap = {
  *  lands into — hero generates the NEXT key, never a re-roll of the source. */
 export type DraftInput =
   | { tool: 'hero'; sourceKeyId: string; movementArc: string; overrides: SessionOverrideInput }
-  | { tool: 'tween'; targetStepSlotId: string; movementStep: string; overrides: SessionOverrideInput }
+  | { tool: 'tween'; targetStepSlotId: string; movementStep: string; overrides: SessionOverrideInput; carry?: boolean }
   | { tool: 'sequence'; windowStartKeyId: string; windowEndKeyId: string; orderedActions: string[]; preservation: string; overrides: SessionOverrideInput }
 
 /** Animation-route failure carrying its HTTP status (the DocumentsHttpError

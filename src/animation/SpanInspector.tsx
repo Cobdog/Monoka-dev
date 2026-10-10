@@ -91,7 +91,7 @@ function facingFromChipId(chipId: string, group: string): FacingTerm | null {
   return null
 }
 
-export type SpanInspectorSubmitDraft = { movement: string; preservation: string; overrides: SessionOverrideInput }
+export type SpanInspectorSubmitDraft = { movement: string; preservation: string; overrides: SessionOverrideInput; carry: boolean }
 
 export type SpanInspectorProps = {
   span: Span
@@ -190,6 +190,12 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
   const [scene, setScene] = useState(span.overrides.scene ?? '')
   const [cameraDescription, setCameraDescription] = useState(span.overrides.camera?.description ?? '')
   const [cameraReason, setCameraReason] = useState(span.overrides.camera?.reason ?? '')
+  // The continuation-carry authoring toggle (Task 6 review I-2, closed Task
+  // 7): OFF by default — a plain render carries nothing; ON asks this render
+  // to persist its tail as a continuation artifact so the take can seed an
+  // Extend window later. A per-submission act (the mount's local state, the
+  // movement draft's own doctrine), not a span setting: each render chooses.
+  const [carry, setCarry] = useState(false)
 
   const editDraft = (next: { movement: string; preservation: string }) => {
     setUserTyped(true)
@@ -338,7 +344,7 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
     // movement/preservation flush rides the submit adapter itself — it
     // persists the intent before the attempt POST.)
     setCommitted({ movement: draft.movement, preservation: draft.preservation })
-    await onSubmit(span.id, { movement: draft.movement, preservation: draft.preservation, overrides })
+    await onSubmit(span.id, { movement: draft.movement, preservation: draft.preservation, overrides, carry })
   }
 
   const near = preview.rollingReference
@@ -579,6 +585,19 @@ export function SpanInspector({ span, fromKey, toKey, preview, binding, onIntent
         <Button variant="primary" className="anim-btn" busy={busy} disabled={!canSubmit} onClick={() => void submit()} data-anim-inspector-submit>
           Submit step {preview.stepCount}
         </Button>
+        <Chip
+          variant="toggle"
+          className="anim-chip"
+          selected={carry}
+          disabled={busy}
+          data-anim-inspector-carry
+          title={carry
+            ? 'This render persists its carried tail as a continuation artifact — the take can seed an Extend window later.'
+            : 'A plain render carries nothing — turn this on to save the continuation carry (it adds a small artifact per render), so the take can later seed an Extend window.'}
+          onClick={() => setCarry((wanted) => !wanted)}
+        >
+          {carry ? 'carries its tail' : 'plain render'}
+        </Chip>
         <span className="anim-note">One step per render — review it, then continue.</span>
       </div>
     </section>

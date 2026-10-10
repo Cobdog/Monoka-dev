@@ -174,7 +174,15 @@
 //       name with no readable file; an unconfigured models root — never a
 //       name-only pass), and the eviction leg proves Task 2's availability
 //       seam is wired at the DISPATCH site itself (the load-bearing
-//       directive from Task 2's review — no second resolver exists)
+//       directive from Task 2's review — no second resolver exists).
+//       Task 7 adds the STAGE-BACK legs (Task 5 review I-1, §7's letter at
+//       the one place it is consumed): the engine's copy of the carry is
+//       fetched through the receipt contract at dispatch and re-staged from
+//       the digest-verified registered blob when ABSENT (a cleaned output
+//       folder — the render then succeeds from the staged bytes) or
+//       DIVERGENT (a re-drive rewrote the file — the consumed bytes return
+//       to the frozen digest); a matching copy stages nothing (the
+//       read-through optimization, pinned by the upload-absence)
 //
 // Run after `pnpm build:server` (the service modules load from dist-server;
 // the shared graph builders + the engine-contract validator + the compiler
@@ -3111,4 +3119,87 @@ test('(z5) the binding\'s shape gate at submit — malformed identities never pe
   } finally {
     evidenceRoot.dir = originalDir
   }
+})
+
+// ---------------------------------------------------------------------------
+// (z6)/(z7) the STAGE-BACK (Task 5 review I-1, landed Task 7 — §7's "the
+// engine cache may serve as a read-through optimization, never as the source
+// of truth" made true at the consumer): the extension graph's Load node
+// reads the engine's output-folder copy, so DISPATCH verifies that copy
+// against the registered digest and stages the verified blob back in when
+// the folder lost it or a re-drive rewrote it. The fake engine's output
+// directory is derived from (profile, port) — the deterministic receipt's
+// disk home — so the legs reach in and corrupt it directly.
+// ---------------------------------------------------------------------------
+
+/** The fake engine's disk-backed output directory for this suite's port (the
+ *  server derives the same path: fake-engine-output-<profile.id>-<port>). */
+const engineOutputDir = () => path.join(os.tmpdir(), `fake-engine-output-animation-h3-${enginePort}`)
+const engineCarryFile = (attemptId) => path.join(engineOutputDir(), ...engineOutputCarryPath(attemptId).split('/'))
+
+test('(z6) the evicted engine copy — dispatch stages the digest-verified blob back in and the render succeeds from the staged bytes', async () => {
+  const source = await landCarrySource('Zulu-six', 'idem-z6-source')
+  const stamped = anim.getAttempt(source.attemptId).snapshot.modelIdentities
+  const record = anim.getAttempt(source.attemptId).continuation.artifact
+  const before = await engineRecordCount()
+
+  // THE EVICTION (a cleaned output folder between registration and extend):
+  // the studio blob stays; the engine's copy is gone.
+  fs.rmSync(engineCarryFile(source.attemptId))
+  const miss = await engineFetch(`/view?filename=carry_00001.safetensors&subfolder=animation%2F${source.attemptId}&type=output`)
+  assert.equal(miss.status, 404, 'the engine copy is gone — the receipt path holds no file')
+
+  const target = await service.submit(
+    { documentId: source.doc.id, tool: 'tween', targetId: source.step, snapshot: extendSnapshot(source.step, anim.getDocument(source.doc.id).revision, source.attemptId, stamped) },
+    'idem-z6-target',
+  )
+  const landed = await waitAttemptState(target.attemptId, ['ready'], 'the extension rendering from the STAGED bytes — no eviction-shaped engine failure')
+  assert.ok(landed.result, 'the target rendered and landed a candidate')
+  assert.equal(await engineRecordCount(), before + 1, 'exactly one engine submission — the stage-back is an upload + a view read, never a re-render')
+
+  // The staged bytes ARE the digest-verified registered bytes: the engine's
+  // copy is back at the deterministic path with the record's digest.
+  const staged = fs.readFileSync(engineCarryFile(source.attemptId))
+  assert.equal(digestOf(staged), record.digest, 'the engine copy returned to the registered digest — the registered artifact staged back in')
+  assert.ok(documents.readBlob(anim.getAttempt(source.attemptId).continuation.relPath).equals(staged), 'the staged bytes are byte-identical to the studio blob')
+  const sourceRow = anim.getAttempt(source.attemptId)
+  assert.equal(sourceRow.execution.state, 'ready', 'the source stays playable throughout')
+  assert.equal(sourceRow.continuation.state, 'ready', 'the source stays continuation-ready — staging is transparent to it')
+})
+
+test('(z7) the divergent engine copy — a re-drive rewrote the file; dispatch stages the verified bytes OVER the divergence and never consumes unverified bytes', async () => {
+  const source = await landCarrySource('Zulu-seven', 'idem-z7-source')
+  const stamped = anim.getAttempt(source.attemptId).snapshot.modelIdentities
+  const record = anim.getAttempt(source.attemptId).continuation.artifact
+
+  // THE DIVERGENCE (a never-delivered re-drive of the source re-executed its
+  // Save node and rewrote the deterministic path): the binding's digest now
+  // points past the bytes the engine holds.
+  const divergent = Buffer.concat([fs.readFileSync(engineCarryFile(source.attemptId)), Buffer.from('-a-rewritten-carry-payload')])
+  fs.writeFileSync(engineCarryFile(source.attemptId), divergent)
+  assert.notEqual(digestOf(fs.readFileSync(engineCarryFile(source.attemptId))), record.digest, 'the engine copy diverged from the frozen digest')
+
+  const target = await service.submit(
+    { documentId: source.doc.id, tool: 'tween', targetId: source.step, snapshot: extendSnapshot(source.step, anim.getDocument(source.doc.id).revision, source.attemptId, stamped) },
+    'idem-z7-target',
+  )
+  const landed = await waitAttemptState(target.attemptId, ['ready'], 'the extension rendering — the divergence staged over, never consumed')
+  assert.ok(landed.result, 'the target rendered and landed a candidate')
+  assert.equal(digestOf(fs.readFileSync(engineCarryFile(source.attemptId))), record.digest, 'the consumed bytes are the digest-verified bytes — the divergence is gone, not renamed beside the truth (overwrite=true is the exact-name write)')
+})
+
+test('(z8) a matching engine copy stages NOTHING — the read-through optimization: no upload, one dispatch', async () => {
+  const source = await landCarrySource('Zulu-eight', 'idem-z8-source')
+  const stamped = anim.getAttempt(source.attemptId).snapshot.modelIdentities
+  const before = await engineRecordCount()
+  const file = engineCarryFile(source.attemptId)
+  const mtime = fs.statSync(file).mtimeMs
+
+  const target = await service.submit(
+    { documentId: source.doc.id, tool: 'tween', targetId: source.step, snapshot: extendSnapshot(source.step, anim.getDocument(source.doc.id).revision, source.attemptId, stamped) },
+    'idem-z8-target',
+  )
+  await waitAttemptState(target.attemptId, ['ready'], 'the happy-path extension rendering')
+  assert.equal(fs.statSync(file).mtimeMs, mtime, 'the engine copy was NOT re-written — a digest-matching copy is the read-through cache §7 blesses')
+  assert.equal(await engineRecordCount(), before + 1, 'exactly one engine submission')
 })

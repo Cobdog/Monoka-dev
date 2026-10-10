@@ -499,6 +499,7 @@ test('deriveChainSurface walks windows in order and assembles the ONE selected p
   assert.equal(chain.mismatch, null, 'the selected path is consistent — no mismatch')
   // The assembled preview: root 22 + w1's selected 34 + w2's selected 34.
   assert.deepEqual(chain.assembled, { windows: 2, deliveredFrames: 90 })
+  assert.equal(chain.assembledAbsentReason, null, 'the total holds — no absent reason (Task 6 M-5)')
   // Alternatives ride the window's takes but never the path.
   assert.equal(chain.windows[0].takes.length, 2)
   assert.equal(chain.windows[0].selected.attemptId, w1Take.attemptId)
@@ -521,10 +522,42 @@ test('deriveChainSurface derives the NAMED mismatch when an ancestor selection d
   assert.equal(mismatch.ancestorSlotId, w1.id)
   assert.equal(mismatch.expectedSelection, a1.attemptId, 'the first resolution: reselect the compatible ancestry')
   assert.equal(surface.chains[0].assembled, null, 'never a silent assembly past the mismatch')
+  assert.equal(surface.chains[0].assembledAbsentReason, 'mismatch', 'the absence is the REFUSED assembly — the banner\'s own truth, distinct from a pending one (Task 6 M-5)')
   // Reselecting A1 back clears the derivation (marks are monotonic; the
   // DERIVED state reads consistent on its own).
   const restored = { ...body, chains: [{ ...body.chains[0], windows: [{ ...w1, selectedCandidateId: a1.attemptId }, w2] }] }
   assert.equal(deriveChainSurface(restored, [root, a1, a2, b]).chains[0].mismatch, null)
+})
+
+test('deriveChainSurface distinguishes a PENDING assembly from a refused one — the in-flight selected take and the missing root each name themselves (§4, Task 6 M-5)', () => {
+  const root = extTake(uuid(), { candidate: { frameCount: 22 } })
+  const landing = extTake(uuid(), {
+    extension: { sourceAttemptId: root.attemptId, targetLength: 56, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [], headTrim: 22 },
+    execution: 'rendering',
+    candidate: null,
+  })
+  const w1 = windowSlot(0, { attempts: [landing.attemptId], selectedCandidateId: landing.attemptId, sourceAttemptId: root.attemptId })
+  const body = { ...bodyOf([], []), chains: [chainOf(root.attemptId, [w1])] }
+
+  // A SELECTED take still in flight: the total is PENDING, not blocked —
+  // distinct truth from the mismatch, never the one 'blocked' conflation.
+  const pending = deriveChainSurface(body, [root, landing]).chains[0]
+  assert.equal(pending.mismatch, null)
+  assert.equal(pending.assembled, null)
+  assert.equal(pending.assembledAbsentReason, 'in-flight', 'the selected take has not landed — the assembly computes when it does')
+
+  // It computes exactly then: the landed row flips the reason to the total.
+  const landedRow = { ...landing, execution: 'ready', candidate: { frameCount: 34 } }
+  const landed = deriveChainSurface(body, [root, landedRow]).chains[0]
+  assert.deepEqual(landed.assembled, { windows: 1, deliveredFrames: 56 })
+  assert.equal(landed.assembledAbsentReason, null)
+
+  // A root that never landed is the same pending truth; a root ROW that left
+  // the document names itself the third way (rootProblem's own class).
+  const unlandedRoot = extTake(uuid(), { execution: 'queued', candidate: null })
+  const chainless = { ...body, chains: [chainOf(unlandedRoot.attemptId, [])] }
+  assert.equal(deriveChainSurface(chainless, [unlandedRoot]).chains[0].assembledAbsentReason, 'in-flight', 'the root itself has not landed')
+  assert.equal(deriveChainSurface(chainless, []).chains[0].assembledAbsentReason, 'root-missing', 'the root row left the document')
 })
 
 test('deriveExtendPreview: the first extension from a plain 22-frame take — both clocks, the pinned tail, the verdicts pass (§4/§6)', () => {
@@ -544,11 +577,11 @@ test('deriveExtendPreview: the first extension from a plain 22-frame take — bo
   assert.equal(preview.references.far.assetId, 'far-a')
 })
 
-test('deriveExtendPreview: the SECOND extension maps the pinned tail through the frozen trim — [34,56) generated is [12,34) delivered (§6)', () => {
+test('deriveExtendPreview: the SECOND extension maps the pinned tail through the FROZEN trim — [34,56) generated is [12,34) delivered (§6, Task 6 M-3)', () => {
   const stepId = uuid()
   const root = extTake(uuid(), { targetId: stepId, candidate: { frameCount: 22 }, modelIdentitiesStamped: true })
   const extension = extTake(uuid(), {
-    extension: { sourceAttemptId: root.attemptId, targetLength: 56, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [] },
+    extension: { sourceAttemptId: root.attemptId, targetLength: 56, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [], headTrim: 22 },
     candidate: { frameCount: 34 },
     modelIdentitiesStamped: true,
   })
@@ -557,9 +590,31 @@ test('deriveExtendPreview: the SECOND extension maps the pinned tail through the
   const body = bodyOf([fromKey, toKey], [spanOf(fromKey.id, toKey.id, { stepSlots: [{ ...stepSlot(), id: stepId }] })])
   const preview = deriveExtendPreview(body, [root, extension], extension.attemptId, 56, [])
   assert.equal(preview.sourceLength, 56, 'the extension source\'s GENERATED length — never its delivered 34')
-  assert.deepEqual(preview.pinnedTail, { generated: { start: 34, end: 56 }, delivered: { start: 12, end: 34 } }, 'the raw latent\'s world and the user\'s, through the ONE mapping')
+  assert.deepEqual(preview.pinnedTail, { generated: { start: 34, end: 56 }, delivered: { start: 12, end: 34 } }, 'the raw latent\'s world and the user\'s, through the ONE mapping — the trim is the binding\'s FROZEN headTrim, never a re-derivation off the landed count')
   assert.deepEqual(preview.clocks, { generated: 56, delivered: 34 })
   assert.ok(preview.ready)
+
+  // The same frozen mapping holds MID-FLIGHT (the landed-count re-derivation
+  // fabricated trim 0 there): a selected extension source still rendering
+  // maps its delivered tail through the frozen trim exactly.
+  const inFlight = extTake(uuid(), {
+    extension: { sourceAttemptId: root.attemptId, targetLength: 56, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [], headTrim: 22 },
+    execution: 'rendering',
+    candidate: null,
+    modelIdentitiesStamped: true,
+  })
+  const midFlight = deriveExtendPreview(body, [root, inFlight], inFlight.attemptId, 56, [])
+  assert.deepEqual(midFlight.pinnedTail, { generated: { start: 34, end: 56 }, delivered: { start: 12, end: 34 } }, 'the delivered tail maps identically before the candidate lands — frozen truth, not landing-dependent re-derivation')
+
+  // The delivered-ambiguity shape (56/22 and 39/5 both deliver {0,34}): the
+  // frozen trim disambiguates the geometry the same way the route does.
+  const narrow = extTake(uuid(), {
+    extension: { sourceAttemptId: root.attemptId, targetLength: 39, movement: 'm', preservation: 'p', overrides: { medium: 'clean line on white' }, anchors: [], headTrim: 5 },
+    candidate: { frameCount: 34 },
+    modelIdentitiesStamped: true,
+  })
+  const narrowPreview = deriveExtendPreview(body, [root, narrow], narrow.attemptId, 56, [])
+  assert.deepEqual(narrowPreview.pinnedTail, { generated: { start: 17, end: 39 }, delivered: { start: 12, end: 34 } }, 'a 5-frame frozen trim maps [17,39) generated to [12,34) delivered — the same delivered range as the 22-trim source, different geometry, both from FROZEN truth')
 })
 
 test('deriveExtendPreview names the recipe, collision, identity, and availability refusals — and the discontinuity advisory never refuses (§4/§10, Task 3 + Task 5 ruling b)', () => {
