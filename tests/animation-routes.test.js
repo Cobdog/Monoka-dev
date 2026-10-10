@@ -1996,13 +1996,14 @@ function buildEvidenceFixtureQ() {
 }
 
 /** The raw attempt row from the scratch DB (the view never leaks the blob
- *  path or the frozen binding). */
+ *  path or the frozen binding). `ownRevision` is the row's monotonic write
+ *  counter — the continuation stamp's source of truth (M-7). */
 function readAttemptRowQ(attemptId) {
   const db = new Database(path.join(home, 'studio.db'))
   try {
-    const row = db.prepare('SELECT snapshot_json, continuation_json FROM animation_attempt WHERE id = ?').get(attemptId)
+    const row = db.prepare('SELECT snapshot_json, continuation_json, own_revision FROM animation_attempt WHERE id = ?').get(attemptId)
     if (!row) return null
-    return { snapshot: JSON.parse(row.snapshot_json), continuation: JSON.parse(row.continuation_json ?? 'null') }
+    return { snapshot: JSON.parse(row.snapshot_json), continuation: JSON.parse(row.continuation_json ?? 'null'), ownRevision: Number(row.own_revision) }
   } finally {
     db.close()
   }
@@ -2097,6 +2098,18 @@ test('(q) the extend route — the frozen §5 record whole, both coordinate syst
   const sourceRow = readAttemptRowQ(qSource.attemptId)
   assert.ok(Array.isArray(sourceRow.snapshot.modelIdentities) && sourceRow.snapshot.modelIdentities.length === 4, 'the submit-time stamp landed (four resolved slots)')
   assert.ok(sourceRow.snapshot.modelIdentities.every((identity) => /^[0-9a-f]{64}$/.test(identity.digest)), 'every identity is a sha-256 digest')
+
+  // M-7's wire contract, the FETCHED half (Codex batch C review I-1): the
+  // getState view's continuation carries the SETTLEMENT GENERATION — the
+  // row's own_revision at fetch time. Without this half the client
+  // reconcile's stamp-ordered heal (the lost-E2 corner) is dead code: a
+  // view-assembly refactor that drops the field degrades the tiebreaker to
+  // always-false with every hand-built-view suite still green. Pinned here
+  // through the mounted routes on a settled carrying source (registration
+  // done — no writes in flight, the fetched stamp equals the row's counter).
+  const fetchedSource = await attemptStateQ(api2, qSource.attemptId)
+  assert.equal(typeof fetchedSource.continuation.stamp, 'number', 'the fetched view carries the continuation settlement generation')
+  assert.equal(fetchedSource.continuation.stamp, readAttemptRowQ(qSource.attemptId).ownRevision, 'the fetched stamp IS the attempt row\'s own_revision at fetch time')
 
   const window = await api2.post('/api/lan/animation/chains', { op: 'create-window', documentId: docQ.id, sourceAttemptId: qSource.attemptId, expectedRevision: chain2.revision })
   assert.equal(window.status, 200, `create-window lands (${window.body.error ?? ''})`)

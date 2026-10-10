@@ -98,6 +98,14 @@ test('I-4 buildInGraphArm wires the source sampler straight into the Motion Cont
 })
 
 test('I-4 buildInGraphArm refuses named shapes it does not recognize — never a guessed graph', () => {
+  assert.throws(
+    () => buildInGraphArm({ sourceGraph: { not: 'a graph' }, extensionGraph: EXTENSION_GRAPH, savePrefix: 'x' }),
+    /the source graph is not a \{id: \{class_type, inputs\}\} graph/,
+  )
+  assert.throws(
+    () => buildInGraphArm({ sourceGraph: SOURCE_GRAPH, extensionGraph: [1, 2], savePrefix: 'x' }),
+    /the extension graph is not a \{id: \{class_type, inputs\}\} graph/,
+  )
   const twoSamplers = { ...SOURCE_GRAPH, 55: SOURCE_GRAPH[15] }
   assert.throws(
     () => buildInGraphArm({ sourceGraph: twoSamplers, extensionGraph: EXTENSION_GRAPH, savePrefix: 'x' }),
@@ -107,6 +115,11 @@ test('I-4 buildInGraphArm refuses named shapes it does not recognize — never a
   assert.throws(
     () => buildInGraphArm({ sourceGraph: SOURCE_GRAPH, extensionGraph: noLoad, savePrefix: 'x' }),
     /holds 0 MiniMaxH3MotionContextLoadLatent nodes.*not the loaded-carry shape/,
+  )
+  const twoContexts = { ...EXTENSION_GRAPH, 51: EXTENSION_GRAPH[41] }
+  assert.throws(
+    () => buildInGraphArm({ sourceGraph: SOURCE_GRAPH, extensionGraph: twoContexts, savePrefix: 'x' }),
+    /holds 2 MiniMaxH3MotionContext nodes \(expected exactly 1\).*cannot rewire the conditioning/,
   )
   const unwired = { ...EXTENSION_GRAPH, 41: { ...EXTENSION_GRAPH[41], inputs: { ...EXTENSION_GRAPH[41].inputs, context_latent: ['10', 1] } } }
   assert.throws(
