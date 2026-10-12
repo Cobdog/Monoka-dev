@@ -157,6 +157,8 @@ Sequenced strictly after R-11/R-12 so no redesign bakes in a dying section.
 
 R-25, R-26, R-27, R-28 (Audit B's P2s — each S, each a failing-test-first unit fix); R-29, R-30 (S); R-31 (M, low); R-32, R-33, R-34, R-35 (expected to dissolve into R-15/R-16/R-17 — re-triage after Wave 3, delete what dissolved); R-36 (optional observability polish). **Wave-entry criterion:** Wave 3's redesigns have landed, so the dissolutions can be counted honestly rather than guessed.
 
+> **Addendum 2026-10-12 (re-triage outcome):** the re-triage ran 2026-09-22, recorded in the Wave-4 task (n3s86li; PR #43, commits f734ae4 + f1830ba + 49a19d9), and was tree-verified 2026-10-12 in `docs/audit/dregs-triage-2026-10-12.md`. The expectation above held for R-34/R-35 (DISSOLVED, zero remnant) but missed on R-32/R-33 — both were ALIVE after the Wave-3 redesigns and were fixed directly in the same wave (R-32 feature-grouping on the pack board; R-33 the policy prose collapsed behind a "How node-pack installs work" summary). R-36 stays open as optional (queue_status still has zero client consumers). The "delete what dissolved" instruction is amended accordingly: two rows deleted-by-dissolution, two closed-alive-fixed, one carried.
+
 ---
 
 ## 4. The keep-list (binding on every redesign)
