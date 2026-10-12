@@ -2,8 +2,8 @@
 
 > **Derived from Flux (project `r2lnrfw`); refreshed 2026-09-20, then 2026-09-28
 > at the maintainer's PERFECT-state directive, then 2026-10-05 (the
-> program-completion refresh; the frontier sections below; the
-> historical sections keep their original wording).** Flux is the source of truth;
+> program-completion refresh), then 2026-10-12 (the frontier addendum below;
+> the historical sections keep their original wording).** Flux is the source of truth;
 > this file is the human-readable state of play — if it disagrees with the board,
 > the board wins. Task ids are Flux ids.
 
@@ -13,6 +13,31 @@
 of small-friction fixes never got them past "enter a prompt, pick video, execute,
 fail." The response is a full audit + remediation program, with the maintainer's
 stated stakes: remediate, or the project gets scrapped and restarted fresh.
+
+> **FRONTIER UPDATE (2026-10-12) — the extension lane closed; the dregs sweep ran; the audit's docs batch landed.**
+> **Extension lane, CLOSED**: Tasks 1–7 all done — the last (2m68u90) closed
+> through the done-gate 2026-10-12 on audit-assembled evidence (commits
+> through 72b892d, blind review APPROVED, both CI legs green at the final
+> commit); the real-engine acceptance gates live deliberately in qu6xo4x
+> (card-gated, maintainer/GPU-timed). **The card-free dregs** (maintainer-directed
+> 2026-10-12): the anima output_format row (eagkso0) closed at a423b6e (gate
+> 8/8, both CI legs green); the inspector-save T1 residuals (jz3yv4x) fixed at
+> 053ad49 and the workbench-handoff residuals (tc6n2bx) at 95f52cf — both
+> reviewed clean, closing through the done-gate with the plan; the dregs
+> triage doc landed at 064ad62 (docs/audit/dregs-triage-2026-10-12.md — it
+> cites n3s86li's Wave-4 verdicts rather than re-deriving them). The **board
+> audit** (report: .superpowers/sdd/2026-10-12-cardfree-dregs/flux-audit-report.md)
+> found the records honest with named drift — corrected or surfaced as
+> maintainer decisions (its §7 list); its adopted tightening-pass candidates
+> are this batch: the reference-pack pre-review packet (oacclqo, appended to
+> docs/specs/2026-10-09-reference-pack-design.md), this refresh, and the
+> Krita-AI-Diffusion interaction-model capture (bg0815k, docs/research/).
+> **Maintainer rulings (2026-10-12, relayed through the dregs dispatch)**: the
+> MONOKA rename sweep runs after the dregs, before the design round; the
+> shibui capture is under maintainer review. GPU state unchanged from the
+> 10-09 block below: the card is the maintainer's; qu6xo4x and the parked
+> experiment rows wait on the window. Evidence map: the SDD ledgers under
+> .superpowers/sdd/, the audit + set docs under docs/research/ and docs/audit/.
 
 > **FRONTIER UPDATE (2026-10-09) — the prime feature shipped; the extension lane opened.**
 > Since the 10-05 refresh: the **component-vocabulary round merged to main** (the
