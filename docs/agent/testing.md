@@ -375,6 +375,17 @@ agents, commit by PATHSPEC — `git commit -m … -- <paths>` — never
 index. If a sweep happens anyway, the recovery is `git rm --cached` for
 untracked sweeps + a pathspec-scoped amend BEFORE pushing.
 
+**Amend is the same race (learned 2026-10-12, the dregs sprint):**
+`git commit --amend` on a moved HEAD rewrites whatever sibling commit
+landed on top — an agent's amend on its own (unpushed) commit briefly
+swallowed a sibling's docs commit that had landed in between; recovered
+non-destructively via `git reset --soft` + pathspec re-commit with the
+sibling restored verbatim and the repair diff verified empty. **On this
+shared tree, AMEND only when your commit is still HEAD — otherwise a plain
+commit.** (A "your commit is unpushed so amend is safe" instruction from a
+coordinator goes stale the moment a sibling lands; check HEAD, not push
+state.)
+
 ## Windows-leg failure classes (learned 2026-09-16 — read before writing file-generating or file-importing code)
 
 The Windows CI leg catches what a Linux checkout structurally cannot. Two classes so far; both have standing fixes — use them proactively:
