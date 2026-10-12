@@ -1354,6 +1354,63 @@ test('a failed save restores the canvas edit handoff key — the payload re-land
 })
 
 // ---------------------------------------------------------------------------
+// (Flux tc6n2bx review round) The AC 1 restore's freshness twin (F3's guard
+// for the canvas key): a failed handoff save restores the key AND retains
+// the patch — if the user lands a NEWER intent before the recovery flush,
+// the echo re-consume must not replay the original payload over it. The
+// patch declines when the fresh settings already carry the Edit family with
+// a different (newer) intent. Pre-fix the echo silently reverted the user's
+// landed edit.
+test('the restored canvas handoff cannot replay over a landed newer intent (tc6n2bx review)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const seeded = await seedSession(request)
+  // Every PUT counted (the failed one included) — the settle below implies
+  // the echo's durable commit, not merely its send.
+  const puts: string[] = []
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    puts.push(route.request().postData() ?? '')
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'tc6n2bx freshness update down' }) })
+  })
+  const handoff = JSON.stringify({ path: seeded.artifactPaths[2], name: 'handoff-stale.png', intent: 'make it winter, keep the lighthouse' })
+  await page.addInitScript((raw) => window.localStorage.setItem('h3img-canvas-handoff', raw), handoff)
+  await page.goto('/?images=1')
+  // The handoff save failed; the key is back (the AC 1 restore).
+  await expect(page.locator('[data-save-state="failed"]')).toBeVisible({ timeout: 10_000 })
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem('h3img-canvas-handoff')), { timeout: 5_000 }).toBe(handoff)
+  // Heal; the user types a DIFFERENT intent — the fill's own patchSettings
+  // chains the recovery flush (no retry click needed): the retained handoff
+  // op composes first, the user's newer intent wins the key collision.
+  await page.unroute('**/api/lan/documents/chains/update')
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    const response = await route.fetch()
+    puts.push(route.request().postData() ?? '')
+    await route.fulfill({ response })
+  })
+  await page.locator('[data-iw-intent]').fill('the user typed this instead')
+  await expect(page.locator('[data-save-state="saved"]')).toBeVisible({ timeout: 10_000 })
+  // The user's edit is durable (the retained op composed first, the newer
+  // op won the key collision — the queue's documented front-merge property).
+  await expect.poll(async () => {
+    const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+    const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+    return chain?.settings?.intent ?? null
+  }, { timeout: 15_000 }).toBe('the user typed this instead')
+  // The post-reload effect pass re-consumed the restored key and its flush
+  // COMMITTED (third counted PUT) — the settle the verdict below hangs on:
+  // the echo has replayed (pre-fix) or declined (post-fix) determinately.
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem('h3img-canvas-handoff')), { timeout: 15_000 }).toBeNull()
+  await expect.poll(() => puts.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(3)
+  // THE GUARD: the user's landed intent still stands (pre-fix the echo
+  // replayed the handoff's 'make it winter…' over it).
+  await expect.poll(async () => {
+    const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+    const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+    return chain?.settings?.intent ?? null
+  }, { timeout: 15_000 }).toBe('the user typed this instead')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
 // (Flux tc6n2bx F3) The ambiguous-write duplicate pose ref: a FAILED poserig
 // append retains its op in the write queue AND restores the inbox key — two
 // recovery lanes holding one payload. Whichever lands first, the other must
