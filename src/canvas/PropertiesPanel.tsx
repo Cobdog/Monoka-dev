@@ -461,8 +461,13 @@ export function PropertiesPanel() {
   // (A02; task 20 k2q0n9s) The draft's save fate, beside the Generate
   // action, through the shared SaveStatus tier: idle = nothing in flight
   // since the last look (silent), otherwise the last save attempt's state.
-  const [saveState, setSaveState] = useState<SaveState>('idle')
-  const [saveError, setSaveError] = useState<string | null>(null)
+  // (jz3yv4x) The fate is STAMPED with the chain and kind it belongs to at
+  // write time: the render shows it only while that chain is still selected
+  // (a failed state from chain A must not bleed beside chain B), and the
+  // retry affordance dispatches on the FAILED kind — an identity failure
+  // used to be invisible AND, once surfaced, would have retried the
+  // settings draft.
+  const [saveStatus, setSaveStatus] = useState<{ chainId: string; kind: 'settings' | 'identity'; state: SaveState; error: string | null } | null>(null)
   // Phase 4: the CreateView capabilities this panel absorbs.
   const [libraryOpen, setLibraryOpen] = useState(false)
   // The control-track delete's pending ask (task 15) — hoisted above the
@@ -606,13 +611,11 @@ export function PropertiesPanel() {
     const write = writeQueueRef.current.then(async () => {
       const freshest = freshestRef.current
       const toWrite = freshest.chainId === id && freshest.settings ? freshest.settings : value
-      setSaveState('saving')
-      setSaveError(null)
+      setSaveStatus({ chainId: id, kind: 'settings', state: 'saving', error: null })
       // (R1) The queued write stamps a strictly increasing revision; the
       // counter already accounts for every earlier stamp, keepalive or not.
       const save = await setChainSettings(id, toWrite, { settingsRevision: nextRevision(id, 'settings') })
-      setSaveState(save.ok ? 'saved' : 'failed')
-      if (!save.ok) setSaveError(save.error ?? 'the save failed')
+      setSaveStatus({ chainId: id, kind: 'settings', state: save.ok ? 'saved' : 'failed', error: save.ok ? null : save.error ?? 'the save failed' })
       if (save.ok) {
         ackedRef.current = { chainId: id, ...(ackedRef.current?.chainId === id ? ackedRef.current : {}), settings: JSON.stringify(toWrite) }
         settleDirty(id)
@@ -631,6 +634,10 @@ export function PropertiesPanel() {
   // counter — the server gates each endpoint on its own column, so within
   // each kind arrivals are totally ordered and across kinds they never
   // interact.
+  // (jz3yv4x) The commit REPORTS its verdict the way saveDraft does: the
+  // debounced sites returned here and discarded result.ok, so a failed
+  // identity save silently resolved — no saving/failed state, no server
+  // reason, nothing beside the action that caused it.
   const saveIdentity = (id: string, patch: { subjectText?: string; strength?: number }): Promise<boolean> => {
     const write = writeQueueRef.current.then(async () => {
       const freshest = freshestRef.current
@@ -640,7 +647,9 @@ export function PropertiesPanel() {
           ...(patch.strength !== undefined ? { strength: freshest.strength } : {}),
         }
         : patch
+      setSaveStatus({ chainId: id, kind: 'identity', state: 'saving', error: null })
       const result = await setChainIdentity(id, toWrite, { identityRevision: nextRevision(id, 'identity') })
+      setSaveStatus({ chainId: id, kind: 'identity', state: result.ok ? 'saved' : 'failed', error: result.ok ? null : result.error ?? 'the save failed' })
       if (result.ok && (toWrite.subjectText !== undefined || toWrite.strength !== undefined)) {
         ackedRef.current = {
           chainId: id,
@@ -701,10 +710,17 @@ export function PropertiesPanel() {
   // a draft whose save is still in flight, or whose save FAILED, is
   // unacknowledged — the keepalive fires, erring toward writing (a
   // duplicate identical write is harmless; a lost draft is not).
+  // (jz3yv4x) One-shot latch: the flush is registered on pagehide AND
+  // beforeunload, and a normal tab close fires both — every keepalive write
+  // went out twice. First flush wins; `pageshow` re-arms the latch so a
+  // bfcache round-trip flushes again on its next hide.
   const unloadRef = useRef({ chainId, draft, subjectText, strength, acked: ackedRef.current })
   unloadRef.current = { chainId, draft, subjectText, strength, acked: ackedRef.current }
+  const unloadFlushSentRef = useRef(false)
   useEffect(() => {
     const flushForUnload = () => {
+      if (unloadFlushSentRef.current) return
+      unloadFlushSentRef.current = true
       const state = unloadRef.current
       const dirty = dirtyChainsRef.current
       // (N01) The dirty set is the truth: an entry exists ⇔ something is
@@ -768,9 +784,12 @@ export function PropertiesPanel() {
     }
     window.addEventListener('pagehide', flushForUnload)
     window.addEventListener('beforeunload', flushForUnload)
+    const rearmUnloadFlush = () => { unloadFlushSentRef.current = false }
+    window.addEventListener('pageshow', rearmUnloadFlush)
     return () => {
       window.removeEventListener('pagehide', flushForUnload)
       window.removeEventListener('beforeunload', flushForUnload)
+      window.removeEventListener('pageshow', rearmUnloadFlush)
     }
   }, [])
 
@@ -888,8 +907,17 @@ export function PropertiesPanel() {
   // SAME seam Generate commits through — saveDraft carries the FRESHEST
   // draft at write time, so a retry never resurrects a stale snapshot (the
   // write-queue discipline unchanged).
-  const retryDraftSave = () => {
-    if (chainId && draft) void saveDraft(chainId, draft)
+  // (jz3yv4x) The retry dispatches on the FAILED kind: an identity failure
+  // retries the identity payload (both fields, freshest at write time), a
+  // settings failure retries the draft. The old onRetry always re-ran the
+  // SETTINGS draft — a lie about which seam was broken. The stamped fate
+  // renders only while its own chain is still selected (no post-switch
+  // bleed); anything else reads as idle, and idle renders nothing.
+  const visibleSave = saveStatus?.chainId === chainId ? saveStatus : null
+  const retryFailedSave = () => {
+    if (!chainId) return
+    if (visibleSave?.kind === 'identity') void saveIdentity(chainId, { subjectText, strength })
+    else if (draft) void saveDraft(chainId, draft)
   }
 
   // Control-track delete (§2.1): the blast radius stated up front — the row
@@ -1621,12 +1649,14 @@ export function PropertiesPanel() {
             A02), so it must be readable here, not only in a vanishing toast.
             The shared SaveStatus tier renders it: idle silent, the busy
             idiom, the muted confirmation, the danger tone with the server
-            reason verbatim + the retry affordance. */}
+            reason verbatim + the retry affordance. (jz3yv4x) The fate is
+            stamped with its chain and kind — this chain's panel renders only
+            its own, and the retry re-runs the kind that failed. */}
         <SaveStatus
-          state={saveState}
+          state={visibleSave?.state ?? 'idle'}
           label="draft"
-          detail={saveError ?? undefined}
-          onRetry={saveState === 'failed' ? retryDraftSave : undefined}
+          detail={visibleSave?.error ?? undefined}
+          onRetry={visibleSave?.state === 'failed' ? retryFailedSave : undefined}
         />
         {tile.jobId && (tile.status === 'running' || tile.status === 'queued-gpu')
           ? <button type="button" className="canvas-properties-generate" data-canvas-cancel onClick={() => void cancelChainJob(chain.id)}><Square size={12} /> stop</button>
