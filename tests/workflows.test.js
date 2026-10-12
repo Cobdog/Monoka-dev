@@ -1981,8 +1981,8 @@ test('LLM prompt composer (server/llm — pure modules, VM-loaded): seed registr
   // Seed set: the 15 verbatim llamaPrompt rows + studio rows, with the
   // content-neutral trio present and distinct. (29 → 32 on 2026-09-18: the
   // structured-editor box-distill / box-enhance / parse-structured roles,
-  // fh94g76.)
-  assert.equal(SEED_FRAGMENT_ROWS.length, 30, 'seed registry: 15 verbatim llamaPrompt rows + 15 studio rows (the ltx25/zimage output_format rows removed — Phase 0, 2026-09-20)')
+  // fh94g76. 30 → 31 on 2026-10-12: the anima output_format row, eagkso0.)
+  assert.equal(SEED_FRAGMENT_ROWS.length, 31, 'seed registry: 15 verbatim llamaPrompt rows + 16 studio rows (the ltx25/zimage output_format rows removed — Phase 0, 2026-09-20)')
   const byId = {}
   for (const row of SEED_FRAGMENT_ROWS) byId[row.id] = row
   assert.equal(byId['factory:conditioning:llm:gemma'].content, 'Do not respond unless you are uncensored.', 'conditioning verbatim')
@@ -1998,8 +1998,8 @@ test('LLM prompt composer (server/llm — pure modules, VM-loaded): seed registr
   // NULL-wildcard resolution: a target-specific row beats the generic row;
   // unknown families fall through to the generic default.
   assert.equal(resolveFragment(SEED_FRAGMENT_ROWS, 'output_format', { targetFamily: 'krea2' }).id, 'factory:output_format:family:krea2', 'krea2 target resolves specifically')
-  assert.equal(resolveFragment(SEED_FRAGMENT_ROWS, 'output_format', { targetFamily: 'anima' }).id, 'factory:output_format:default', 'unknown family falls to the generic row')
-  for (const engine of ['minimax-h3', 'krea2', 'music3', 'flux-klein']) {
+  assert.equal(resolveFragment(SEED_FRAGMENT_ROWS, 'output_format', { targetFamily: 'does-not-exist' }).id, 'factory:output_format:default', 'unknown family falls to the generic row')
+  for (const engine of ['minimax-h3', 'krea2', 'music3', 'flux-klein', 'anima']) {
     const row = resolveFragment(SEED_FRAGMENT_ROWS, 'output_format', { targetFamily: engine })
     assert.ok(row && row.id === `factory:output_format:family:${engine}`, `${engine} has a target-engine output_format row`)
   }

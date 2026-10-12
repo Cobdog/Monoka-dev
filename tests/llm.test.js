@@ -363,6 +363,16 @@ test('(c) the layered composer through /api/lan/llm/generate: 8-layer system, co
   const sfwBody = routerCalls.completions[routerCalls.completions.length - 3]
   assert.ok(sfwBody.messages[0].content.includes('textures, colors, light'), 'sfw style text verbatim')
 
+  // Anima resolves its own output_format row (eagkso0): tag-grammar prompting
+  // is Danbooru-native — falling through to the generic prose row is wrong.
+  await postJson(port, '/api/lan/llm/generate', { task: 'enhance', targetEngine: 'anima', contentLevel: 'sfw', draft: 'x' })
+  const animaBody = routerCalls.completions[routerCalls.completions.length - 1]
+  const animaLayers = animaBody.messages[0].content.split('\n\n').filter((layer) => layer.indexOf('[output_format] ') === 0)
+  assert.equal(animaLayers.length, 1, 'one output_format layer for anima')
+  assert.ok(animaLayers[0].includes('Danbooru'), 'anima output_format row resolved — Danbooru tag grammar, not the generic prose fallback')
+  assert.ok(animaLayers[0].includes('@artist'), 'artist triggers named in the anima row')
+  assert.ok(animaLayers[0].includes('300 words'), 'natural-language mode carries the ~300-word cap')
+
   // Structured requests: thinking forced off + schema contract + parsed JSON.
   const structured = await (await postJson(port, '/api/lan/llm/generate', {
     task: 'planner', draft: 'plan a scene', schema: { type: 'object', properties: { ok: { type: 'boolean' } } },

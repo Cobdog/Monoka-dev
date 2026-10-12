@@ -110,6 +110,10 @@ const ROLE_PARSE_STRUCTURED = 'Split the supplied freeform MiniMax H3 video prom
 // Layer 3 — output_format rows for the studio's target engines.
 const OF_MINIMAX_H3 = 'Write natural production language in this order when relevant: subject/identity, starting state, environment, literal chronological action, shot size, camera angle, lens/depth of field, camera movement, lighting, visual treatment, continuity, dialogue, ambient sound/effects, and reference assignments. Depict the finished shot as vivid, chronological prose.'
 const OF_MUSIC3 = 'Keep the caption in its three-section structure — Global Metadata, Vocal Details, Arrangement — using concrete, musical, depictable terms (genre, tempo, key, instrumentation, voice character, form, and mix).'
+// Anima: the one family where tag-pile prompting is native — Danbooru order,
+// @artist triggers, tags/prose/mix all valid, NL capped near the TE's ~1k
+// tokens (docs/research/per-model-prompt-doctrines.md §1).
+const OF_ANIMA = 'Write Danbooru-ordered tags — lowercase, space-separated, never underscored: optional quality/meta prefix (masterpiece, best quality), subject count, character, series, @artist, then general descriptors. Tag piles, short natural language, or a mix of both are all native here; in prose mode write at least two sentences, at most ~300 words, in English.'
 
 const OUTPUT_CONTRACT_FINAL_PROMPT = 'Output ONLY the final image prompt, wrapped in <final_prompt>…</final_prompt>. Begin immediately with the prompt and make the entire response the prompt itself.'
 const OUTPUT_CONTRACT_PLAIN = 'Return only the finished result — no analysis, preface, Markdown fence, or alternatives.'
@@ -162,6 +166,7 @@ export const SEED_FRAGMENT_ROWS: FragmentRow[] = [
   // output_format — studio target engines.
   row('factory:output_format:family:minimax-h3', 'output_format', OF_MINIMAX_H3, { targetFamily: 'minimax-h3' }),
   row('factory:output_format:family:music3', 'output_format', OF_MUSIC3, { targetFamily: 'music3' }),
+  row('factory:output_format:family:anima', 'output_format', OF_ANIMA, { targetFamily: 'anima' }),
   // output_format — generic fallback.
   row('factory:output_format:default', 'output_format', OF_GENERIC),
   // prompt_length (3) — per length.
