@@ -175,7 +175,7 @@ should be cited or dropped before the spec hardens.
 
 | Spec names | Tree state | Tag |
 |---|---|---|
-| §1/§6 the carved seam `H3ImgRefSlot.refmod` | Real: type `H3ImgRefSlot` with `refmod?: { file: string }` — src/lib/graph/h3image.ts:395–407 ("RefMod-shaped from day one, decision 9"); the graph builder THROWS on a refmod slot (h3image.ts:1353, "the factory (H8) wires them into the conditioning"); the workbench drops refmod slots at submit (src/images/WorkbenchApp.tsx:607, "read-only in v1 — never submitted"); the session source kind `'refmod'` (src/images/session.ts:38,99). Note: today's slot content kinds are file/canvas/refmod/poserig (session.ts:35–39) — a pack is a NEW content kind on this seam, not a working path waiting. | [DOC] |
+| §1/§6 the carved seam `H3ImgRefSlot.refmod` | Real: type `H3ImgRefSlot` with `refmod?: { file: string }` — src/lib/graph/h3image.ts:395–407 ("RefMod-shaped from day one, decision 9"); the graph builder THROWS on a refmod slot (h3image.ts:1353, "the factory (H8) wires them into the conditioning"); the workbench drops refmod slots at submit (src/images/WorkbenchApp.tsx:618, "read-only in v1 — never submitted"); the session source kind `'refmod'` (src/images/session.ts:38,99). Note: today's slot content kinds are file/canvas/refmod/poserig (session.ts:35–39) — a pack is a NEW content kind on this seam, not a working path waiting. | [DOC] |
 | §2/§7 the standing artifact-store carry pattern | Real and exactly as described: `registerBlobFile` is content-addressed — sha256, `relPath = blobRelativePath(hash)`, `blobRoot/<h2>/<hash>`, identical bytes dedupe to the identical path with a size+hash trustworthiness re-check (server/documents.ts:744–791); bytes land via a transient staging file (server/animation/rendering.ts:424–448); the carry artifact registers at production (`registerBytes('latent', …, carry-<attemptId>.safetensors)`, server/animation/completion-owner.ts:384) and its receipt is digest-validated (`validateContinuationArtifact`: UUID, 64-hex sha256, save-recipe version, producedAt; attempt-scoped — server/animation/store.ts:330–343, 1471–1478). | [DOC] |
 | §7 the blob tree's `'latent'` kind exists | Real: the kind is produced by extension mapping (server/documents.ts:800), in production use by the canvas Motion Context chain (documents.ts:1761), and carried through the archive's kind mapping (server/documentArchive.ts:300). | [DOC] |
 | §7 project archive rides the recursive relPath walk | Real: the collector walks every `relPath` string key inside document JSON (server/documentArchive.ts:32–56); the packing loop emits present blobs with hash/size and surfaces missing ones as an honest placeholder list (documentArchive.ts:282–325). | [DOC] |
@@ -183,7 +183,7 @@ should be cited or dropped before the spec hardens.
 | §4/§10 the token math `(w/32)×(h/32)`, ~80/s audio | NOT in code — in-app budget surfacing is absent today (only the 9-slot limit exists; map Territory 4). The math is the Lab's, adopted by the assessment (docs/research/h3-refmods-lab-assessment-2026-10-09.md:11–13). | [DOC] adopted / [SPEC] in-app |
 | §4 encoding params (max_edge, 32-grid rounding recorded) | Both concepts are in-tree, elsewhere: the 32-grid is the H3 resolution rule (`H3IMG_RECIPE_PINS.canvasGrid: 32`, h3image.ts:306–308; the inpaint canvas pins to the source's 32-snapped dims, src/images/submit.ts:111–123, h3image.ts:488); max-edge downscaling exists as `reference_max_edge` (src/lib/graph/krea2edit.ts:487) and the datasets VLM's `maxEdge` (server/datasets/probe.ts:160–180). Recording them per source is new metadata. | [DOC] concept |
 | §6 expectedRevision-gated document commands | The pattern is real, with a naming precision: the ANIMATION document API gates commands on `expectedRevision` (src/animation/client.ts:266–303); the workbench session rides the h3img chain's SETTINGS write, whose gate is the per-kind `settingsRevision` stale-arrival check (server/documents.ts:1659–1671). Pack selection state on the strip would ride the settingsRevision gate today, not an expectedRevision param. | [DOC] |
-| §3/§6 the workbench reference strip + its hard limit | Real: the 9-slot strip (WorkbenchApp.tsx:5), enforced at append (WorkbenchApp.tsx:471,540), displayed as n/9 (:1341), refusing at validate (`H3IMG_RECIPE_PINS.refs.max: 9`, h3image.ts:306; submit.ts:108 — the refusal message already promises "RefMod bundling arrives with the RefMod factory"). | [DOC] |
+| §3/§6 the workbench reference strip + its hard limit | Real: the 9-slot strip (WorkbenchApp.tsx:5), enforced at append (WorkbenchApp.tsx:473,542), displayed as n/9 (:1352), refusing at validate (`H3IMG_RECIPE_PINS.refs.max: 9`, h3image.ts:306; submit.ts:108 — the refusal message already promises "RefMod bundling arrives with the RefMod factory"). | [DOC] |
 | §5 compile = VAE-encode through the engine, queue-aware | The machinery is standing: stock `VAEEncode` is in the preflight class list (src/lib/preflight.ts:35) and used by the h3image and krea2edit builders (h3image.ts:1611–1638; krea2edit.ts:408–412); engine jobs queue through the engine's task-queue surface (server/managerClient.ts:22–25,145–168). No scheduler exists — v1 rides the engine's natural FIFO; the runbook's contention discipline is human/agent-facing, not app code. | [DOC] |
 | §1/§8 compile minutes-class, GPU-light (the maintainer's ~1–2 min / 30 images) | Recorded provenance: the assessment's MEASUREMENT CORRECTION section (h3-refmods-lab-assessment-2026-10-09.md:58–68). A hands-on measurement, not CI-reproducible — the spec's honest-copy default rests on it. | [DOC] provenance |
 | §10 the Lab's encode-once GPU verification (latent byte-match + exact round-trip) | Recorded provenance: the assessment (:17–18) — verified on the LAB's rig, not ours; our-side quality claims still route through the harness per §9. | [DOC] provenance |
@@ -262,7 +262,7 @@ drop the specifics at blessing.
 
 | Area | Verdict | Basis |
 |---|---|---|
-| The carved seam (`H3ImgRefSlot.refmod`) | VERIFIED, as described | [DOC] h3image.ts:395–407,1353; WorkbenchApp.tsx:607; session.ts:38 |
+| The carved seam (`H3ImgRefSlot.refmod`) | VERIFIED, as described | [DOC] h3image.ts:395–407,1353; WorkbenchApp.tsx:618; session.ts:38 |
 | The artifact-store carry pattern | VERIFIED, as described | [DOC] documents.ts:744–791; rendering.ts:424–448; completion-owner.ts:384; store.ts:330–343 |
 | The `'latent'` blob kind | VERIFIED, in production | [DOC] documents.ts:800,1761; documentArchive.ts:300 |
 | Archive relPath walk | VERIFIED | [DOC] documentArchive.ts:32–56,282–325 |
@@ -273,6 +273,12 @@ drop the specifics at blessing.
 | Lab provenance details (pronouns, video caveats, grouping) | NOT CAPTURED in-tree | [SPEC] §P.3 — cite or drop before blessing |
 | The consume-side conditioning node | OPEN — unnamed in the spec | [UNK] §P.4.1 — the blessing's load-bearing question |
 | Spec vs its research inputs | CONSISTENT; the narrowing (no trained-modifier arm) is recorded, not silent | §P.2 |
+
+*Correction (2026-10-12, same day): the tc6n2bx review round (115d115) moved
+WorkbenchApp.tsx after this packet was written; its four WorkbenchApp line
+citations were re-pinned to the tree at f528b21 (607→618, 471,540→473,542,
+1341→1352). All mechanism claims unchanged — every other cited file was
+untouched by that round and re-verified exact.*
 
 *Packet ends. The spec body above stands as drafted; corrections arrive as
 dated addenda per convention.*
