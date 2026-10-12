@@ -226,7 +226,10 @@ test('(g) the inspector: the ad-hoc saveState markup retired, the SaveStatus tie
   ok(!panel.includes('data-canvas-save-state'), 'the canvas-prefixed hook is gone (the shared component owns data-save-state)')
   ok(panel.includes('<SaveStatus'), 'the panel renders the shared SaveStatus')
   ok(panel.includes('label="draft"'), 'the panel keeps its established voice through the label prop')
-  ok(/onRetry=\{saveState === 'failed'/.test(panel), 'the retry is gated on the failed state (the row-ownership dev-warn contract)')
+  // (jz3yv4x) The panel's save fate is now the keyed saveStatus stamp, so
+  // the gated-on-failed pin reads the keyed spelling — same contract, the
+  // retry affordance still renders only on failed.
+  ok(/onRetry=\{visibleSave\?\.state === 'failed'/.test(panel), 'the retry is gated on the failed state (the row-ownership dev-warn contract)')
 })
 
 test('(g2) the workbench: the session-save notices retired into the tier, the retry present', () => {
