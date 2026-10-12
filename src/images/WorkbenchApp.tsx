@@ -335,7 +335,9 @@ function WorkbenchSurface() {
   // acknowledged edit. The base stands until a reload SUCCEEDS (then the
   // store is fresher than the snapshot); a failed reload never re-queues
   // the landed ops — write ≠ refresh, and a landed mutation is never
-  // blindly retried.
+  // blindly retried. (tc6n2bx F2 — verified superseded by C01 5a52fc7: this
+  // acknowledged base IS the AC's last-written-merge shape; its e2e at
+  // e2e/images.spec.ts:1223 re-ran GREEN 2026-10-12.)
   const acknowledgedSettingsRef = useRef<{ chainId: string; settings: WorkbenchSessionSettings } | null>(null)
   // (Task 20, k2q0n9s) The session writes' save fate, beside Generate — the
   // shared SaveStatus tier. Failures previously surfaced as a vanishing
@@ -581,9 +583,18 @@ function WorkbenchSurface() {
       // write queues and a FAILED save puts it BACK — the payload survives
       // the failure (the next effect pass or the next visit re-lands it)
       // instead of dying into this notice. Consumed for good only once the
-      // write is durably saved; the patch is a plain partial overwrite, so a
-      // post-recovery re-land is idempotent — no echo duplicate.
-      void patchSettings({ family: 'h3img.edit.freeform', intent: typeof parsed.intent === 'string' ? parsed.intent : '' }).then((saved) => {
+      // write is durably saved.
+      // (tc6n2bx review round) The freshness guard, F3's twin for this key:
+      // a NEWER landed intent (the fresh settings already carry the Edit
+      // family with one that is not this handoff's) means the restored key
+      // is stale — the echo re-consume declines instead of replaying the
+      // original payload over a landed user edit. Same-value re-lands (the
+      // plain failure-recovery echo) proceed and are idempotent.
+      const handoffIntent = typeof parsed.intent === 'string' ? parsed.intent : ''
+      void patchSettings((current) => {
+        if (current.family === 'h3img.edit.freeform' && current.intent !== handoffIntent) return null
+        return { family: 'h3img.edit.freeform', intent: handoffIntent }
+      }).then((saved) => {
         if (!saved) window.localStorage.setItem(CANVAS_EDIT_HANDOFF_KEY, raw)
       })
       setNotice('Canvas handoff: the bound image is anchored as the Edit source (Picture 1) — name the change in the intent box, then generate.')
