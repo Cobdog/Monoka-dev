@@ -530,12 +530,29 @@ function WorkbenchSurface() {
       // slot rides a refs array that carries every edit that landed while
       // the handoff was in flight.
       void patchSettings((current) => {
+        // (tc6n2bx F3) The ambiguous-write disambiguation: after a failed
+        // write the key is restored AND the op rides the queue's retained
+        // set — two recovery lanes, one payload. A poserig slot with the
+        // same path means this render already landed: the echo re-consume
+        // declines silently (the same fresh-state-precondition decline the
+        // 9-slot budget check below uses) instead of double-landing it.
+        if (current.refs.some((slot) => slot.source.kind === 'poserig' && slot.source.path === parsed.path)) return null
         if (current.refs.length >= 9) {
           setNotice(BEYOND_NINE_GUIDANCE)
           return null
         }
         return { refs: [...current.refs, { id: nextRefSlotId(), role: 'pose', transport: null, keepOverride: null, note: 'poserig render', source: { kind: 'poserig', path: parsed.path, name: parsed.name } }] }
       }).then((saved) => {
+        // (tc6n2bx F4 — accepted edge) A tab teardown between the key take
+        // and the PUT landing loses the in-flight payload: the retained op
+        // and this component die with the page and the key is already gone.
+        // ACCEPTED: the window is one write round-trip; the payload is a
+        // convenience key re-creatable in one click (the poserig Send / the
+        // canvas Edit intent, whose key below shares this window verbatim);
+        // the durable fix is a pagehide re-stash — a third unload-latch
+        // beside the inspector panel's F02 flush, a design decision rather
+        // than a dregs scrub. F3's decline guard above already keeps the
+        // naive re-stash safe if that decision lands.
         if (!saved) window.localStorage.setItem('h3img-poserig-handoff', raw)
       })
     } catch {
@@ -560,7 +577,15 @@ function WorkbenchSurface() {
       const parsed = JSON.parse(raw) as { path: string; name: string; intent: string }
       if (typeof parsed.path !== 'string' || !parsed.path) return
       setSourceFile({ path: parsed.path, name: typeof parsed.name === 'string' && parsed.name ? parsed.name : parsed.path.split('/').pop() ?? 'source.png', preview: handoffPreviewUrl(parsed.path) })
-      void patchSettings({ family: 'h3img.edit.freeform', intent: typeof parsed.intent === 'string' ? parsed.intent : '' })
+      // (tc6n2bx AC1) The poserig restore pattern: the key is taken when the
+      // write queues and a FAILED save puts it BACK — the payload survives
+      // the failure (the next effect pass or the next visit re-lands it)
+      // instead of dying into this notice. Consumed for good only once the
+      // write is durably saved; the patch is a plain partial overwrite, so a
+      // post-recovery re-land is idempotent — no echo duplicate.
+      void patchSettings({ family: 'h3img.edit.freeform', intent: typeof parsed.intent === 'string' ? parsed.intent : '' }).then((saved) => {
+        if (!saved) window.localStorage.setItem(CANVAS_EDIT_HANDOFF_KEY, raw)
+      })
       setNotice('Canvas handoff: the bound image is anchored as the Edit source (Picture 1) — name the change in the intent box, then generate.')
     } catch {
       /* a malformed handoff is dropped silently — it is a convenience key */

@@ -1,6 +1,6 @@
 import os from 'node:os'
 import path from 'node:path'
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Page, type Route } from '@playwright/test'
 import { H3_REGISTRY_LISTINGS, serveModelRegistry, serveObjectInfo, stockObjectInfo } from './fakeEngineInfo'
 
 // H3 Image Workbench (k9vu6t0, docs/specs/image-workbench-v1.md §2/§11): the
@@ -1302,6 +1302,108 @@ test('the poserig handoff lands as a pose reference from a cold navigation (A11)
   // …and the reference survives a reload (it was saved, not merely shown).
   await page.reload()
   await expect(page.locator('[data-iw-ref-count]')).toHaveText('1/9', { timeout: 20_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (Flux tc6n2bx AC1) The canvas edit handoff aligned to the poserig restore
+// pattern: the key is taken when the write queues, and a FAILED save puts it
+// BACK — the payload survives the failure (the next effect pass or the next
+// visit re-lands it) instead of being lost to the generic notice. Pre-fix the
+// key was consumed unconditionally and a failed save ate the handoff.
+test('a failed save restores the canvas edit handoff key — the payload re-lands on recovery (tc6n2bx AC1)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const seeded = await seedSession(request)
+  // Fail every session write: the handoff's settings patch can never land.
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'tc6n2bx AC1 update down' }) })
+  })
+  // The canvas-side stash (store.ts submit, the 34afx79 contract shape),
+  // seeded directly — the CONSUMER is the seam under test. The path is a
+  // real ingested blob, so the anchored preview serves.
+  const handoff = JSON.stringify({ path: seeded.artifactPaths[0], name: 'handoff-source.png', intent: 'make it winter, keep the lighthouse' })
+  await page.addInitScript((raw) => window.localStorage.setItem('h3img-canvas-handoff', raw), handoff)
+  await page.goto('/?images=1')
+  // The settings write failed — the tier says so. (The anchored source is
+  // NOT asserted here: the source section is family-gated and the failed
+  // write leaves the durable family on Generate until recovery.)
+  await expect(page.locator('[data-save-state="failed"]')).toBeVisible({ timeout: 10_000 })
+  // THE AC: the failed save RESTORED the key — the exact original payload
+  // (the restore fires in the same resolution chain as the failed tier, so
+  // the visible failure implies it; pre-fix this reads null).
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem('h3img-canvas-handoff')), { timeout: 5_000 }).toBe(handoff)
+  // Recovery: the route heals, the SaveStatus retry lands the retained patch…
+  await page.unroute('**/api/lan/documents/chains/update')
+  await page.route('**/api/lan/documents/chains/update', async (route) => { await route.continue() })
+  await page.locator('[data-save-retry]').click()
+  await expect(page.locator('[data-save-state="saved"]')).toBeVisible({ timeout: 10_000 })
+  // …the durable settings carry the handoff (the API is the truth)…
+  await expect.poll(async () => {
+    const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+    const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+    return { family: chain?.settings?.family ?? null, intent: chain?.settings?.intent ?? null }
+  }, { timeout: 15_000 }).toEqual({ family: 'h3img.edit.freeform', intent: 'make it winter, keep the lighthouse' })
+  // …the restored key was re-consumed on the post-reload effect pass and is
+  // now consumed for good, the Edit family is live, and the SOURCE survived
+  // the round trip (the payload recovered, not merely the bytes restored).
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem('h3img-canvas-handoff')), { timeout: 15_000 }).toBeNull()
+  await expect(page.locator('[data-iw-root]')).toHaveAttribute('data-iw-family', 'h3img.edit.freeform', { timeout: 15_000 })
+  await expect(page.locator('[data-iw-intent]')).toHaveValue('make it winter, keep the lighthouse')
+  await expect(page.locator('[data-iw-source-name]')).toContainText('handoff-source.png')
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// (Flux tc6n2bx F3) The ambiguous-write duplicate pose ref: a FAILED poserig
+// append retains its op in the write queue AND restores the inbox key — two
+// recovery lanes holding one payload. Whichever lands first, the other must
+// not append the same render twice: the append declines a poserig slot that
+// already carries the same path (the fresh-state-precondition decline the
+// 9-slot budget check established). Pre-fix the recovery echo double-landed
+// the reference.
+test('the poserig handoff recovery cannot double-land the pose ref (tc6n2bx F3)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  const seeded = await seedSession(request)
+  // Every PUT is counted AFTER its server response (route.fetch) — the
+  // settle below must imply the durable commit, not merely the send.
+  const puts: string[] = []
+  const countCommitted = async (route: Route) => {
+    const response = await route.fetch()
+    puts.push(route.request().postData() ?? '')
+    await route.fulfill({ response })
+  }
+  await page.route('**/api/lan/documents/chains/update', async (route) => {
+    puts.push(route.request().postData() ?? '')
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'tc6n2bx F3 update down' }) })
+  })
+  const raw = JSON.stringify({ path: seeded.artifactPaths[1], name: 'poserig-f3-render.png' })
+  await page.addInitScript((value) => window.localStorage.setItem('h3img-poserig-handoff', value), raw)
+  await page.goto('/?images=1')
+  // The append flushed and FAILED: the tier says so…
+  await expect(page.locator('[data-save-state="failed"]')).toBeVisible({ timeout: 10_000 })
+  // …and the pre-existing restore put the key back (failure lane one of
+  // two — the queue's retained op is the other).
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem('h3img-poserig-handoff')), { timeout: 5_000 }).toBe(raw)
+  // Heal; the SaveStatus retry re-runs the retained op — it lands.
+  await page.unroute('**/api/lan/documents/chains/update')
+  await page.route('**/api/lan/documents/chains/update', countCommitted)
+  await page.locator('[data-save-retry]').click()
+  await expect(page.locator('[data-save-state="saved"]')).toBeVisible({ timeout: 10_000 })
+  // The post-reload effect pass re-consumed the restored key, and its flush
+  // COMMITTED (the third counted PUT) — the settle the refs assertion below
+  // hangs on: the echo has landed (or declined) by this point, determinately.
+  await expect.poll(() => page.evaluate(() => window.localStorage.getItem('h3img-poserig-handoff')), { timeout: 15_000 }).toBeNull()
+  await expect.poll(() => puts.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(3)
+  // THE AC: exactly ONE pose ref durable — the echo declined (pre-fix: 2).
+  await expect.poll(async () => {
+    const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+    const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+    return chain?.settings?.refs?.length ?? 0
+  }, { timeout: 15_000 }).toBe(1)
+  const doc = await (await request.get(`/api/lan/documents/project?id=${seeded.projectId}`)).json()
+  const chain = doc.chains.find((entry: { id: string }) => entry.id === seeded.chainId)
+  expect(chain?.settings?.refs?.[0]?.role).toBe('pose')
+  expect(chain?.settings?.refs?.[0]?.source?.path).toBe(seeded.artifactPaths[1])
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
