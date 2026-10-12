@@ -6407,6 +6407,115 @@ test('a reselect cannot defeat the navigation backstop — the dirty entry outli
 })
 
 // ---------------------------------------------------------------------------
+// (jz3yv4x, T1 review 2026-10-12) The save seam's last residuals: the
+// debounced identity commits discarded saveIdentity's verdict, so a FAILED
+// identity save never surfaced; the retry affordance always re-ran the
+// SETTINGS draft regardless of which kind failed; the unload keepalive
+// double-fired (the flush rides pagehide AND beforeunload); and the single
+// unkeyed saveState bled across chain switches. The failed-draft rollback
+// residual is NOT implemented here — the F02 ackedRef design already
+// retries a failed save at unload, and the keepalive leg below IS that
+// proof (the flush carried the failed draft with no rollback code).
+// ---------------------------------------------------------------------------
+
+test('a failed identity save surfaces beside the action, retries its own seam, and the unload keepalive fires exactly once (jz3yv4x)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('identity verdict seed prompt')
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 10_000 })
+  const spawnDocument = await activeDocument(page)
+  const chainOne = spawnDocument.chains.find((chain) => chain.kind === 'generation')!.id
+  // A second generation chain in the SAME project (the wave1 API-seed
+  // precedent): the AC 4 leg switches to it WITHOUT a reload, so the failed
+  // save state is still live in the panel when the selection changes.
+  const session = await page.evaluate(async () => (await (await fetch('/api/lan/documents/session')).json()).session as { activeProject: string | null })
+  const second = await (await request.post('/api/lan/documents/chains', { data: { projectId: session.activeProject, kind: 'generation', settings: { prompt: 'identity verdict second seed', mediaType: 'video' } } })).json() as { chain: { id: string } }
+  // The identity section anchors on an identity payload too (R-18's second
+  // condition): seed one through the app's own API (the R1/3b harness
+  // recipe), then reopen the panel on it.
+  await page.request.post('/api/lan/documents/identity', { data: { chainId: chainOne, subjectText: 'seed identity verdict line', strength: 1 } })
+  await page.reload()
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator(`[data-canvas-tile="${chainOne}"]`).click()
+  const panel = page.locator('[data-canvas-properties]')
+  const subject = panel.locator('[data-canvas-identity-subject]')
+  await expect(subject).toBeVisible({ timeout: 10_000 })
+  await expect(subject).toHaveValue('seed identity verdict line')
+
+  // The sabotage (A02's exact pattern): every identity write 500s with a
+  // named reason, and the route counts its arrivals.
+  let identitySabotageHits = 0
+  await page.route('**/api/lan/documents/identity', async (route) => {
+    identitySabotageHits += 1
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'AUDIT identity save unavailable' }) })
+  })
+  await subject.fill('AUDIT IDENTITY VERDICT SENTINEL')
+  // (AC 1) The failed IDENTITY save surfaces beside the action with the
+  // server's reason verbatim — unfixed, the debounced site discarded the
+  // verdict and nothing rendered. The auto-retry rides out the 700ms
+  // identity debounce and the failed round trip; the named condition is the
+  // failed verdict rendering.
+  const saveState = page.locator('[data-save-state="failed"]')
+  await expect(saveState).toBeVisible({ timeout: 5_000 })
+  await expect(saveState).toContainText('AUDIT identity save unavailable')
+  // (AC 1, the retry shape) The affordance re-runs the seam that FAILED:
+  // the retried write must hit the IDENTITY endpoint (and fail again, the
+  // sabotage still up) — the old onRetry always re-ran the SETTINGS draft,
+  // a lie about which seam was broken.
+  const hitsAfterDebounce = identitySabotageHits
+  await saveState.locator('[data-save-retry]').click()
+  await expect.poll(() => identitySabotageHits, { timeout: 5_000 }).toBeGreaterThan(hitsAfterDebounce)
+  await expect(saveState).toContainText('AUDIT identity save unavailable')
+
+  // (AC 3) The unload keepalive fires EXACTLY ONCE. The flush is registered
+  // on pagehide AND beforeunload, and the two synthetic hides below ride the
+  // same tick — unfixed, every keepalive write went out twice. The sabotage
+  // comes off; a counting route lets the write through and counts arrivals.
+  await page.unroute('**/api/lan/documents/identity')
+  let identityKeepalives = 0
+  await page.route('**/api/lan/documents/identity', async (route) => {
+    identityKeepalives += 1
+    await route.continue()
+  })
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('pagehide'))
+    window.dispatchEvent(new Event('pagehide'))
+  })
+  // The named condition: the keepalive reached the route. (A real-unload
+  // keepalive can bypass interception entirely — the C-1 harness boundary —
+  // but these hides are synthetic on a live page; if the write never
+  // surfaces the poll times out and fails loudly, never vacuously.)
+  await expect.poll(() => identityKeepalives, { timeout: 5_000 }).toBeGreaterThanOrEqual(1)
+  // Negative-observation window: the second (unfixed) flush rides the SAME
+  // dispatch tick, so this quiet gap IS the assertion that no second write
+  // comes — a poll for an absence would pass vacuously.
+  await page.waitForTimeout(500)
+  expect(identityKeepalives, 'exactly ONE keepalive may fire for two hide events').toBe(1)
+
+  // (AC 2 evidence) That single keepalive IS the unload-flush retry of the
+  // FAILED save: the flush diffs against last-ACKNOWLEDGED persistence
+  // (F02), a failed save never advances it, so the keepalive carried the
+  // failed draft — proven by it landing server-side with no rollback code
+  // in existence. This supersedes the planned knownRef rollback.
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.find((entry) => entry.id === chainOne)!.identity?.subjectText ?? null
+  }, { timeout: 10_000 }).toBe('AUDIT IDENTITY VERDICT SENTINEL')
+
+  // (AC 4) The save fate is STAMPED with its chain: switching to the second
+  // chain must NOT render chain one's failed state (unfixed, the unkeyed
+  // saveState bled onto the new chain's panel). The prompt value proves the
+  // switch actually happened.
+  await page.locator(`[data-canvas-tile="${second.chain.id}"]`).click()
+  await expect(panel.locator('[data-canvas-section="prompt"] textarea').first()).toHaveValue('identity verdict second seed', { timeout: 10_000 })
+  await expect(page.locator('[data-save-state]')).toHaveCount(0)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
 // (N03, round 5 2026-10-03) readChainSettings fills a MISSING seed (chain +
 // audio) with a RANDOM fallback, so every read of the same server record
 // produced different values. The adoption effect's change detection compared
