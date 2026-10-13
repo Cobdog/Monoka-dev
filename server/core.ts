@@ -1885,7 +1885,7 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
               // hit serves the pre-serialized body without re-hydrating, and
               // a matching If-None-Match answers 304 with no body at all
               // (the SPA's conditional re-fetch rides this). The
-              // x-minimax-document-cache header is the debug/test affordance.
+              // x-monoka-document-cache header is the debug/test affordance.
               const cached = documents.getProjectDocumentCached(id)
               if (!cached) return sendJson(response, 404, { error: `No project with id ${id}.` })
               const ifNoneMatch = request.headers['if-none-match']
@@ -1898,7 +1898,7 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
                 'content-type': 'application/json; charset=utf-8',
                 'cache-control': 'no-store',
                 etag: cached.etag,
-                'x-minimax-document-cache': cached.cached ? 'hit' : 'miss',
+                'x-monoka-document-cache': cached.cached ? 'hit' : 'miss',
               })
               return response.end(cached.json)
             } catch (error) {

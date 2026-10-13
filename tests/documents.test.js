@@ -1297,7 +1297,7 @@ test('(j) document-read cache + ETag (perf wave 1): hit/miss/304 and NO STALE RE
   const docPath = `/api/lan/documents/project?id=${encodeURIComponent(project.id)}`
   const fetchDoc = async (etag) => {
     const response = await fetch(base + docPath, { headers: etag ? { 'if-none-match': etag } : {} })
-    return { status: response.status, etag: response.headers.get('etag'), cache: response.headers.get('x-minimax-document-cache'), body: await response.text() }
+    return { status: response.status, etag: response.headers.get('etag'), cache: response.headers.get('x-monoka-document-cache'), body: await response.text() }
   }
 
   const first = await fetchDoc()
