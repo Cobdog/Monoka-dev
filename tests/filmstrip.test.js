@@ -46,7 +46,7 @@ const maybe = hasFfmpeg ? test : test.skip
 
 const freePort = makePortAllocator('filmstrip')
 
-const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-filmstrip-'))
+const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-filmstrip-'))
 const outputDirectory = path.join(home, 'output')
 let child = null
 let output = ''

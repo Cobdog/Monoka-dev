@@ -351,7 +351,7 @@ beforeAll(async () => {
     try { return (await engineFetch('/system_stats')).ok } catch { return false }
   }, 15_000, 'the fake engine listening on its allocated port')
 
-  home = makeScratchDir(path.join(os.tmpdir(), 'minimax-animation-routes-'))
+  home = makeScratchDir(path.join(os.tmpdir(), 'monoka-animation-routes-'))
   const settingsFile = path.join(home, 'settings.json')
   fs.writeFileSync(settingsFile, JSON.stringify({ comfyUrl: `http://127.0.0.1:${enginePort}` }))
   assert.ok(fs.readFileSync(settingsFile, 'utf8').includes(`127.0.0.1:${enginePort}`), 'the scratch settings point at the fake engine before boot')

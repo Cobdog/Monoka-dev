@@ -77,7 +77,7 @@ async function waitUntil(predicate, timeoutMs, label) {
 }
 
 function makeHome() {
-  return makeScratchDir(path.join(os.tmpdir(), 'minimax-manager-home-'))
+  return makeScratchDir(path.join(os.tmpdir(), 'monoka-manager-home-'))
 }
 
 // ---------------------------------------------------------------------------

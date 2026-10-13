@@ -300,7 +300,7 @@ test('(b) model listing + provider selection through /api/lan/llm/models (router
   ollamaPort = await listen(ollama)
   servers.push(router, comfy, ollama)
 
-  const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-llm-'))
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-llm-'))
   fs.writeFileSync(path.join(home, 'settings.json'), JSON.stringify({
     comfyUrl: `http://127.0.0.1:${comfyPort}`,
     ollamaUrl: `http://127.0.0.1:${ollamaPort}`,
@@ -480,7 +480,7 @@ test('(g) vision captioning: Gemma image-part-first content order on the wire', 
 test('(h) Ollama fallback with an EMPTY router URL: listing, legacy routes, prepare refusing streaming', async () => {
   for (const child of children.splice(0)) child.kill()
 
-  const fallbackHome = makeScratchDir(path.join(os.tmpdir(), 'minimax-llm-fallback-'))
+  const fallbackHome = makeScratchDir(path.join(os.tmpdir(), 'monoka-llm-fallback-'))
   fs.writeFileSync(path.join(fallbackHome, 'settings.json'), JSON.stringify({
     comfyUrl: `http://127.0.0.1:${comfyPort}`,
     ollamaUrl: `http://127.0.0.1:${ollamaPort}`,

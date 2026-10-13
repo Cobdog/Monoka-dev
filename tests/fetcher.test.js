@@ -100,7 +100,7 @@ async function waitUntil(predicate, timeoutMs, label) {
 }
 
 function makeHome() {
-  return makeScratchDir(path.join(os.tmpdir(), 'minimax-fetch-home-'))
+  return makeScratchDir(path.join(os.tmpdir(), 'monoka-fetch-home-'))
 }
 
 function makeSettings(home, extra = {}) {
@@ -125,7 +125,7 @@ function makeSettings(home, extra = {}) {
 }
 
 function makeCheckout() {
-  const checkout = makeScratchDir(path.join(os.tmpdir(), 'minimax-fetch-checkout-'))
+  const checkout = makeScratchDir(path.join(os.tmpdir(), 'monoka-fetch-checkout-'))
   fs.writeFileSync(path.join(checkout, 'main.py'), '# stub ComfyUI checkout\n')
   return checkout
 }

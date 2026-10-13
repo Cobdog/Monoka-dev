@@ -560,7 +560,7 @@ beforeAll(async () => {
   // The production wiring: scratch SQLite + the real stores + the real
   // ComfyUI port pointed at the fake engine + the real completion owner +
   // the real service. The compile seam is the shared module itself.
-  home = makeScratchDir(path.join(os.tmpdir(), 'minimax-animation-rendering-'))
+  home = makeScratchDir(path.join(os.tmpdir(), 'monoka-animation-rendering-'))
   db = new Database(path.join(home, 'studio.db'))
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')

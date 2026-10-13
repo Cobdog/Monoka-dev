@@ -8,7 +8,7 @@ const path = require('node:path')
 
 // Scratch-home discipline (Wave 4 test hygiene): every exit path tears the
 // home down — a smoke run never leaves a stray behind.
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'minimax-smoke-'))
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'monoka-smoke-'))
 process.on('exit', () => { fs.rmSync(home, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }) })
 const port = String(4190 + Math.floor(Math.random() * 100))
 // Accept the first-run self-signed certificate so the smoke exercises the

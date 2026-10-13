@@ -104,7 +104,7 @@ function run(args, options = {}) {
 }
 
 function scratch() {
-  return makeScratchDir(path.join(os.tmpdir(), 'minimax-launcher-'))
+  return makeScratchDir(path.join(os.tmpdir(), 'monoka-launcher-'))
 }
 
 const hasBuild = fs.existsSync(path.join(REPO, 'dist', 'index.html')) && fs.existsSync(path.join(REPO, 'dist-server', 'server', 'index.js'))

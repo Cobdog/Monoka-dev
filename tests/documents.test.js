@@ -61,7 +61,7 @@ const sha256 = (data) => createHash('sha256').update(data).digest('hex')
 const sha256File = (file) => sha256(fs.readFileSync(file))
 
 function makeHome(label) {
-  return makeScratchDir(path.join(os.tmpdir(), `minimax-documents-${label}-`))
+  return makeScratchDir(path.join(os.tmpdir(), `monoka-documents-${label}-`))
 }
 
 /** Every server booted this run — the SUCCESS path and every FAILURE path

@@ -88,7 +88,7 @@ async function waitUntil(predicate, timeoutMs, label) {
 }
 
 function makeHome() {
-  return makeScratchDir(path.join(os.tmpdir(), 'minimax-instance-home-'))
+  return makeScratchDir(path.join(os.tmpdir(), 'monoka-instance-home-'))
 }
 
 // ---- the shared git fixture set (version matrix + routes status board) ----
