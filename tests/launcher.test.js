@@ -24,6 +24,12 @@
 //   (j) real production boot through the launcher on a 7000–7099 port
 //       (recorded PID only, SIGTERM teardown, port re-probed free) — runs
 //       when the build exists (gate order: after build), NOTE-skips otherwise
+//   (k) the move-pending guard (rename-T5): a seeded legacy ~/.minimax-studio
+//       under a REDIRECTED HOME boots through the real launcher with no
+//       explicit MONOKA_HOME — the server performs the rename(2) and the boot
+//       reaches readiness. If the launcher ever pre-creates the default home
+//       while the move is pending, the server's target-exists refusal kills
+//       the boot and this section reds (the pre-rename-T2 every-boot refusal).
 // POSIX-only: start.sh targets /bin/sh; the Windows engine leg does not run
 // this suite and a win32 invocation self-skips with a NOTE.
 //
@@ -393,4 +399,60 @@ maybe('(j) real production boot through the launcher (recorded PID only, SIGTERM
   })
   ok(released, 'the port is free again after teardown')
   console.log(`\nlauncher: ${passed} checks passed`)
+})
+
+maybe('(k) the move-pending guard: a seeded legacy home under a redirected HOME boots through the move (rename-T5)', async () => {
+  console.log('launcher: move-pending guard (seeded legacy home, redirected HOME)')
+  if (!hasBuild) {
+    console.log('  NOTE: build output absent — the real-boot section skips (the gate runs this suite after build).')
+    return
+  }
+  const dir = scratch()
+  // A fake user home: the legacy ~/.minimax-studio is populated, the new
+  // ~/.monoka does NOT exist. The child's HOME is redirected here and
+  // MONOKA_HOME is deliberately NOT set — the launcher must resolve the
+  // default home under this HOME, hit the move-pending branch, and NOT
+  // pre-create the target (the server's rename(2) runs before its own
+  // mkdir; a pre-created empty target makes every boot refuse).
+  const fakeHome = path.join(dir, 'fake-home')
+  const legacyHome = path.join(fakeHome, '.minimax-studio')
+  const newHome = path.join(fakeHome, '.monoka')
+  fs.mkdirSync(legacyHome, { recursive: true })
+  // comfyUrl at a dead port (the documented CI-simulation convention): the
+  // boot never touches a real engine, and the value doubles as the
+  // byte-intact marker the move must carry into the new home.
+  const MARKER_URL = 'http://127.0.0.1:9'
+  fs.writeFileSync(path.join(legacyHome, 'settings.json'), JSON.stringify({ comfyUrl: MARKER_URL }))
+  const config = path.join(dir, 'config.json')
+  const port = await freePort()
+  const env = { MONOKA_START_CONFIG: config }
+  run(['--set', `port=${port}`], { env })
+  run(['--set', 'dev=false'], { env })
+  const child = spawn('sh', [START_SH], {
+    cwd: REPO,
+    env: { ...process.env, MONOKA_START_CONFIG: config, MONOKA_NO_HTTPS: '1', HOME: fakeHome },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let output = ''
+  child.stdout.on('data', (chunk) => { output += String(chunk) })
+  child.stderr.on('data', (chunk) => { output += String(chunk) })
+  // Readiness IS the guard's proof: a pre-created target would trip the
+  // server's moveDataHome refusal (exit 1 naming both paths) and the API
+  // would never answer. The tail rides the label so a red names the cause.
+  const ready = await waitUntil(async () => {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/lan/settings`)
+      return response.ok
+    } catch { return false }
+  }, 60_000, `the launcher to boot through the pending move (server tail: ${output.slice(-400)})`)
+  ok(ready, 'the boot reaches readiness with the legacy home present (the launcher did not pre-create the target)')
+  ok(!fs.existsSync(legacyHome), 'the legacy home is gone — the server performed the rename(2) at boot')
+  const movedSettings = JSON.parse(fs.readFileSync(path.join(newHome, 'settings.json'), 'utf8'))
+  ok(movedSettings.comfyUrl === MARKER_URL, 'the moved settings.json carries its data byte-intact into ~/.monoka')
+  child.kill('SIGTERM') // the recorded PID only — never anything else
+  const exited = await new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), 30_000)
+    child.on('exit', () => { clearTimeout(timer); resolve(true) })
+  })
+  ok(exited, 'SIGTERM to the recorded PID stops the booted server')
 })
