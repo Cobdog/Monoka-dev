@@ -120,7 +120,7 @@ export function FirstRunWizard() {
 
   // (R-29) The stack verdict folds the ENGINE side too: object_info says
   // whether the instance actually serves the H3 core node classes.
-  const stack = useMemo(() => (settings ? h3StackReport(models, settings.modelOverrides?.minimax, engineInfo) : null), [models, settings, engineInfo])
+  const stack = useMemo(() => (settings ? h3StackReport(models, settings.modelOverrides?.monoka, engineInfo) : null), [models, settings, engineInfo])
 
   // Show while the journey is neither completed nor skipped (journey sweep
   // #9, reality audit 2026-09-25 F1/C5): the OLD guard keyed visibility on

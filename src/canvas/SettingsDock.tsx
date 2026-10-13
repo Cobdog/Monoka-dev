@@ -138,7 +138,7 @@ export function SettingsDock() {
         info={session.info}
         infoEpoch={infoEpoch}
         models={models}
-        h3Report={h3StackReport(models, settings.modelOverrides?.minimax, session.info)}
+        h3Report={h3StackReport(models, settings.modelOverrides?.monoka, session.info)}
         scanning={scanning}
         status={status}
         checking={checking}
