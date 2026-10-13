@@ -4,7 +4,7 @@
  *
  *   - a tiny zustand store whose `position` slice is the transient value;
  *   - `window.__studioDriveTransient(count)` (mirroring how the realtime
- *     fabric exposes `window.__minimaxRealtime` diagnostics): applies `count`
+ *     fabric exposes `window.__monokaRealtime` diagnostics): applies `count`
  *     store updates; a subscription installed for the duration of the drive
  *     paints each one DIRECTLY onto the probe element's transform (see
  *     TransientProbe.tsx), bypassing React entirely. The e2e suite drives

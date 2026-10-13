@@ -59,7 +59,7 @@ export function useLlmStream(): LlmStreamUi {
     }
     const providerFallback = async () => {
       // Single delivery through the non-streaming provider route.
-      const response = await window.minimax.llmGenerate({
+      const response = await window.monoka.llmGenerate({
         task: options.task,
         targetEngine: options.targetEngine,
         length: options.length,
@@ -77,7 +77,7 @@ export function useLlmStream(): LlmStreamUi {
     try {
       let prepared: LlmStreamRequest | null = null
       try {
-        prepared = await window.minimax.llmPrepareStream({
+        prepared = await window.monoka.llmPrepareStream({
           task: options.task,
           targetEngine: options.targetEngine,
           length: options.length,

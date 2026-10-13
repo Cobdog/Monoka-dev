@@ -2,7 +2,7 @@ import type { DesktopApi } from './types'
 
 declare global {
   interface Window {
-    minimax: DesktopApi
+    monoka: DesktopApi
   }
 
   /** App version from package.json, injected by vite define at build time. */

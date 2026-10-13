@@ -448,5 +448,5 @@ export function realtimeDiagnostics(): RealtimeStatus & { received: Record<strin
 if (typeof window !== 'undefined') {
   // E2E + doctor observability: proves the fabric connected and channels are
   // flowing without reaching into module internals.
-  Object.defineProperty(window, '__minimaxRealtime', { configurable: true, get: () => realtimeDiagnostics() })
+  Object.defineProperty(window, '__monokaRealtime', { configurable: true, get: () => realtimeDiagnostics() })
 }

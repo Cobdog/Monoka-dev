@@ -302,7 +302,7 @@ function WorkbenchSurface() {
     const next = { ...current, experimentalT1Decode: value }
     try {
       sessionState.setSettings(next)
-      const saved = await window.minimax.saveSettings(next)
+      const saved = await window.monoka.saveSettings(next)
       sessionState.setSettings(saved.settings)
     } catch (error) {
       setNotice(`The T=1 machinery choice could not be saved: ${error instanceof Error ? error.message : String(error)}`)
@@ -695,7 +695,7 @@ function WorkbenchSurface() {
     try {
       // VRAM staging (spec §4): the refine stage frees the generation
       // engine first — Generate → /free → Refine.
-      const executor = createStageExecutor(() => window.minimax.freeComfyMemory(sessionState.settings?.comfyUrl ?? ''))
+      const executor = createStageExecutor(() => window.monoka.freeComfyMemory(sessionState.settings?.comfyUrl ?? ''))
       await executor.run(
         [{ familyId: settings.family, label: 'generate' }, { familyId: engine === 'krea2' ? 'h3img.refine.krea2' : 'h3img.refine.klein', label: 'refine' }],
         async (stage) => {

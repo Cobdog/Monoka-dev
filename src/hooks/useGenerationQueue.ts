@@ -140,7 +140,7 @@ export function useGenerationQueue(options: {
       for (const job of jobsRef.current.filter((j) => j.status === 'queued' || j.status === 'running')) {
         const promptId = job.promptId
         if (!promptId) continue
-        void window.minimax.getHistory(settings.comfyUrl, promptId).then(async (history) => {
+        void window.monoka.getHistory(settings.comfyUrl, promptId).then(async (history) => {
           const entry = history[promptId] as { status?: { status_str?: string; completed?: boolean; messages?: unknown[] } } | undefined
           const mediaType = job.mediaType ?? 'video'
           const outputUrl = playableOutputUrl(extractOutputUrl(history, promptId, settings.comfyUrl, mediaType))
@@ -161,7 +161,7 @@ export function useGenerationQueue(options: {
             // completes the job (streamed via the media proxy).
             const file = extractOutputFile(history, promptId, mediaType)
             if (file) {
-              const localOutput = await window.minimax.resolveOutput(settings.outputDirectory, file)
+              const localOutput = await window.monoka.resolveOutput(settings.outputDirectory, file)
               observation = { kind: 'completed', outputUrl: outputUrl ?? localOutput ?? '', localOutputPath: localOutput ?? undefined }
             } else {
               observation = { kind: 'completedNoLocalOutput' }
@@ -175,9 +175,9 @@ export function useGenerationQueue(options: {
           // /free soft-reset clears.
           if (observation.kind === 'executionError' && !job.retriedOnce && (job.provider ?? 'monoka') === 'monoka' && job.graph) {
             try {
-              await window.minimax.freeComfyMemory(settings.comfyUrl)
+              await window.monoka.freeComfyMemory(settings.comfyUrl)
               const retryGraph = withTiledVideoDecode(job.graph as Record<string, { class_type: string; inputs: Record<string, unknown> }>)
-              const resubmitted = await window.minimax.submitPrompt(settings.comfyUrl, retryGraph)
+              const resubmitted = await window.monoka.submitPrompt(settings.comfyUrl, retryGraph)
               setJobs((current) => current.map((item) => item.id === job.id
                 ? { ...item, promptId: resubmitted.prompt_id, status: 'queued', progress: 2, progressLabel: 'Auto-retrying after engine reset (tiled VAE)', error: undefined, retriedOnce: true }
                 : item))
@@ -312,7 +312,7 @@ export function useGenerationQueue(options: {
         for (const job of jobsRef.current.filter((entry) => entry.status === 'queued' || entry.status === 'running')) {
           const promptId = job.promptId
           if (!promptId) continue
-          void window.minimax.getHistory(comfyUrl, promptId).then((history) => {
+          void window.monoka.getHistory(comfyUrl, promptId).then((history) => {
             if (history && !history[promptId]) failJobs(new Set([job.id]), engineRestartFailure())
           }).catch(() => undefined)
         }
@@ -346,7 +346,7 @@ export function useGenerationQueue(options: {
       return
     }
     try {
-      const result = await window.minimax.cancelPrompt(settings.comfyUrl, job.promptId)
+      const result = await window.monoka.cancelPrompt(settings.comfyUrl, job.promptId)
       if (result.cancelled) {
         setJobs((current) => current.map((item) => item.id === job.id ? { ...item, status: 'cancelled', error: undefined } : item))
         notify('success', result.state === 'pending' ? 'Queued generation removed.' : 'Running generation stopped.')

@@ -223,11 +223,11 @@ test('(d) preflight — the graph-vs-object_info diff and the pack-row refusal (
     if (hasWindow) {
       let refusalEvent = null
       const listener = (event) => { refusalEvent = event.detail }
-      globalThis.window.addEventListener('minimax:preflight-refusal', listener)
+      globalThis.window.addEventListener('monoka:preflight-refusal', listener)
       const refusal = preflight.preflightOrFail({ '1': { class_type: 'MiniMaxH3HybridLoader', inputs: {} } }, { UNETLoader: {} }, 'preflight.test')
       ok(refusal && refusal.includes('MiniMaxH3HybridLoader'), 'the seam still refuses (the event never replaces the refusal)')
       ok(refusalEvent && refusalEvent.missing.length === 1 && refusalEvent.missing[0].packId === 'h3-hybrid-loader', 'the refusal event carries the missing payload (the RemediationDock opens from it)')
-      globalThis.window.removeEventListener('minimax:preflight-refusal', listener)
+      globalThis.window.removeEventListener('monoka:preflight-refusal', listener)
     } else {
       // The no-window path: the refusal still returns, nothing dispatches,
       // nothing throws.

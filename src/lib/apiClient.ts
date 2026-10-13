@@ -332,9 +332,9 @@ function mediaQuery(filePath: string): Record<string, string> {
   return { source: 'output', path: filePath }
 }
 
-/** Installs the HTTP bridge as window.minimax when no preload bridge exists. */
+/** Installs the HTTP bridge as window.monoka when no preload bridge exists. */
 export function installWebApiClient() {
-  if (window.minimax) return false
-  window.minimax = createWebApiClient()
+  if (window.monoka) return false
+  window.monoka = createWebApiClient()
   return true
 }

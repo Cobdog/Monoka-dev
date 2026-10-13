@@ -26,10 +26,10 @@ import type { TelemetrySample } from '../types'
  *  action references are stable). */
 const engineRecoveryDeps: EngineRecoveryDeps = {
   bridge: {
-    getComfyStatus: (url) => window.minimax.getComfyStatus(url),
-    getObjectInfo: (url) => window.minimax.getObjectInfo(url),
-    scanModels: (settings, options) => window.minimax.scanModels(settings, options),
-    lightInventory: (settings) => window.minimax.lightInventory(settings),
+    getComfyStatus: (url) => window.monoka.getComfyStatus(url),
+    getObjectInfo: (url) => window.monoka.getObjectInfo(url),
+    scanModels: (settings, options) => window.monoka.scanModels(settings, options),
+    lightInventory: (settings) => window.monoka.lightInventory(settings),
   },
   store: {
     status: () => useSessionStore.getState().status,
@@ -110,7 +110,7 @@ export function useStudioSession() {
     setScanning(true)
     if (options?.refresh) dbg('inventory.refresh', { source: 'user' })
     try {
-      const found = await window.minimax.scanModels(nextSettings, options)
+      const found = await window.monoka.scanModels(nextSettings, options)
       setModels(found)
       // (A-DBG) The inventory epoch junction: what the registry answered.
       dbg('inventory.epoch', { refresh: Boolean(options?.refresh), files: found.length })
@@ -140,7 +140,7 @@ export function useStudioSession() {
 
   const refreshOllama = useCallback(async (nextSettings: AppSettings) => {
     try {
-      const found = await window.minimax.listOllamaModels(nextSettings.ollamaUrl)
+      const found = await window.monoka.listOllamaModels(nextSettings.ollamaUrl)
       setOllamaModels(found.filter((model) => model.local && model.family !== 'nomic-bert'))
     } catch {
       setOllamaModels([])
@@ -153,14 +153,14 @@ export function useStudioSession() {
   // has none.
   const refreshLlm = useCallback(async () => {
     try {
-      setLlm(await window.minimax.listLlmModels())
+      setLlm(await window.monoka.listLlmModels())
     } catch {
       setLlm(null)
     }
   }, [setLlm])
 
   useEffect(() => {
-    void window.minimax.getSettings().then((loaded) => {
+    void window.monoka.getSettings().then((loaded) => {
       setSettings(loaded)
       // (hbdzmoa) The boot reads are fail-tolerant: if the app server dies
       // inside the boot window (or the engine behind it is unreachable), the
@@ -185,7 +185,7 @@ export function useStudioSession() {
     if (!settings || !connectedComfyVersion || settings.testedComfyVersion) return
     const next = { ...settings, testedComfyVersion: connectedComfyVersion }
     setSettings(next)
-    void window.minimax.saveSettings(next).catch(() => undefined)
+    void window.monoka.saveSettings(next).catch(() => undefined)
   }, [settings, connectedComfyVersion, setSettings])
 
   // GPU telemetry rides the realtime fabric (wave 1): the server pushes each
@@ -204,7 +204,7 @@ export function useStudioSession() {
       if (timer || document.hidden) return
       const refresh = () => {
         if (document.hidden) return
-        void window.minimax.getGpuTelemetry().then((value) => { if (!disposed) setGpu(value) }).catch(() => { if (!disposed) setGpu({ available: false }) })
+        void window.monoka.getGpuTelemetry().then((value) => { if (!disposed) setGpu(value) }).catch(() => { if (!disposed) setGpu({ available: false }) })
       }
       refresh()
       timer = window.setInterval(refresh, 4000)
@@ -235,7 +235,7 @@ export function useStudioSession() {
       }
       let disposed = false
       const refresh = () => {
-        void window.minimax.getEngineStatus().then((value) => {
+        void window.monoka.getEngineStatus().then((value) => {
           if (disposed) return
           // Shape-discriminated (ManagedEngineStatus.mode carries the
           // SETTINGS mode, so `mode` alone cannot narrow the union).
@@ -249,7 +249,7 @@ export function useStudioSession() {
     setExternalEngine(null)
     let disposed = false
     const refresh = () => {
-      void window.minimax.getEngineStatus().then((value) => { if (!disposed && !('external' in value)) setEngineRuntime(value) }).catch(() => { if (!disposed) setEngineRuntime(null) })
+      void window.monoka.getEngineStatus().then((value) => { if (!disposed && !('external' in value)) setEngineRuntime(value) }).catch(() => { if (!disposed) setEngineRuntime(null) })
     }
     refresh()
     const timer = window.setInterval(refresh, 2500)

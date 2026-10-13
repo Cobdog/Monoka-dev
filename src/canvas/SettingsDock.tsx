@@ -91,7 +91,7 @@ export function SettingsDock() {
       // 2026-09-19): the wrapper now surfaces the server's save-warnings
       // (well-formed but nonexistent paths) instead of dropping them for a
       // flat success — the save still succeeds; the toast names every miss.
-      const saved = await window.minimax.saveSettings(settings)
+      const saved = await window.monoka.saveSettings(settings)
       savedRef.current = snapshotOf(settings)
       await Promise.all([scanModels(saved.settings, { refresh: true }), checkConnection(saved.settings.comfyUrl)])
       await refreshOllama(saved.settings)

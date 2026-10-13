@@ -128,7 +128,7 @@ export function DiagnosticsView() {
   const runDoctor = async () => {
     setDoctorRunning(true)
     try {
-      setDoctor(await window.minimax.runSetupDoctor())
+      setDoctor(await window.monoka.runSetupDoctor())
       setActionNote(null)
     } catch (error) {
       setDoctor({ checks: [{ id: 'error', label: 'Doctor failed', status: 'fail', detail: error instanceof Error ? error.message : String(error) }], ranAt: Date.now() })

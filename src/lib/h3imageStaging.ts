@@ -70,7 +70,7 @@ export type StageExecutor = {
 
 /** Builds an executor over the injectable free seam. The recorder in the
  * tests asserts the free-before discipline without an engine; the surface
- * passes `(url) => window.minimax.freeComfyMemory(url)`. */
+ * passes `(url) => window.monoka.freeComfyMemory(url)`. */
 export function createStageExecutor(free: () => Promise<unknown>): StageExecutor {
   return {
     async run<T>(stages: WorkbenchStage[], step: (stage: WorkbenchStage, index: number) => Promise<T>): Promise<Array<T | { stagedError: string }>> {

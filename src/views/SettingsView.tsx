@@ -35,7 +35,7 @@ function PathCheckNote({ path }: { path: string }) {
     if (!trimmed || !trimmed.startsWith('/')) { setState('idle'); setDetail(''); return }
     setState('checking')
     const timer = setTimeout(() => {
-      void window.minimax.checkPath(trimmed).then((result) => {
+      void window.monoka.checkPath(trimmed).then((result) => {
         if (result.error) { setState('error'); setDetail(result.error); return }
         if (!result.exists) { setState('missing'); return }
         setState(result.directory ? 'ok' : 'file')
@@ -112,7 +112,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
   const [doctorRunning, setDoctorRunning] = useState(false)
   const runDoctor = async () => {
     setDoctorRunning(true)
-    try { setDoctor(await window.minimax.runSetupDoctor()) } catch (error) { setDoctor({ checks: [{ id: 'error', label: 'Doctor failed', status: 'fail', detail: error instanceof Error ? error.message : String(error) }], ranAt: Date.now() }) } finally { setDoctorRunning(false) }
+    try { setDoctor(await window.monoka.runSetupDoctor()) } catch (error) { setDoctor({ checks: [{ id: 'error', label: 'Doctor failed', status: 'fail', detail: error instanceof Error ? error.message : String(error) }], ranAt: Date.now() }) } finally { setDoctorRunning(false) }
   }
 
   // ---- LLM layer (llama.cpp router primary, Ollama fallback) ----------------
@@ -124,7 +124,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
   const testLlm = async (candidate: string) => {
     setLlmTesting(true)
     setLlmTestedUrl(candidate)
-    try { setLlmList(await window.minimax.listLlmModels(candidate)) } catch (error) {
+    try { setLlmList(await window.monoka.listLlmModels(candidate)) } catch (error) {
       setLlmList({ provider: candidate.trim() ? 'router' : 'ollama', endpoint: candidate, model: '', models: [], connected: false, latencyMs: 0, error: error instanceof Error ? error.message : String(error) })
     } finally { setLlmTesting(false) }
   }
@@ -156,11 +156,11 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
     setEngineBusy(true)
     setEngineActionError(null)
     try {
-      const saved = await window.minimax.saveSettings(settings)
+      const saved = await window.monoka.saveSettings(settings)
       setSettings(saved.settings)
       bumpPackSaveTick() // the persisted form just changed the pack target too
-      await window.minimax.startManagedEngine()
-      setSettings(await window.minimax.getSettings()) // comfyUrl re-pointed server-side on success
+      await window.monoka.startManagedEngine()
+      setSettings(await window.monoka.getSettings()) // comfyUrl re-pointed server-side on success
     } catch (error) {
       setEngineActionError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -170,7 +170,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
   const stopEngine = async () => {
     setEngineBusy(true)
     setEngineActionError(null)
-    try { await window.minimax.stopManagedEngine() } catch (error) {
+    try { await window.monoka.stopManagedEngine() } catch (error) {
       setEngineActionError(error instanceof Error ? error.message : String(error))
     } finally {
       setEngineBusy(false)
@@ -192,7 +192,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
   const [nodePackSource, setNodePackSource] = useState<Record<string, string>>({})
   const refreshNodePacks = async (options?: { refresh?: boolean }) => {
     try {
-      const listed = await window.minimax.listEngineNodePacks(options)
+      const listed = await window.monoka.listEngineNodePacks(options)
       setNodePacks(listed.packs)
       setManagerAvailability(listed.manager)
     } catch { /* listed on next action; errors surface there */ }
@@ -371,7 +371,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
               <span><strong>Consent: {hook.patchId === 'longcache-block-loop' ? 'VDN LongCache block-loop hook' : hook.patchId}</strong><small>Lets the studio patch comfy/ldm/minimax/model.py before launch (pristine backup kept; layout- and version-gated; refuses on anything unrecognized). Unchecked = never patched — VDN still works, you just lose the LongCache tail cache.</small></span>
             </label>
           ))}
-          {activePatchHooks.some((hook) => settings.engine.patches[hook.patchId]?.consented) && <button type="button" className="secondary-button" onClick={() => { void activePatchHooks.filter((hook) => settings.engine.patches[hook.patchId]?.consented).map((hook) => window.minimax.revertEnginePatch(hook.patchId).then(() => refreshNodePacks()).catch((error: unknown) => setNodePackError(error instanceof Error ? error.message : String(error)))) }}>Revert patched files from backup</button>}
+          {activePatchHooks.some((hook) => settings.engine.patches[hook.patchId]?.consented) && <button type="button" className="secondary-button" onClick={() => { void activePatchHooks.filter((hook) => settings.engine.patches[hook.patchId]?.consented).map((hook) => window.monoka.revertEnginePatch(hook.patchId).then(() => refreshNodePacks()).catch((error: unknown) => setNodePackError(error instanceof Error ? error.message : String(error)))) }}>Revert patched files from backup</button>}
         </div>}
         <div className="connection-row managed-engine-actions">
           <Button variant="secondary" className="secondary-button" size={16} busy={engineBusy} disabled={engineRuntime?.state === 'running' || engineRuntime?.state === 'starting'} icon={<Power size={16} />} onClick={() => void startEngine()}>Start engine</Button>
@@ -434,7 +434,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
                 ? (pack.fetchConsented
                   ? `Install through the engine's ComfyUI-Manager (first-choice): the repository's current HEAD — Manager's v2 API cannot target the studio's pinned revision. Fetch… stays the pin-exact path.`
                   : `Install through ComfyUI-Manager needs the fetch consent first — open Fetch… to review the ${pack.licenseSpdx} terms and consent, then this button installs via Manager.`)
-                : pack.folderState === 'foreign' ? 'Already present — placed outside the studio; the studio never replaces or deletes it' : undefined} busy={nodePackBusy === pack.id} disabled={pack.availability === 'unavailable' || pack.folderState === 'foreign' || (needsLocalSource && !nodePackSource[pack.id]?.trim())} onClick={() => void runNodePackAction(pack.id, () => window.minimax.installEngineNodePack(pack.id, nodePackSource[pack.id]?.trim() || undefined))}
+                : pack.folderState === 'foreign' ? 'Already present — placed outside the studio; the studio never replaces or deletes it' : undefined} busy={nodePackBusy === pack.id} disabled={pack.availability === 'unavailable' || pack.folderState === 'foreign' || (needsLocalSource && !nodePackSource[pack.id]?.trim())} onClick={() => void runNodePackAction(pack.id, () => window.monoka.installEngineNodePack(pack.id, nodePackSource[pack.id]?.trim() || undefined))}
               >
                 Install
               </Button>}
@@ -443,7 +443,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
                   uninstalled by asking the Manager — the button appears when
                   the probe says Manager is active, and the studio's own
                   never-delete-what-you-did-not-place rule holds either way. */}
-              <button type="button" className="secondary-button" disabled={(!pack.installed && !(pack.folderState === 'foreign' && managerAvailability?.present)) || nodePackBusy === pack.id} title={pack.installed ? undefined : pack.folderState === 'foreign' && managerAvailability?.present ? 'Ask the engine\'s ComfyUI-Manager to uninstall its own pack (the studio never deletes a folder it did not place)' : undefined} onClick={() => void runNodePackAction(pack.id, () => window.minimax.uninstallEngineNodePack(pack.id))}>Uninstall</button>
+              <button type="button" className="secondary-button" disabled={(!pack.installed && !(pack.folderState === 'foreign' && managerAvailability?.present)) || nodePackBusy === pack.id} title={pack.installed ? undefined : pack.folderState === 'foreign' && managerAvailability?.present ? 'Ask the engine\'s ComfyUI-Manager to uninstall its own pack (the studio never deletes a folder it did not place)' : undefined} onClick={() => void runNodePackAction(pack.id, () => window.monoka.uninstallEngineNodePack(pack.id))}>Uninstall</button>
             </div>
           </div>
           )

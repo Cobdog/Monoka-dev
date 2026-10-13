@@ -325,7 +325,7 @@ test('the realtime fabric connects on boot and telemetry samples flow', async ({
   const problems = await trackErrors(page)
   await page.goto('/')
   await page.waitForFunction(() => {
-    const diagnostics = (window as unknown as { __minimaxRealtime?: { connected: boolean; transport: string; received: Record<string, number> } }).__minimaxRealtime
+    const diagnostics = (window as unknown as { __monokaRealtime?: { connected: boolean; transport: string; received: Record<string, number> } }).__monokaRealtime
     return Boolean(diagnostics && diagnostics.connected && diagnostics.transport && (diagnostics.received.telemetry ?? 0) >= 1)
   }, undefined, { timeout: 15_000 })
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
@@ -335,7 +335,7 @@ test('the realtime fabric connects on boot and telemetry samples flow', async ({
 // not take the canvas down, and the boundary's console output + fallback UI
 // must be sanitized (the injected crash message carries sentinel "prompt"
 // words that may never survive anywhere). The crash is forced by wrapping the
-// window.minimax bridge at install time: getSettings hands the app a settings
+// window.monoka bridge at install time: getSettings hands the app a settings
 // object whose `promptContentLevel` getter throws — only SettingsView reads
 // that field during render, so the canvas root and every other dock stay
 // healthy. (The original poison vehicle was `gpuTier`, removed with the
@@ -345,7 +345,7 @@ test('a crashing docked surface is contained by its error boundary without leaki
   page.on('console', (message) => { if (message.type() === 'error') consoleErrors.push(message.text()) })
   await page.addInitScript(() => {
     let installed: unknown
-    Object.defineProperty(window, 'minimax', {
+    Object.defineProperty(window, 'monoka', {
       configurable: true,
       get: () => installed,
       set: (client: unknown) => {

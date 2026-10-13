@@ -181,16 +181,16 @@ export async function submitWorkbenchGeneration(
     for (const warning of resolveModelOverrides('h3image', facts.models, facts.settings.modelOverrides?.h3image).warnings) io.notify('neutral', warning)
     io.notify('neutral', 'Uploading references and preparing the graph…')
     const upload = async (file: MediaFile, fitToOutput = false) => file.kind === 'image' && (fitToOutput || Boolean(file.crop))
-      ? window.minimax.uploadImageData(settings.comfyUrl, await prepareImage(file, width, height))
-      : window.minimax.uploadInput(settings.comfyUrl, file.path)
+      ? window.monoka.uploadImageData(settings.comfyUrl, await prepareImage(file, width, height))
+      : window.monoka.uploadInput(settings.comfyUrl, file.path)
     // REFERENCE PREP (maintainer ruling 2026-09-26, directive 1e363ec0 item
     // 5): the workbench's reference pictures take the longest-side scale —
     // never the output-fit crop. The anchored SOURCE and refine frames stay
     // output-fit (they are Picture 1 of the output canvas — the pack
     // assessment's "source fitting stays prepareImage's" contract).
     const uploadReference = async (file: MediaFile) => file.kind === 'image'
-      ? window.minimax.uploadImageData(settings.comfyUrl, await prepareReferenceImage(file, Math.max(width, height)))
-      : window.minimax.uploadInput(settings.comfyUrl, file.path)
+      ? window.monoka.uploadImageData(settings.comfyUrl, await prepareReferenceImage(file, Math.max(width, height)))
+      : window.monoka.uploadInput(settings.comfyUrl, file.path)
     const refUploads = await Promise.all(request.refs.map((ref) => uploadReference(ref.media)))
     // The inpaint lane's source uploads through the MASK-PRESERVING prep
     // (the 1F full image stack): its alpha channel IS the mask, and
@@ -199,7 +199,7 @@ export async function submitWorkbenchGeneration(
     // stretch here is sub-grid rounding only.
     const sourceUpload = request.source
       ? await (request.sourceMask
-        ? window.minimax.uploadImageData(settings.comfyUrl, await prepareMaskedImage(request.source, width, height))
+        ? window.monoka.uploadImageData(settings.comfyUrl, await prepareMaskedImage(request.source, width, height))
         : upload(request.source, true))
       : undefined
     const refineFrameUpload = request.refine ? await upload(request.refine.frame, true) : undefined
@@ -268,9 +268,9 @@ export async function submitWorkbenchGeneration(
       canvas: { chainId: request.chainId },
     }
 
-    const response = await window.minimax.submitPrompt(settings.comfyUrl, graph, facts.clientId)
+    const response = await window.monoka.submitPrompt(settings.comfyUrl, graph, facts.clientId)
     if (io.cancellationRequests?.current.has(localId)) {
-      await window.minimax.cancelPrompt(settings.comfyUrl, response.prompt_id)
+      await window.monoka.cancelPrompt(settings.comfyUrl, response.prompt_id)
       io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'cancelled', error: undefined } : item))
       io.notify('success', 'Generation cancelled.')
     } else {

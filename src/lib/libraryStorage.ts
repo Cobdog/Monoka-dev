@@ -1,4 +1,4 @@
-export const STORAGE_ERROR_EVENT = 'minimax-storage-error'
+export const STORAGE_ERROR_EVENT = 'monoka-storage-error'
 
 export type StorageErrorDetail = { key: string; message: string }
 

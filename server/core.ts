@@ -3673,10 +3673,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
               'content-type': 'image/png',
               'cache-control': 'private, max-age=86400',
               etag,
-              'x-minimax-filmstrip-cols': String(sheet.cols),
-              'x-minimax-filmstrip-rows': String(sheet.rows),
-              'x-minimax-filmstrip-frame-count': String(sheet.frameCount),
-              'x-minimax-filmstrip-generations': String(filmstripGenerationCount),
+              'x-monoka-filmstrip-cols': String(sheet.cols),
+              'x-monoka-filmstrip-rows': String(sheet.rows),
+              'x-monoka-filmstrip-frame-count': String(sheet.frameCount),
+              'x-monoka-filmstrip-generations': String(filmstripGenerationCount),
             }
             const ifNoneMatch = request.headers['if-none-match']
             if ((Array.isArray(ifNoneMatch) ? ifNoneMatch[0] : ifNoneMatch) === etag) {

@@ -87,7 +87,7 @@ export async function landWorkbenchTake(input: WorkbenchLandingInput): Promise<W
   // Every frame descriptor, in frame order — the exact engine outputs.
   let descriptors: Array<{ filename: string; subfolder?: string; type?: string }> = []
   try {
-    const history = await window.minimax.getHistory(comfyUrl, job.promptId)
+    const history = await window.monoka.getHistory(comfyUrl, job.promptId)
     descriptors = extractAllOutputFiles(history, job.promptId, 'image')
   } catch (error) {
     return { landed: false, error: `the engine history could not be read: ${error instanceof Error ? error.message : String(error)}` }

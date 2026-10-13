@@ -53,7 +53,7 @@ export async function submitH3DiagnosticPair(facts: H3DiagnosticsFacts, io: H3Di
     io.setJobs((current) => [job, ...current])
     try {
       const graph = buildMiniMaxWorkflow({ mode: 'text', prompt: diagnosticPrompt, width: 1344, height: 768, duration: 5, seed: 12345, steps: 20, turbo: test.turbo, sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: test.filenamePrefix, referenceImages: [], referenceVideos: [], referenceAudios: [] }, test.selection, { images: [], videos: [], audios: [] }, facts.info)
-      const response = await window.minimax.submitPrompt(facts.settings.comfyUrl, graph, facts.clientId)
+      const response = await window.monoka.submitPrompt(facts.settings.comfyUrl, graph, facts.clientId)
       queuedCount += 1
       io.setJobs((current) => current.map((item) => item.id === id ? { ...item, promptId: response.prompt_id, status: 'running', progress: 4, progressLabel: index === 0 ? 'Native test queued' : 'Turbo 8 test queued behind Native' } : item))
     } catch (error) {
