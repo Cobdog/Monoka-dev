@@ -29,7 +29,7 @@ pnpm install        # once
 ```
 
 The launcher stores its config in `.start-config.json` next to the script
-(gitignored; relocate with `MINIMAX_START_CONFIG`). Dev mode boots the dev
+(gitignored; relocate with `MONOKA_START_CONFIG`). Dev mode boots the dev
 pipeline and pretty-prints the server logs; regular mode boots the built
 server exactly as before. A busy port, missing dependencies, or an invalid
 saved config is reported honestly (with the holding PID when findable — the
@@ -53,7 +53,7 @@ Requirements: Node 20+, a local ComfyUI with the MiniMax H3 core nodes, and the 
 
 Configuration lives in `~/.monoka/` (override with `MONOKA_HOME`): `settings.json` holds the ComfyUI/Ollama addresses, model folders, and defaults — also editable from the app's Settings page. Default port `4178` (override with `MONOKA_LAN_PORT`; the bind host with `MONOKA_LAN_HOST`, e.g. `127.0.0.1` for local-only). The `--configure` engine-URL field writes straight into `settings.json` — one source of truth.
 
-**Security posture:** open on your LAN by default, exactly like ComfyUI itself — anyone on the same network can use the studio. For hostile networks (café Wi-Fi, shared offices), start with `--token` (or `MINIMAX_LAN_TOKEN=1`) and pass the token as `?token=…`.
+**Security posture:** open on your LAN by default, exactly like ComfyUI itself — anyone on the same network can use the studio. For hostile networks (café Wi-Fi, shared offices), start with `--token` (or `MONOKA_LAN_TOKEN=1`) and pass the token as `?token=…`.
 
 `pnpm dev` runs vite HMR on 5173 with `/api` proxied to a server already running on 4178 (`./start.sh --configure --dev` wraps this pipeline: vite + the watched server + pretty logs in one command, on your configured ports).
 
@@ -122,7 +122,7 @@ needed at test time.
 
 The Playwright suites **never download a browser**. The config
 (`playwright.config.ts`) resolves your machine's own Chromium/Google Chrome:
-first `MINIMAX_TEST_BROWSER` (explicit executable path), then common install
+first `MONOKA_TEST_BROWSER` (explicit executable path), then common install
 paths on Linux and Windows, then a `$PATH` scan. If nothing is found the
 config **throws with a one-line reason** — a missing system browser is a
 setup error to fix on the machine, not a silent skip. GitHub's ubuntu

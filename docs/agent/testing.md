@@ -116,9 +116,11 @@ alone leaked ~280 GB of real-sized fetch buffers across 1,201
 `minimax-fetch-home-*` dirs because per-run homes were never removed. Any
 new suite or e2e spec that creates temp dirs uses `makeScratchDir(...)` from
 `tests/lib/scratch.cjs` and registers the same teardown — a clean-slate run
-(TMPDIR=/home/agent/tmp-gpu) must leave ZERO `monoka-`/`mm-` strays. (The
-prefixes were `minimax-*` before the 2026-10-12 rename sweep; the 1,201-dir
-incident record keeps its historical name.)
+(TMPDIR=/home/agent/tmp-gpu) must leave ZERO `monoka-`/`mm-`/`bench-tests-`
+strays. (The prefixes were `minimax-*` before the 2026-10-12 rename sweep; the
+1,201-dir incident record keeps its historical name. 2026-10-13, rename-T6:
+`bench-tests-` (tests/benchmarks.test.js) named in the contract — it always
+went through the ledger.)
 
 ## The gate
 
