@@ -2,7 +2,7 @@ import type { LocationProject, MediaFile } from '../types'
 import { createId } from './createId'
 import { persistToLocalStorage } from './libraryStorage'
 
-const KEY = 'minimax.location-projects'
+const KEY = 'monoka.location-projects'
 export const LOCATION_LIBRARY_EVENT = 'minimax-location-library-changed'
 
 export function newLocationProject(index = 1): LocationProject {

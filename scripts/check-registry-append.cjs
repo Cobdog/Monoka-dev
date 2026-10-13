@@ -17,7 +17,7 @@
  *
  * The drift direction (committed goldens vs what the code generates TODAY)
  * is the SEPARATE golden-regeneration check in .github/workflows/ci.yml
- * (MINIMAX_UPDATE_GOLDEN=1 + git diff --exit-code); this script only
+ * (MONOKA_UPDATE_GOLDEN=1 + git diff --exit-code); this script only
  * guards the append direction across the merge boundary.
  */
 

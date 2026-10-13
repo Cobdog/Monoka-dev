@@ -11,7 +11,7 @@
  * without writing — so callers never need a fallback branch of their own.
  */
 
-const directoryName = 'minimax-media-cache'
+const directoryName = 'monoka-media-cache'
 let directoryPromise: Promise<FileSystemDirectoryHandle | null> | null = null
 
 /** Sanitizes a cache key into a single OPFS file name (the flat cache has no

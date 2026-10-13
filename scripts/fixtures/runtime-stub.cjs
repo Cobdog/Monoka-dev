@@ -48,7 +48,7 @@ server.listen(port, '127.0.0.1', () => {
   // The profile-env injection test (increment 2) sets one probe variable and
   // asserts it arrives here — ComfyUI itself would see VDN_H3_* toggles the
   // same way (spawn env, nothing else).
-  const profileProbe = process.env.MINIMAX_STUDIO_PROFILE_PROBE
+  const profileProbe = process.env.MONOKA_PROFILE_PROBE
   emit({ level: 'info', msg: 'boot', fixture: 'runtime-stub', port: server.address().port, pid: process.pid, ...(profileProbe ? { profileProbe } : {}) })
   process.stdout.write('runtime-stub: raw startup line\r\n')
   // A prompt-shaped fragment inside an error-looking line: the LAN-facing

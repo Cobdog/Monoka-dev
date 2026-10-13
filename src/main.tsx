@@ -3,10 +3,17 @@ import { createRoot } from 'react-dom/client'
 import { LoaderCircle } from 'lucide-react'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { installWebApiClient } from './lib/apiClient'
+import { runStorageKeyMigration } from './lib/storageKeyMigration'
 import { sanitizeError } from './lib/logSanitize'
 import { observeLongAnimationFrames } from './lib/loafObserver'
 import { resolveSurface } from './surfaces/registry'
 import './styles.css'
+
+// The one-time `minimax.*` → `monoka.*` key copy (rename-sweep T2) is the
+// FIRST storage-touching statement: every legacy-key reader in the app
+// mounts after it, so nothing ever reads a legacy key again. Idempotent
+// (marker-guarded); the new key wins on divergence.
+runStorageKeyMigration()
 
 // Dev-only long-animation-frames instrumentation (b7 seam): tree-shaken from
 // production builds by the static DEV replacement.

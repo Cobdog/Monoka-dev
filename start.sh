@@ -1,5 +1,5 @@
 #!/bin/sh
-# MiniMax Studio launcher (task ukyxwfa).
+# Monoka launcher (task ukyxwfa).
 #
 #   ./start.sh                  boot with the saved config (first run seeds defaults)
 #   ./start.sh --configure      TUI for every pre-boot setting, then save & run
@@ -10,7 +10,7 @@
 #                               bad field of an otherwise-invalid config)
 #
 # Config: .start-config.json next to this script (gitignored; overridable with
-# MINIMAX_START_CONFIG). Dated decision 2026-09-19: repo-root, not the studio
+# MONOKA_START_CONFIG). Dated decision 2026-09-19: repo-root, not the studio
 # home — each checkout/worktree gets independent ports, and the e2e homes
 # (test-home/, mkdtemp) never read the repo root. Dev mode defaults ON while
 # the maintainer is in heavy development (flip to OFF at release time).
@@ -25,7 +25,7 @@ SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd) || {
   exit 1
 }
 cd -- "$SCRIPT_DIR" || { echo "start.sh: cannot cd to $SCRIPT_DIR" >&2; exit 1; }
-CONFIG_FILE=${MINIMAX_START_CONFIG:-"$SCRIPT_DIR/.start-config.json"}
+CONFIG_FILE=${MONOKA_START_CONFIG:-"$SCRIPT_DIR/.start-config.json"}
 
 PROG=start.sh
 
@@ -49,9 +49,9 @@ usage: ./start.sh [flags]
   -h | --help        this help
 
 Environment already set by the caller wins over the config file
-(MINIMAX_STUDIO_HOME, MINIMAX_LAN_PORT, MINIMAX_LAN_HOST, MINIMAX_LAN_TOKEN,
-MINIMAX_NO_HTTPS, MINIMAX_LOG_LEVEL, MINIMAX_VITE_PORT).
-MINIMAX_START_CONFIG relocates the launcher config; MINIMAX_START_TUI=
+(MONOKA_HOME, MONOKA_LAN_PORT, MONOKA_LAN_HOST, MONOKA_LAN_TOKEN,
+MONOKA_NO_HTTPS, MONOKA_LOG_LEVEL, MONOKA_VITE_PORT).
+MONOKA_START_CONFIG relocates the launcher config; MONOKA_START_TUI=
 prompts|whiptail forces a UI.
 EOF
 }
@@ -251,7 +251,7 @@ config_load() {
     echo "$PROG: refusing to boot — fix the field named above (./start.sh --set <key>=<value> repairs one field), or edit $CONFIG_FILE" >&2
     exit 1
   }
-  LAUNCHER_TMP="${TMPDIR:-/tmp}/minimax-launcher.$$"
+  LAUNCHER_TMP="${TMPDIR:-/tmp}/monoka-launcher.$$"
   printf '%s\n' "$LAUNCHER_TSV" > "$LAUNCHER_TMP" || die "cannot write $LAUNCHER_TMP (is TMPDIR writable?)"
   while IFS="	" read -r launcher_key launcher_value; do
     case $launcher_key in
@@ -280,23 +280,23 @@ truthy() { case $1 in 1|true|yes|on|TRUE|YES|ON) return 0 ;; *) return 1 ;; esac
 R_PORT=""; R_HOST=""; R_HOME=""; R_TOKEN_ON=0; R_HTTPS_ON=1; R_LOG=""; R_VITE_PORT=""
 
 resolve_runtime() {
-  R_PORT=${MINIMAX_LAN_PORT:-$CFG_PORT}
-  R_HOST=${MINIMAX_LAN_HOST:-$CFG_HOST}
-  R_LOG=${MINIMAX_LOG_LEVEL:-$CFG_LOG_LEVEL}
-  R_VITE_PORT=${MINIMAX_VITE_PORT:-$CFG_VITE_PORT}
-  if [ -n "${MINIMAX_STUDIO_HOME:-}" ]; then
-    R_HOME=$MINIMAX_STUDIO_HOME
+  R_PORT=${MONOKA_LAN_PORT:-$CFG_PORT}
+  R_HOST=${MONOKA_LAN_HOST:-$CFG_HOST}
+  R_LOG=${MONOKA_LOG_LEVEL:-$CFG_LOG_LEVEL}
+  R_VITE_PORT=${MONOKA_VITE_PORT:-$CFG_VITE_PORT}
+  if [ -n "${MONOKA_HOME:-}" ]; then
+    R_HOME=$MONOKA_HOME
   elif [ -n "$CFG_DATA_DIR" ]; then
     R_HOME=$CFG_DATA_DIR
   else
-    R_HOME=$(node -e 'console.log(require("os").homedir())')/.minimax-studio ||
+    R_HOME=$(node -e 'console.log(require("os").homedir())')/.monoka ||
       die "cannot resolve the home directory"
   fi
-  truthy "${MINIMAX_LAN_TOKEN:-}" && R_TOKEN_ON=1
-  [ "${MINIMAX_LAN_TOKEN:-}" = "" ] && truthy "$CFG_TOKEN" && R_TOKEN_ON=1
+  truthy "${MONOKA_LAN_TOKEN:-}" && R_TOKEN_ON=1
+  [ "${MONOKA_LAN_TOKEN:-}" = "" ] && truthy "$CFG_TOKEN" && R_TOKEN_ON=1
   R_HTTPS_ON=1
-  if truthy "${MINIMAX_NO_HTTPS:-}" ; then R_HTTPS_ON=0
-  elif [ "${MINIMAX_NO_HTTPS:-}" = "" ] && [ "$CFG_HTTPS" = "false" ]; then R_HTTPS_ON=0
+  if truthy "${MONOKA_NO_HTTPS:-}" ; then R_HTTPS_ON=0
+  elif [ "${MONOKA_NO_HTTPS:-}" = "" ] && [ "$CFG_HTTPS" = "false" ]; then R_HTTPS_ON=0
   fi
 }
 
@@ -450,7 +450,7 @@ print_banner() {
   if [ "$R_TOKEN_ON" = 1 ]; then BANNER_TOKEN=on; else BANNER_TOKEN=off; fi
   BANNER_ENGINE=$(engine_url_now "$R_HOME")
   echo "===================================================="
-  echo " MiniMax Studio launcher"
+  echo " Monoka launcher"
   echo "----------------------------------------------------"
   if [ "$CFG_DEV" = "true" ]; then
     echo " mode:    dev — vite dev server + node --watch"
@@ -502,16 +502,16 @@ print_token_block() {
 
 # --- configuration UI --------------------------------------------------------
 # whiptail when present and attached to a terminal; plain prompts otherwise
-# (force either with MINIMAX_START_TUI=whiptail|prompts). Both renderers share
+# (force either with MONOKA_START_TUI=whiptail|prompts). Both renderers share
 # the field list and the save path, so the prompts flow doubles as the
 # scriptable/CI-testable surface.
 pick_tui() {
   TUI=prompts
-  case ${MINIMAX_START_TUI:-auto} in
+  case ${MONOKA_START_TUI:-auto} in
     prompts) return 0 ;;
     whiptail) TUI=whiptail; return 0 ;;
     auto) ;;
-    *) die "MINIMAX_START_TUI must be whiptail, prompts, or auto" ;;
+    *) die "MONOKA_START_TUI must be whiptail, prompts, or auto" ;;
   esac
   if command -v whiptail >/dev/null 2>&1 && [ -t 0 ]; then
     TUI=whiptail
@@ -572,7 +572,7 @@ run_configure() { # $1 show_dev (0/1)
           no "keep the existing token" yes "rotate now (written to the studio home)"
         REGEN_TOKEN=$( [ "$WT_VALUE" = "yes" ] && echo 1 || echo 0 )
       fi
-      wt_input "Data directory" "MINIMAX_STUDIO_HOME — where settings/data live.\nEmpty = default (~/.minimax-studio). Absolute path." "$W_DATA_DIR"; W_DATA_DIR=$WT_VALUE
+      wt_input "Data directory" "MONOKA_HOME — where settings/data live.\nEmpty = default (~/.monoka). Absolute path." "$W_DATA_DIR"; W_DATA_DIR=$WT_VALUE
       wt_input "Engine URL" "ComfyUI address. Written to <home>/settings.json on save\n(leave as-is to keep the app Settings value)." "$W_ENGINE_URL"; W_ENGINE_URL=$WT_VALUE
       wt_menu "HTTPS" "Serve over HTTPS (self-signed)?" "$( [ "$W_HTTPS" = "true" ] && echo on || echo off )" \
         on "https by default (PWA install, no cleartext tokens)" off "plain http (--no-https)"
@@ -592,7 +592,7 @@ run_configure() { # $1 show_dev (0/1)
           wt_menu "Source maps" "Map stack traces to the TS sources (--enable-source-maps)?" "$( [ "$W_SMAPS" = "true" ] && echo on || echo off )" \
             on "mapped traces" off "compiled-file traces"
           W_SMAPS=$( [ "$WT_VALUE" = "on" ] && echo true || echo false )
-          wt_menu "Junction logging" "Start the renderer's dbg() junction logger hot at boot (MINIMAX_DBG=1 — the console becomes a triage transcript)?" "$( [ "$W_DBG" = "true" ] && echo on || echo off )" \
+          wt_menu "Junction logging" "Start the renderer's dbg() junction logger hot at boot (MONOKA_DBG=1 — the console becomes a triage transcript)?" "$( [ "$W_DBG" = "true" ] && echo on || echo off )" \
             on "junction logging on at boot" off "off (?dbg=1 still enables per-session)"
           W_DBG=$( [ "$WT_VALUE" = "on" ] && echo true || echo false )
           wt_input "Vite port" "Dev UI port for the vite server (1024-65535, must differ from the LAN port)." "$W_VITE_PORT"; W_VITE_PORT=$WT_VALUE
@@ -608,14 +608,14 @@ run_configure() { # $1 show_dev (0/1)
       fi
       if ! whiptail --title "Confirm" --yesno "$SUMMARY" 16 72; then continue; fi
     else
-      echo "MiniMax Studio configuration (enter keeps the value in brackets):"
+      echo "Monoka configuration (enter keeps the value in brackets):"
       prompt_line "LAN port" "$W_PORT"; [ -n "$PROMPT_VALUE" ] && W_PORT=$PROMPT_VALUE
       prompt_bool "Require a LAN access token" "$W_TOKEN"; W_TOKEN=$PROMPT_BOOL
       if [ "$W_TOKEN" = "true" ]; then
         prompt_bool "Print a QR code for the token URL at boot" "$W_QR"; W_QR=$PROMPT_BOOL
         prompt_bool "Regenerate the token now" "false"; REGEN_TOKEN=$( [ "$PROMPT_BOOL" = "true" ] && echo 1 || echo 0 )
       fi
-      prompt_line "Data directory (empty = default ~/.minimax-studio)" "$W_DATA_DIR"; W_DATA_DIR=$PROMPT_VALUE
+      prompt_line "Data directory (empty = default ~/.monoka)" "$W_DATA_DIR"; W_DATA_DIR=$PROMPT_VALUE
       prompt_line "Engine URL (written to <home>/settings.json on save)" "$W_ENGINE_URL"; W_ENGINE_URL=$PROMPT_VALUE
       prompt_bool "HTTPS" "$W_HTTPS"; W_HTTPS=$PROMPT_BOOL
       prompt_line "Bind host (0.0.0.0 = LAN, 127.0.0.1 = local only)" "$W_HOST"; [ -n "$PROMPT_VALUE" ] && W_HOST=$PROMPT_VALUE
@@ -663,12 +663,12 @@ run_configure() { # $1 show_dev (0/1)
   # returns) — a changed data directory sent the engine URL to the wrong
   # home. Resolve the JUST-SAVED data dir here instead.
   ENGINE_HOME=$W_DATA_DIR
-  [ -z "$ENGINE_HOME" ] && ENGINE_HOME=$(node -e 'console.log(require("os").homedir())')/.minimax-studio
-  # set -u guard (maintainer hit 2026-09-22: "MINIMAX_STUDIO_HOME: unbound
+  [ -z "$ENGINE_HOME" ] && ENGINE_HOME=$(node -e 'console.log(require("os").homedir())')/.monoka
+  # set -u guard (maintainer hit 2026-09-22: "MONOKA_HOME: unbound
   # variable" at this line when the env var is simply unset — the defensive
   # :- expansion everywhere else in this script is the pattern; this one
   # slipped through).
-  [ -n "${MINIMAX_STUDIO_HOME:-}" ] && ENGINE_HOME="${MINIMAX_STUDIO_HOME}"
+  [ -n "${MONOKA_HOME:-}" ] && ENGINE_HOME="${MONOKA_HOME}"
   ENGINE_WRITTEN=$(node -e "$LAUNCHER_JS" engine "$ENGINE_HOME" "$W_ENGINE_URL") || die "could not update the engine URL"
   [ -n "$ENGINE_WRITTEN" ] && echo "launcher: engine URL written to $ENGINE_WRITTEN"
 }
@@ -829,17 +829,28 @@ if [ "$DO_PRINT" = 1 ]; then
   exit 0
 fi
 
-mkdir -p -- "$R_HOME" || die "cannot create the data directory: $R_HOME"
+# The one-time data-home move (rename-T2) is the SERVER's boot step: when the
+# default home is still unmigrated (~/.minimax-studio present, ~/.monoka
+# absent) the launcher must NOT pre-create the target — the server's
+# rename(2) runs before its own mkdir, and a pre-created (empty) target would
+# make every subsequent boot refuse. The server creates the home itself.
+DEFAULT_HOME=$(node -e 'console.log(require("os").homedir())')/.monoka
+LEGACY_HOME=$(node -e 'console.log(require("os").homedir())')/.minimax-studio
+if [ "$R_HOME" = "$DEFAULT_HOME" ] && [ -e "$LEGACY_HOME" ]; then
+  : # move pending — the server performs rename(2) at boot; do not pre-create
+elif [ ! -d "$R_HOME" ]; then
+  mkdir -p -- "$R_HOME" || die "cannot create the data directory: $R_HOME"
+fi
 
-export MINIMAX_STUDIO_HOME="$R_HOME"
-export MINIMAX_LAN_PORT="$R_PORT"
-export MINIMAX_LOG_LEVEL="$R_LOG"
-[ "$R_TOKEN_ON" = 1 ] && export MINIMAX_LAN_TOKEN=1
-[ "$R_HTTPS_ON" = 0 ] && export MINIMAX_NO_HTTPS=1
-[ "$R_HOST" != "0.0.0.0" ] && export MINIMAX_LAN_HOST="$R_HOST"
-[ "$CFG_DBG" = "true" ] && export MINIMAX_DBG=1
-if [ "$CFG_DEV" = "true" ] && [ "$CFG_PRETTY" = "true" ] && [ -z "${MINIMAX_LOG_PRETTY:-}" ]; then
-  export MINIMAX_LOG_PRETTY=1
+export MONOKA_HOME="$R_HOME"
+export MONOKA_LAN_PORT="$R_PORT"
+export MONOKA_LOG_LEVEL="$R_LOG"
+[ "$R_TOKEN_ON" = 1 ] && export MONOKA_LAN_TOKEN=1
+[ "$R_HTTPS_ON" = 0 ] && export MONOKA_NO_HTTPS=1
+[ "$R_HOST" != "0.0.0.0" ] && export MONOKA_LAN_HOST="$R_HOST"
+[ "$CFG_DBG" = "true" ] && export MONOKA_DBG=1
+if [ "$CFG_DEV" = "true" ] && [ "$CFG_PRETTY" = "true" ] && [ -z "${MONOKA_LOG_PRETTY:-}" ]; then
+  export MONOKA_LOG_PRETTY=1
 fi
 
 if [ "$CFG_DEV" = "true" ]; then

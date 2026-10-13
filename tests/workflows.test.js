@@ -1109,7 +1109,7 @@ test('job poll reduction (P1 family): completion, stale polls, tolerance, struct
     // the marker scrub exactly as before, and user-derived content always
     // scrubs.
     const round5 = load('src/lib/logSanitize.ts')
-    const guardMessage = "Migration 5 was amended on this branch: this home applied '005-chain-settings-revision' but the code ships '005-chain-revision-gates'. Rebuild the scratch home (delete its studio.db / reset MINIMAX_STUDIO_HOME) — an amended migration never re-runs against an applied history."
+    const guardMessage = "Migration 5 was amended on this branch: this home applied '005-chain-settings-revision' but the code ships '005-chain-revision-gates'. Rebuild the scratch home (delete its studio.db / reset MONOKA_HOME) — an amended migration never re-runs against an applied history."
     const markedReason = round5.sanitizeError(round5.appAuthoredDiagnostic(guardMessage)).reason
     assert.ok(markedReason.includes('Migration 5 was amended on this branch'), 'the marked diagnostic keeps its instruction verbatim')
     assert.ok(markedReason.includes('005-chain-revision-gates') && markedReason.includes('Rebuild the scratch home'), 'the migration name and the rebuild instruction survive')

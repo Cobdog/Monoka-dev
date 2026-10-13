@@ -88,7 +88,7 @@ async function waitForHttp(port, pathname) {
 
 function bootServer(home, port, extraEnv = {}) {
   const child = spawn(process.execPath, [path.join(REPO, 'dist-server', 'server', 'index.js')], {
-    env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(port), MINIMAX_NO_HTTPS: '1', ...extraEnv },
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1', ...extraEnv },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   children.push(child)
@@ -398,7 +398,7 @@ test('(e) SSE v2 fallback pushes telemetry', async () => {
 test('(f) token mode: WS without/with a wrong token is refused before the handshake; the correct token connects', async () => {
   const tokenHome = makeScratchDir(path.join(os.tmpdir(), 'minimax-realtime-token-'))
   const tokenPort = await freePort()
-  bootServer(tokenHome, tokenPort, { MINIMAX_LAN_TOKEN: '1' })
+  bootServer(tokenHome, tokenPort, { MONOKA_LAN_TOKEN: '1' })
   let refusedStatus = 0
   for (let attempt = 0; attempt < 50 && !refusedStatus; attempt += 1) {
     try { refusedStatus = (await fetch(`http://127.0.0.1:${tokenPort}/api/lan/settings`)).status } catch { await new Promise((resolve) => setTimeout(resolve, 300)) }

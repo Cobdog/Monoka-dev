@@ -141,7 +141,7 @@ failure. A failed `build` skips only its dependents (unit/smoke/e2e/vision).
   leg) rides inside the unit phase for the same reason.
 - `test:registry` proves the optimization-registry inertness contract
   against golden fixtures — regenerate deliberately
-  (`pnpm test:registry:update` = `MINIMAX_UPDATE_GOLDEN=1 vitest run
+  (`pnpm test:registry:update` = `MONOKA_UPDATE_GOLDEN=1 vitest run
   registry`; on PowerShell set the env var first) and review the diff; the
   fixture IS the contract. Same pattern for `pnpm test:h3img:update`.
   (Vitest swallows forwarded CLI flags, so the env VAR is the mechanism —
@@ -158,7 +158,7 @@ failure. A failed `build` skips only its dependents (unit/smoke/e2e/vision).
   pattern — runtime/fetcher share it).
 - `test:launcher` (ukyxwfa) drives the real `start.sh` under `sh` with
   hermetic scratch configs and probed 7000–7099 ports; NOTE-skips on win32.
-  Every section pins a probed MINIMAX_VITE_PORT (dated z7ogmig fix —
+  Every section pins a probed MONOKA_VITE_PORT (dated z7ogmig fix —
   main's sections (b)/(c)/(e)/(f) probed the default 5173, which a foreign
   listener squats on this box; never assume 4178/5173 are free).
 
@@ -279,7 +279,7 @@ Library-empty determinism needs `DELETE FROM jobs`.
 
 ## Playwright = system Chromium, never a download
 
-The config resolves the machine's own Chromium/Chrome: `MINIMAX_TEST_BROWSER`
+The config resolves the machine's own Chromium/Chrome: `MONOKA_TEST_BROWSER`
 (explicit path) → common Linux/Windows install paths → `$PATH` scan; throws
 a one-line reason if none found. Gotchas proven on CI: `executablePath`
 must sit under `use.launchOptions` (a bare `use` key is silently ignored →
@@ -316,7 +316,7 @@ stays the full-depth chain; CI runs the FULL suite only on merge-to-main.
 - **Merge to main / dispatch (full leg)**: the complete chain, unchanged
   (typecheck → lint → license:audit → build → `pnpm test` → smoke → e2e →
   vision), plus a parallel **contracts** job, MAIN merges only: golden-
-  fixture regeneration drift (`MINIMAX_UPDATE_GOLDEN=1` + `UPDATE=1`
+  fixture regeneration drift (`MONOKA_UPDATE_GOLDEN=1` + `UPDATE=1`
   re-snapshot, then `git diff --exit-code` — the fixture IS the contract)
   and registry-append verification (`scripts/check-registry-append.cjs` —
   golden registry entry sets are append-only across a merge).

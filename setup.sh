@@ -71,8 +71,8 @@ fi
 
 # --- system browser (the e2e/vision contract: the machine's own browser) ------
 BROWSER=""
-if [ -n "${MINIMAX_TEST_BROWSER:-}" ] && [ -x "$MINIMAX_TEST_BROWSER" ]; then
-  BROWSER="$MINIMAX_TEST_BROWSER (MINIMAX_TEST_BROWSER)"
+if [ -n "${MONOKA_TEST_BROWSER:-}" ] && [ -x "$MONOKA_TEST_BROWSER" ]; then
+  BROWSER="$MONOKA_TEST_BROWSER (MONOKA_TEST_BROWSER)"
 else
   # The same preference order playwright.config.ts uses: google-chrome first
   # (H.264), then chromium, then a PATH scan.
@@ -89,7 +89,7 @@ if [ -n "$BROWSER" ]; then
   say "browser: $BROWSER ok (e2e/vision suites)"
 else
   warn "no system Chrome/Chromium found — the e2e/vision suites need one (google-chrome preferred: Debian/Ubuntu chromium lacks H.264)."
-  warn "  install e.g.:  sudo apt install google-chrome-stable   (or set MINIMAX_TEST_BROWSER to an existing binary)"
+  warn "  install e.g.:  sudo apt install google-chrome-stable   (or set MONOKA_TEST_BROWSER to an existing binary)"
 fi
 
 # --- ffmpeg (runtime: dataset clips; some e2e arms) --------------------------

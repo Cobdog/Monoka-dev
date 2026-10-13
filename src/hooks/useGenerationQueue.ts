@@ -113,7 +113,7 @@ export function useGenerationQueue(options: {
         // Degraded mode: mirror to the legacy store so a boot while the API
         // is unreachable still finds the history (the boot loader reads it
         // when the server answer fails).
-        try { localStorage.setItem('minimax.jobs', JSON.stringify(persistable)) } catch { /* Quota: the next debounced write retries. */ }
+        try { localStorage.setItem('monoka.jobs', JSON.stringify(persistable)) } catch { /* Quota: the next debounced write retries. */ }
       })
     })
   }, [jobs, persistJobs, storageBootDone])

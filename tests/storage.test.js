@@ -126,7 +126,7 @@ const jobB = {
 beforeAll(async () => {
   port = await freePort()
   child = spawn(process.execPath, [path.join(REPO, 'dist-server', 'server', 'index.js')], {
-    env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(port), MINIMAX_NO_HTTPS: '1' },
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   child.stdout.on('data', (chunk) => { output += String(chunk) })
@@ -270,10 +270,10 @@ test('(d2) migration logic as a unit: fixture localStorage stores against a reco
     { id: 'legacy-2', mode: 'text', status: 'failed', prompt: 'old render two', createdAt: 200, progress: 10, width: 0, height: 0, duration: 5 },
   ]
   const legacyStores = {
-    'minimax.jobs': JSON.stringify(legacyJobs),
-    'minimax.workspace': JSON.stringify({ mode: 'text', prompt: 'legacy workspace', duration: 5 }),
-    'minimax.movie-projects': JSON.stringify([{ id: 'mp-1', title: 'Legacy cut', scenes: [] }]),
-    'minimax.prompt-library': JSON.stringify([
+    'monoka.jobs': JSON.stringify(legacyJobs),
+    'monoka.workspace': JSON.stringify({ mode: 'text', prompt: 'legacy workspace', duration: 5 }),
+    'monoka.movie-projects': JSON.stringify([{ id: 'mp-1', title: 'Legacy cut', scenes: [] }]),
+    'monoka.prompt-library': JSON.stringify([
       { id: 'civitai.9', label: 'Kept', prompt: 'A kept community prompt long enough.', savedAt: 5 },
       { id: 'technique.timed-beats', label: 'Technique', prompt: 'bundled technique entry', technique: true, savedAt: 0 },
     ]),
@@ -296,7 +296,7 @@ test('(d2) migration logic as a unit: fixture localStorage stores against a reco
   const storageModule = loadServerStorage(migrationStorage, recordingFetch)
   const outcome = await storageModule.migrateLocalData()
   assert.equal(outcome.migrated, true, `migration must succeed: ${JSON.stringify(outcome)}`)
-  assert.equal(migrationStorage.getItem('minimax.data-migrated'), '1', 'marker must be set after verification')
+  assert.equal(migrationStorage.getItem('monoka.data-migrated'), '1', 'marker must be set after verification')
   assert.equal(posted.jobs.length, 2, 'both legacy jobs must be posted')
   assert.equal(posted.jobs[0].id, 'legacy-1')
   assert.equal(posted.workspace.prompt, 'legacy workspace')
@@ -318,7 +318,7 @@ test('(d2) migration logic as a unit: fixture localStorage stores against a reco
   const failingModule = loadServerStorage(failingStorage, async () => { throw new Error('server unreachable') }, { warn: (...args) => warned.push(args.join(' ')) })
   const failedOutcome = await failingModule.migrateLocalData()
   assert.equal(failedOutcome.migrated, false)
-  assert.equal(failingStorage.getItem('minimax.data-migrated'), null, 'failed migration must not set the marker')
+  assert.equal(failingStorage.getItem('monoka.data-migrated'), null, 'failed migration must not set the marker')
   assert.ok(warned.some((line) => line.includes('migration deferred')), 'failure must log structurally')
 })
 
@@ -480,13 +480,13 @@ test('in-process seams: comfyFetch SSRF funnel + rotateToken scheme', async () =
     staticRoot: path.join(REPO, 'dist'),
   })
   try {
-    const previousPortEnv = process.env.MINIMAX_LAN_PORT
-    process.env.MINIMAX_LAN_PORT = String(guardPort)
+    const previousPortEnv = process.env.MONOKA_LAN_PORT
+    process.env.MONOKA_LAN_PORT = String(guardPort)
     try {
       await studio.startLanServer()
     } finally {
-      if (previousPortEnv === undefined) delete process.env.MINIMAX_LAN_PORT
-      else process.env.MINIMAX_LAN_PORT = previousPortEnv
+      if (previousPortEnv === undefined) delete process.env.MONOKA_LAN_PORT
+      else process.env.MONOKA_LAN_PORT = previousPortEnv
     }
     const status = studio.status()
     assert.equal(status.running, true, 'the in-process guard server must boot')
@@ -517,12 +517,12 @@ test('(h) settings-GET Option B: token-gated whenever token mode is on', async (
     documentsDirectory: tokenHome,
     staticRoot: path.join(REPO, 'dist'),
   })
-  const previousTokenEnv = process.env.MINIMAX_LAN_TOKEN
-  const previousPortEnv = process.env.MINIMAX_LAN_PORT
-  const previousNoHttpsEnv = process.env.MINIMAX_NO_HTTPS
-  process.env.MINIMAX_LAN_TOKEN = '1'
-  process.env.MINIMAX_LAN_PORT = String(tokenPort)
-  process.env.MINIMAX_NO_HTTPS = '1'
+  const previousTokenEnv = process.env.MONOKA_LAN_TOKEN
+  const previousPortEnv = process.env.MONOKA_LAN_PORT
+  const previousNoHttpsEnv = process.env.MONOKA_NO_HTTPS
+  process.env.MONOKA_LAN_TOKEN = '1'
+  process.env.MONOKA_LAN_PORT = String(tokenPort)
+  process.env.MONOKA_NO_HTTPS = '1'
   try {
     await studio.startLanServer()
     const tokenBase = `http://127.0.0.1:${tokenPort}`
@@ -537,12 +537,12 @@ test('(h) settings-GET Option B: token-gated whenever token mode is on', async (
     assert.ok(tokenBody.settings && typeof tokenBody.settings.comfyUrl === 'string', 'the tokened read returns the settings object (the editor data source)')
   } finally {
     studio.stopLanServer()
-    if (previousTokenEnv === undefined) delete process.env.MINIMAX_LAN_TOKEN
-    else process.env.MINIMAX_LAN_TOKEN = previousTokenEnv
-    if (previousPortEnv === undefined) delete process.env.MINIMAX_LAN_PORT
-    else process.env.MINIMAX_LAN_PORT = previousPortEnv
-    if (previousNoHttpsEnv === undefined) delete process.env.MINIMAX_NO_HTTPS
-    else process.env.MINIMAX_NO_HTTPS = previousNoHttpsEnv
+    if (previousTokenEnv === undefined) delete process.env.MONOKA_LAN_TOKEN
+    else process.env.MONOKA_LAN_TOKEN = previousTokenEnv
+    if (previousPortEnv === undefined) delete process.env.MONOKA_LAN_PORT
+    else process.env.MONOKA_LAN_PORT = previousPortEnv
+    if (previousNoHttpsEnv === undefined) delete process.env.MONOKA_NO_HTTPS
+    else process.env.MONOKA_NO_HTTPS = previousNoHttpsEnv
   }
   console.log(`PASS: storage substrate — studio.db boots with versioned migrations; jobs upsert per-job (graph stripped, manifest kept, events on terminal); FTS5 search is injection-safe and the technique corpus seeds idempotently; workspace/projects round-trip; the localStorage migration copies+verifies without touching the originals; degraded API writes leave no marker. Server: ${base}`)
 })

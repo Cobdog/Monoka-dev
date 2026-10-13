@@ -571,7 +571,7 @@ routesMaybe('(g) routes against the real built server: status/start/stop, profil
   const port = await freePort()
   const child = spawn(process.execPath, [path.join(REPO, 'dist-server', 'server', 'index.js')], {
     cwd: REPO,
-    env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(port) },
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port) },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let serverOutput = ''
@@ -744,7 +744,7 @@ maybe('(i) launch profiles (increment 2): sanitization, env injection, state rec
     const home = makeHome()
     const checkout = makeCheckout()
     const profiles = JSON.parse(JSON.stringify(DEFAULT_ENGINE_PROFILES))
-    profiles.vdn = { ...profiles.vdn, env: { MINIMAX_STUDIO_PROFILE_PROBE: 'injected-123' } }
+    profiles.vdn = { ...profiles.vdn, env: { MONOKA_PROFILE_PROBE: 'injected-123' } }
     const runtime = makeManager(home, makeSettings(checkout, { engine: { profile: 'vdn', profiles } }), { startPort: await suiteStartPort() })
     const started = await runtime.start()
     ok(started.status.profile === 'vdn', 'status reports the active launch profile')

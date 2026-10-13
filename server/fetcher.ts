@@ -32,7 +32,7 @@
  * codeload.github.com + api.github.com + githubusercontent) — catalog URLs
  * are code-reviewed data, redirects are re-validated per hop, and the
  * allowlist keeps a hostile redirect from aim anywhere else. Tests inject
- * an in-memory/filesystem transport; MINIMAX_STUDIO_FETCH_TEST_ORIGIN
+ * an in-memory/filesystem transport; MONOKA_FETCH_TEST_ORIGIN
  * rewrites origins to a local server so the real HTTP path (redirects,
  * Range resume, backoff) runs against a stub with zero real network.
  */
@@ -105,7 +105,7 @@ function hostAllowed(rawUrl: string): boolean {
 /** Test seam: when set, every (allowlist-checked) URL's origin is replaced
  *  with this one, so the real HTTP machinery runs against a local stub. */
 function rewriteForTest(rawUrl: string): string {
-  const origin = process.env.MINIMAX_STUDIO_FETCH_TEST_ORIGIN?.trim()
+  const origin = process.env.MONOKA_FETCH_TEST_ORIGIN?.trim()
   if (!origin) return rawUrl
   const parsed = new URL(rawUrl)
   const replacement = new URL(origin)
@@ -969,10 +969,10 @@ export function createFilesystemTransport(root: string): FetchTransport {
 }
 
 /** The transport the server uses: the filesystem mock when
- *  MINIMAX_STUDIO_FETCH_MOCK_ROOT is set (tests + offline dev), the HTTPS
+ *  MONOKA_FETCH_MOCK_ROOT is set (tests + offline dev), the HTTPS
  *  production transport otherwise. */
 export function transportForEnvironment(): FetchTransport {
-  const mockRoot = process.env.MINIMAX_STUDIO_FETCH_MOCK_ROOT?.trim()
+  const mockRoot = process.env.MONOKA_FETCH_MOCK_ROOT?.trim()
   if (mockRoot && existsSync(mockRoot)) return createFilesystemTransport(mockRoot)
   return createHttpFetchTransport()
 }

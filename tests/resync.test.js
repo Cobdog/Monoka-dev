@@ -136,7 +136,7 @@ maybe('(a)+(b)+(c) the mirror re-sync truth: light listing, sub-tick restart dri
 
   const server = spawn(process.execPath, [path.join(REPO, 'dist-server', 'server', 'index.js')], {
     cwd: REPO,
-    env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(serverPort), MINIMAX_NO_HTTPS: '1' },
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(serverPort), MONOKA_NO_HTTPS: '1' },
     stdio: ['ignore', 'ignore', 'pipe'],
   })
   const base = `http://127.0.0.1:${serverPort}`

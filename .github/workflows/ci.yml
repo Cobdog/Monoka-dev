@@ -241,10 +241,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Golden regeneration drift check
         run: |
-          MINIMAX_UPDATE_GOLDEN=1 pnpm exec vitest run registry h3img
+          MONOKA_UPDATE_GOLDEN=1 pnpm exec vitest run registry h3img
           UPDATE=1 pnpm exec vitest run poserig
           if ! git diff --exit-code -- scripts/fixtures; then
-            echo '::error::golden fixtures DRIFTED — the committed goldens do not match what the code generates. Regenerate deliberately (MINIMAX_UPDATE_GOLDEN=1 / UPDATE=1), review the diff, and commit it with the change that caused it.'
+            echo '::error::golden fixtures DRIFTED — the committed goldens do not match what the code generates. Regenerate deliberately (MONOKA_UPDATE_GOLDEN=1 / UPDATE=1), review the diff, and commit it with the change that caused it.'
             exit 1
           fi
       - name: Registry-append verification (HEAD~1 → HEAD)

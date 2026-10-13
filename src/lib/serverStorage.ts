@@ -7,7 +7,8 @@
  *  migration logic in a plain VM against fixture localStorage JSON.
  *
  *  Migration policy: COPY, NEVER DESTROY. On boot (after settings load),
- *  migrateLocalData() reads the four legacy localStorage stores, POSTs them
+ *  migrateLocalData() reads the four localStorage stores (monoka.* since the
+ *  rename-sweep T2 key copy — see src/lib/storageKeyMigration.ts), POSTs them
  *  to the server, VERIFIES the server really has them (counts + spot-check
  *  of the first and last job ids), and only then sets the marker. The
  *  localStorage originals are never deleted or modified — they are orphaned
@@ -18,11 +19,11 @@ import type { GenerationJob, MovieProject } from '../types'
 import type { SavedPromptEntry } from './promptCorpus'
 import type { PersistedWorkspace } from './workspace'
 
-const MIGRATION_MARKER = 'minimax.data-migrated'
-const LEGACY_JOBS_KEY = 'minimax.jobs'
-const LEGACY_WORKSPACE_KEY = 'minimax.workspace'
-const LEGACY_PROJECTS_KEY = 'minimax.movie-projects'
-const LEGACY_PROMPTS_KEY = 'minimax.prompt-library'
+const MIGRATION_MARKER = 'monoka.data-migrated'
+const JOBS_KEY = 'monoka.jobs'
+const WORKSPACE_KEY = 'monoka.workspace'
+const PROJECTS_KEY = 'monoka.movie-projects'
+const PROMPTS_KEY = 'monoka.prompt-library'
 
 function authToken() {
   return new URLSearchParams(window.location.search).get('token') ?? ''
@@ -174,10 +175,10 @@ export type MigrationOutcome = { migrated: boolean; reason?: string }
 
 export async function migrateLocalData(): Promise<MigrationOutcome> {
   if (serverStorageMigrationDone()) return { migrated: true, reason: 'already-migrated' }
-  const jobs = (readJson(LEGACY_JOBS_KEY) as unknown[] | null ?? []).map(normalizedJob).filter(Boolean) as GenerationJob[]
-  const workspace = readJson(LEGACY_WORKSPACE_KEY) as Record<string, unknown> | null
-  const projects = (readJson(LEGACY_PROJECTS_KEY) as unknown[] | null ?? []).map(normalizedProject).filter(Boolean) as MovieProject[]
-  const prompts = (readJson(LEGACY_PROMPTS_KEY) as unknown[] | null ?? []).map(normalizedPrompt).filter(Boolean) as SavedPromptEntry[]
+  const jobs = (readJson(JOBS_KEY) as unknown[] | null ?? []).map(normalizedJob).filter(Boolean) as GenerationJob[]
+  const workspace = readJson(WORKSPACE_KEY) as Record<string, unknown> | null
+  const projects = (readJson(PROJECTS_KEY) as unknown[] | null ?? []).map(normalizedProject).filter(Boolean) as MovieProject[]
+  const prompts = (readJson(PROMPTS_KEY) as unknown[] | null ?? []).map(normalizedPrompt).filter(Boolean) as SavedPromptEntry[]
   if (!jobs.length && !workspace && !projects.length && !prompts.length) {
     // Fresh install with nothing to copy: the marker still goes down so the
     // boot loaders stop consulting the legacy stores.

@@ -14,22 +14,22 @@ import pino from 'pino'
 import { sanitizeError } from './logSanitize'
 
 const LOG_LEVELS = new Set(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
-const requestedLevel = process.env.MINIMAX_LOG_LEVEL ?? ''
+const requestedLevel = process.env.MONOKA_LOG_LEVEL ?? ''
 const level = LOG_LEVELS.has(requestedLevel) ? requestedLevel : 'info'
 
-// Dev-mode pretty logs (task ukyxwfa): MINIMAX_LOG_PRETTY=1 routes pino
+// Dev-mode pretty logs (task ukyxwfa): MONOKA_LOG_PRETTY=1 routes pino
 // through pino-pretty — a DEV dependency, so the guard must degrade honestly
 // (one warning line, JSON logs) instead of crashing a production install
 // where the package is absent. The default posture is unchanged: raw JSON.
 let prettyTransport: pino.TransportSingleOptions | undefined
-if (/^(1|true|yes)$/i.test(process.env.MINIMAX_LOG_PRETTY ?? '')) {
+if (/^(1|true|yes)$/i.test(process.env.MONOKA_LOG_PRETTY ?? '')) {
   try {
     // CJS-side presence probe: pino-pretty is a devDependency, so this throws
     // on a production install and we degrade to JSON logs below.
     require.resolve('pino-pretty')
     prettyTransport = { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss', ignore: 'pid,hostname' } }
   } catch {
-    console.warn('MINIMAX_LOG_PRETTY=1 but pino-pretty is not installed — falling back to JSON logs (run pnpm install).')
+    console.warn('MONOKA_LOG_PRETTY=1 but pino-pretty is not installed — falling back to JSON logs (run pnpm install).')
   }
 }
 
@@ -65,7 +65,7 @@ export type FailureLevel = 'fatal' | 'error' | 'warn' | 'debug'
  *  only {stage, errorName, reason, path} (+ any structural context) is
  *  written. `level` defaults to 'error'; 'debug' is for tolerated swallows
  *  (SSE reconnects, optional engine probes) that only show with
- *  MINIMAX_LOG_LEVEL=debug. */
+ *  MONOKA_LOG_LEVEL=debug. */
 export function logFailure(stage: string, error: unknown, context?: Record<string, string | number | boolean>, level: FailureLevel = 'error') {
   const detail = sanitizeError(error)
   const payload: Record<string, unknown> = { stage, errorName: detail.name, reason: detail.reason, path: detail.path }

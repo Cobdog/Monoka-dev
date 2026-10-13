@@ -15,7 +15,7 @@ const port = String(4190 + Math.floor(Math.random() * 100))
 // production TLS path; also pin the expected scheme through the run.
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 const child = spawn(process.execPath, ['dist-server/server/index.js'], {
-  env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: port },
+  env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: port },
   stdio: ['ignore', 'pipe', 'pipe'],
 })
 let output = ''

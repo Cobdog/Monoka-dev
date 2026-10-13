@@ -612,7 +612,7 @@ test('R-15: the three-group Settings IA — measured collapse from the 15k-px ba
 // deterministically regardless of the shared home's accumulated jobs.
 test('M13: no empty-jobs POST on boot — the 400-every-fresh-boot fix', async ({ page }) => {
   await page.addInitScript(() => {
-    try { localStorage.setItem('minimax.data-migrated', '1') } catch { /* storage unavailable — the route mock still drives the case */ }
+    try { localStorage.setItem('monoka.data-migrated', '1') } catch { /* storage unavailable — the route mock still drives the case */ }
   })
   let emptyPosts = 0
   await page.route('**/api/lan/jobs*', async (route) => {

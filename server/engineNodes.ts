@@ -134,7 +134,7 @@ export function resolveNodePackTarget(engine: { mode: string; checkoutPath: stri
  *  packaged build without the vendor payload — vendored packs then report
  *  unavailable and user-fetch remains the path. */
 export function resolveVendorRoot(): string | null {
-  const override = process.env.MINIMAX_STUDIO_VENDOR_ROOT?.trim()
+  const override = process.env.MONOKA_VENDOR_ROOT?.trim()
   if (override && isAbsolute(override) && existsSync(override)) return override
   return walkUpFor('vendor', 'nodes')
 }
@@ -144,7 +144,7 @@ export function resolveVendorRoot(): string | null {
  *  releasable, installed from the studio's own payload without a network.
  *  Same walk as resolveVendorRoot; env override for tests. */
 export function resolveFirstPartyRoot(): string | null {
-  const override = process.env.MINIMAX_STUDIO_FIRST_PARTY_ROOT?.trim()
+  const override = process.env.MONOKA_FIRST_PARTY_ROOT?.trim()
   if (override && isAbsolute(override) && existsSync(override)) return override
   return walkUpFor('custom-nodes')
 }

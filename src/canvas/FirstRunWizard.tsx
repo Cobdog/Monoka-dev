@@ -28,7 +28,7 @@ import { useCanvasStore } from './store'
 import { CanvasSessionContext } from './sessionContext'
 import { WIZARD_REOPEN_EVENT } from './FirstRunNotice'
 
-const WIZARD_KEY = 'minimax.wizard'
+const WIZARD_KEY = 'monoka.wizard'
 
 /** Fired on every wizard-state write — the FirstRunNotice listens instead of
  *  polling (it shows the moment the wizard stops presenting). */

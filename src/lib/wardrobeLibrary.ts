@@ -2,7 +2,7 @@ import type { MediaFile, WardrobeProject } from '../types'
 import { createId } from './createId'
 import { persistToLocalStorage } from './libraryStorage'
 
-const KEY = 'minimax.wardrobe-projects'
+const KEY = 'monoka.wardrobe-projects'
 export const WARDROBE_LIBRARY_EVENT = 'minimax-wardrobe-library-changed'
 
 export function newWardrobeProject(index = 1): WardrobeProject {

@@ -364,7 +364,7 @@ async function bootServer(homeDir, label) {
   const output = { text: '', label }
   const port = await freePort()
   const child = spawn(process.execPath, [path.join(REPO, 'dist-server', 'server', 'index.js')], {
-    env: { ...process.env, MINIMAX_STUDIO_HOME: homeDir, MINIMAX_LAN_PORT: String(port), MINIMAX_NO_HTTPS: '1' },
+    env: { ...process.env, MONOKA_HOME: homeDir, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   bootedServers.push(child)

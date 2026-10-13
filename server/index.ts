@@ -1,20 +1,30 @@
 /**
- * Standalone MiniMax Studio web server — the migration target (no Electron).
+ * Standalone Monoka web server — the migration target (no Electron).
  *
  *   pnpm build && pnpm start:server
  *   → http://<this-machine>:4178
  *
- * Configuration lives in MINIMAX_STUDIO_HOME (default ~/.minimax-studio):
+ * Configuration lives in MONOKA_HOME (default ~/.monoka):
  * settings.json + the LAN access token (token only used with --token /
- * MINIMAX_LAN_TOKEN=1). ComfyUI and Ollama are expected at their usual local
+ * MONOKA_LAN_TOKEN=1). ComfyUI and Ollama are expected at their usual local
  * addresses and reconfigurable from the app's Settings page.
  */
 import { existsSync, mkdirSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createStudioServer } from './core'
+import { moveDataHome } from './dataHome'
 
-const home = process.env.MINIMAX_STUDIO_HOME ?? join(homedir(), '.minimax-studio')
+const home = process.env.MONOKA_HOME ?? join(homedir(), '.monoka')
+// The one-time data-home move (rename-sweep T2) runs BEFORE anything creates
+// or opens under the new home — a pre-created target would refuse every boot.
+// A refusal throws: print it and refuse to start (R5 — manual resolution).
+try {
+  moveDataHome({ home, defaultHome: join(homedir(), '.monoka'), legacyHome: join(homedir(), '.minimax-studio') })
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error))
+  process.exit(1)
+}
 mkdirSync(home, { recursive: true })
 
 const staticRoot = join(__dirname, '..', '..', 'dist')
@@ -53,5 +63,5 @@ studio.startLanServer().then(() => {
   } else {
     console.log(`  TLS:        plain HTTP (PWA install and token mode are safer over HTTPS; install openssl or drop --no-https)`)
   }
-  console.log(`  Auth:       ${process.argv.includes('--token') || /^(1|true|yes)$/i.test(process.env.MINIMAX_LAN_TOKEN ?? '') ? 'token required (passed as ?token= or x-minimax-token)' : 'open on the LAN (pass --token to require a token)'}`)
+  console.log(`  Auth:       ${process.argv.includes('--token') || /^(1|true|yes)$/i.test(process.env.MONOKA_LAN_TOKEN ?? '') ? 'token required (passed as ?token= or x-minimax-token)' : 'open on the LAN (pass --token to require a token)'}`)
 })

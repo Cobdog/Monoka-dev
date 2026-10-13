@@ -11,17 +11,17 @@
  *
  * TOGGLEABLE with a true no-op when off (the hot path is one boolean check):
  *   - `?dbg=1` URL param          — enables and persists (localStorage)
- *   - localStorage 'minimax-dbg'  — the runtime flip; the maintainer's console
+ *   - localStorage 'monoka-dbg'  — the runtime flip; the maintainer's console
  *                                   can also call window.__minimaxDbg(true)
- *   - the launcher's dev settings — MINIMAX_DBG=1 makes the server inject
- *     <meta name="minimax-dbg"> into index.html, so a dev boot starts hot
+ *   - the launcher's dev settings — MONOKA_DBG=1 makes the server inject
+ *     <meta name="monoka-dbg"> into index.html, so a dev boot starts hot
  *
  * Payload discipline (the logSanitize doctrine, lighter): log the failure
  * PATH and REASON — ids, classes, modes, counts, filenames — never prompt
  * prose or media bytes. Keep payloads small and structured.
  */
 
-const STORAGE_KEY = 'minimax-dbg'
+const STORAGE_KEY = 'monoka-dbg'
 const JUNCTION_TAG = /^[a-z][a-z0-9.]*$/
 
 function readInitialEnabled(): boolean {
@@ -38,8 +38,8 @@ function readInitialEnabled(): boolean {
     const stored = window.localStorage.getItem(STORAGE_KEY)
     if (stored === '1') return true
     // The launcher channel: the server injects the meta tag only when
-    // MINIMAX_DBG is set at boot (server/core.ts static serving).
-    if (typeof document !== 'undefined' && document.querySelector('meta[name="minimax-dbg"]')) return true
+    // MONOKA_DBG is set at boot (server/core.ts static serving).
+    if (typeof document !== 'undefined' && document.querySelector('meta[name="monoka-dbg"]')) return true
   } catch { /* no DOM (SSR/tests) — off */ }
   return false
 }

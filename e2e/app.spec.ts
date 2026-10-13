@@ -227,7 +227,7 @@ test('settings round-trips a change through the server API (docked)', async ({ p
   // (dispatch B, k2q0n9s — settle-or-poll) The named condition is the save
   // POST landing server-side; the poll replaces a fixed 600 ms sleep (the
   // CI-runner flake class — a slow save outran it). Same assertion, bounded.
-  const persistedSettings = async () => (await (await fetch(`http://127.0.0.1:${process.env.MINIMAX_E2E_PORT ?? '4199'}/api/lan/settings`)).json()) as { settings: { outputDirectory: string } }
+  const persistedSettings = async () => (await (await fetch(`http://127.0.0.1:${process.env.MONOKA_E2E_PORT ?? '4199'}/api/lan/settings`)).json()) as { settings: { outputDirectory: string } }
   await expect.poll(async () => (await persistedSettings()).settings.outputDirectory).toContain('e2e-probe', { timeout: 5_000 })
   // Restore so other tests see the clean state — polled to the same named
   // condition (positive evidence the restore landed, not a sleep past it).
@@ -673,7 +673,7 @@ test('settings-GET Option B: token mode gates the read, the SPA editor path keep
   const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-e2e-token-'))
   const port = 5710 + Math.floor(Math.random() * 80) // this agent's 5700-5799 range
   const child = spawn(process.execPath, ['dist-server/server/index.js'], {
-    env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(port), MINIMAX_NO_HTTPS: '1', MINIMAX_LAN_TOKEN: '1' },
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1', MONOKA_LAN_TOKEN: '1' },
     stdio: ['ignore', 'ignore', 'ignore'],
   })
   try {
@@ -840,13 +840,13 @@ test('the wizard journey never setStates another component during render (dev-bu
   // boot the dev server with its /api proxy pointing at THIS suite's
   // webServer — the app on the dev origin talks to the same home/settings
   // the assertions above reset.
-  const apiPort = process.env.MINIMAX_E2E_PORT ?? '4199'
+  const apiPort = process.env.MONOKA_E2E_PORT ?? '4199'
   const holder = http.createServer(() => undefined)
   const devPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as { port: number }).port)))
   await new Promise<void>((resolve) => holder.close(() => resolve()))
   const vite = spawn('node', [path.join(process.cwd(), 'node_modules/vite/bin/vite.js'), '--port', String(devPort), '--strictPort', '--host', '127.0.0.1'], {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, MINIMAX_LAN_PORT: apiPort },
+    env: { ...process.env, MONOKA_LAN_PORT: apiPort },
   })
   let viteLog = ''
   vite.stdout?.on('data', (chunk: Buffer) => { viteLog += chunk.toString() })
@@ -1111,7 +1111,7 @@ test('boot never POSTs an empty job list — no 400 on a fresh home', async ({ p
   const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-e2e-jobs400-'))
   const port = 6910 + Math.floor(Math.random() * 80) // this agent's 6900–6999 range
   const child = spawn(process.execPath, ['dist-server/server/index.js'], {
-    env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(port), MINIMAX_NO_HTTPS: '1' },
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1' },
     stdio: ['ignore', 'ignore', 'ignore'],
   })
   try {
@@ -1146,7 +1146,7 @@ test('a virgin home seeds no "Imported workspace" — the legacy import gates on
   const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-e2e-legacy-'))
   const port = 6910 + Math.floor(Math.random() * 80) // this agent's 6900–6999 range
   const child = spawn(process.execPath, ['dist-server/server/index.js'], {
-    env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(port), MINIMAX_NO_HTTPS: '1' },
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1' },
     stdio: ['ignore', 'ignore', 'ignore'],
   })
   try {

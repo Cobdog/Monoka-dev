@@ -95,6 +95,7 @@ const SUITES = {
   'progressbar-classes': { build: null, windows: false, python: false, ffmpeg: false },
   realtime: { build: 'full', windows: false, python: false, ffmpeg: false },
   registry: { build: null, windows: false, python: false, ffmpeg: false },
+  'rename-home': { build: null, windows: false, python: false, ffmpeg: false },
   'rename-migration': { build: 'server', windows: false, python: false, ffmpeg: false },
   resync: { build: 'full', windows: false, python: false, ffmpeg: false },
   runtime: { build: 'full', windows: true, python: false, ffmpeg: false },
@@ -290,6 +291,7 @@ const RULES = [
     suites: BOOTING,
     reason: 'SEAM — the server composition root: every booting suite executes it. Near-full by design; do not narrow.',
   },
+  { match: ['server/dataHome.ts'], suites: ['rename-home', ...BOOTING], reason: 'the one-time data-home move (rename-T2): its own suite drives it against scratch homes, and every booting suite executes it through index.ts.' },
   {
     match: ['server/logger.ts', 'server/logSanitize.ts', 'server/requestGuard.ts', 'server/repo.ts'],
     suites: BOOTING,
@@ -371,6 +373,7 @@ const RULES = [
   { match: ['src/lib/graph/krea2edit.ts'], suites: ['h3img', 'registry'], reason: 'Krea-2 edit families (h3img directly; registry via graph/index re-export + golden).' },
   { match: ['src/lib/graph/**'], suites: ['registry'], reason: 'the optimization registry surface (graph/index re-exports the tree; the registry golden is the contract).' },
   { match: ['src/lib/serverStorage.ts'], suites: ['storage'], reason: 'the client storage layer the storage suite transpiles + drives against the server.' },
+  { match: ['src/lib/storageKeyMigration.ts'], suites: ['rename-home'], reason: 'the one-time localStorage key copy (rename-T2) — the rename-home suite drives it against stub stores.' },
   { match: ['src/lib/workspace.ts'], suites: ['registry'], reason: 'workspace selection resolution.' },
   { match: ['src/lib/h3imageContract.ts', 'src/lib/h3imageOps.ts', 'src/lib/h3imageScorer.ts', 'src/lib/h3imageStaging.ts'], suites: ['h3img'], reason: 'H3 image contract/ops/scorer/staging.' },
   {

@@ -2,7 +2,7 @@ import type { HairStyleProject, MediaFile } from '../types'
 import { createId } from './createId'
 import { persistToLocalStorage } from './libraryStorage'
 
-const KEY = 'minimax.hair-style-projects'
+const KEY = 'monoka.hair-style-projects'
 export const HAIR_LIBRARY_EVENT = 'minimax-hair-library-changed'
 
 export function newHairStyleProject(index = 1): HairStyleProject {

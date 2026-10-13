@@ -99,7 +99,7 @@ export class DocumentsRuleError extends Error {
  *  package.json next to the built server; never throws (stamps fall back to
  *  'unknown', which the refusal message still surfaces honestly). */
 export function resolveStudioAppVersion(): string {
-  const fromEnv = process.env.MINIMAX_STUDIO_APP_VERSION
+  const fromEnv = process.env.MONOKA_APP_VERSION
   if (fromEnv) return fromEnv
   try {
     const manifest = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf8')) as { version?: string }
