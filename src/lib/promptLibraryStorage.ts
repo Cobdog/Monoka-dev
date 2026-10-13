@@ -13,7 +13,7 @@ import { TECHNIQUE_CORPUS, type SavedPromptEntry } from './promptCorpus'
 export type { SavedPromptEntry } from './promptCorpus'
 
 const STORAGE_KEY = 'monoka.prompt-library'
-export const PROMPT_LIBRARY_EVENT = 'minimax:prompt-library-changed'
+export const PROMPT_LIBRARY_EVENT = 'monoka:prompt-library-changed'
 
 export function loadPromptLibrary(): SavedPromptEntry[] {
   let saved: SavedPromptEntry[] = []

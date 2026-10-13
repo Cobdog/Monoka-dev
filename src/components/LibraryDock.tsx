@@ -30,7 +30,7 @@ import { useCanvasStore } from '../canvas/store'
  *  cross-component refresh without store churn): fired after any fetch
  *  completes here, consumed by the Settings pack board wherever it is
  *  mounted (its own Refresh stays for the manual path). */
-export const PACKS_CHANGED_EVENT = 'minimax:packs-changed'
+export const PACKS_CHANGED_EVENT = 'monoka:packs-changed'
 
 export function LibraryDock() {
   const open = useCanvasStore((state) => state.libraryDock)

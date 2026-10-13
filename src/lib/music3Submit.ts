@@ -83,9 +83,9 @@ export async function submitMusic3(
     // class_types diffed against object_info before submission.
     const preflight = preflightOrFail(graph, facts.info, 'preflight.music3')
     if (preflight) throw new Error(preflight)
-    const response = await window.minimax.submitPrompt(settings.comfyUrl, graph, facts.clientId)
+    const response = await window.monoka.submitPrompt(settings.comfyUrl, graph, facts.clientId)
     if (io.cancellationRequests?.current.has(localId)) {
-      await window.minimax.cancelPrompt(settings.comfyUrl, response.prompt_id)
+      await window.monoka.cancelPrompt(settings.comfyUrl, response.prompt_id)
       io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'cancelled' } : item))
       io.notify('success', 'Music generation cancelled.')
       return { ok: false, message: 'Music generation cancelled.' }

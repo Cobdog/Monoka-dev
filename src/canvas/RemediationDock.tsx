@@ -51,7 +51,7 @@ export function RemediationDock() {
     if (row.action.kind !== 'install' || busy) return
     setBusy(row.className)
     try {
-      await window.minimax.installEngineNodePack(row.action.packId)
+      await window.monoka.installEngineNodePack(row.action.packId)
       setInstalled((current) => new Set(current).add(row.className))
       toast('success', `${row.action.packName} installed — restart the engine to activate it, then generate again.`)
     } catch (error) {

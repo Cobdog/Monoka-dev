@@ -828,7 +828,7 @@ export function PropertiesPanel() {
   useEffect(() => {
     if (!turboMissingKey) return
     let cancelled = false
-    void window.minimax.listFetchCatalog()
+    void window.monoka.listFetchCatalog()
       .then((result) => { if (!cancelled) setTurboCatalogRows(result.entries) })
       .catch(() => { if (!cancelled) setTurboCatalogRows([]) })
     return () => { cancelled = true }
@@ -1025,8 +1025,8 @@ export function PropertiesPanel() {
     setCaptioningIndex(index)
     setCaptionNotice(null)
     try {
-      const dataUrl = await window.minimax.fileDataUrl(binding.file.path)
-      const { caption, model } = await window.minimax.llmCaptionImage(dataUrl)
+      const dataUrl = await window.monoka.fileDataUrl(binding.file.path)
+      const { caption, model } = await window.monoka.llmCaptionImage(dataUrl)
       promptRef.current?.insert(`<Picture ${index + 1}> ${caption}`)
       setCaptionNotice(`Described Picture ${index + 1} with ${model} — inserted into the prompt.`)
     } catch (error) {
@@ -1555,7 +1555,7 @@ export function PropertiesPanel() {
             className="chip canvas-chip"
             data-canvas-add-guide
             onClick={async () => {
-              const picked = await window.minimax.chooseMedia('image')
+              const picked = await window.monoka.chooseMedia('image')
               if (!picked) return
               patch({ timelineGuides: [...draft.timelineGuides, { file: { ...picked, kind: 'image' }, seconds: Math.min(draft.duration - 1, 1) }] })
             }}

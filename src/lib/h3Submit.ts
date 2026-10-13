@@ -96,7 +96,7 @@ export type H3SubmitFacts = {
   clientId?: string
   /** Detected H3 Preview Override node class, when installed. */
   h3PreviewOverrideNode?: string
-  /** Model-override resolution for the minimax family when the caller
+  /** Model-override resolution for the monoka family when the caller
    *  consulted overrides building `selection` (task euxwdva): refused slots
    *  refuse the submission with their reason; degraded slots fell back to
    *  auto and surface their warning visibly. Absent = no overrides were
@@ -311,8 +311,8 @@ export async function submitH3Render(
   io.onJobCreated?.(localId)
   try {
     const upload = async (file: MediaFile, fitToOutput = false) => file.kind === 'image' && (fitToOutput || Boolean(file.crop))
-      ? window.minimax.uploadImageData(settings.comfyUrl, await prepareImage(file, request.width, request.height))
-      : window.minimax.uploadInput(settings.comfyUrl, file.path)
+      ? window.monoka.uploadImageData(settings.comfyUrl, await prepareImage(file, request.width, request.height))
+      : window.monoka.uploadInput(settings.comfyUrl, file.path)
     // REFERENCE PREP (maintainer ruling 2026-09-26, directive 1e363ec0 item
     // 5): reference pictures NEVER ride the output-fit path — the longest
     // edge scales to the selected resolution's longest side, aspect
@@ -323,12 +323,12 @@ export async function submitH3Render(
     // stay output-fit: they anchor literal frames of the OUTPUT video.
     const targetLongestSide = Math.max(request.width, request.height)
     const uploadReference = async (file: MediaFile) => {
-      if (file.kind !== 'image') return window.minimax.uploadInput(settings.comfyUrl, file.path)
+      if (file.kind !== 'image') return window.monoka.uploadInput(settings.comfyUrl, file.path)
       const data = await prepareReferenceImage(file, targetLongestSide)
       // (A-DBG) The ruled scaling decision, per reference: what the engine
       // receives and why (region = a user zoom window, never a fit).
       dbg('prep.reference', { name: file.name, targetLongestSide, cropped: Boolean(file.crop), bytes: data.length })
-      return window.minimax.uploadImageData(settings.comfyUrl, data)
+      return window.monoka.uploadImageData(settings.comfyUrl, data)
     }
     const guides = request.mode === 'reference' ? request.timelineGuides : []
     const [first, last, images, videos, audios, guideUploads] = await Promise.all([
@@ -406,9 +406,9 @@ export async function submitH3Render(
     // own minimax_h3_preview_override stream owns previews and the stock
     // request is deliberately skipped server-side); clientId stays for
     // interface compatibility — the server pins its own session id.
-    const response = await window.minimax.submitPrompt(settings.comfyUrl, graph, facts.clientId, request.livePreview.enabled)
+    const response = await window.monoka.submitPrompt(settings.comfyUrl, graph, facts.clientId, request.livePreview.enabled)
     if (io.cancellationRequests.current.has(localId)) {
-      await window.minimax.cancelPrompt(settings.comfyUrl, response.prompt_id)
+      await window.monoka.cancelPrompt(settings.comfyUrl, response.prompt_id)
       io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'cancelled', error: undefined } : item))
       io.notify('success', 'Generation cancelled.')
     } else {

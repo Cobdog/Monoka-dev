@@ -3,7 +3,7 @@ import { createId } from './createId'
 import { persistToLocalStorage } from './libraryStorage'
 
 const KEY = 'monoka.character-projects'
-export const CHARACTER_LIBRARY_EVENT = 'minimax-character-library-changed'
+export const CHARACTER_LIBRARY_EVENT = 'monoka-character-library-changed'
 
 export function newCharacterProject(index = 1): CharacterProject {
   const now = Date.now()

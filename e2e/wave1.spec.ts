@@ -484,7 +484,7 @@ test('R-17: the remediation dock closes the loop — refusal → one install act
     await page.waitForTimeout(1_000) // the recovery's object_info re-pull settles
 
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent('minimax:preflight-refusal', { detail: { missing: [{ className: 'MiniMaxH3LoraFormLoader', packId: 'lora-form-adapter', stock: false }] } }))
+      window.dispatchEvent(new CustomEvent('monoka:preflight-refusal', { detail: { missing: [{ className: 'MiniMaxH3LoraFormLoader', packId: 'lora-form-adapter', stock: false }] } }))
     })
     const remediation = page.locator('[data-canvas-remediation-dock]')
     await expect(remediation).toBeVisible({ timeout: 15_000 })

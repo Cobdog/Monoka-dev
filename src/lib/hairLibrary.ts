@@ -3,7 +3,7 @@ import { createId } from './createId'
 import { persistToLocalStorage } from './libraryStorage'
 
 const KEY = 'monoka.hair-style-projects'
-export const HAIR_LIBRARY_EVENT = 'minimax-hair-library-changed'
+export const HAIR_LIBRARY_EVENT = 'monoka-hair-library-changed'
 
 export function newHairStyleProject(index = 1): HairStyleProject {
   const now = Date.now()

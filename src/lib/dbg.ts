@@ -12,7 +12,7 @@
  * TOGGLEABLE with a true no-op when off (the hot path is one boolean check):
  *   - `?dbg=1` URL param          — enables and persists (localStorage)
  *   - localStorage 'monoka-dbg'  — the runtime flip; the maintainer's console
- *                                   can also call window.__minimaxDbg(true)
+ *                                   can also call window.__monokaDbg(true)
  *   - the launcher's dev settings — MONOKA_DBG=1 makes the server inject
  *     <meta name="monoka-dbg"> into index.html, so a dev boot starts hot
  *
@@ -48,7 +48,7 @@ let enabled = readInitialEnabled()
 
 export function dbgEnabled(): boolean { return enabled }
 
-/** The runtime flip (window.__minimaxDbg wires here; persists). */
+/** The runtime flip (window.__monokaDbg wires here; persists). */
 export function setDbgEnabled(next: boolean): void {
   enabled = next
   try {
@@ -71,7 +71,7 @@ export function dbg(junction: string, payload: Record<string, unknown>): void {
 
 if (typeof window !== 'undefined') {
   // The maintainer's console + e2e hooks: flip without a reload.
-  Object.defineProperty(window, '__minimaxDbg', {
+  Object.defineProperty(window, '__monokaDbg', {
     configurable: true,
     value: { enabled: () => enabled, set: setDbgEnabled },
   })

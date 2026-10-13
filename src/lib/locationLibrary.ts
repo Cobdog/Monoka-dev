@@ -3,7 +3,7 @@ import { createId } from './createId'
 import { persistToLocalStorage } from './libraryStorage'
 
 const KEY = 'monoka.location-projects'
-export const LOCATION_LIBRARY_EVENT = 'minimax-location-library-changed'
+export const LOCATION_LIBRARY_EVENT = 'monoka-location-library-changed'
 
 export function newLocationProject(index = 1): LocationProject {
   const now = Date.now()

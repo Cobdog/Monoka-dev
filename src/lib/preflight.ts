@@ -157,7 +157,7 @@ export function preflightRefusal(missing: MissingNodeClass[]): string | null {
  *  per-item-consented remediation surface — the refusal toast stays the
  *  immediate feedback, the panel is the action surface. Window-guarded so
  *  the VM harness stays silent. */
-export const PREFLIGHT_REFUSAL_EVENT = 'minimax:preflight-refusal'
+export const PREFLIGHT_REFUSAL_EVENT = 'monoka:preflight-refusal'
 
 /** The submit-core seam: run the diff, log the junction, refuse loudly.
  *  Returns the refusal message or null. */

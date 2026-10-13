@@ -42,8 +42,8 @@ export function recordMovieOutput(link: MovieLink | undefined, outputUrl: string
 export async function recordCharacterSheetImages(characterProjectId: string | undefined, file: { filename: string; subfolder?: string; type?: string }, settings: AppSettings) {
   if (!characterProjectId || !file.filename) return null
   try {
-    const saved = await window.minimax.saveComfyOutputImage('', file, settings.outputDirectory)
-    const preview = await window.minimax.mediaUrl(saved.path)
+    const saved = await window.monoka.saveComfyOutputImage('', file, settings.outputDirectory)
+    const preview = await window.monoka.mediaUrl(saved.path)
     const project = loadCharacterProjects().find((item) => item.id === characterProjectId)
     const existing = project?.referenceImages ?? []
     updateCharacterProject(characterProjectId, { referenceMode: 'set', referenceImages: [...existing, { path: saved.path, name: saved.name, kind: 'image' as const, preview }], selectedReferencePaths: undefined })
@@ -70,8 +70,8 @@ export async function extractAutomatedReferenceSet(kind: 'character' | 'location
   try {
     const positions = [0.05, .25, .5, .75, .95].map((ratio) => Math.max(0, Math.min(duration - .04, duration * ratio)))
     const references = await Promise.all(positions.map(async (position) => {
-      const result = await window.minimax.extractVideoFrame(source, position, settings.outputDirectory, settings.ffmpegPath)
-      return { ...result, kind: 'image' as const, preview: await window.minimax.mediaUrl(result.path) }
+      const result = await window.monoka.extractVideoFrame(source, position, settings.outputDirectory, settings.ffmpegPath)
+      return { ...result, kind: 'image' as const, preview: await window.monoka.mediaUrl(result.path) }
     }))
     if (kind === 'character') updateCharacterProject(projectId, { referenceMode: 'set', referenceImages: references, selectedReferencePaths: undefined })
     else updateLocationProject(projectId, { referenceMode: 'set', referenceImages: references, selectedReferencePaths: undefined })

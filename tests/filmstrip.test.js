@@ -119,10 +119,10 @@ maybe('(a) first GET generates lazily and serves a PNG with the shared layout: d
   const first = await fetch(filmstrip(clipA, '&duration=3'))
   if (first.status !== 200) fail(`first GET failed: ${await first.text()}`)
   assert.equal(first.headers.get('content-type'), 'image/png')
-  assert.equal(first.headers.get('x-minimax-filmstrip-cols'), '4')
-  assert.equal(first.headers.get('x-minimax-filmstrip-rows'), '3')
-  assert.equal(first.headers.get('x-minimax-filmstrip-frame-count'), '12')
-  assert.equal(first.headers.get('x-minimax-filmstrip-generations'), '1', 'the very first request must report exactly one generation')
+  assert.equal(first.headers.get('x-monoka-filmstrip-cols'), '4')
+  assert.equal(first.headers.get('x-monoka-filmstrip-rows'), '3')
+  assert.equal(first.headers.get('x-monoka-filmstrip-frame-count'), '12')
+  assert.equal(first.headers.get('x-monoka-filmstrip-generations'), '1', 'the very first request must report exactly one generation')
   const dimensions = assertPng(Buffer.from(await first.arrayBuffer()), 'first sheet')
   assert.deepEqual(dimensions, { width: 640, height: 270 }, 'sheet must tile 4×3 cells of 160×90')
   etag = first.headers.get('etag')
@@ -136,8 +136,8 @@ maybe('(b) second GET: ETag revalidation (304) and no new generation', async () 
   assert.equal(revalidate.status, 304, 'an unchanged sheet must answer 304 to If-None-Match')
   const second = await fetch(filmstrip(clipA, '&duration=3'))
   assert.equal(second.headers.get('etag'), etag, 'ETag must be stable across hits')
-  assert.equal(second.headers.get('x-minimax-filmstrip-generations'), '1', 'a cached sheet must not regenerate')
-  before = Number(second.headers.get('x-minimax-filmstrip-generations'))
+  assert.equal(second.headers.get('x-monoka-filmstrip-generations'), '1', 'a cached sheet must not regenerate')
+  before = Number(second.headers.get('x-monoka-filmstrip-generations'))
 })
 
 maybe('(c) single-flight: three CONCURRENT first requests for clip-b → one ffmpeg run between them (counter moved by exactly one)', async () => {
@@ -147,7 +147,7 @@ maybe('(c) single-flight: three CONCURRENT first requests for clip-b → one ffm
     assertPng(Buffer.from(await response.arrayBuffer()), 'concurrent sheet')
   }
   const after = await fetch(filmstrip(clipB))
-  assert.equal(Number(after.headers.get('x-minimax-filmstrip-generations')), before + 1, 'three parallel first requests must share ONE generation')
+  assert.equal(Number(after.headers.get('x-monoka-filmstrip-generations')), before + 1, 'three parallel first requests must share ONE generation')
 })
 
 maybe('(d) guards: outside the output directory, traversal, missing file, non-video extension', async () => {
@@ -167,7 +167,7 @@ maybe('(e) invalidation: a source newer than its sheet regenerates', async () =>
   const regenerated = await fetch(filmstrip(clipA, '&duration=3'), { headers: { 'if-none-match': etag } })
   assert.equal(regenerated.status, 200, 'a touched source must regenerate (ETag changed)')
   assert.notEqual(regenerated.headers.get('etag'), etag, 'the new ETag must reflect the new source mtime')
-  afterInvalidation = Number(regenerated.headers.get('x-minimax-filmstrip-generations'))
+  afterInvalidation = Number(regenerated.headers.get('x-monoka-filmstrip-generations'))
   assert.equal(afterInvalidation, before + 2, 'invalidation must have added exactly one regeneration')
 })
 
@@ -182,7 +182,7 @@ maybe('(f) attribution hook: registers the frame-indexed asset row (fps 24 / fra
   assert.equal(registeredBody.fps, 24)
   assert.equal(registeredBody.frameCount, 72, 'frame_count must be duration × 24 (3 s → 72)')
   const warm = await fetch(filmstrip(clipB))
-  assert.equal(Number(warm.headers.get('x-minimax-filmstrip-generations')), afterInvalidation, 'the warm start must reuse the cached sheet, not regenerate')
+  assert.equal(Number(warm.headers.get('x-monoka-filmstrip-generations')), afterInvalidation, 'the warm start must reuse the cached sheet, not regenerate')
   const db = new Database(path.join(home, 'studio.db'))
   const asset = db.prepare('SELECT * FROM assets WHERE path = ?').get(clipB)
   db.close()

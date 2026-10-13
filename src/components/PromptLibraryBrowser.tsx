@@ -57,7 +57,7 @@ export function PromptLibraryBrowser({ onClose, onInsert, finalFocusRef }: { onC
     setLoading(true)
     setError('')
     try {
-      const result = await window.minimax.listPromptLibrary({ text: text.trim() || undefined, limit: 24, cursor: nextCursor, nsfw, sort, scope })
+      const result = await window.monoka.listPromptLibrary({ text: text.trim() || undefined, limit: 24, cursor: nextCursor, nsfw, sort, scope })
       setItems((current) => nextCursor ? [...current, ...result.items] : result.items)
       setCursor(result.cursor)
     } catch (caught) {

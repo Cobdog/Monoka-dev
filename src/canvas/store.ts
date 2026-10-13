@@ -776,7 +776,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     const resolved = outputId ? mediaForOutput(outputs.get(outputId)) : null
     if (!resolved || resolved.media.kind !== 'video') return { refusal: 'Render the prior segment first — the continuation frame comes from its final rendered frame.' }
     try {
-      const frame = await window.minimax.extractVideoFrame(resolved.media.path, 'last', session.settings.outputDirectory, session.settings.ffmpegPath)
+      const frame = await window.monoka.extractVideoFrame(resolved.media.path, 'last', session.settings.outputDirectory, session.settings.ffmpegPath)
       const frameChain = await documentsApi.createChain({
         projectId: doc.project.id,
         kind: 'media',
@@ -2014,7 +2014,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
           const session = useSessionStore.getState()
           if (!media || !session.settings) throw new Error('The source media is not extractable.')
           const frameIndex = 0
-          const extractedFile = await window.minimax.extractVideoFrame(media.media.path, frameIndex, session.settings.outputDirectory, session.settings.ffmpegPath)
+          const extractedFile = await window.monoka.extractVideoFrame(media.media.path, frameIndex, session.settings.outputDirectory, session.settings.ffmpegPath)
           const frameChain = await documentsApi.createChain({
             projectId: doc.project.id,
             kind: 'media',

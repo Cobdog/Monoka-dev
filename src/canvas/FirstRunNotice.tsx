@@ -20,7 +20,7 @@ const DISMISS_KEY = 'monoka.first-run-dismissed'
 
 /** Reopen signal the notice's CTA fires (the wizard listens and resets its
  *  skipped/done state — reopening is one click from the fallback surface). */
-export const WIZARD_REOPEN_EVENT = 'minimax:reopen-wizard'
+export const WIZARD_REOPEN_EVENT = 'monoka:reopen-wizard'
 
 export function FirstRunNotice() {
   const models = useSessionStore((state) => state.models)

@@ -34,7 +34,7 @@ import {
 export type EngineProbeSource = 'boot' | 'loop' | 'visibility' | 'manual'
 
 /** The bridge the renderer's DesktopApi provides (the web apiClient's
- *  shapes; every method signature matches window.minimax exactly). */
+ *  shapes; every method signature matches window.monoka exactly). */
 export type EngineRecoveryBridge = {
   getComfyStatus(url: string): Promise<ComfyStatus>
   getObjectInfo(url: string): Promise<ObjectInfo>

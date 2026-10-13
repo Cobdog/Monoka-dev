@@ -32,7 +32,7 @@ const WIZARD_KEY = 'monoka.wizard'
 
 /** Fired on every wizard-state write — the FirstRunNotice listens instead of
  *  polling (it shows the moment the wizard stops presenting). */
-export const WIZARD_STATE_EVENT = 'minimax:wizard-state'
+export const WIZARD_STATE_EVENT = 'monoka:wizard-state'
 
 type WizardState = { step: number; done: boolean; skipped: boolean }
 
@@ -82,7 +82,7 @@ export function FirstRunWizard() {
   useEffect(() => {
     if (state.step !== 2) return
     let cancelled = false
-    void window.minimax.listEngineNodePacks().then((result) => {
+    void window.monoka.listEngineNodePacks().then((result) => {
       if (cancelled) return
       const packs = result.packs
       setPackSummary({ active: packs.filter((pack) => pack.instanceState === 'active').length, total: packs.length })
@@ -187,7 +187,7 @@ function EngineStep(props: {
       for (const port of COMMON_PORTS) {
         const url = `http://127.0.0.1:${port}`
         try {
-          const probeStatus = await window.minimax.getComfyStatus(url)
+          const probeStatus = await window.monoka.getComfyStatus(url)
           if (probeStatus.connected) found.push({ port, latencyMs: probeStatus.latencyMs ?? 0 })
           // (A-DBG) The probe verdict per port — click-consented, one burst
           // per Test press; the connected case is summarized below.

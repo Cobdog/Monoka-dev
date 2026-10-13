@@ -510,7 +510,7 @@ export function StructuredPromptEditor(props: {
           setParsing(true)
           setParseReview(null)
           try {
-            const result = await window.minimax.llmGenerateStructured({
+            const result = await window.monoka.llmGenerateStructured({
               task: 'parse-structured',
               targetEngine: 'minimax-h3',
               length: 'concise',

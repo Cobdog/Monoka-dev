@@ -57,7 +57,7 @@ export function FetchBrowser({ settings, setSettings, onAfterFetch, onAdoptCheck
 
   const refresh = async () => {
     try {
-      setEntries((await window.minimax.listFetchCatalog()).entries)
+      setEntries((await window.monoka.listFetchCatalog()).entries)
     } catch { /* surfaced on the next action; the section stays empty */ }
   }
 
@@ -113,9 +113,9 @@ export function FetchBrowser({ settings, setSettings, onAfterFetch, onAdoptCheck
     setBusy(entry.id)
     setError(null)
     try {
-      await window.minimax.setFetchConsent(entry.id, true)
-      setSettings(await window.minimax.getSettings())
-      const started = await window.minimax.startFetch(entry.id, entry.destination.kind === 'engine-checkout' && destinationDir.trim() ? { destinationDir: destinationDir.trim() } : undefined)
+      await window.monoka.setFetchConsent(entry.id, true)
+      setSettings(await window.monoka.getSettings())
+      const started = await window.monoka.startFetch(entry.id, entry.destination.kind === 'engine-checkout' && destinationDir.trim() ? { destinationDir: destinationDir.trim() } : undefined)
       if (!started.started) throw new Error('The fetch could not be started.')
       setConsentFor(null)
       setEntries((current) => current?.map((candidate) => candidate.id === entry.id ? { ...candidate, inFlight: true } : candidate) ?? current)
@@ -130,7 +130,7 @@ export function FetchBrowser({ settings, setSettings, onAfterFetch, onAdoptCheck
     setBusy(entry.id)
     setError(null)
     try {
-      const result = await window.minimax.removeFetched(entry.id)
+      const result = await window.monoka.removeFetched(entry.id)
       setEntries(result.entries)
       onAfterFetch()
     } catch (failure) {
