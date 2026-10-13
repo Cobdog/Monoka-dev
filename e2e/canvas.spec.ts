@@ -4053,7 +4053,7 @@ test('a model override reaches the engine graph and the job manifest (fake engin
     await request.post('/api/lan/settings', { data: { settings: {
       ...originalSettings,
       comfyUrl: `http://127.0.0.1:${enginePort}`,
-      modelOverrides: { minimax: { fl2va: mergeName, videoVae: 'h3-community-video-decoder.safetensors', audioVae: 'h3-community-audio-decoder.safetensors' } },
+      modelOverrides: { monoka: { fl2va: mergeName, videoVae: 'h3-community-video-decoder.safetensors', audioVae: 'h3-community-audio-decoder.safetensors' } },
     } } })
     await resetSession(page)
     await page.goto('/?canvas=1')
@@ -4142,7 +4142,7 @@ test('model overrides surface in Settings and the chain properties panel (both s
     await page.locator('[data-canvas-settings-button]').click()
     const dock = page.locator('[data-canvas-settings-dock]')
     await expect(dock).toBeVisible()
-    const familyBlock = dock.locator('[data-model-override-family="minimax"]')
+    const familyBlock = dock.locator('[data-model-override-family="monoka"]')
     await expect(familyBlock).toBeVisible({ timeout: 15_000 })
     // (rq0lsax) the split family exposes THREE checkpoint lanes and no
     // generic checkpoint row.
@@ -4189,7 +4189,7 @@ test('model overrides surface in Settings and the chain properties panel (both s
     await dock.locator('button.primary-button', { hasText: 'Save settings' }).click()
     await expect.poll(async () => {
       const saved = ((await (await request.get('/api/lan/settings')).json()) as { settings: { modelOverrides?: Record<string, Record<string, string>> } }).settings
-      return saved.modelOverrides?.minimax?.fl2va ?? null
+      return saved.modelOverrides?.monoka?.fl2va ?? null
     }, { timeout: 15_000 }).toBe(mergeName)
 
     // ---- Surface 2: the chain properties panel (per-chain overrides) ----
@@ -4233,7 +4233,7 @@ test('model overrides surface in Settings and the chain properties panel (both s
     // bypasses the session store by design; the audit's flow was the UI.)
     await page.locator('[data-canvas-settings-button]').click()
     await expect(dock).toBeVisible()
-    await dock.locator('[data-model-override-family="minimax"] [data-model-override-slot="fl2va"] select').selectOption('')
+    await dock.locator('[data-model-override-family="monoka"] [data-model-override-slot="fl2va"] select').selectOption('')
     await dock.locator('button.primary-button', { hasText: 'Save settings' }).click()
     await page.locator('[data-canvas-settings-close]').click()
     await expect.poll(async () => chainSelect.locator('option').first().textContent(), { timeout: 10_000 }).not.toContain('global:')
@@ -4285,7 +4285,7 @@ test('effective-setting row: chain reset reveals global without deleting it; ref
       comfyUrl: `http://127.0.0.1:${enginePort}`,
       modelOverrides: {
         ...(originalSettings.modelOverrides as Record<string, Record<string, string>> ?? {}),
-        minimax: {
+        monoka: {
           fl2va: globalFl2va,
           // A pick the registry does not list: DEGRADED (drift, submissions
           // proceed on auto) — live from boot, so the chain below can spawn.
@@ -4329,8 +4329,8 @@ test('effective-setting row: chain reset reveals global without deleting it; ref
     // …and the global SETTING is untouched (settings API is the truth), while
     // the CHAIN layer's own pick cleared (the debounced commit lands it).
     const settingsAfterReset = ((await (await request.get('/api/lan/settings')).json()) as { settings: { modelOverrides?: Record<string, Record<string, string>> } }).settings
-    expect(settingsAfterReset.modelOverrides?.minimax?.fl2va).toBe(globalFl2va)
-    expect(settingsAfterReset.modelOverrides?.minimax?.audioVae).toBe('minimax_h3_audio_vae_VANISHED.safetensors')
+    expect(settingsAfterReset.modelOverrides?.monoka?.fl2va).toBe(globalFl2va)
+    expect(settingsAfterReset.modelOverrides?.monoka?.audioVae).toBe('minimax_h3_audio_vae_VANISHED.safetensors')
     await expect.poll(async () => {
       const document = await activeDocument(page)
       const chain = document.chains.find((entry) => entry.kind === 'generation')
@@ -4354,10 +4354,10 @@ test('effective-setting row: chain reset reveals global without deleting it; ref
     await expect(dock).toBeVisible()
     // The Settings rows own the GLOBAL level: their reset clears the global
     // pick (asserted on the applied fl2va row before the refusal arm runs).
-    const settingsFl2vaRow = dock.locator('[data-model-override-family="minimax"] [data-model-override-slot="fl2va"]')
+    const settingsFl2vaRow = dock.locator('[data-model-override-family="monoka"] [data-model-override-slot="fl2va"]')
     await expect(settingsFl2vaRow.locator('[data-effective-origin]')).toHaveAttribute('data-effective-origin', 'global')
     await expect(settingsFl2vaRow.locator('[data-effective-reset]')).toHaveCount(1)
-    await dock.locator('[data-model-override-family="minimax"] [data-model-override-slot="videoVae"] select').selectOption('minimax_h3_audio_vae_fp32.safetensors')
+    await dock.locator('[data-model-override-family="monoka"] [data-model-override-slot="videoVae"] select').selectOption('minimax_h3_audio_vae_fp32.safetensors')
     await dock.locator('button.primary-button', { hasText: 'Save settings' }).click()
     await page.locator('[data-canvas-settings-close]').click()
     const videoRow = modelsSection.locator('[data-canvas-model-override="videoVae"]')
@@ -4434,7 +4434,7 @@ test('generate pre-gate: the override refusal states itself at Generate before a
     await page.locator('[data-canvas-settings-button]').click()
     const dock = page.locator('[data-canvas-settings-dock]')
     await expect(dock).toBeVisible()
-    await dock.locator('[data-model-override-family="minimax"] [data-model-override-slot="videoVae"] select').selectOption('minimax_h3_audio_vae_fp32.safetensors')
+    await dock.locator('[data-model-override-family="monoka"] [data-model-override-slot="videoVae"] select').selectOption('minimax_h3_audio_vae_fp32.safetensors')
     await dock.locator('button.primary-button', { hasText: 'Save settings' }).click()
     await page.locator('[data-canvas-settings-close]').click()
     // The Refusal tier renders in the submit footer (beside Generate), not
@@ -4542,7 +4542,7 @@ test('an instance-listed subpathed checkpoint pick applies and the graph carries
     await request.post('/api/lan/settings', { data: { settings: {
       ...originalSettings,
       comfyUrl: `http://127.0.0.1:${enginePort}`,
-      modelOverrides: { minimax: { fl2va: instanceFl2va, ref2va: instanceRef2va } },
+      modelOverrides: { monoka: { fl2va: instanceFl2va, ref2va: instanceRef2va } },
     } } })
     await resetSession(page)
     await page.goto('/?canvas=1')
@@ -4554,7 +4554,7 @@ test('an instance-listed subpathed checkpoint pick applies and the graph carries
     await page.locator('[data-canvas-settings-button]').click()
     const dock = page.locator('[data-canvas-settings-dock]')
     await expect(dock).toBeVisible()
-    const fl2vaRow = dock.locator('[data-model-override-family="minimax"] [data-model-override-slot="fl2va"]')
+    const fl2vaRow = dock.locator('[data-model-override-family="monoka"] [data-model-override-slot="fl2va"]')
     await expect(fl2vaRow.locator('select')).toHaveValue(instanceFl2va, { timeout: 15_000 })
     await expect(fl2vaRow.locator('[data-model-override-problem]')).toHaveCount(0)
     await page.locator('[data-canvas-settings-close]').click()
@@ -4630,7 +4630,7 @@ test('an invisible engine restart re-syncs the model inventory — the drift toa
     await page.locator('[data-canvas-settings-button]').click()
     const dock = page.locator('[data-canvas-settings-dock]')
     await expect(dock).toBeVisible()
-    const teRow = dock.locator('[data-model-override-family="minimax"] [data-model-override-slot="textEncoder"] select')
+    const teRow = dock.locator('[data-model-override-family="monoka"] [data-model-override-slot="textEncoder"] select')
     const te4bOptions = teRow.locator('option').filter({ hasText: 'qwen3vl_4b_minimax_h3_int8.safetensors' })
     await expect(te4bOptions).toHaveCount(0, { timeout: 15_000 })
 
@@ -5209,7 +5209,7 @@ test('a legacy pre-split vae pick of the T=1 decoder never refuses the video pat
     await request.post('/api/lan/settings', { data: { settings: {
       ...originalSettings,
       comfyUrl: `http://127.0.0.1:${enginePort}`,
-      modelOverrides: { ...(originalSettings.modelOverrides as Record<string, Record<string, string>> ?? {}), minimax: { vae: T1_FILE } },
+      modelOverrides: { ...(originalSettings.modelOverrides as Record<string, Record<string, string>> ?? {}), monoka: { vae: T1_FILE } },
     } } })
     await request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } })
 
@@ -5246,7 +5246,7 @@ test('a legacy pre-split vae pick of the T=1 decoder never refuses the video pat
     await request.post('/api/lan/settings', { data: { settings: {
       ...originalSettings,
       comfyUrl: `http://127.0.0.1:${enginePort}`,
-      modelOverrides: { ...(originalSettings.modelOverrides as Record<string, Record<string, string>> ?? {}), minimax: { videoVae: T1_FILE } },
+      modelOverrides: { ...(originalSettings.modelOverrides as Record<string, Record<string, string>> ?? {}), monoka: { videoVae: T1_FILE } },
     } } })
     const graphsBeforeArm2 = submitted.length
     await page.reload()
