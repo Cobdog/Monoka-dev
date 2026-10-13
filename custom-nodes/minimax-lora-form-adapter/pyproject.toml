@@ -13,5 +13,5 @@ dependencies = []  # numpy ships with every torch install; torch + ComfyUI are t
 Homepage = "https://github.com/Cobdog/Monoka-dev/tree/main/custom-nodes/minimax-lora-form-adapter"
 
 [tool.comfy]
-PublisherId = "minimax-studio"
+PublisherId = "monoka"
 DisplayName = "MiniMax-H3 LoRA Form Adapter"
