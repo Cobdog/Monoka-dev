@@ -7,7 +7,7 @@ import stylelint from 'stylelint'
  *
  * Three layers, all signal-only:
  *  1. stylelint-config-standard — syntax correctness and genuine foot-guns.
- *  2. minimax/no-raw-colors (custom, below) — design-token discipline: color
+ *  2. monoka/no-raw-colors (custom, below) — design-token discipline: color
  *     values in declarations must go through var(--token) (the wave-2b token
  *     system in src/styles.css :root). Raw literals are allowed ONLY in
  *     token definitions (custom properties) and on the documented allowlist
@@ -53,7 +53,7 @@ const allowlistPath = path.resolve(import.meta.dirname, 'scripts', 'stylelint-ra
 const rawColorAllow = (JSON.parse(fs.readFileSync(allowlistPath, 'utf8')).allow)
   .map((entry) => ({ ...entry, value: entry.value.replace(/\s*!important$/, '') }))
 
-const noRawColors = stylelint.createPlugin('minimax/no-raw-colors', (primary, secondary) => (root, result) => {
+const noRawColors = stylelint.createPlugin('monoka/no-raw-colors', (primary, secondary) => (root, result) => {
   if (!primary) return
   // Documented one-offs: the committed JSON inventory plus any { property,
   // value, reason } entries passed via the rule's secondary `allow` option.
@@ -66,7 +66,7 @@ const noRawColors = stylelint.createPlugin('minimax/no-raw-colors', (primary, se
     if (!HEX_COLOR.test(value) && !COLOR_FUNCTION.test(value) && !NAMED_COLOR.test(value)) return
     if (allow.some((entry) => entry.property === decl.prop && entry.value === value.trim())) return
     stylelint.utils.report({
-      ruleName: 'minimax/no-raw-colors',
+      ruleName: 'monoka/no-raw-colors',
       result,
       node: decl,
       message: `Use a design token (var(--…)) for the color in "${decl.prop}"; raw literals need a documented allowlist entry in stylelint.config.mjs (got: "${value.trim().slice(0, 48)}").`,
@@ -167,7 +167,7 @@ export default {
   plugins: [noRawColors, noDeadFallback],
   extends: ['stylelint-config-standard'],
   rules: {
-    'minimax/no-raw-colors': true,
+    'monoka/no-raw-colors': true,
     'component-vocab/no-dead-fallback': true,
 
     // ---- Documented suppressions (rules that only fight house style) ----

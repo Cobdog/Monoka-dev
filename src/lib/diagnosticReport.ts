@@ -175,7 +175,7 @@ export function buildDiagnosticReport(input: DiagnosticReportInput): string {
   const lines: string[] = []
   const push = (line: string) => lines.push(line)
 
-  push('MiniMax Studio diagnostic report')
+  push('Monoka diagnostic report')
   push(`Generated: ${iso(input.generatedAt)}`)
   push(`App: ${versionToken(input.appVersion) || 'unknown'} on ${sanitizeErrorMessage(input.osPlatform) || 'unknown'}`)
   push('PII: this report is scrubbed by construction — prompt and media content cannot appear in it.')

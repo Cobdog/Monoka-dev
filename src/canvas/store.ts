@@ -557,7 +557,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
   const engineOutputDescriptorFromUrl = (url: string | null | undefined): { filename: string; subfolder?: string; type?: string } | null => {
     if (!url || !url.startsWith('/api/lan/media')) return null
     try {
-      const parsed = new URL(url, 'http://minimax.local')
+      const parsed = new URL(url, 'http://monoka.local')
       const filename = parsed.searchParams.get('filename')
       if (!filename) return null
       const subfolder = parsed.searchParams.get('subfolder') ?? ''
@@ -844,7 +844,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         // skipped server-side; the boot still happens. One honest note per
         // boot — never a bricked canvas, never a silent drop.
         if (listing.skipped.length) {
-          get().toast('neutral', `${listing.skipped.length} canvas${listing.skipped.length === 1 ? '' : 'es'} ${listing.skipped.length === 1 ? 'was' : 'were'} written by a newer MiniMax Studio and ${listing.skipped.length === 1 ? 'is' : 'are'} hidden until the app is upgraded — the other canvases are unaffected.`)
+          get().toast('neutral', `${listing.skipped.length} canvas${listing.skipped.length === 1 ? '' : 'es'} ${listing.skipped.length === 1 ? 'was' : 'were'} written by a newer Monoka and ${listing.skipped.length === 1 ? 'is' : 'are'} hidden until the app is upgraded — the other canvases are unaffected.`)
         }
         const active = session.activeProject
         if (active && listing.projects.some((project) => project.id === active)) {

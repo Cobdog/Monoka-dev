@@ -720,7 +720,7 @@ export function createRealtimeHub(options: RealtimeHubOptions) {
   // ---- transports ----------------------------------------------------------
   function attachWebSocket(server: Server) {
     server.on('upgrade', (request, socket, head) => {
-      const url = new URL(request.url ?? '/', 'http://minimax.local')
+      const url = new URL(request.url ?? '/', 'http://monoka.local')
       if (url.pathname !== REALTIME_WS_PATH) {
         socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n')
         socket.destroy()
