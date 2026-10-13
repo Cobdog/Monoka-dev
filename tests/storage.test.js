@@ -105,7 +105,7 @@ function loadServerStorage(localStorageStub, fetchStub, consoleStub) {
 }
 
 const manifestFixture = {
-  manifestVersion: 1, graphFamily: 'studio-2026-09', provider: 'minimax', mode: 'text',
+  manifestVersion: 1, graphFamily: 'studio-2026-09', provider: 'monoka', mode: 'text',
   prompt: 'a lantern-lit courtyard', seed: 12345, steps: 30, turbo: 'off', sampler: 'res_multistep',
   scheduler: 'simple', resolution: '1344x768', durationSeconds: 5,
   models: { diffusion: { name: 'fl2va.safetensors', bytes: 1 } }, referenceCounts: { images: 0, videos: 0, audios: 0 },
