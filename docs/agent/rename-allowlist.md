@@ -156,6 +156,7 @@ the app. Grouped; all dated 2026-10-13.
 | `tests/canvas.test.js`, `tests/h3img.test.js` (residual) | refusal-copy pins naming the family/pack (carve-out §1.7) |
 | `benchmarks/suites/*/build_*.py` (7) | graph builders carrying the engine enum `type: 'minimax'` (§1.4 Python rendering); dated measurement harness per R8 |
 | `docs/ROADMAP.md:129,133` (outside grep scope, recorded here) | the dated 2026-09-20 directive record — the locked folder decision + the pre-sweep URL state; R2 keeps it |
+| `custom-nodes/minimax-lora-form-adapter/pyproject.toml` authors line + `LICENSE:3` copyright | "MiniMax Studio contributors" as the RIGHTSHOLDER/authorship name — a legal record, not an app identifier; renaming a copyright line is maintainer-gated (invisible to the exit grep: every line under the adapter dir is excluded by its own path) |
 
 ### §2.6 — Fixed in this task (for the record — no longer in the grep)
 
@@ -167,6 +168,7 @@ the app. Grouped; all dated 2026-10-13.
 - `tests/workflows.test.js` app-named locals/labels (`minimaxResolved`/`minimaxGraph`/`'minimax merged'`/walk labels) → `monoka*`.
 - `tests/instance.test.js:750` — removed the vacuous `minimax-instance CRASH` diagnostic matcher (nothing in server/src prints any CRASH marker; dead since the pre-vitest script era — the T5 vacuity class).
 - README.md `MINIMAX_START_CONFIG`/`MINIMAX_LAN_TOKEN`/`MINIMAX_TEST_BROWSER` → the `MONOKA_*` names (stale living-doc mentions, T4-review-routed).
+- `custom-nodes/minimax-lora-form-adapter/pyproject.toml` `PublisherId = "minimax-studio"` → `"monoka"` — the publisher of this first-party pack is the PROJECT (the old app name), not the model family; R3 pins only the adapter's directory/package name. Nothing consumes the value (`server/packVersioning.ts` reads version + `[tool.comfy]` presence only). T4 had flagged it "not in lane list — reported"; routed here by the T6 dispatch.
 - docs/architecture.md living pass: product name, diagram, `MONOKA_HOME`/`~/.monoka`, `window.monoka`, `monoka-media://` (with the migration history), `MONOKA_LAN_TOKEN`, `buildMonokaWorkflow` + a dated header note.
 
 ## §3 — Standing convention
