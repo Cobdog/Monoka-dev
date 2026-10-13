@@ -64,7 +64,7 @@ function turboEntry(definition: TurboDefinition): OptimizationEntry {
     id: definition.id,
     label: definition.label,
     kind: 'turbo',
-    appliesTo: ['minimax'],
+    appliesTo: ['monoka'],
     wraps: 'modelChain',
     patterns: definition.patterns,
     pairing: definition.pairing,
@@ -200,7 +200,7 @@ export const GENERIC_TURBO_ENTRY: OptimizationEntry = {
   id: 'turbo.generic',
   label: 'Custom turbo LoRA',
   kind: 'turbo',
-  appliesTo: ['minimax'],
+  appliesTo: ['monoka'],
   wraps: 'modelChain',
   detect() {
     return { available: false }

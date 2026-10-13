@@ -171,7 +171,7 @@ export const VDN_ENTRY: OptimizationEntry = {
   id: 'vdn.apply',
   label: 'VDN hybrid attention (adopted first-party)',
   kind: 'acceleration',
-  appliesTo: ['minimax'],
+  appliesTo: ['monoka'],
   wraps: 'modelChain',
   pairing: { sampler: DMD_PAIRING.sampler, scheduler: DMD_PAIRING.scheduler, steps: DMD_PAIRING.steps },
   detect(info) {

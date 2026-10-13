@@ -226,7 +226,7 @@ maybe('(a) inertness vs the pre-registry goldens + registry shape', () => {
   for (const entry of entries) {
     ok(typeof entry.detect === 'function' && typeof entry.transform === 'function', `${entry.id} has detect+transform`)
     ok(entry.ui.description.length > 0, `${entry.id} has a UI description`)
-    ok(entry.appliesTo.includes('minimax'), `${entry.id} applies to the H3 engine`)
+    ok(entry.appliesTo.includes('monoka'), `${entry.id} applies to the H3 engine`)
   }
   for (const required of ['turbo.official-fl2v-8', 'turbo.lightx2v-fl2v-4', 'turbo.lightx2v-ref2v-8', 'turbo.pdd-fl2va-8', 'turbo.pdd-ref2va-8', 'turbo.drbaph-4', 'turbo.larryvrh-v4-8', 'turbo.ref2v-4', 'upscale.lbh2d', 'upscale.lbh3d', 'upscale.rtx', 'preview.h3-override', 'vdn.apply']) {
     ok(Boolean(findOptimization(required)), `registry contains ${required}`)
@@ -479,7 +479,7 @@ maybe('(e) painless expansion: a hypothetical family, registry data only', () =>
       id: 'turbo.hypothetical-5',
       label: 'Hypothetical 5-step (test fixture)',
       kind: 'turbo',
-      appliesTo: ['minimax'],
+      appliesTo: ['monoka'],
       wraps: 'modelChain',
       patterns: [/^hypothetical_h3_turbo_5step/i],
       pairing: { sampler: 'res_multistep', scheduler: 'simple', samplerNode: 'HypotheticalTurboSampler', steps: 5 },
