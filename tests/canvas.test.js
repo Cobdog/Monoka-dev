@@ -913,7 +913,7 @@ const H3_T1_FULL_STACK = [
 // (loadTs caches by path — the (u-run) leg reuses this exact module binding;
 // the upload stubs throw because the text-only T=1 path must never upload).
 const t1SubmittedGraphs = []
-const stillSubmitCore = loadTs('src/images/submit.ts', { window: { minimax: {
+const stillSubmitCore = loadTs('src/images/submit.ts', { window: { monoka: {
   submitPrompt: async (url, graph) => { t1SubmittedGraphs.push({ url, graph }); return { prompt_id: 't1-run-1' } },
   uploadInput: async () => { throw new Error('unexpected upload on the text-only T=1 path') },
   uploadImageData: async () => { throw new Error('unexpected image-data upload on the text-only T=1 path') },

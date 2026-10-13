@@ -1930,7 +1930,7 @@ test('diagnostic report: canary-proof blob by construction, version shape allow-
   assert.ok(report.includes('[redacted]'), 'redaction markers present')
 
   // Structure: deterministic sections, versions readable, drift flagged.
-  assert.ok(report.startsWith('MiniMax Studio diagnostic report\n'), 'title line')
+  assert.ok(report.startsWith('Monoka diagnostic report\n'), 'title line')
   assert.ok(report.includes(`Generated: ${new Date(1760000000000).toISOString()}`), 'deterministic timestamp')
   assert.ok(report.includes('App: 0.1.0 on'), 'app version readable (shape allow-list, not mangled)')
   assert.ok(report.includes('[ENGINE]'))
