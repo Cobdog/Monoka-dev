@@ -421,7 +421,7 @@ function buildCorpus() {
   }
   // The video factory across the mode/tier/chain/stack surface.
   const models = { fl2va: 'fl2va.safetensors', ref2va: 'ref2va.safetensors', textEncoder: 'qwen.safetensors', videoVae: 'video-vae.safetensors', audioVae: 'audio-vae.safetensors', fl2vLora: 'fl-turbo.safetensors', ref2vLora: 'ref-turbo.safetensors' }
-  const wf = (label, options, uploads, info) => corpus.push([`video:${label}`, workflow.buildMiniMaxWorkflow(options, models, uploads, info)])
+  const wf = (label, options, uploads, info) => corpus.push([`video:${label}`, workflow.buildMonokaWorkflow(options, models, uploads, info)])
   wf('text-base', { mode: 'text', width: 1344, height: 768, prompt: 'p', duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, { images: [], videos: [], audios: [] })
   wf('image-frames-turbo8', { mode: 'image', width: 352, height: 608, prompt: 'p', duration: 3, seed: 2, steps: 20, turbo: '8', sampler: 'heun', scheduler: 'karras', filenamePrefix: 't', refImageSize: 'match' }, { first: { name: 'first.png' }, last: { name: 'last.png' }, images: [], videos: [], audios: [] })
   wf('reference-full', { mode: 'reference', width: 768, height: 768, prompt: 'p', duration: 8, seed: 3, steps: 20, turbo: '4', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'max', sigmaShift: { video: 12, audio: 3 }, timelineGuides: [{ file: { name: 'guide.png' }, seconds: 1.5, frameIndex: 36 }] }, { images: [{ name: 'ref.png' }], videos: [{ name: 'ref.mp4' }], audios: [{ name: 'ref.flac' }], guides: [{ name: 'guide.png' }] })
@@ -614,7 +614,7 @@ test('(e) e2e/fakeEngineInfo serves the REAL captured schemas for stock classes'
   ok(withExtras.KSamplerSelect.custom === 'shape', 'later extras still WIN over the real schemas')
 
   // The graduated fake stays preflight-clean AND contract-clean for a stock graph.
-  const graph = workflow.buildMiniMaxWorkflow(
+  const graph = workflow.buildMonokaWorkflow(
     { mode: 'text', width: 1344, height: 768, prompt: 'p', duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' },
     { fl2va: 'fl2va.safetensors', ref2va: 'ref2va.safetensors', textEncoder: 'qwen.safetensors', videoVae: 'video-vae.safetensors', audioVae: 'audio-vae.safetensors', fl2vLora: 'fl.safetensors', ref2vLora: 'ref.safetensors' },
     { images: [], videos: [], audios: [] },

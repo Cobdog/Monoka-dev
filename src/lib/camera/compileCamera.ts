@@ -111,7 +111,7 @@ export function compileCamera(params: CompileCameraParams): CompileResult {
   const plan = buildPlan(path, end, interpolation, userInstruction, aspect, promptDetail as PromptDetail)
   plan.coordinate_anchor = coordinateAnchor(subjectBox)
   const compiled = planText(plan, true)
-  const minimax = monokaFormat === 'compact JSON' || monokaFormat === 'compact JSON (no boxes)'
+  const compact = monokaFormat === 'compact JSON' || monokaFormat === 'compact JSON (no boxes)'
     ? pyJsonStringify(plan)
     : planText(plan, monokaFormat === 'coordinate + H3 sections')
   const options: H3EditOptions = {
@@ -196,7 +196,7 @@ export function compileCamera(params: CompileCameraParams): CompileResult {
     options,
     storyboardJson: pyJsonStringify(storyboard),
     info,
-    monokaPrompt: minimax,
+    monokaPrompt: compact,
     frames,
     fps: FPS,
   }

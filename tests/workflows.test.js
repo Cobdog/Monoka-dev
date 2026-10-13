@@ -22,7 +22,7 @@ function load(path) {
   return loadTs(path)
 }
 const workflowModule = load('src/lib/workflow.ts')
-const { frameCount, buildMiniMaxWorkflow, extractOutputUrl, extractOutputFile, outputFileFromUrl, OFFICIAL_H3_SAMPLER, OFFICIAL_H3_SCHEDULER } = workflowModule
+const { frameCount, buildMonokaWorkflow, extractOutputUrl, extractOutputFile, outputFileFromUrl, OFFICIAL_H3_SAMPLER, OFFICIAL_H3_SCHEDULER } = workflowModule
 const { inferSelections } = load('src/lib/modelSelection.ts')
 const { cropRect, fitWholeCharacter, referenceScale, referenceRegion } = load('src/lib/imageCrop.ts')
 const { promptPresets, searchPromptPresets } = load('src/lib/promptPresets.ts')
@@ -107,7 +107,7 @@ const models = { fl2va: 'fl2va', ref2va: 'ref2va', textEncoder: 'clip', videoVae
 
 test('the official H3 graph across modes/durations incl. the RTX upscale chain + linked-node integrity', () => {
   for (const mode of ['text', 'image', 'frames', 'reference']) for (const duration of [2, 3, 5, 15]) {
-    const g = buildMiniMaxWorkflow({ mode, width: 352, height: 608, prompt: 'neutral test', duration, seed: 123, steps: 20, turbo: '8', sampler: 'heun', scheduler: 'karras', filenamePrefix: 'test', refImageSize: 'match', upscale: { type: 'rtx', model: 'rtx-upscale.pth' } }, models, { first: { name: 'first.png' }, last: { name: 'last.png' }, images: [{ name: 'ref.png' }], videos: [], audios: [] })
+    const g = buildMonokaWorkflow({ mode, width: 352, height: 608, prompt: 'neutral test', duration, seed: 123, steps: 20, turbo: '8', sampler: 'heun', scheduler: 'karras', filenamePrefix: 'test', refImageSize: 'match', upscale: { type: 'rtx', model: 'rtx-upscale.pth' } }, models, { first: { name: 'first.png' }, last: { name: 'last.png' }, images: [{ name: 'ref.png' }], videos: [], audios: [] })
     assert.equal(g['13'].inputs.sampler_name, OFFICIAL_H3_SAMPLER)
     assert.equal(g['14'].inputs.scheduler, OFFICIAL_H3_SCHEDULER)
     assert.equal(g['14'].inputs.steps, 8)
@@ -134,18 +134,18 @@ test('the official H3 graph across modes/durations incl. the RTX upscale chain +
 })
 
 test('full-quality + preview-override + compatibility-turbo graphs', () => {
-  const fullQuality = buildMiniMaxWorkflow({ mode: 'text', width: 1344, height: 768, prompt: 'test', duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'heun', scheduler: 'karras', filenamePrefix: 'test', refImageSize: 'match' }, models, { images: [], videos: [], audios: [] })
+  const fullQuality = buildMonokaWorkflow({ mode: 'text', width: 1344, height: 768, prompt: 'test', duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'heun', scheduler: 'karras', filenamePrefix: 'test', refImageSize: 'match' }, models, { images: [], videos: [], audios: [] })
   assert.equal(fullQuality['13'].inputs.sampler_name, OFFICIAL_H3_SAMPLER)
   assert.equal(fullQuality['14'].inputs.scheduler, OFFICIAL_H3_SCHEDULER)
   assert.equal(fullQuality['14'].inputs.steps, 20)
 
-  const previewGraph = buildMiniMaxWorkflow({ mode: 'reference', width: 1344, height: 768, prompt: 'test', duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', previewOverride: { frames: 50, fps: 12, nodeType: 'MiniMaxH3PreviewOverride', vaeName: 'taeh3_decoder.safetensors', jpegQuality: 85 } }, models, { images: [{ name: 'ref.png' }], videos: [], audios: [] })
+  const previewGraph = buildMonokaWorkflow({ mode: 'reference', width: 1344, height: 768, prompt: 'test', duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', previewOverride: { frames: 50, fps: 12, nodeType: 'MiniMaxH3PreviewOverride', vaeName: 'taeh3_decoder.safetensors', jpegQuality: 85 } }, models, { images: [{ name: 'ref.png' }], videos: [], audios: [] })
   assert.equal(previewGraph['7'].class_type, 'MiniMaxH3PreviewOverride')
   assert.equal(previewGraph['7'].inputs.vae_name, 'taeh3_decoder.safetensors')
   assert.equal(previewGraph['7'].inputs.jpeg_quality, 85)
   assert.equal(previewGraph['12'].inputs.model[0], '7')
 
-  const compatibilityTurbo = buildMiniMaxWorkflow({ mode: 'text', width: 1344, height: 768, prompt: 'test', duration: 5, seed: 1, steps: 20, turbo: '8', experimentalSampling: true, loraStrength: 0.9, sampler: 'euler', scheduler: 'beta', sigmaShift: { video: 12, audio: 4 }, filenamePrefix: 'test', refImageSize: 'match' }, models, { images: [], videos: [], audios: [] })
+  const compatibilityTurbo = buildMonokaWorkflow({ mode: 'text', width: 1344, height: 768, prompt: 'test', duration: 5, seed: 1, steps: 20, turbo: '8', experimentalSampling: true, loraStrength: 0.9, sampler: 'euler', scheduler: 'beta', sigmaShift: { video: 12, audio: 4 }, filenamePrefix: 'test', refImageSize: 'match' }, models, { images: [], videos: [], audios: [] })
   assert.equal(compatibilityTurbo['5'].inputs.strength_model, 0.9)
   assert.equal(compatibilityTurbo['6'].class_type, 'MiniMaxH3SigmaShift')
   assert.equal(compatibilityTurbo['6'].inputs.shift_video, 12)
@@ -303,12 +303,12 @@ test('model overrides take 1 (euxwdva): consulted picks, auto-unchanged, precede
   //    leaves the auto slots on inference; the manifest records the chosen
   //    files plus which slots were picks. (mergeResolved from point 1 above.)
   for (const mode of ['text', 'reference']) {
-    const graph = buildMiniMaxWorkflow({ mode, width: 352, height: 608, prompt: 'override probe', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) }, mergeResolved.selection, mode === 'reference' ? { images: [{ name: 'ref.png' }], videos: [], audios: [] } : { images: [], videos: [], audios: [] })
+    const graph = buildMonokaWorkflow({ mode, width: 352, height: 608, prompt: 'override probe', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) }, mergeResolved.selection, mode === 'reference' ? { images: [{ name: 'ref.png' }], videos: [], audios: [] } : { images: [], videos: [], audios: [] })
     assert.equal(graph['1'].inputs.unet_name, mergeName, `${mode} mode loads the merge`)
     assert.equal(graph['2'].inputs.clip_name, 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', `${mode} mode keeps the auto text encoder`)
     assert.equal(graph['3'].inputs.vae_name, 'minimax_h3_video_vae_fp16.safetensors', `${mode} mode keeps the auto video VAE`)
   }
-  const overrideManifest = manifestModule.buildRenderManifest({ mode: 'text', prompt: 'p', width: 352, height: 608, duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, mergeResolved.selection, overrideScan, 'http://engine', buildMiniMaxWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'p', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match', referenceImages: [], referenceVideos: [], referenceAudios: [] }, mergeResolved.selection, { images: [], videos: [], audios: [] }))
+  const overrideManifest = manifestModule.buildRenderManifest({ mode: 'text', prompt: 'p', width: 352, height: 608, duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, mergeResolved.selection, overrideScan, 'http://engine', buildMonokaWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'p', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match', referenceImages: [], referenceVideos: [], referenceAudios: [] }, mergeResolved.selection, { images: [], videos: [], audios: [] }))
   assert.equal(overrideManifest.models.diffusion.name, mergeName, 'the manifest carries the chosen checkpoint')
   assert.equal(overrideManifest.models.textEncoder.name, 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', 'the manifest carries the auto slots too')
 
@@ -404,11 +404,11 @@ test('model overrides take 2 (rq0lsax, R-12): subpathed registry rows resolve ev
   assert.equal(ref2vaLane.selection.ref2va, mergeName, 'the ref2va pick owns the Ref2VA lane')
   assert.equal(ref2vaLane.selection.fl2va, inferredH3().fl2va, 'the FL2VA lane stays on inference under a ref2va-only pick')
   for (const [mode, expected] of [['text', mergeName], ['reference', 'minimax_h3_ref2va_pruned_int8_convrot.safetensors']]) {
-    const graph = buildMiniMaxWorkflow({ mode, width: 352, height: 608, prompt: 'lane probe', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) }, fl2vaLane.selection, mode === 'reference' ? { images: [{ name: 'ref.png' }], videos: [], audios: [] } : { images: [], videos: [], audios: [] })
+    const graph = buildMonokaWorkflow({ mode, width: 352, height: 608, prompt: 'lane probe', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) }, fl2vaLane.selection, mode === 'reference' ? { images: [{ name: 'ref.png' }], videos: [], audios: [] } : { images: [], videos: [], audios: [] })
     assert.equal(graph['1'].inputs.unet_name, expected, `${mode} mode loads its OWN lane's resolution (the fl2va pick never leaks into the reference graph)`)
   }
   for (const [mode, expected] of [['text', 'minimax_h3_fl2va_pruned_int8_convrot.safetensors'], ['reference', mergeName]]) {
-    const graph = buildMiniMaxWorkflow({ mode, width: 352, height: 608, prompt: 'lane probe', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) }, ref2vaLane.selection, mode === 'reference' ? { images: [{ name: 'ref.png' }], videos: [], audios: [] } : { images: [], videos: [], audios: [] })
+    const graph = buildMonokaWorkflow({ mode, width: 352, height: 608, prompt: 'lane probe', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) }, ref2vaLane.selection, mode === 'reference' ? { images: [{ name: 'ref.png' }], videos: [], audios: [] } : { images: [], videos: [], audios: [] })
     assert.equal(graph['1'].inputs.unet_name, expected, `${mode} mode loads its OWN lane's resolution (the ref2va pick never leaks into the text graph)`)
   }
 
@@ -422,10 +422,10 @@ test('model overrides take 2 (rq0lsax, R-12): subpathed registry rows resolve ev
   assert.equal(mergedResolved.resolution.applied.merged, mergeName)
   assert.equal(mergedResolved.resolution.warnings.length, 0, 'a lone merged pick warns about nothing')
   for (const mode of ['text', 'reference']) {
-    const graph = buildMiniMaxWorkflow({ mode, width: 352, height: 608, prompt: 'merged probe', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) }, mergedResolved.selection, mode === 'reference' ? { images: [{ name: 'ref.png' }], videos: [], audios: [] } : { images: [], videos: [], audios: [] })
+    const graph = buildMonokaWorkflow({ mode, width: 352, height: 608, prompt: 'merged probe', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) }, mergedResolved.selection, mode === 'reference' ? { images: [{ name: 'ref.png' }], videos: [], audios: [] } : { images: [], videos: [], audios: [] })
     assert.equal(graph['1'].inputs.unet_name, mergeName, `${mode} mode loads the merged checkpoint`)
   }
-  const mergedManifest = manifestModule.buildRenderManifest({ mode: 'text', prompt: 'p', width: 352, height: 608, duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, mergedResolved.selection, overrideScan, 'http://engine', buildMiniMaxWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'p', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, mergedResolved.selection, { images: [], videos: [], audios: [] }))
+  const mergedManifest = manifestModule.buildRenderManifest({ mode: 'text', prompt: 'p', width: 352, height: 608, duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, mergedResolved.selection, overrideScan, 'http://engine', buildMonokaWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'p', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, mergedResolved.selection, { images: [], videos: [], audios: [] }))
   assert.equal(mergedManifest.models.diffusion.name, mergeName, 'the manifest carries the merged checkpoint')
   // Simultaneously-set lane picks are SUPERSEDED, loudly — never a silent drop.
   const superseded = resolveModelOverrides('monoka', overrideScan, { merged: mergeName, fl2va: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
@@ -506,7 +506,7 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
   assert.equal(audioPicked.selection.audioVae, 'minimax_h3_audio_vae_fp32.safetensors')
   // THE GRAPH: the two picks feed the graph's TWO VAELoader nodes (3/4).
   for (const [mode, uploads] of [['text', { images: [], videos: [], audios: [] }], ['reference', { images: [{ name: 'ref.png' }], videos: [], audios: [] }]]) {
-    const graph = buildMiniMaxWorkflow({ mode, width: 352, height: 608, prompt: 'vae trio', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) }, videoOnly.selection, uploads)
+    const graph = buildMonokaWorkflow({ mode, width: 352, height: 608, prompt: 'vae trio', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) }, videoOnly.selection, uploads)
     assert.equal(graph['3'].inputs.vae_name, 'minimax_h3_video_vae_fp16.safetensors', `${mode}: node 3 loads the video VAE`)
     assert.equal(graph['4'].inputs.vae_name, 'minimax_h3_audio_vae_fp32.safetensors', `${mode}: node 4 loads the audio VAE`)
   }
@@ -575,7 +575,7 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
   //      lands on the family-meaning slot and REFUSES at the gate.
   const t1File = 'minimax_h3_t1_image_vae_step1597.safetensors'
   // (The ltx25/ltx23 arms of this loop were removed with LTX — Phase 0,
-  // 2026-09-20; the minimax arm carries the routing contract.)
+  // 2026-09-20; the monoka arm carries the routing contract.)
   const videoFamilyInferred = {
     monoka: () => inferSelections(vaeSplitScan, 'off'),
   }
@@ -619,7 +619,7 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
   const t1Name = 'minimax_h3_t1_image_vae_step1597.safetensors'
   const loaded = overridesModule.normalizeStoredOverrideSlots('monoka', { vae: 'legacy.safetensors', videoVae: t1Name })
   assert.equal(loaded.videoVae, undefined, 'load seam: a stored cross-class WEDGE (videoVae naming the T=1 decoder) heals away — the unmarked legacy vae never overwrites the occupied slot')
-  assert.equal(loaded.imageVae, undefined, 'load seam: minimax exposes no imageVae slot — the unrouteable name drops entirely')
+  assert.equal(loaded.imageVae, undefined, 'load seam: monoka exposes no imageVae slot — the unrouteable name drops entirely')
   assert.equal(loaded.audioVae, undefined)
   assert.equal('vae' in loaded, false, 'the consumed legacy key never persists')
   const healedToImage = overridesModule.normalizeStoredOverrideSlots('h3image', { videoVae: t1Name })
@@ -680,21 +680,21 @@ test('the workflow-population audit (epdvxd4, AC-3): every family × every slot 
   const at = (graph, id, input) => graph[String(id)].inputs[input]
   const assertAt = (label, graph, id, input, expected) => assert.equal(at(graph, id, input), expected, `${label}: node ${id}.${input}`)
 
-  // --- minimax (H3 video): fl2va/ref2va/merged → UNETLoader 1 per mode
+  // --- monoka (H3 video): fl2va/ref2va/merged → UNETLoader 1 per mode
   //     (take 2 §12-13 proves the per-mode routing; here the merged pick +
   //     the shared slots land in one text-mode graph), TE → 2, VAEs → 3/4.
-  const minimaxResolved = resolveModels('monoka', inferSelections(auditScan, 'off'), auditScan, {
+  const monokaResolved = resolveModels('monoka', inferSelections(auditScan, 'off'), auditScan, {
     merged: mergeName,
     textEncoder: auditPicks.textEncoder,
     videoVae: auditPicks.videoVae,
     audioVae: auditPicks.audioVae,
   })
-  assert.equal(minimaxResolved.resolution.refusals.length, 0, 'minimax audit picks all apply: ' + JSON.stringify(minimaxResolved.resolution.refusals))
-  const minimaxGraph = buildMiniMaxWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'audit', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, minimaxResolved.selection, { images: [], videos: [], audios: [] })
-  assertAt('minimax merged', minimaxGraph, 1, 'unet_name', mergeName)
-  assertAt('minimax textEncoder', minimaxGraph, 2, 'clip_name', auditPicks.textEncoder)
-  assertAt('minimax videoVae', minimaxGraph, 3, 'vae_name', auditPicks.videoVae)
-  assertAt('minimax audioVae', minimaxGraph, 4, 'vae_name', auditPicks.audioVae)
+  assert.equal(monokaResolved.resolution.refusals.length, 0, 'monoka audit picks all apply: ' + JSON.stringify(monokaResolved.resolution.refusals))
+  const monokaGraph = buildMonokaWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'audit', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, monokaResolved.selection, { images: [], videos: [], audios: [] })
+  assertAt('monoka merged', monokaGraph, 1, 'unet_name', mergeName)
+  assertAt('monoka textEncoder', monokaGraph, 2, 'clip_name', auditPicks.textEncoder)
+  assertAt('monoka videoVae', monokaGraph, 3, 'vae_name', auditPicks.videoVae)
+  assertAt('monoka audioVae', monokaGraph, 4, 'vae_name', auditPicks.audioVae)
 
   // --- h3image (the workbench): the merged pick is the hybrid line's plain
   //     loader; TE → 2; video/audio VAEs → 3/4 (packet profile); the
@@ -962,35 +962,35 @@ test('THE R-12 INVARIANT: no graph ever references a model absent from the insta
   for (const turbo of ['off', '8']) {
     for (const mode of ['text', 'reference']) {
       const selection = resolveModels('monoka', inferSelections(INVARIANT_REGISTRY, turbo), INVARIANT_REGISTRY).selection
-      const graph = buildMiniMaxWorkflow(
+      const graph = buildMonokaWorkflow(
         { mode, width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo, sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) },
         selection,
         mode === 'reference' ? { images: [{ name: 'ref.png' }], videos: [], audios: [] } : { images: [], videos: [], audios: [] },
       )
-      walkGraphModelInputs(`minimax auto ${mode} turbo=${turbo}`, graph)
+      walkGraphModelInputs(`monoka auto ${mode} turbo=${turbo}`, graph)
     }
   }
   // The LoRA stack (user picks from the registry) rides the graph's stack
   // loaders — those names must be registry rows too.
   const stackSelection = resolveModels('monoka', inferSelections(INVARIANT_REGISTRY, 'off'), INVARIANT_REGISTRY).selection
-  const stackGraph = buildMiniMaxWorkflow(
+  const stackGraph = buildMonokaWorkflow(
     { mode: 'text', width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match', loraStack: [{ name: 'community_style_adapter.safetensors', strength: 1 }] },
     stackSelection,
     { images: [], videos: [], audios: [] },
   )
-  walkGraphModelInputs('minimax lora stack', stackGraph)
+  walkGraphModelInputs('monoka lora stack', stackGraph)
 
   // --- OVERRIDE LAYERS: picks that EXIST in the registry land; a pick the
   //     registry does NOT list degrades to auto and its name never reaches
   //     the graph.
   const picked = resolveModels('monoka', inferSelections(INVARIANT_REGISTRY, 'off'), INVARIANT_REGISTRY, { fl2va: 'community_merged_full.safetensors', textEncoder: 'TE/qwen3vl_community_repack.safetensors' }).selection
-  walkGraphModelInputs('minimax overrides', buildMiniMaxWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, picked, { images: [], videos: [], audios: [] }))
+  walkGraphModelInputs('monoka overrides', buildMonokaWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, picked, { images: [], videos: [], audios: [] }))
   assert.equal(picked.fl2va, 'community_merged_full.safetensors', 'sanity: the registry-listed pick applied')
   const ghost = resolveModels('monoka', inferSelections(INVARIANT_REGISTRY, 'off'), INVARIANT_REGISTRY, { fl2va: 'ghost/not-in-registry.safetensors' })
   assert.equal(ghost.resolution.slots.fl2va.state, 'degraded', 'an out-of-registry pick degrades, never applies')
-  const ghostGraph = buildMiniMaxWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, ghost.selection, { images: [], videos: [], audios: [] })
+  const ghostGraph = buildMonokaWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, ghost.selection, { images: [], videos: [], audios: [] })
   assert.equal(ghostGraph['1'].inputs.unet_name, 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'the degraded pick fell back to the registry inference')
-  walkGraphModelInputs('minimax ghost pick', ghostGraph)
+  walkGraphModelInputs('monoka ghost pick', ghostGraph)
   // A bare BASENAME pick never resolves to a subpathed row implicitly —
   // instance-invisible means the exact listed name or nothing.
   const bare = resolveModelOverrides('monoka', INVARIANT_REGISTRY, { fl2va: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
@@ -1015,7 +1015,7 @@ test('THE R-12 INVARIANT: no graph ever references a model absent from the insta
   const emptyRegistry = []
   const emptySelection = inferSelections(emptyRegistry, 'off')
   assert.equal([emptySelection.fl2va, emptySelection.ref2va, emptySelection.textEncoder, emptySelection.videoVae, emptySelection.audioVae, emptySelection.fl2vLora, emptySelection.ref2vLora].every((value) => value === ''), true, 'an empty registry yields an all-empty selection')
-  const emptyGraph = buildMiniMaxWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, emptySelection, { images: [], videos: [], audios: [] })
+  const emptyGraph = buildMonokaWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, emptySelection, { images: [], videos: [], audios: [] })
   for (const node of Object.values(emptyGraph)) {
     for (const [field, value] of Object.entries(node.inputs ?? {})) {
       if (MODEL_INPUT_KINDS[field]) assert.equal(value, '', `an empty registry leaves ${field} empty — never a fabricated name (got '${value}')`)
@@ -1027,7 +1027,7 @@ test('THE R-12 INVARIANT: no graph ever references a model absent from the insta
 // 2026-09-20; git history is the archive.)
 
 test('RTX upscale + output selection (exact-filename attribution, P0-1)', () => {
-  const rtx = buildMiniMaxWorkflow({ mode: 'text', width: 608, height: 352, prompt: 'test', duration: 2, seed: 1, steps: 20, turbo: '4', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', upscale: { type: 'rtx', model: 'RealESRGAN_x2.pth' } }, models, { images: [], videos: [], audios: [] })
+  const rtx = buildMonokaWorkflow({ mode: 'text', width: 608, height: 352, prompt: 'test', duration: 2, seed: 1, steps: 20, turbo: '4', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 'test', refImageSize: 'match', upscale: { type: 'rtx', model: 'RealESRGAN_x2.pth' } }, models, { images: [], videos: [], audios: [] })
   {
     assert.equal(rtx['80'].class_type, 'UpscaleModelLoader')
     assert.equal(rtx['82'].inputs.width, 1216)
@@ -1402,7 +1402,7 @@ test('local prompt library storage: technique corpus + save/delete round-trip', 
 })
 
 test('multiframe timeline guides (MiniMaxH3AddGuide): topology, frame indices, classic-graph invariance', () => {
-  const guidesGraph = buildMiniMaxWorkflow({ mode: 'reference', prompt: 'p', width: 1344, height: 768, duration: 6, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: ['a.png'], referenceVideos: [], referenceAudios: [], timelineGuides: [{ frameIndex: 36 }, { frameIndex: 72 }, { frameIndex: 120 }] }, models, { images: [{ name: 'a.png' }], videos: [], audios: [], guides: [{ name: 'g1.png' }, { name: 'g2.png' }, { name: 'g3.png' }] })
+  const guidesGraph = buildMonokaWorkflow({ mode: 'reference', prompt: 'p', width: 1344, height: 768, duration: 6, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: ['a.png'], referenceVideos: [], referenceAudios: [], timelineGuides: [{ frameIndex: 36 }, { frameIndex: 72 }, { frameIndex: 120 }] }, models, { images: [{ name: 'a.png' }], videos: [], audios: [], guides: [{ name: 'g1.png' }, { name: 'g2.png' }, { name: 'g3.png' }] })
   assert.equal(guidesGraph['650'].class_type, 'MiniMaxH3AddGuide')
   assert.equal(guidesGraph['651'].class_type, 'MiniMaxH3AddGuide')
   assert.equal(guidesGraph['652'].class_type, 'MiniMaxH3AddGuide')
@@ -1421,7 +1421,7 @@ test('multiframe timeline guides (MiniMaxH3AddGuide): topology, frame indices, c
   assert.equal(guidesGraph['600'].class_type, 'LoadImage')
   assert.equal(guidesGraph['600'].inputs.image, 'g1.png')
   // Without guides the classic graph is unchanged.
-  const classicGraph = buildMiniMaxWorkflow({ mode: 'reference', prompt: 'p', width: 1344, height: 768, duration: 6, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: ['a.png'], referenceVideos: [], referenceAudios: [] }, models, { images: [{ name: 'a.png' }], videos: [], audios: [] })
+  const classicGraph = buildMonokaWorkflow({ mode: 'reference', prompt: 'p', width: 1344, height: 768, duration: 6, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: ['a.png'], referenceVideos: [], referenceAudios: [] }, models, { images: [{ name: 'a.png' }], videos: [], audios: [] })
   assert.equal(classicGraph['12'].inputs.conditioning.join('|'), '10|0')
   assert.equal(classicGraph['650'], undefined)
   // Frame helpers follow the official round(seconds*24) convention.
@@ -1436,7 +1436,7 @@ test('multiframe timeline guides (MiniMaxH3AddGuide): topology, frame indices, c
 
 test('trust layer: manifest fields, topology-sensitive graph hash, tiled-VAE fallback', () => {
   const manifestModule = load('src/lib/manifest.ts')
-  const graph = buildMiniMaxWorkflow({ mode: 'text', prompt: 'repro test', width: 1344, height: 768, duration: 5, seed: 424242, steps: 30, turbo: '8', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', loraStrength: 0.9, filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, models, { images: [], videos: [], audios: [] })
+  const graph = buildMonokaWorkflow({ mode: 'text', prompt: 'repro test', width: 1344, height: 768, duration: 5, seed: 424242, steps: 30, turbo: '8', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', loraStrength: 0.9, filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, models, { images: [], videos: [], audios: [] })
   const manifest = manifestModule.buildRenderManifest({ mode: 'text', prompt: 'repro test', width: 1344, height: 768, duration: 5, seed: 424242, steps: 30, turbo: '8', loraStrength: 0.9, sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, models, [{ name: 'fl2va', kind: 'diffusion_models', bytes: 12345 }], 'http://127.0.0.1:8188', graph)
   assert.equal(manifest.seed, 424242)
   assert.equal(manifest.models.diffusion.name, 'fl2va')
@@ -1445,9 +1445,9 @@ test('trust layer: manifest fields, topology-sensitive graph hash, tiled-VAE fal
   assert.equal(manifest.upscale, 'off')
   assert.ok(manifest.graphVersion.startsWith('fnv1a-'))
   // Graph version is topology-sensitive but prompt/seed-insensitive.
-  const otherSeed = buildMiniMaxWorkflow({ mode: 'text', prompt: 'repro test', width: 1344, height: 768, duration: 5, seed: 999, steps: 30, turbo: '8', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, models, { images: [], videos: [], audios: [] })
+  const otherSeed = buildMonokaWorkflow({ mode: 'text', prompt: 'repro test', width: 1344, height: 768, duration: 5, seed: 999, steps: 30, turbo: '8', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, models, { images: [], videos: [], audios: [] })
   assert.equal(manifestModule.graphVersionHash(otherSeed), manifest.graphVersion, 'same topology must hash identically')
-  const guideGraph = buildMiniMaxWorkflow({ mode: 'reference', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: ['a.png'], referenceVideos: [], referenceAudios: [], timelineGuides: [{ frameIndex: 36 }] }, models, { images: [{ name: 'a.png' }], videos: [], audios: [], guides: [{ name: 'g.png' }] })
+  const guideGraph = buildMonokaWorkflow({ mode: 'reference', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: ['a.png'], referenceVideos: [], referenceAudios: [], timelineGuides: [{ frameIndex: 36 }] }, models, { images: [{ name: 'a.png' }], videos: [], audios: [], guides: [{ name: 'g.png' }] })
   assert.notEqual(manifestModule.graphVersionHash(guideGraph), manifest.graphVersion, 'topology change must change the hash')
   // Tiled fallback swaps only the video decode node.
   const tiled = workflowModule.withTiledVideoDecode(graph)
@@ -1459,7 +1459,7 @@ test('trust layer: manifest fields, topology-sensitive graph hash, tiled-VAE fal
 })
 
 test('LBH latent upscaler presets (two-stage hires-fix): topology, sigma split, audio bypass, output attribution', () => {
-  const lbhGraph = buildMiniMaxWorkflow({ mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 30, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [], upscale: { type: 'lbh3d', model: 'minimax_h3_latent_upscaler_3d_fp16.safetensors' } }, models, { images: [], videos: [], audios: [] })
+  const lbhGraph = buildMonokaWorkflow({ mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 30, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [], upscale: { type: 'lbh3d', model: 'minimax_h3_latent_upscaler_3d_fp16.safetensors' } }, models, { images: [], videos: [], audios: [] })
   assert.equal(lbhGraph['90'].class_type, 'SplitSigmas')
   assert.equal(lbhGraph['90'].inputs.split_index, 15, 'quality preset splits at half of 30 steps')
   assert.equal(lbhGraph['15'].inputs.sigmas.join('|'), '90|0', 'stage-1 sampler takes the split schedule')
@@ -1478,7 +1478,7 @@ test('LBH latent upscaler presets (two-stage hires-fix): topology, sigma split, 
   assert.equal(lbhGraph['99'].class_type, 'SaveVideo')
   assert.ok(String(lbhGraph['99'].inputs.filename_prefix).endsWith('_LBH_2x'))
   // 2D variant uses the classic node with scale.
-  const lbh2dGraph = buildMiniMaxWorkflow({ mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 30, turbo: '8', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [], upscale: { type: 'lbh2d', model: 'upscaler_2d.safetensors' } }, models, { images: [], videos: [], audios: [] })
+  const lbh2dGraph = buildMonokaWorkflow({ mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 30, turbo: '8', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [], upscale: { type: 'lbh2d', model: 'upscaler_2d.safetensors' } }, models, { images: [], videos: [], audios: [] })
   assert.equal(lbh2dGraph['92'].class_type, 'MinimaxH3LatentUpscalerNode2D')
   assert.equal(lbh2dGraph['92'].inputs.scale, 2)
   assert.equal(lbh2dGraph['90'].inputs.split_index, 4, 'turbo 8 splits at 4 per the example workflow')
@@ -1488,7 +1488,7 @@ test('LBH latent upscaler presets (two-stage hires-fix): topology, sigma split, 
 })
 
 test('Motion-Context latent chaining: save/load indices, conditioning wrap, trim', () => {
-  const startGraph = buildMiniMaxWorkflow({ mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [], chain: { index: 0, folder: 'h3_context/c1/clip' } }, models, { images: [], videos: [], audios: [] })
+  const startGraph = buildMonokaWorkflow({ mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [], chain: { index: 0, folder: 'h3_context/c1/clip' } }, models, { images: [], videos: [], audios: [] })
   assert.equal(startGraph['28'].class_type, 'MiniMaxH3MotionContextSaveLatent')
   // Pack indices are 1-based: the chain START saves its latent in slot 1
   // (slot 0 never loads — an auto-numbered save is invisible to Load).
@@ -1497,7 +1497,7 @@ test('Motion-Context latent chaining: save/load indices, conditioning wrap, trim
   assert.equal(startGraph['24'], undefined, 'chain start loads nothing')
   assert.equal(startGraph['25'], undefined)
   assert.equal(startGraph['19'].inputs.video.join('|'), '18|0', 'start delivers the full clip')
-  const contGraph = buildMiniMaxWorkflow({ mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [], chain: { index: 2, folder: 'h3_context/c1/clip' } }, models, { images: [], videos: [], audios: [] })
+  const contGraph = buildMonokaWorkflow({ mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [], chain: { index: 2, folder: 'h3_context/c1/clip' } }, models, { images: [], videos: [], audios: [] })
   assert.equal(contGraph['24'].class_type, 'MiniMaxH3MotionContextLoadLatent')
   assert.equal(contGraph['24'].inputs.clip_index, 2, 'segment 3 (app index 2) continues from pack clip 2 = app clip 1')
   assert.equal(contGraph['24'].inputs.latent_path, 'h3_context/c1')
@@ -1580,7 +1580,7 @@ test('ContactSheet character sheets: topology, LoRA inference, size clamps, view
 
 test('graph-family versioning + looseness presets', () => {
   const manifestModule2 = load('src/lib/manifest.ts')
-  const graph = buildMiniMaxWorkflow({ mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, models, { images: [], videos: [], audios: [] })
+  const graph = buildMonokaWorkflow({ mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, models, { images: [], videos: [], audios: [] })
   const manifest = manifestModule2.buildRenderManifest({ mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 5, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, models, [], 'http://x', graph)
   assert.equal(manifest.graphFamily, 'studio-2026-09')
   assert.ok(promptPresets.some((item) => item.id === 'looseness.loose-performance'))

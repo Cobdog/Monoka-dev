@@ -266,14 +266,14 @@ maybe('(c) the Mamad8 factory guard (AC8) — enforced, not documented', () => {
   {
     const selection = { fl2va: H3IMG_MODELS.fl2va, ref2va: H3IMG_MODELS.ref2va, textEncoder: H3IMG_MODELS.textEncoder, videoVae: H3IMG_MODELS.t1ImageVae, audioVae: H3IMG_MODELS.audioVae, previewVae: '', fl2vLora: '', ref2vLora: '' }
     assert.throws(
-      () => workflow.buildMiniMaxWorkflow({ mode: 'text', prompt: 'x', width: 1344, height: 768, duration: 6, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 'guard', referenceImages: [], referenceVideos: [], referenceAudios: [] }, selection, { images: [], videos: [], audios: [] }),
+      () => workflow.buildMonokaWorkflow({ mode: 'text', prompt: 'x', width: 1344, height: 768, duration: 6, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 'guard', referenceImages: [], referenceVideos: [], referenceAudios: [] }, selection, { images: [], videos: [], audios: [] }),
       /T=1 image VAE/,
       'the video factory THROWS on the T=1 VAE (frames > 1)',
     )
     passed += 1
     console.log('  ok - the video factory THROWS on the T=1 VAE (frames > 1)')
     // …and the same selection with the STOCK video VAE builds fine.
-    const stockGraph = workflow.buildMiniMaxWorkflow({ mode: 'text', prompt: 'x', width: 1344, height: 768, duration: 6, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 'guard', referenceImages: [], referenceVideos: [], referenceAudios: [] }, { ...selection, videoVae: H3IMG_MODELS.videoVae }, { images: [], videos: [], audios: [] })
+    const stockGraph = workflow.buildMonokaWorkflow({ mode: 'text', prompt: 'x', width: 1344, height: 768, duration: 6, seed: 1, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 'guard', referenceImages: [], referenceVideos: [], referenceAudios: [] }, { ...selection, videoVae: H3IMG_MODELS.videoVae }, { images: [], videos: [], audios: [] })
     ok(Boolean(stockGraph['19']), 'the same video selection with the stock VAE builds (guard is name-specific, not blanket)')
   }
   // c.2 The guard primitive itself: frames 1 legal, frames > 1 refused.

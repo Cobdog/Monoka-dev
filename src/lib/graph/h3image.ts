@@ -18,7 +18,7 @@
  *     ghosting, cross-frame mixing — Mamad8's own card). It is legal ONLY
  *     in single-frame graphs; any video-frame-count graph referencing it is
  *     a factory validation error (assertNoT1ImageVaeInVideoGraph, wired
- *     into buildMiniMaxWorkflow AND h3imgGraphAudit).
+ *     into buildMonokaWorkflow AND h3imgGraphAudit).
  *
  * Research pins: docs/research/h3-image-workbench.md (+ its §7.2 family
  * list), h3-instruction-based-editing.md §4 (the two paths, the T=1 recipe),

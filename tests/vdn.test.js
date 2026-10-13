@@ -60,7 +60,7 @@ const localStorageStub = { getItem: () => null, setItem: () => undefined, remove
 const h3Submit = loadTs('src/lib/h3Submit.ts', { localStorage: localStorageStub })
 const generation = loadTs('src/canvas/generation.ts', { localStorage: localStorageStub, window: { dispatchEvent: () => undefined, addEventListener: () => undefined } })
 
-const { buildMiniMaxWorkflow } = workflow
+const { buildMonokaWorkflow } = workflow
 
 function ok(condition, message) {
   assert.ok(condition, message)
@@ -110,7 +110,7 @@ const BASE = {
 }
 const noUploads = { images: [], videos: [], audios: [] }
 function build(options, info) {
-  return buildMiniMaxWorkflow({ ...BASE, ...options }, MODELS, noUploads, info)
+  return buildMonokaWorkflow({ ...BASE, ...options }, MODELS, noUploads, info)
 }
 
 // ---------------------------------------------------------------------------

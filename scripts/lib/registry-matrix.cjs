@@ -2,7 +2,7 @@
 /** Shared golden-matrix definition for scripts/test-registry.cjs.
  *
  * The matrix is the single source of truth for the inertness probe: every
- * entry names a buildMiniMaxWorkflow invocation (options + models + uploads)
+ * entry names a buildMonokaWorkflow invocation (options + models + uploads)
  * whose CURRENT output is snapshotted into scripts/fixtures/registry-golden.json
  * by `node scripts/test-registry.cjs --update-golden` (run against pre-registry
  * code when the fixture is first created). The test then rebuilds each config

@@ -15,7 +15,7 @@ import type { AppSettings, CharacterProject, GenerationMode, LocationProject, Me
 import type { ComfyPrompt } from '../lib/graph'
 import type { ObjectInfo } from '../lib/comfyInfo'
 import { imageEngineChoices } from '../lib/graph/engineFamilies'
-import { buildMiniMaxWorkflow } from '../lib/workflow'
+import { buildMonokaWorkflow } from '../lib/workflow'
 import { allocateWorkspaceReferences } from '../lib/promptComposer'
 import { characterReferences } from '../lib/characterLibrary'
 import { locationReferences } from '../lib/locationLibrary'
@@ -526,7 +526,7 @@ export type PlanUploads = { first?: string; last?: string; images?: string[]; gu
  * engine, only the submit does.
  */
 export function planCanvasGraph(request: H3RenderRequest, selection: ModelSelection, uploads: PlanUploads = {}, info?: ObjectInfo): ComfyPrompt {
-  return buildMiniMaxWorkflow({
+  return buildMonokaWorkflow({
     mode: request.mode,
     prompt: request.prompt,
     width: request.width,

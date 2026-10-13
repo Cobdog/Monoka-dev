@@ -1,5 +1,5 @@
 /* global self, caches, URL, fetch */
-const CACHE = 'minimax-mobile-v2'
+const CACHE = 'monoka-mobile-v1'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(['/', '/manifest.webmanifest'])).then(() => self.skipWaiting()))
