@@ -156,6 +156,11 @@ function seedPreRenameHome(home) {
   db.prepare(`INSERT INTO canvas_op (id, stack_id, ordinal, kind, settings_json, baked_at) VALUES (?, ?, ?, ?, ?, ?)`).run('op1', 's1', 0, 'grade', '{}', 123)
   db.prepare(`INSERT INTO canvas_control_track (id, chain_id, kind, source, input_ref, mask_ref, params_json) VALUES (?, ?, ?, ?, ?, ?, ?)`).run('ct1', 'c1', 'inpaint', 'upload', 'comfy-input:minimax-desktop/ref.png', null, null)
   db.prepare(`INSERT INTO canvas_asset (id, kind, fields_json, canonical_reference_set_json, created_at) VALUES (?, ?, ?, ?, ?)`).run('a1', 'character', JSON.stringify({ name: 'Ada', reference: { path: 'minimax-media://local?path=%2Ftmp%2Fada.png' } }), '[]', 1)
+  // (review F1) A fork row MUST ride the fixture: migration 010 rebuilds
+  // canvas_asset while this child's FK points at the old name — with
+  // foreign_keys=ON the wrong drop order is an instant boot-blocker that a
+  // fork-less fixture can never see.
+  db.prepare(`INSERT INTO canvas_asset_fork (project_id, asset_id, forked_settings_snapshot_json, lineage_json, consent_at) VALUES (?, ?, ?, ?, ?)`).run('p1', 'a1', JSON.stringify({ modelOverrides: { minimax: { fl2va: 'fl2va_turbo_8step_v1.safetensors' } } }), null, 1)
   db.prepare(`INSERT INTO canvas_blob (path, kind, content_hash, size, missing) VALUES (?, ?, ?, ?, ?)`).run('ab/frame.png', 'image', 'hash-1', 10, 0)
 
   db.prepare(`INSERT INTO animation_document (id, project_id, name, schema_version, authored_revision, body_json, created_at, updated_at)
@@ -291,6 +296,13 @@ test('(2) workspace / projects / canvas / animation surfaces migrate', () => {
   const asset = JSON.parse(db.prepare("SELECT fields_json FROM canvas_asset WHERE id = 'a1'").get().fields_json)
   check(asset.reference.path.startsWith('monoka-media://local?'), 'canvas asset media URL migrated')
 
+  // (review F1) The fork survives the asset rebuild with its FK intact and
+  // its snapshot's family key migrated — the children-first drop order's pin.
+  const fork = db.prepare('SELECT * FROM canvas_asset_fork').all()
+  check(fork.length === 1 && fork[0].asset_id === 'a1' && fork[0].project_id === 'p1', 'the canvas_asset_fork row survives the canvas_asset rebuild (children-first drop order)')
+  const forkSnapshot = JSON.parse(fork[0].forked_settings_snapshot_json)
+  check(Boolean(forkSnapshot.modelOverrides.monoka) && !forkSnapshot.modelOverrides.minimax, 'the fork snapshot\'s family key migrated')
+
   const body = JSON.parse(db.prepare("SELECT body_json FROM animation_document WHERE id = 'd1'").get().body_json)
   check(body.spans[0].graph.modelFamilyId === 'monoka', 'animation body family id migrated')
   check(body.spans[0].graph.family === 'monoka-video', 'animation body family value migrated')
@@ -400,6 +412,7 @@ test('(7) A1/A2/A3/A6/A7/A8: the indices exist and serve their queries; D2 dropp
   for (const name of ['canvas_take_job', 'animation_document_project', 'jobs_created_at', 'canvas_asset_live', 'dataset_sources_live', 'dataset_layers_live', 'canvas_project_live', 'canvas_control_input', 'canvas_control_mask', 'canvas_op_stack_chain']) {
     check(indexNames.includes(name), `index ${name} exists`)
   }
+  check(indexNames.includes('jobs_updated_at'), '(review F3) 001\'s jobs_updated_at is recreated verbatim by the rebuild — a declared surface, not a silent casualty')
   check(!indexNames.includes('dataset_bake_jobs_state'), 'D2: the dead dataset_bake_jobs_state index is gone')
 
   const jobsPlan = explain(db, 'SELECT * FROM jobs ORDER BY created_at DESC, rowid ASC LIMIT 100')
@@ -480,6 +493,32 @@ test('(10) fresh install: an empty home passes the whole wave cleanly', () => {
   fresh.close()
 })
 
-test('(11) summary', () => {
+test('(11) the settings-key seam: no live reader of the old family key survives (review F2)', () => {
+  // FirstRunWizard/SettingsDock read settings.modelOverrides?.<family> through
+  // a loosely-typed Record, so neither typecheck nor the VM suites can see a
+  // stale key — the seam is pinned by scanning the SOURCE. server/db.ts is
+  // excluded: the migration's own walker + its comments legitimately name the
+  // old key while rewriting it.
+  const readers = /modelOverrides\s*(?:\?\.\s*|\.\s*|\[\s*(?:['"]))\s*minimax\b/
+  const walk = (dir) => {
+    const hits = []
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === 'dist') continue
+        hits.push(...walk(full))
+      } else if (/\.(ts|tsx)$/.test(entry.name)) {
+        if (full === path.join(REPO, 'server', 'db.ts')) continue
+        const text = fs.readFileSync(full, 'utf8')
+        for (const line of text.split('\n')) if (readers.test(line)) hits.push(`${path.relative(REPO, full)}: ${line.trim()}`)
+      }
+    }
+    return hits
+  }
+  const hits = [...walk(path.join(REPO, 'src')), ...walk(path.join(REPO, 'shared')), ...walk(path.join(REPO, 'server'))]
+  check(hits.length === 0, `no live modelOverrides.minimax reader survives (found: ${hits.join(' | ') || 'none'})`)
+})
+
+test('(12) summary', () => {
   console.log(`  rename-migration: ${assertions} assertions passed`)
 })

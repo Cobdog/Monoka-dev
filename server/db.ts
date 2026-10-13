@@ -489,6 +489,13 @@ export const migrations: Migration[] = [
           VALUES (NEW.prompt || ' ' || NEW.mode || ' ' || NEW.status || ' ' || COALESCE(NEW.error, ''), NEW.id, 'job');
         END;
         CREATE INDEX jobs_created_at ON jobs(created_at DESC);
+        -- (review F3) 001's jobs_updated_at died with jobs_monoka_old in the
+        -- rebuild above — recreated VERBATIM so the wave's schema delta stays
+        -- exactly its declared scope (renames + the triaged audit DDL). No
+        -- current query orders jobs by updated_at (the audit found none);
+        -- retiring it is a D2-class decision for the controller, not a
+        -- silent casualty of the rebuild.
+        CREATE INDEX jobs_updated_at ON jobs(updated_at);
       `)
       // 4. Re-seed the job FTS rows the sweep cleared (ftsBackfillJobs' shape).
       db.exec(`
@@ -756,8 +763,13 @@ export const migrations: Migration[] = [
         CREATE INDEX canvas_asset_deleted ON canvas_asset(deleted_at);
         INSERT INTO canvas_asset (rowid, id, kind, fields_json, canonical_reference_set_json, created_at, deleted_at)
           SELECT rowid, id, kind, fields_json, canonical_reference_set_json, created_at, deleted_at FROM canvas_asset_checks_old ORDER BY rowid;
-        DROP TABLE canvas_asset_checks_old;
 
+        -- CHILD BEFORE PARENT (review F1, the boot-blocker the fixture now
+        -- pins): the fork's FK was retargeted to canvas_asset_checks_old by
+        -- the rename above, so dropping the old ASSET while the fork is
+        -- still live fires the FK on the DROP's implicit DELETE. Rebuild +
+        -- drop the fork FIRST — exactly the order the chain cluster above
+        -- uses — then the old asset falls with no referencers left.
         ALTER TABLE canvas_asset_fork RENAME TO canvas_asset_fork_checks_old;
         CREATE TABLE canvas_asset_fork (
           project_id TEXT NOT NULL REFERENCES canvas_project(id),
@@ -770,6 +782,7 @@ export const migrations: Migration[] = [
         INSERT INTO canvas_asset_fork (project_id, asset_id, forked_settings_snapshot_json, lineage_json, consent_at)
           SELECT project_id, asset_id, forked_settings_snapshot_json, lineage_json, consent_at FROM canvas_asset_fork_checks_old;
         DROP TABLE canvas_asset_fork_checks_old;
+        DROP TABLE canvas_asset_checks_old;
 
         ALTER TABLE canvas_blob RENAME TO canvas_blob_checks_old;
         CREATE TABLE canvas_blob (
