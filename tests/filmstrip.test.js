@@ -127,7 +127,7 @@ maybe('(a) first GET generates lazily and serves a PNG with the shared layout: d
   assert.deepEqual(dimensions, { width: 640, height: 270 }, 'sheet must tile 4×3 cells of 160×90')
   etag = first.headers.get('etag')
   assert.ok(etag, 'sheet response must carry a content-derived ETag')
-  const sheetFile = path.join(outputDirectory, 'MiniMax Studio Frames', '.filmstrips')
+  const sheetFile = path.join(outputDirectory, 'Monoka Studio Frames', '.filmstrips')
   assert.ok(fs.existsSync(sheetFile), 'sheets must be cached under the output directory (dot-folder)')
 })
 

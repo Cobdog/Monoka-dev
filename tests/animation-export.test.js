@@ -266,7 +266,7 @@ test('(a) segmentFilter pins the exact conform chain, and buildManifest carries 
     staleAcknowledged: false,
   })
   assert.equal(manifest.manifestVersion, ANIMATION_EXPORT_MANIFEST_VERSION)
-  assert.equal(manifest.kind, 'minimax-animation-sequence')
+  assert.equal(manifest.kind, 'monoka-animation-sequence')
   assert.equal(manifest.document.revision, 4, 'the revision at freeze')
   assert.equal(manifest.document.bindingHistory.length, 1, 'the binding history rides verbatim (§11.3)')
   assert.equal(manifest.sequence.video.width, 1344)
@@ -562,7 +562,7 @@ test('(b) both lanes export one review package — silent H.264, constant 24 fps
   // The recipe: ordered contributions, half-open ranges, output starts.
   const expectedTotal = (8 + 6) + sequenceFrames
   assert.equal(manifest.manifestVersion, ANIMATION_EXPORT_MANIFEST_VERSION)
-  assert.equal(manifest.kind, 'minimax-animation-sequence')
+  assert.equal(manifest.kind, 'monoka-animation-sequence')
   assert.equal(manifest.document.id, docMain.documentId)
   assert.equal(manifest.document.settings.fps, 24)
   assert.ok(manifest.document.bindingHistory.length >= 1, 'the binding history rides (§11.3)')

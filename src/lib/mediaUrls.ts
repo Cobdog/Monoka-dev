@@ -1,13 +1,15 @@
 /**
- * Translates Electron-era media URLs into the web server's media routes.
- * Persisted state (jobs, libraries, workspaces) written before the web
- * migration may still carry minimax-media:// URLs or raw ComfyUI /view links;
- * everything playable flows through /api/lan/media now.
+ * Translates studio media URLs into the web server's media routes.
+ * Everything playable flows through /api/lan/media now. The monoka-media://
+ * scheme is new-only (rename-sweep T3, zero back-compat): persisted values
+ * carrying the pre-rename minimax-media:// prefix were rewritten by db
+ * migration 009 and the one-time localStorage copy — no reader here accepts
+ * the old scheme.
  */
 export function webMediaUrl(value?: string): string | undefined {
   if (!value) return value
-  if (value.startsWith('minimax-media://comfy')) {
-    const upstream = new URLSearchParams(value.slice('minimax-media://comfy?'.length)).get('url')
+  if (value.startsWith('monoka-media://comfy')) {
+    const upstream = new URLSearchParams(value.slice('monoka-media://comfy?'.length)).get('url')
     if (!upstream) return value
     try {
       const params = new URL(upstream).searchParams
@@ -17,7 +19,7 @@ export function webMediaUrl(value?: string): string | undefined {
       return `/api/lan/media?${query}`
     } catch { return value }
   }
-  if (value.startsWith('minimax-media://local') || value.startsWith('minimax-media://selected')) {
+  if (value.startsWith('monoka-media://local') || value.startsWith('monoka-media://selected')) {
     const path = new URL(value).searchParams.get('path')
     return path ? `/api/lan/media?source=output&path=${encodeURIComponent(path)}` : value
   }

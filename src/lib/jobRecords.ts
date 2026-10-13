@@ -6,8 +6,8 @@ import { loadCharacterProjects, updateCharacterProject } from './characterLibrar
 import { updateLocationProject } from './locationLibrary'
 import type { MovieLink } from './workspace'
 
-/** All playable media flows through the web server's media routes; legacy
- *  Electron-era minimax-media:// URLs and raw /view links are translated. */
+/** All playable media flows through the web server's media routes; persisted
+ *  monoka-media:// URLs and raw /view links are translated. */
 export function playableOutputUrl(value?: string) {
   return webMediaUrl(value)
 }

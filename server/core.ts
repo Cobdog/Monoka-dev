@@ -28,6 +28,7 @@ import { CORE_RENDER_CLASSES, missingCoreNodeClasses, preflightRefusal } from '.
 import { normalizeStoredOverrideSlots, OVERRIDE_SLOTS, type ModelOverrideSlotName } from '../src/lib/modelOverrides'
 import type { ExternalEngineStatus } from '../src/types'
 import { createStudioRepository, type StudioRepository } from './repo'
+import { migrateStudioFolders } from './folderMigration'
 import { JOB_PROVIDER_VALUES, JOB_STATUS_VALUES } from './db'
 import { CANVAS_SCHEMA_VERSION, CanvasSchemaVersionError, DocumentsRuleError, PlanConflictError } from './documents'
 import { exportProjectArchive, importProjectArchive } from './documentArchive'
@@ -1120,9 +1121,9 @@ export function createStudioServer(paths: StudioServerPaths) {
   }
 
   /** Permissive source resolution for the Electron bridge: raw paths,
-   *  minimax-media:// URLs, and ComfyUI /view URLs (downloaded to temp). */
+   *  monoka-media:// URLs, and ComfyUI /view URLs (downloaded to temp). */
   async function resolveVideoSource(source: string) {
-    if (!source.startsWith('minimax-media:')) {
+    if (!source.startsWith('monoka-media:')) {
       if (!existsSync(source) || !mediaExtensions.has(extname(source).toLowerCase())) throw new Error('The selected video file is unavailable.')
       return source
     }
@@ -1139,7 +1140,7 @@ export function createStudioServer(paths: StudioServerPaths) {
       if (!isLocalServiceUrl(configured.origin)) throw new Error('The configured ComfyUI address is not a local service address.')
       const target = new URL(upstream)
       if (target.origin !== configured.origin || target.pathname !== '/view') throw new Error('The video address is outside the configured ComfyUI server.')
-      const temporary = join(paths.tempDirectory, `minimax-clip-${randomUUID()}.mp4`)
+      const temporary = join(paths.tempDirectory, `monoka-clip-${randomUUID()}.mp4`)
       const response = await fetch(target)
       if (!response.ok) throw new Error('The ComfyUI video could not be downloaded.')
       await writeFile(temporary, Buffer.from(await response.arrayBuffer()))
@@ -1150,11 +1151,12 @@ export function createStudioServer(paths: StudioServerPaths) {
 
   /** Resolves a video source for LAN API callers. Accepted forms: an explicit
    *  { output: <contained path> } or { comfy: { filename, subfolder?, type? } }
-   *  descriptor, or a legacy minimax-media:// URL from the Electron era. The
-   *  result is always a local file path (ComfyUI inputs are downloaded to the
-   *  OS temp dir first). */
+   *  descriptor, or a monoka-media:// URL (persisted values were rewritten to
+   *  the monoka scheme by migration 009 — new-only here). The result is
+   *  always a local file path (ComfyUI inputs are downloaded to the OS temp
+   *  dir first). */
   async function resolveLanVideoSource(source: unknown): Promise<string> {
-    if (typeof source === 'string' && source.startsWith('minimax-media://')) {
+    if (typeof source === 'string' && source.startsWith('monoka-media://')) {
       const parsed = new URL(source)
       if (parsed.hostname === 'local') return resolveLanVideoSource({ output: parsed.searchParams.get('path') ?? '' })
       if (parsed.hostname === 'comfy') {
@@ -1191,7 +1193,7 @@ export function createStudioServer(paths: StudioServerPaths) {
         const query = new URLSearchParams({ filename: file.filename, subfolder, type })
         const upstream = await fetch(`${cleanUrl(settings.comfyUrl)}/view?${query}`)
         if (!upstream.ok) throw new Error('The ComfyUI media file is unavailable.')
-        const target = join(tmpdir(), `minimax-source-${randomUUID()}${extname(file.filename)}`)
+        const target = join(tmpdir(), `monoka-source-${randomUUID()}${extname(file.filename)}`)
         await writeFile(target, Buffer.from(await upstream.arrayBuffer()))
         return target
       }
@@ -1207,7 +1209,7 @@ export function createStudioServer(paths: StudioServerPaths) {
     const query = new URLSearchParams({ filename: file.filename, subfolder: file.subfolder ?? '', type: file.type ?? 'output' })
     const response = await fetch(`${cleanUrl(comfyUrl)}/view?${query}`)
     if (!response.ok) throw new Error('The generated image is unavailable from ComfyUI.')
-    const directory = join(outputDirectory, 'MiniMax Character References')
+    const directory = join(outputDirectory, 'Monoka Character References')
     await mkdir(directory, { recursive: true })
     const extension = extname(file.filename) || '.png'
     const target = join(directory, `character-${Date.now()}-${randomUUID().slice(0, 8)}${extension}`)
@@ -1218,7 +1220,7 @@ export function createStudioServer(paths: StudioServerPaths) {
   // Shared ffmpeg operations — both the IPC bridge and the LAN routes call
   // these with an already-resolved local input path.
   async function extractVideoFrameAt(input: string, position: number | 'last', outputDirectory: string, ffmpegPath: string) {
-    const framesDirectory = join(outputDirectory, 'MiniMax Studio Frames')
+    const framesDirectory = join(outputDirectory, 'Monoka Studio Frames')
     await mkdir(framesDirectory, { recursive: true })
     const label = position === 'last' ? 'last' : `at_${Math.max(0, position).toFixed(2).replace('.', '-')}`
     const name = `frame_${label}_${Date.now()}.png`
@@ -1234,7 +1236,7 @@ export function createStudioServer(paths: StudioServerPaths) {
     if (positions.length === 0 || positions.length > 100 || positions.some((position) => !Number.isFinite(position) || position < 0)) {
       throw new Error('Choose between 1 and 100 valid frame bookmarks.')
     }
-    const framesDirectory = join(outputDirectory, 'MiniMax Studio Frames')
+    const framesDirectory = join(outputDirectory, 'Monoka Studio Frames')
     await mkdir(framesDirectory, { recursive: true })
     const batchId = Date.now()
     const outputs: Array<{ path: string; name: string }> = []
@@ -1257,7 +1259,7 @@ export function createStudioServer(paths: StudioServerPaths) {
     if (!Number.isFinite(from) || !Number.isFinite(to) || from < 0 || length < 2 || length > 15) {
       throw new Error('Reference clips must be between 2 and 15 seconds long.')
     }
-    const directory = join(outputDirectory, 'MiniMax Studio Reference Clips')
+    const directory = join(outputDirectory, 'Monoka Studio Reference Clips')
     await mkdir(directory, { recursive: true })
     const name = `Reference_Clip_${Date.now()}.mp4`
     const output = join(directory, name)
@@ -1274,7 +1276,7 @@ export function createStudioServer(paths: StudioServerPaths) {
   async function joinVideosAt(inputs: string[], clips: Array<{ start?: unknown; end?: unknown }>, outputDirectory: string, ffmpegPath: string) {
     const directory = join(outputDirectory, 'video')
     await mkdir(directory, { recursive: true })
-    const listPath = join(paths.tempDirectory, `minimax-concat-${randomUUID()}.txt`)
+    const listPath = join(paths.tempDirectory, `monoka-concat-${randomUUID()}.txt`)
     const escapePath = (path: string) => path.replace(/\\/g, '/').replace(/'/g, "'\\''")
     const list = inputs.map((path, index) => {
       const clip = clips[index]
@@ -1283,7 +1285,7 @@ export function createStudioServer(paths: StudioServerPaths) {
       return [`file '${escapePath(path)}'`, Number.isFinite(start) && start > 0 ? `inpoint ${start}` : '', Number.isFinite(end) && end > (Number.isFinite(start) ? start : 0) ? `outpoint ${end}` : ''].filter(Boolean).join('\n')
     }).join('\n')
     await writeFile(listPath, list, 'utf8')
-    const output = join(directory, `MiniMax_Joined_${Date.now()}.mp4`)
+    const output = join(directory, `Monoka_Joined_${Date.now()}.mp4`)
     await runFfmpeg(ffmpegPath, ['-y', '-f', 'concat', '-safe', '0', '-i', listPath, '-map', '0', '-c', 'copy', '-movflags', '+faststart', output])
     return { path: output, name: basename(output) }
   }
@@ -1308,7 +1310,7 @@ export function createStudioServer(paths: StudioServerPaths) {
     if (!source.isFile()) throw new Error('The media file is unavailable.')
     const duration = durationHint && durationHint > 0 ? durationHint : (await probeMediaDurationSeconds(ffmpegPath, input)) ?? 5
     const layout = filmstripLayout(duration)
-    const cacheDirectory = join(root, 'MiniMax Studio Frames', '.filmstrips')
+    const cacheDirectory = join(root, 'Monoka Studio Frames', '.filmstrips')
     await mkdir(cacheDirectory, { recursive: true })
     const sourceKey = createHash('sha256').update(relative(root, input) || basename(input)).digest('hex').slice(0, 12)
     const sheetPath = join(cacheDirectory, `${basename(input, extname(input))}.${sourceKey}.${layout.cols}x${layout.rows}.png`)
@@ -1358,7 +1360,7 @@ export function createStudioServer(paths: StudioServerPaths) {
     return { cancelled: false, state: promptId in history ? 'finished' as const : 'unknown' as const }
   }
 
-  async function uploadFileAt(comfyUrl: string, filePath: string, subfolder = 'minimax-desktop') {
+  async function uploadFileAt(comfyUrl: string, filePath: string, subfolder = 'monoka-desktop') {
     const bytes = await readFile(filePath)
     const form = new FormData()
     form.append('image', new Blob([bytes]), basename(filePath))
@@ -1650,7 +1652,7 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           // Header token for fetch-able routes; the query parameter is only
           // honored where the browser cannot set headers at all (EventSource,
           // and <img>/<video> src on the media route). Constant-time compare.
-          const header = request.headers['x-minimax-token']
+          const header = request.headers['x-monoka-token']
           const headerToken = Array.isArray(header) ? header[0] : header
           // The filmstrip GET joins the browser-native group: <img> posters
           // cannot set headers either. Query tokens stay GET-only there.
@@ -2489,13 +2491,13 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           if (requested.startsWith('canvas-blobs/')) {
             const resolved = studioRepo?.documents.resolveBlobFile(requested)
             if (!resolved) return sendJson(response, 404, { error: 'The referenced blob is unavailable.' })
-            return sendJson(response, 200, await uploadFileAt(settings.comfyUrl, resolved.absPath, typeof body.subfolder === 'string' && body.subfolder ? body.subfolder : 'minimax-desktop'))
+            return sendJson(response, 200, await uploadFileAt(settings.comfyUrl, resolved.absPath, typeof body.subfolder === 'string' && body.subfolder ? body.subfolder : 'monoka-desktop'))
           }
           const root = resolve(settings.outputDirectory)
           const candidate = requested ? resolve(requested) : root
           const containment = relative(root, candidate)
           if (!requested || containment.startsWith('..') || isAbsolute(containment) || !existsSync(candidate)) return sendJson(response, 403, { error: 'The file is outside the configured output directory.' })
-          return sendJson(response, 200, await uploadFileAt(settings.comfyUrl, candidate, typeof body.subfolder === 'string' && body.subfolder ? body.subfolder : 'minimax-desktop'))
+          return sendJson(response, 200, await uploadFileAt(settings.comfyUrl, candidate, typeof body.subfolder === 'string' && body.subfolder ? body.subfolder : 'monoka-desktop'))
         }
         if (url.pathname === '/api/lan/upload' && request.method === 'POST') {
           const body = await readJson(request)
@@ -2503,7 +2505,7 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           if (!data.startsWith('data:image/png;base64,') || data.length > 35_000_000) return sendJson(response, 400, { error: 'Invalid prepared image.' })
           const form = new FormData()
           form.append('image', new Blob([Buffer.from(data.split(',')[1], 'base64')], { type: 'image/png' }), `mobile-frame-${randomUUID()}.png`)
-          form.append('type', 'input'); form.append('subfolder', 'minimax-mobile')
+          form.append('type', 'input'); form.append('subfolder', 'monoka-mobile')
           return sendJson(response, 200, await comfyFetch(settings.comfyUrl, '/upload/image', { method: 'POST', body: form }))
         }
         if (url.pathname === '/api/lan/upload-media' && request.method === 'POST') {
@@ -2516,7 +2518,7 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           if (!allowed.test(match[1])) return sendJson(response, 400, { error: 'Unsupported reference media type.' })
           const form = new FormData()
           form.append('image', new Blob([Buffer.from(match[2], 'base64')], { type: match[1] }), name)
-          form.append('type', 'input'); form.append('subfolder', 'minimax-mobile-references'); form.append('overwrite', 'true')
+          form.append('type', 'input'); form.append('subfolder', 'monoka-mobile-references'); form.append('overwrite', 'true')
           return sendJson(response, 200, await comfyFetch(settings.comfyUrl, '/upload/image', { method: 'POST', body: form }))
         }
         if (url.pathname === '/api/lan/prompt' && request.method === 'POST') {
@@ -3841,7 +3843,25 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
     // Settings load BEFORE listen: the origin guard's host allowlist (and the
     // whole settings cache) must be warm when the first request arrives, so a
     // custom-hostname setup is never refused by a cold cache.
-    await loadSettings()
+    const bootSettings = await loadSettings()
+    // The one-time folder move (rename-sweep T3, 2026-10-12): the engine
+    // input subfolders and the output display folders still carrying the old
+    // product name rename(2) to the monoka names — ONCE, when the job queue
+    // is idle (a queued/running job may reference the legacy input paths, so
+    // a busy queue defers to the next idle boot). A target collision refuses
+    // loudly (the rejection surfaces at the boot boundary — manual
+    // resolution, never a merge). Needs the live settings, hence here and
+    // not in the constructor body.
+    if (studioRepo) {
+      const folderMove = migrateStudioFolders({
+        outputDirectory: bootSettings.outputDirectory,
+        engineCheckoutPath: bootSettings.engine.checkoutPath,
+        markerFile: join(dirname(paths.settingsFile), 'monoka-folder-move.json'),
+        activeJobs: studioRepo.countActiveJobs(),
+      })
+      if (folderMove.status === 'moved') logEvent({ kind: 'rename.folder-move', moved: folderMove.moved.length })
+      else if (folderMove.status === 'idle-deferred') logEvent({ kind: 'rename.folder-move-deferred', activeJobs: folderMove.activeJobs })
+    }
     lanToken = await loadLanToken()
     // A loopback bind must not claim a LAN identity: the certificate and the
     // advertised URLs follow the ACTUAL bind, not the machine's LAN address.

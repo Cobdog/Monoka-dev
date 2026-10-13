@@ -207,7 +207,7 @@ export function animationHref(projectId: string, documentId: string): string {
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
-  headers.set('x-minimax-token', new URLSearchParams(window.location.search).get('token') ?? '')
+  headers.set('x-monoka-token', new URLSearchParams(window.location.search).get('token') ?? '')
   const response = await fetch(path, { ...init, headers })
   const body = await response.json().catch(() => ({})) as Record<string, unknown>
   if (response.status === 409) {
@@ -405,7 +405,7 @@ export const animationApi = {
    *  gate's named refusals answer 400/404 with their reasons. */
   exportSequence: async (documentId: string, acknowledgeStale: boolean): Promise<AnimationExportResult> => {
     const headers = new Headers({ 'content-type': 'application/json' })
-    headers.set('x-minimax-token', new URLSearchParams(window.location.search).get('token') ?? '')
+    headers.set('x-monoka-token', new URLSearchParams(window.location.search).get('token') ?? '')
     const response = await fetch('/api/lan/animation/export', { method: 'POST', headers, body: JSON.stringify({ documentId, acknowledgeStale }) })
     if (response.ok) {
       const disposition = response.headers.get('content-disposition') ?? ''

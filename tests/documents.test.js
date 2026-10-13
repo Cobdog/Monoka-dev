@@ -697,7 +697,7 @@ test('(g) §7 archive: round-trip into a fresh studio + refusals', async () => {
   check(exportResponse.status === 200 && exportResponse.headers.get('content-type') === 'application/zip', 'export answers with a zip')
   archive = exportResponse.buffer
   manifest = JSON.parse(unpackZip(archive).get('manifest.json'))
-  check(manifest.format === 'minimax-canvas-archive' && manifest.schemaVersion >= 1, 'manifest carries format + schemaVersion')
+  check(manifest.format === 'monoka-canvas-archive' && manifest.schemaVersion >= 1, 'manifest carries format + schemaVersion')
   check(manifest.counts.takes === 2 && manifest.counts.chains === 2, 'manifest counts the exported document')
   check(manifest.blobs.length === 1 && manifest.missingBlobs.length === 2, `present + evicted + unregistered-ref blobs all ride in the manifest (got ${manifest.blobs.length} + ${manifest.missingBlobs.length})`)
   check(manifest.missingBlobs.some((blob) => blob.path === 'canvas-blobs/aa/deadbeef' && blob.hash === 'unregistered'), 'a referenced-but-unregistered path (legacy control ref / pre-blob latent) is VISIBLE in missingBlobs — never a silent omission')

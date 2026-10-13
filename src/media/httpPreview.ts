@@ -73,7 +73,7 @@ export function registerOutputAsset(spec: { path: string; width?: number; height
   if (!spec.path) return
   const headers = new Headers({ 'content-type': 'application/json' })
   const token = authToken()
-  if (token) headers.set('x-minimax-token', token)
+  if (token) headers.set('x-monoka-token', token)
   void fetch('/api/lan/assets/filmstrip', {
     method: 'POST',
     headers,

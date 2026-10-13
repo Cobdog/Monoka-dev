@@ -325,7 +325,7 @@ export default function PoseRigApp({ dock }: { dock?: PoseRigDock } = {}) {
         for (let index = 0; index < bytes.length; index += chunk) binary += String.fromCharCode(...bytes.subarray(index, index + chunk))
         void fetch('/api/lan/documents/blobs/ingest', {
           method: 'POST',
-          headers: { 'content-type': 'application/json', 'x-minimax-token': new URLSearchParams(window.location.search).get('token') ?? '' },
+          headers: { 'content-type': 'application/json', 'x-monoka-token': new URLSearchParams(window.location.search).get('token') ?? '' },
           body: JSON.stringify({ data: btoa(binary), name: `poserig-pose-${timeline.canvas.width}x${timeline.canvas.height}.png`, kind: 'image' }),
         }).then((response) => response.json()).then((body: { path?: string }) => {
           if (typeof body.path !== 'string' || !body.path) throw new Error('the blob ingest returned no path')

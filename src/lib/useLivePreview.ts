@@ -104,7 +104,7 @@ export function useLivePreview(url: string | undefined, enabled: boolean, onProg
         const file = event.images[0]
         const query = new URLSearchParams({ filename: file.filename, subfolder: file.subfolder ?? '', type: file.type ?? 'temp' })
         const upstream = `${(url ?? '').replace(/\/+$/, '')}/view?${query}`
-        replacePreview({ promptId: event.promptId, url: webMediaUrl(`minimax-media://comfy?url=${encodeURIComponent(upstream)}`) ?? upstream, mime: 'image/jpeg', animated: false })
+        replacePreview({ promptId: event.promptId, url: webMediaUrl(`monoka-media://comfy?url=${encodeURIComponent(upstream)}`) ?? upstream, mime: 'image/jpeg', animated: false })
       }
       if (event.type === 'execution_success') onProgress(promptId, { progress: 98, label: 'Finalizing saved output' })
       if (event.type === 'execution_error') onProgress(promptId, { label: 'Execution failed — finishing up' })

@@ -26,7 +26,7 @@ export function authToken() {
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
-  headers.set('x-minimax-token', authToken())
+  headers.set('x-monoka-token', authToken())
   const response = await fetch(path, { ...init, headers })
   const body = await response.json().catch(() => ({})) as Record<string, unknown> & T
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : `Request failed (${response.status})`)
@@ -56,11 +56,11 @@ function parseComfyInputReference(path: string): { filename: string; subfolder?:
 function videoSource(source: string): unknown {
   const input = parseComfyInputReference(source)
   if (input) return { comfy: input }
-  if (source.startsWith('minimax-media://local')) {
+  if (source.startsWith('monoka-media://local')) {
     const path = new URL(source).searchParams.get('path')
     return { output: path ?? '' }
   }
-  if (source.startsWith('minimax-media://comfy')) {
+  if (source.startsWith('monoka-media://comfy')) {
     const upstream = new URL(source).searchParams.get('url')
     const query = upstream ? new URL(upstream).searchParams : null
     return { comfy: query ? { filename: query.get('filename') ?? '', subfolder: query.get('subfolder') || undefined, type: query.get('type') || undefined } : undefined }
@@ -226,7 +226,7 @@ export function createWebApiClient(): DesktopApi {
       return postJson<{ caption: string; model: string }>('/api/lan/llm/vision', { image, instruction })
     },
     async fileDataUrl(filePath: string) {
-      const response = await fetch(`/api/lan/media?${new URLSearchParams(mediaQuery(filePath))}`, { headers: { 'x-minimax-token': authToken() } })
+      const response = await fetch(`/api/lan/media?${new URLSearchParams(mediaQuery(filePath))}`, { headers: { 'x-monoka-token': authToken() } })
       if (!response.ok) throw new Error('The media file is unavailable.')
       return readFileAsDataUrl(await response.blob())
     },
