@@ -71,8 +71,8 @@ export class CanvasSchemaVersionError extends Error {
   readonly writerAppVersion: string
   constructor(found: number, supported: number, writerAppVersion: string, what: string) {
     super(
-      `Refusing to open this ${what}: it was written with document schema version ${found}, but this build of MiniMax Studio understands up to ${supported}. ` +
-        `It was written by app version ${writerAppVersion || 'unknown'} — upgrade MiniMax Studio (or open it with that version) rather than risking data loss.`,
+      `Refusing to open this ${what}: it was written with document schema version ${found}, but this build of Monoka understands up to ${supported}. ` +
+        `It was written by app version ${writerAppVersion || 'unknown'} — upgrade Monoka (or open it with that version) rather than risking data loss.`,
     )
     this.name = 'CanvasSchemaVersionError'
     this.found = found
@@ -1502,7 +1502,7 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
   function mediaUrlToPath(url: string): string | null {
     if (!url.startsWith('/api/lan/media')) return null
     try {
-      const parsed = new URL(url, 'http://minimax.local')
+      const parsed = new URL(url, 'http://monoka.local')
       const path = parsed.searchParams.get('path')
       return path && isAbsolute(path) ? path : null
     } catch {

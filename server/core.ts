@@ -1,5 +1,5 @@
 /**
- * The MiniMax Studio server core — every capability that is not Electron:
+ * The Monoka server core — every capability that is not Electron:
  * settings persistence, the registry-only model inventory (R-12), the
  * ComfyUI/Ollama proxy, ffmpeg
  * operations, GPU telemetry, and the HTTP API + static hosting that the web
@@ -415,7 +415,7 @@ async function ensureSelfSignedCertificate(directory: string, lanIp: string): Pr
       execFile('openssl', [
         'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
         '-keyout', keyPath, '-out', certPath, '-days', '3650',
-        '-subj', '/CN=MiniMax Studio',
+        '-subj', '/CN=Monoka',
         '-addext', `subjectAltName=IP:${lanIp},IP:127.0.0.1,DNS:localhost`,
       ], { windowsHide: true }, (error) => { if (error) reject(error); else resolve() })
     })
@@ -1629,7 +1629,7 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
     // the structural 500 body and the log stage if anything below throws.
     let route = 'unknown'
     try {
-      const url = new URL(request.url ?? '/', 'http://minimax.local')
+      const url = new URL(request.url ?? '/', 'http://monoka.local')
       route = url.pathname
       // Origin/Host/content-type gate (security hardening 1) — runs BEFORE
       // auth and before any route work: a disallowed Host (DNS rebinding) or

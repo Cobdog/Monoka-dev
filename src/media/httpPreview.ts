@@ -15,7 +15,7 @@ import { leaseVideo } from './videoPool'
 export function outputPathFromMediaUrl(value?: string): string | null {
   if (!value || !value.includes('/api/lan/media')) return null
   try {
-    const url = new URL(value, 'http://minimax.local')
+    const url = new URL(value, 'http://monoka.local')
     if (url.pathname !== '/api/lan/media' || url.searchParams.get('source') !== 'output') return null
     const path = url.searchParams.get('path') ?? ''
     return path.startsWith('/') ? path : null

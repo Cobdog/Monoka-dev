@@ -1,6 +1,6 @@
-# MiniMax Studio
+# Monoka
 
-A local-first **web app** for MiniMax H3 generation through ComfyUI: one small Node server on your workstation, the full Studio in any browser on your network — desktop, phone, or tablet. Models are indexed and used from their existing locations; the app never downloads, copies, or reorganizes model files.
+A local-first **web app** for MiniMax H3 generation through ComfyUI: one small Node server on your workstation, the full app in any browser on your network — desktop, phone, or tablet. Models are indexed and used from their existing locations; the app never downloads, copies, or reorganizes model files.
 
 > Fork of [jamesk9526/MINIMAX-DESKTOP](https://github.com/jamesk9526/MINIMAX-DESKTOP), restructured and hardened. The Electron shell was removed in favor of this standalone server + SPA architecture (see [docs/migration.md](docs/migration.md)). Known issues and their status live in the [audits](docs/audit/).
 
@@ -51,7 +51,7 @@ pnpm start:server
 
 Requirements: Node 20+, a local ComfyUI with the MiniMax H3 core nodes, and the H3 model components already on disk. FFmpeg for clip tools. Optional: a local [llama.cpp server in router mode](https://github.com/ggml-org/llama.cpp) for the LLM layer (prompt tailoring, planning, caption rewriting, vision captioning), with local Ollama as the fallback when no router is configured; NVIDIA tooling for GPU telemetry.
 
-Configuration lives in `~/.minimax-studio/` (override with `MINIMAX_STUDIO_HOME`): `settings.json` holds the ComfyUI/Ollama addresses, model folders, and defaults — also editable from the app's Settings page. Default port `4178` (override with `MINIMAX_LAN_PORT`; the bind host with `MINIMAX_LAN_HOST`, e.g. `127.0.0.1` for local-only). The `--configure` engine-URL field writes straight into `settings.json` — one source of truth.
+Configuration lives in `~/.monoka/` (override with `MONOKA_HOME`): `settings.json` holds the ComfyUI/Ollama addresses, model folders, and defaults — also editable from the app's Settings page. Default port `4178` (override with `MONOKA_LAN_PORT`; the bind host with `MONOKA_LAN_HOST`, e.g. `127.0.0.1` for local-only). The `--configure` engine-URL field writes straight into `settings.json` — one source of truth.
 
 **Security posture:** open on your LAN by default, exactly like ComfyUI itself — anyone on the same network can use the studio. For hostile networks (café Wi-Fi, shared offices), start with `--token` (or `MINIMAX_LAN_TOKEN=1`) and pass the token as `?token=…`.
 
@@ -169,7 +169,7 @@ judge doesn't flag the design language as defects.
 
 `pnpm lint` = eslint (`--max-warnings 0`) + stylelint over
 `src/**/*.css`. Stylelint layers `stylelint-config-standard` (syntax) with a
-custom `minimax/no-raw-colors` rule enforcing the wave-2b design tokens:
+custom `monoka/no-raw-colors` rule enforcing the wave-2b design tokens:
 color values must go through `var(--token)`; raw literals are only allowed
 in token definitions and on the documented allowlist
 (`scripts/stylelint-raw-color-allowlist.json` — every entry states its

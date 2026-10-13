@@ -10,7 +10,7 @@ authors = [{ name = "MiniMax Studio contributors" }]
 dependencies = []  # numpy ships with every torch install; torch + ComfyUI are the runtime host
 
 [project.urls]
-Homepage = "https://github.com/Cobdog/MINIMAX-DESKTOP/tree/main/custom-nodes/minimax-lora-form-adapter"
+Homepage = "https://github.com/Cobdog/Monoka-dev/tree/main/custom-nodes/minimax-lora-form-adapter"
 
 [tool.comfy]
 PublisherId = "minimax-studio"

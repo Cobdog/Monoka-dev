@@ -107,7 +107,7 @@ export function buildRenderManifest(options: GenerationOptions, models: ModelSel
     referenceCounts: { images: options.referenceImages.length, videos: options.referenceVideos.length, audios: options.referenceAudios.length },
     timelineGuideFrames: options.timelineGuides?.map((guide) => guide.frameIndex),
     graphVersion: graphVersionHash(graph),
-    engine: { comfyUrl, app: 'MiniMax Studio' },
+    engine: { comfyUrl, app: 'Monoka' },
   }
 }
 

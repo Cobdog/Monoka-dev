@@ -1,5 +1,5 @@
 {
-  "_comment": "Documented one-off raw-color literals for the minimax/no-raw-colors stylelint rule. Generated from the first full-tree audit (wave 2b token pass); each entry is an exact property+value match kept for pixel-exact rendering. NEW raw colors must NOT be added here casually — prefer a var(--token); if a literal is genuinely one-off, append {property, value, reason} and say why.",
+  "_comment": "Documented one-off raw-color literals for the monoka/no-raw-colors stylelint rule. Generated from the first full-tree audit (wave 2b token pass); each entry is an exact property+value match kept for pixel-exact rendering. NEW raw colors must NOT be added here casually — prefer a var(--token); if a literal is genuinely one-off, append {property, value, reason} and say why.",
   "allow": [
     {
       "property": "background",

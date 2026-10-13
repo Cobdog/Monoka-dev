@@ -50,7 +50,7 @@ export function PrototypeShell() {
   return <div className="proto-root" data-proto={direction}>
     <header className="proto-switcher">
       <div className="proto-switcher-brand">
-        <strong>MiniMax Studio</strong>
+        <strong>Monoka</strong>
         <span className="proto-flag">PROTOTYPE — static mock data</span>
       </div>
       <nav className="proto-switcher-tabs" aria-label="UI direction">

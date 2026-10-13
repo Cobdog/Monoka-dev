@@ -44,12 +44,12 @@ const studio = createStudioServer({
 studio.startLanServer().then(() => {
   const status = studio.status()
   if (!status.running) {
-    console.error(`MiniMax Studio could not start: ${status.error ?? 'unknown error'}`)
+    console.error(`Monoka could not start: ${status.error ?? 'unknown error'}`)
     process.exit(1)
   }
   const scheme = status.secure ? 'https' : 'http'
   const boundLoopback = status.host === '127.0.0.1' || status.host === 'localhost' || status.host === '::1'
-  console.log(`MiniMax Studio is running.`)
+  console.log(`Monoka is running.`)
   console.log(`  Open:       ${scheme}://127.0.0.1:${status.port}`)
   if (boundLoopback) {
     console.log(`  Bind:       ${status.host} — local only, NOT reachable from the LAN`)
