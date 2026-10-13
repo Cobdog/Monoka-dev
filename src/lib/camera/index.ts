@@ -52,12 +52,12 @@
 export type {
   CameraKeyframe, CameraPlan, CameraSegment, CameraStoryboard, CompileCameraParams, CompileMotionParams,
   CompileMotionResult, CompileResult, CoordinateAnchor, DiagnosticItem, DurationProfile, ElevationRangeKey,
-  FrameMode, H3EditOptions, ImageShape, Interpolation, LoopClosureChoice, MinimaxFormat, MotionOptionsOverride,
+  FrameMode, H3EditOptions, ImageShape, Interpolation, LoopClosureChoice, MonokaFormat, MotionOptionsOverride,
   MotionResample, OrbitDirection, Pose, PromptDetail, RuntimeTask, StoryboardSource, SubjectFraming, UiLanguage,
 } from './types'
 export {
   DEFAULT_PATH, DIRECTED_FRAMES, DIRECTED_SETTLE, DIRECTED_TAIL_CANDIDATES, ELEVATION_RANGES, FPS, FRAMINGS,
-  MINIMAX_FORMATS, MOTION_MODES, ORBIT_DIRECTIONS, PROFILES, PROMPT_DETAIL, RUNTIME_TASKS, VERTICAL_FOV,
+  MONOKA_FORMATS, MOTION_MODES, ORBIT_DIRECTIONS, PROFILES, PROMPT_DETAIL, RUNTIME_TASKS, VERTICAL_FOV,
 } from './constants'
 export { validatePath } from './validatePath'
 export { AXES, interpolatePose } from './trajectoryMath'

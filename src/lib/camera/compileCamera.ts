@@ -17,7 +17,7 @@
  */
 import {
   DIRECTED_SETTLE, DIRECTED_TAIL_CANDIDATES, ELEVATION_RANGES, FRAMINGS, FPS,
-  MINIMAX_FORMATS, ORBIT_DIRECTIONS, PROFILES, PROMPT_DETAIL, RUNTIME_TASKS,
+  MONOKA_FORMATS, ORBIT_DIRECTIONS, PROFILES, PROMPT_DETAIL, RUNTIME_TASKS,
 } from './constants'
 import { imageAspect } from './cameraText'
 import { coordinateAnchor } from './coordinateAnchor'
@@ -58,7 +58,7 @@ export function compileCamera(params: CompileCameraParams): CompileResult {
     throw new Error('Unknown duration profile or interpolation.')
   }
   const framing = choice(params.subjectFraming, Object.keys(FRAMINGS) as Array<keyof typeof FRAMINGS>, 'medium shot')
-  const minimaxFormat = choice(params.minimaxFormat, MINIMAX_FORMATS, 'coordinate only')
+  const monokaFormat = choice(params.monokaFormat, MONOKA_FORMATS, 'coordinate only')
   const elevationRange = choice(params.elevationRange, Object.keys(ELEVATION_RANGES) as Array<keyof typeof ELEVATION_RANGES>, '+/-30')
   const orbitDirection = choice(params.orbitDirection, ORBIT_DIRECTIONS, 'invert H3 orbit')
   const runtimeTask = choice(params.runtimeTask, Object.keys(RUNTIME_TASKS), 'scene coverage | camera path')
@@ -111,9 +111,9 @@ export function compileCamera(params: CompileCameraParams): CompileResult {
   const plan = buildPlan(path, end, interpolation, userInstruction, aspect, promptDetail as PromptDetail)
   plan.coordinate_anchor = coordinateAnchor(subjectBox)
   const compiled = planText(plan, true)
-  const minimax = minimaxFormat === 'compact JSON' || minimaxFormat === 'compact JSON (no boxes)'
+  const minimax = monokaFormat === 'compact JSON' || monokaFormat === 'compact JSON (no boxes)'
     ? pyJsonStringify(plan)
-    : planText(plan, minimaxFormat === 'coordinate + H3 sections')
+    : planText(plan, monokaFormat === 'coordinate + H3 sections')
   const options: H3EditOptions = {
     mode: task ? task.mode : 'scene coverage | canonical camera path',
     show_overrides: true,
@@ -196,7 +196,7 @@ export function compileCamera(params: CompileCameraParams): CompileResult {
     options,
     storyboardJson: pyJsonStringify(storyboard),
     info,
-    minimaxPrompt: minimax,
+    monokaPrompt: minimax,
     frames,
     fps: FPS,
   }

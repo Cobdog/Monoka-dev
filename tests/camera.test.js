@@ -8,7 +8,7 @@
 //       values within 1e-12 (pow is implementation-approximated per
 //       ECMAScript — CPython uses libm; deltas are ≤ few ulps), plus
 //       monotonicity/endpoint props
-//   (c) golden prompts — 15 canonical cases: compiled_prompt, minimax_prompt,
+//   (c) golden prompts — 15 canonical cases: compiled_prompt, monoka_prompt,
 //       info, storyboard_json and options compared BYTE-for-byte
 //   (d) parity helpers — pyFloatRepr / pyFormatG / pyRound vs Python reprs
 //   (e) camera vocabulary — end_view / parallax / aspect / fov / contracts
@@ -76,7 +76,7 @@ function runCase(c) {
       interpolation: input.interpolation,
       instruction: input.instruction,
       subjectFraming: input.framing,
-      minimaxFormat: input.minimax_format,
+      monokaFormat: input.minimax_format,
       referenceImage: shapeOf(input.reference_image),
       elevationRange: input.elevation_range,
       orbitDirection: input.orbit_direction,
@@ -92,7 +92,7 @@ function runCase(c) {
     interpolation: input.interpolation,
     instruction: input.instruction,
     subjectFraming: input.subject_framing,
-    minimaxFormat: input.minimax_format,
+    monokaFormat: input.minimax_format,
     referenceImage: shapeOf(input.reference_image),
     elevationRange: input.elevation_range,
     orbitDirection: input.orbit_direction,
@@ -134,7 +134,7 @@ test('(a) validate_path taxonomy', () => {
       instruction: '',
       orbitDirection: row.label === 'unknown_orbit' ? 'sideways'
         : row.label === 'empty_orbit_falls_back' ? '' : null,
-      minimaxFormat: row.label === 'unknown_format' ? 'yaml'
+      monokaFormat: row.label === 'unknown_format' ? 'yaml'
         : row.label === 'none_format_falls_back' ? null : null,
     })
     if (row.error === null) {
@@ -213,7 +213,7 @@ test('(c) golden prompts — byte-for-byte vs the upstream compiler', () => {
   for (const c of FIXTURE.cases) {
     const result = runCase(c)
     same(result.compiledPrompt, c.outputs.compiled_prompt, `${c.id}: compiled_prompt identical`)
-    same(result.minimaxPrompt, c.outputs.minimax_prompt, `${c.id}: minimax_prompt identical`)
+    same(result.monokaPrompt, c.outputs.monoka_prompt, `${c.id}: monoka_prompt identical`)
     same(result.info, c.outputs.info, `${c.id}: info banner identical`)
     same(result.storyboardJson, c.outputs.storyboard_json, `${c.id}: storyboard_json identical (floats, key order)`)
     same(parity.pyJsonStringify(result.options), c.outputs.options_json, `${c.id}: options identical`)

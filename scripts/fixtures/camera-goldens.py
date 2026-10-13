@@ -139,7 +139,7 @@ def run_compile(case_id, **kw):
             compiled_prompt=result[0], options=result[1],
             options_json=json.dumps(result[1], ensure_ascii=False, indent=2),
             storyboard_json=result[2],
-            info=result[3], minimax_prompt=result[4], frames=result[5], fps=result[6]),
+            info=result[3], monoka_prompt=result[4], frames=result[5], fps=result[6]),
     )
 
 
@@ -159,7 +159,7 @@ def run_motion(case_id, **kw):
             compiled_prompt=result[0], options=result[1],
             options_json=json.dumps(result[1], ensure_ascii=False, indent=2),
             storyboard_json=result[2],
-            info=result[3], minimax_prompt=result[4], frames=result[5], fps=result[6]),
+            info=result[3], monoka_prompt=result[4], frames=result[5], fps=result[6]),
     )
 
 

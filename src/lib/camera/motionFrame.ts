@@ -143,7 +143,7 @@ export function compileMotion(params: CompileMotionParams): CompileMotionResult 
     interpolation: params.interpolation,
     instruction: params.instruction,
     subjectFraming: params.subjectFraming,
-    minimaxFormat: params.minimaxFormat,
+    monokaFormat: params.monokaFormat,
     referenceImage: prep.referenceShape,
     elevationRange: params.elevationRange,
     orbitDirection: params.orbitDirection,
@@ -168,9 +168,9 @@ export function compileMotion(params: CompileMotionParams): CompileMotionResult 
     // rebuilt tree, so every later read/serialization must use the result.
     plan = motionPlan(plan)
     result.compiledPrompt = motionText(plan, true)
-    result.minimaxPrompt = params.minimaxFormat === 'compact JSON' || params.minimaxFormat === 'compact JSON (no boxes)'
+    result.monokaPrompt = params.monokaFormat === 'compact JSON' || params.monokaFormat === 'compact JSON (no boxes)'
       ? pyJsonStringify(plan)
-      : motionText(plan, params.minimaxFormat === 'coordinate + H3 sections')
+      : motionText(plan, params.monokaFormat === 'coordinate + H3 sections')
     // Prevent a frozen scene-coverage encoder from silently taking over a motion request.
     result.options = { coverage_loop_closure: false, bruxosdovfx_requires_ref2va: true }
   }
