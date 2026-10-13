@@ -5,7 +5,7 @@
  * Turbo-8 pair through one code path (spec §8 D1/D2).
  */
 import { createId } from './createId'
-import { buildMiniMaxWorkflow } from './workflow'
+import { buildMonokaWorkflow } from './workflow'
 import { diagnosticPrompt, h3StackReady } from './h3Stack'
 import { inferSelections } from './modelSelection'
 import type { ObjectInfo } from './comfyInfo'
@@ -42,8 +42,8 @@ export async function submitH3DiagnosticPair(facts: H3DiagnosticsFacts, io: H3Di
     return message
   }
   const tests = [
-    { name: 'Native quality', turbo: 'off' as const, selection: qualityModels, filenamePrefix: 'video/MiniMax_DIAGNOSTIC_NATIVE' },
-    { name: 'Official Turbo 8', turbo: '8' as const, selection: turboModels, filenamePrefix: 'video/MiniMax_DIAGNOSTIC_TURBO8' },
+    { name: 'Native quality', turbo: 'off' as const, selection: qualityModels, filenamePrefix: 'video/Monoka_DIAGNOSTIC_NATIVE' },
+    { name: 'Official Turbo 8', turbo: '8' as const, selection: turboModels, filenamePrefix: 'video/Monoka_DIAGNOSTIC_TURBO8' },
   ]
   io.notify('neutral', 'Queuing the fixed-seed Native and Turbo 8 diagnostic pair…')
   let queuedCount = 0
@@ -52,7 +52,7 @@ export async function submitH3DiagnosticPair(facts: H3DiagnosticsFacts, io: H3Di
     const job: GenerationJob = { id, provider: 'monoka', mode: 'text', prompt: `[H3 diagnostic · ${test.name}] ${diagnosticPrompt}`, createdAt: Date.now() + index, status: 'queued', progress: 2, progressLabel: 'Preparing diagnostic workflow', width: 1344, height: 768, duration: 5 }
     io.setJobs((current) => [job, ...current])
     try {
-      const graph = buildMiniMaxWorkflow({ mode: 'text', prompt: diagnosticPrompt, width: 1344, height: 768, duration: 5, seed: 12345, steps: 20, turbo: test.turbo, sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: test.filenamePrefix, referenceImages: [], referenceVideos: [], referenceAudios: [] }, test.selection, { images: [], videos: [], audios: [] }, facts.info)
+      const graph = buildMonokaWorkflow({ mode: 'text', prompt: diagnosticPrompt, width: 1344, height: 768, duration: 5, seed: 12345, steps: 20, turbo: test.turbo, sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: test.filenamePrefix, referenceImages: [], referenceVideos: [], referenceAudios: [] }, test.selection, { images: [], videos: [], audios: [] }, facts.info)
       const response = await window.monoka.submitPrompt(facts.settings.comfyUrl, graph, facts.clientId)
       queuedCount += 1
       io.setJobs((current) => current.map((item) => item.id === id ? { ...item, promptId: response.prompt_id, status: 'running', progress: 4, progressLabel: index === 0 ? 'Native test queued' : 'Turbo 8 test queued behind Native' } : item))

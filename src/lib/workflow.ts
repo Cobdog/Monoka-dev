@@ -72,7 +72,7 @@ function addLoader(prompt: ComfyPrompt, id: string, kind: 'image' | 'video' | 'a
   return [`${id}1`, 0]
 }
 
-export function buildMiniMaxWorkflow(
+export function buildMonokaWorkflow(
   options: GenerationOptions,
   models: ModelSelection,
   uploads: {

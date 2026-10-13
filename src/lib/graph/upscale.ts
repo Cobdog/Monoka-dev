@@ -1,5 +1,5 @@
 /** Upscale/post-process registry entries. These migrated verbatim from the
- * pre-registry buildMiniMaxWorkflow branches — the topology, node ids and
+ * pre-registry buildMonokaWorkflow branches — the topology, node ids and
  * widget values are the stable contract scripts/test-workflows.cjs already
  * asserts; the registry just moved them behind the entry seam so future
  * methods (SeedVR2, FaceRefine, …) join as data. */

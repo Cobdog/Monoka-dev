@@ -1734,7 +1734,7 @@ test('(aa) LoRA timeline — the compiler, the grid, the measured windows', () =
   ), fakeSelection)
   ok(turboStackGraph['5'] !== undefined, 'graph: the turbo tier keeps its own loader (the stack is orthogonal)')
   eq(turboStackGraph['8'].inputs.model.join('.'), '5.0', 'graph: the stack chains AFTER the turbo seam')
-  const adapted = workflow.buildMiniMaxWorkflow(
+  const adapted = workflow.buildMonokaWorkflow(
     { mode: 'text', prompt: 'p', width: 1344, height: 768, duration: 6, seed: 1, steps: 30, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', referenceImages: [], referenceVideos: [], referenceAudios: [], filenamePrefix: 'video/t', loraStack: [A] },
     fakeSelection,
     {},

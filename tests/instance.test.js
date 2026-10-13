@@ -488,11 +488,8 @@ routesMaybe('(d) app-relative io defaults through the real settings pipeline + (
   const child = spawn(process.execPath, [path.join(REPO, 'dist-server', 'server', 'index.js')], {
     cwd: REPO,
     env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(serverPort), MONOKA_NO_HTTPS: '1' },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['ignore', 'ignore', 'ignore'],
   })
-  let serverOutput = ''
-  child.stdout.on('data', (chunk) => { serverOutput += String(chunk) })
-  child.stderr.on('data', (chunk) => { serverOutput += String(chunk) })
   const base = `http://127.0.0.1:${serverPort}`
   const api = async (route, init) => {
     const response = await fetch(`${base}${route}`, init)
@@ -747,7 +744,6 @@ routesMaybe('(d) app-relative io defaults through the real settings pipeline + (
     child.kill('SIGINT')
     await waitUntil(() => child.exitCode !== null, 5_000, 'server exit').catch(() => child.kill('SIGKILL'))
     engine.close()
-    if (serverOutput.includes('minimax-instance CRASH')) console.log(serverOutput)
   }
 })
 

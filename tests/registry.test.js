@@ -1,7 +1,7 @@
 /** Optimization-registry test suite (VM harness, no engine needed).
  *
  * Six probes, in the Kreatine verifier tradition:
- *  (a) INERTNESS — with every entry unselected, buildMiniMaxWorkflow output
+ *  (a) INERTNESS — with every entry unselected, buildMonokaWorkflow output
  *      must be deep-equal to the pre-registry golden graphs
  *      (scripts/fixtures/registry-golden.json, snapshotted from the
  *      pre-registry builder over scripts/lib/registry-matrix.cjs). A new
@@ -60,7 +60,7 @@ const maybe = UPDATE_GOLDEN ? test.skip : test
 const updateMaybe = UPDATE_GOLDEN ? test : test.skip
 
 const workflowModule = loadTs('src/lib/workflow.ts')
-const { buildMiniMaxWorkflow, OFFICIAL_H3_SAMPLER, OFFICIAL_H3_SCHEDULER } = workflowModule
+const { buildMonokaWorkflow, OFFICIAL_H3_SAMPLER, OFFICIAL_H3_SCHEDULER } = workflowModule
 const graphModule = loadTs('src/lib/graph/index.ts')
 const {
   optimizationEntries, findOptimization, registerOptimization, detectOptimizations,
@@ -169,7 +169,7 @@ function goldenEntries() {
 function runInertness(entries) {
   let checked = 0
   for (const { name, options, models, uploads, info, graph } of entries) {
-    const rebuilt = buildMiniMaxWorkflow(options, models, uploads, info)
+    const rebuilt = buildMonokaWorkflow(options, models, uploads, info)
     assert.equal(canon(rebuilt), canon(graph), `inertness violated by config '${name}' — an unselected entry perturbed the base graph`)
     checked += 1
   }
@@ -189,7 +189,7 @@ function buildWithLora(loraName, { turbo = '4', info, turboLoader, mode = 'text'
     ...MATRIX_BY_NAME['turbo4-text'].options, turbo, mode,
     ...(turboLoader ? { turboLoader } : {}),
   }
-  return buildMiniMaxWorkflow(options, models, { images: [], videos: [], audios: [] }, info)
+  return buildMonokaWorkflow(options, models, { images: [], videos: [], audios: [] }, info)
 }
 
 let checks = 0
@@ -201,7 +201,7 @@ function ok(condition, message) {
 updateMaybe('--update-golden: re-snapshot the registry + krea2 fixtures from the CURRENT builders', () => {
   const entries = GOLDEN_MATRIX.map(({ name, options, models, uploads, info }) => ({
     name, options, models, uploads, ...(info ? { info } : {}),
-    graph: buildMiniMaxWorkflow(options, models, uploads, info),
+    graph: buildMonokaWorkflow(options, models, uploads, info),
   }))
   fs.writeFileSync(FIXTURE, JSON.stringify({ version: 1, generatedFrom: 'buildMiniMaxWorkflow (registry era)', entries }, null, 1) + '\n')
   const krea2Entries = KREA2_MATRIX.map(({ name, options, models }) => ({
@@ -266,12 +266,12 @@ maybe('(b) transform correctness', () => {
   // graph-side); stage-b-50 keeps the user's steps on the official pair.
   {
     const dmd = MATRIX_BY_NAME['vdn-dmd8']
-    const graph = buildMiniMaxWorkflow(dmd.options, dmd.models, { images: [], videos: [], audios: [] }, dmd.info)
+    const graph = buildMonokaWorkflow(dmd.options, dmd.models, { images: [], videos: [], audios: [] }, dmd.info)
     ok(graph['29'] && graph['29'].class_type === 'ApplyVDNH3' && graph['29'].inputs.apply_turbo_adapter === true, 'vdn dmd-8: ApplyVDNH3 with the distilled adapter at node 29')
     ok(graph['5'] === undefined && graph['14'].inputs.steps === 8, 'vdn dmd-8: no turbo loader, 8 steps')
     ok(graph['13'].inputs.sampler_name === 'er_sde' && graph['14'].inputs.scheduler === 'beta', 'vdn dmd-8: the pack\'s measured er_sde/beta pairing')
     const stageB = MATRIX_BY_NAME['vdn-stageb50']
-    const graph50 = buildMiniMaxWorkflow(stageB.options, stageB.models, { images: [], videos: [], audios: [] }, stageB.info)
+    const graph50 = buildMonokaWorkflow(stageB.options, stageB.models, { images: [], videos: [], audios: [] }, stageB.info)
     ok(graph50['29'].inputs.apply_turbo_adapter === false && graph50['14'].inputs.steps === 50, 'vdn stage-b-50: adapter off, the user\'s steps')
     ok(graph50['13'].inputs.sampler_name === OFFICIAL_H3_SAMPLER && graph50['14'].inputs.scheduler === OFFICIAL_H3_SCHEDULER, 'vdn stage-b-50: the official sampler pair')
   }
@@ -290,7 +290,7 @@ maybe('(b) transform correctness', () => {
   {
     const models = { ...BASE_MODELS, fl2vLora: 'minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors' }
     const options = { ...MATRIX_BY_NAME['turbo4-text'].options, turbo: '4', loraStrength: 0.75, experimentalSampling: true, sampler: 'euler', scheduler: 'beta' }
-    const graph = buildMiniMaxWorkflow(options, models, { images: [], videos: [], audios: [] }, FULL_INFO)
+    const graph = buildMonokaWorkflow(options, models, { images: [], videos: [], audios: [] }, FULL_INFO)
     ok(graph['5'].inputs.strength === 0.75, 'strength reaches the dedicated loader')
     ok(graph['13'].class_type === 'KSamplerSelect' && graph['13'].inputs.sampler_name === 'euler', 'experimental sampling wins over the pairing sampler node')
     ok(graph['14'].inputs.scheduler === 'beta' && graph['14'].inputs.steps === 4, 'experimental scheduler honored, pairing steps enforced')
@@ -299,18 +299,18 @@ maybe('(b) transform correctness', () => {
   // of the topology the workflows suite pins against the entry seam).
   {
     const lbh = MATRIX_BY_NAME['lbh3d-quality']
-    const graph = buildMiniMaxWorkflow(lbh.options, lbh.models, lbh.uploads)
+    const graph = buildMonokaWorkflow(lbh.options, lbh.models, lbh.uploads)
     ok(graph['90'].class_type === 'SplitSigmas' && graph['92'].class_type === 'MinimaxH3LatentUpscaler3D', 'LBH 3D entry inserts its block')
     ok(graph['15'].inputs.sigmas.join('|') === '90|0', 'LBH rewires the stage-1 sampler sigmas')
     ok(graph['99'].class_type === 'SaveVideo', 'LBH save node present')
     const rtx = MATRIX_BY_NAME['rtx-turbo4']
-    const rtxGraph = buildMiniMaxWorkflow(rtx.options, rtx.models, rtx.uploads)
+    const rtxGraph = buildMonokaWorkflow(rtx.options, rtx.models, rtx.uploads)
     ok(rtxGraph['82'].class_type === 'ImageScale' && rtxGraph['84'].class_type === 'SaveVideo', 'RTX entry inserts its block')
   }
   // Preview entry: same node-7 contract as the golden graph.
   {
     const preview = MATRIX_BY_NAME['preview-override']
-    const graph = buildMiniMaxWorkflow(preview.options, preview.models, preview.uploads, FULL_INFO)
+    const graph = buildMonokaWorkflow(preview.options, preview.models, preview.uploads, FULL_INFO)
     ok(graph['7'].class_type === 'MiniMaxH3PreviewOverride', 'preview entry inserts node 7')
     ok(graph['12'].inputs.model.join('|') === '7|0', 'guider consumes the preview-wrapped model')
     ok(graph['7'].inputs.vae_name === 'taeh3_decoder.safetensors', 'preview VAE passthrough')
@@ -515,7 +515,7 @@ maybe('(e) painless expansion: a hypothetical family, registry data only', () =>
       const inert = runInertness(goldenEntries())
       ok(inert === GOLDEN_MATRIX.length, 'golden matrix still inert with the hypothetical entry registered')
       const turbo4 = MATRIX_BY_NAME['turbo4-text']
-      const untouched = buildMiniMaxWorkflow(turbo4.options, turbo4.models, turbo4.uploads)
+      const untouched = buildMonokaWorkflow(turbo4.options, turbo4.models, turbo4.uploads)
       ok(untouched['5'].inputs.lora_name === turbo4.models.fl2vLora, 'an unrelated turbo render is untouched by the new entry')
     } finally {
       unregister()

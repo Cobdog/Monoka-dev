@@ -14,7 +14,7 @@
  * submission, and job bookkeeping.
  */
 import { createId } from './createId'
-import { buildMiniMaxWorkflow, frameIndexForSeconds, guideFrameWarning } from './workflow'
+import { buildMonokaWorkflow, frameIndexForSeconds, guideFrameWarning } from './workflow'
 import { vdnAvailability } from './graph'
 import { teDimClassRefusal } from './modelSelection'
 import { prepareImage, prepareReferenceImage } from './imageCrop'
@@ -341,7 +341,7 @@ export async function submitH3Render(
     ])
     if (io.cancellationRequests.current.has(localId)) throw new Error('Generation cancelled before submission.')
     const filenamePrefix = request.filenamePrefix ?? `video/MiniMax_H3_${Date.now()}`
-    const graph = buildMiniMaxWorkflow({
+    const graph = buildMonokaWorkflow({
       mode: request.mode,
       prompt: request.prompt,
       width: request.width,
