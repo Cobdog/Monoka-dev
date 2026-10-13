@@ -98,7 +98,7 @@ names an old value SOLELY to migrate/rewrite/refuse it. None is a read alias.
 |---|---|---|
 | `scripts/fixtures/engine-object-info.json` (55 lines: 108-5868) | captured REAL engine schema — display names, categories (`model/conditioning/minimax`), tooltips, enum values, python modules | carve-out §1.6 — regenerate only via `scripts/capture-engine-schemas.cjs` against the real engine; never hand-edit |
 | `scripts/capture-engine-schemas.cjs` | the capture class list ('MiniMax H3 LoRA Form Adapter' display name) | same capture contract |
-| `server/core.ts:~252,~2493,~2500` | preview-override detection regex `/minimax.*h3.*preview.*override/i`; Civitai `baseModels: 'MiniMax H3'` search param | engine node/vendor vocabulary, external truth |
+| `server/core.ts:2554` (regex), `:3553` (comment), `:3554` (Civitai param) | preview-override detection regex `/minimax.*h3.*preview.*override/i`; the official-contract comment; Civitai `baseModels: 'MiniMax H3'` search param | engine node/vendor vocabulary, external truth |
 | `src/lib/h3Stack.ts:10` | `_minimax_h3_`-class detection regex | filename/class detection (carve-out §1.2 rendering) |
 | `server/animation/models.ts` | `minimax_h3` alias + video-VAE patterns | model filename detection (carve-out §1.2) |
 | `src/lib/graph/turbo.ts` | official-FL2V label + `minimax[-_]h3[-_]fl2va/ref2va` patterns | official LoRA product name + filename detection |
@@ -114,11 +114,12 @@ the app. Grouped; all dated 2026-10-13.
 
 | Where | What |
 |---|---|
+| `src/lib/h3Submit.ts:343` | the DEFAULT OUTPUT filenamePrefix ``video/MiniMax_H3_${Date.now()}`` — **CONTROLLER RULING (2026-10-13 review): KEEP.** The prefix is the producing MODEL FAMILY's watermark on the artifact (the file IS a MiniMax H3 render) — lineage, unlike `Monoka_Joined_`/`Monoka_DIAGNOSTIC_*` which name app machinery |
 | `src/lib/modelOverrides.ts` / `src/lib/graph/engineFamilies.ts` / `src/lib/modelSelection.ts:160` / `tests/engine-families.test.js` | the family display labels ('MiniMax H3 video', 'MiniMax H3 image workbench', 'MiniMax Music 3', 'MiniMax H3', 'the MiniMax H3 stack') — carve-out §11#8 verbatim |
 | `server/llm/fragments.ts`, `server/datasets/vlm.ts` | LLM prompt text naming the family's official prompt contract |
 | `src/lib/promptComposer.ts`, `promptContracts.ts`, `promptCorpus.ts`, `promptLibraryStorage.ts`, `promptPolicies.ts`, `structuredPrompt.ts`, `src/lib/workspace.ts` | prompt-contract copy + comments ("official MiniMax…", "fal's MiniMax H3 prompting guide", the retired "MiniMax Create workspace" phrasing — vendor/product reference, flagged not renamed) |
 | `src/lib/music3Workflow.ts`, `music3Submit.ts` | Music3 builder comments, toasts, upstream template names (T4 ruling: family label kept) |
-| `src/lib/h3Submit.ts`, `graph/h3image.ts`, `graph/preview.ts`, `graph/types.ts`, `graph/ids.ts`, `src/lib/workflow.ts:11`, `shared/animation/graphs.ts`, `src/lib/preflight.ts`, `src/hooks/useGenerationQueue.ts` | refusal copy + comments naming the family ("One or more required MiniMax H3 model components…", the official-template citation, the T=1 VAE refusal, engine citations) |
+| `src/lib/h3Submit.ts` (other lines), `graph/h3image.ts`, `graph/preview.ts`, `graph/types.ts`, `graph/ids.ts`, `src/lib/workflow.ts:11`, `shared/animation/graphs.ts`, `src/lib/preflight.ts`, `src/hooks/useGenerationQueue.ts` | refusal copy + comments naming the family ("One or more required MiniMax H3 model components…", the official-template citation, the T=1 VAE refusal, engine citations) — h3Submit's :343 filenamePrefix has its own row above |
 | `src/canvas/BottomBar.tsx`, `Radar.tsx`, `PropertiesPanel.tsx`, `src/prototypes/protoStore.ts`, `src/views/SettingsView.tsx`, `src/components/PromptLibraryBrowser.tsx` | tooltips/labels naming the model ("Local engine connected — MiniMax H3 ready", "Qwen3-VL MiniMax encoder") |
 | `server/fetchCatalog.ts`, `benchmarks/data/catalog-snapshot.json`, `tests/fetcher.test.js` | license labels ("MiniMax H3 Community License") — external license vocabulary |
 | `package.json` (description) | "…for MiniMax H3 video, image and music generation…" — the H3 mention is lineage (R9 renamed only the name) |
@@ -126,7 +127,7 @@ the app. Grouped; all dated 2026-10-13.
 | `scripts/vision-e2e/scenarios.ts` | vision rubric asserting the UI's family labels (the rubric must match the carved-out copy) |
 | `scripts/vision-e2e/JUDGE.md` | "`<repo>` is the MINIMAX-DESKTOP checkout" — the locked folder name (§1.8) |
 | `CLAUDE.md:4` | the locked local folder name (§1.8) |
-| `e2e/canvas.spec.ts:~3203`, `e2e/app.spec.ts:~405` | NEGATIVE pins — the old `/create with minimax h3/i` heading must stay GONE (count 0); plus the 'MiniMax H3 Image Studio' pack-name pin (carve-out) |
+| `e2e/canvas.spec.ts:3203` (heading), `:1607` (refusal copy), `e2e/app.spec.ts:74` | NEGATIVE pins — the old `/create with minimax h3/i` heading must stay GONE (count 0); canvas.spec :1607 asserts the T3-era refusal text 'MiniMax H3 Image Studio' IS shown (the pin mirrors the carved-out refusal copy, §1.7 — it is a refusal-copy assertion, not a pack-name reference) |
 
 ### §2.4 — Camera upstream vocabulary (NyckM port, §1.5)
 
@@ -148,10 +149,10 @@ the app. Grouped; all dated 2026-10-13.
 | `tests/storage.test.js:538-539` | the legacy `x-minimax-token` header must 401 (T3's new-only negative pin) |
 | `tests/documents.test.js:~1299,~1394-1396` | the pre-rename `golden-1` provider seed + the wire's `Unknown provider "minimax"` 400 pin (zero back-compat) |
 | `tests/runtime.test.js:204-386` | the engine-patch PYTHON stubs (`minimax_payload`) + `comfy/ldm/minimax` path + the old-marker yaml rewrite-once fixture (T4 rider B) |
-| `tests/launcher.test.js:~640-650` | the seeded legacy `~/.minimax-studio` the real boot must move (rename-T5 (k)) |
-| `tests/lib/scratch.cjs:5,17` | the 1,201-dir incident record + the dated prefix note — period names verbatim per R2 (the contract wording now also names `bench-tests-`, 2026-10-13) |
+| `tests/launcher.test.js:27,:411,:418` | the seeded legacy `~/.minimax-studio` the real boot must move (rename-T5 (k)) |
+| `tests/lib/scratch.cjs:4,:14` | the 1,201-dir incident record + the dated prefix note — period names verbatim per R2 (the contract wording now also names `bench-tests-`, 2026-10-13) |
 | `scripts/fixtures/registry-golden.json:3` + `tests/registry.test.js` (writer) | `generatedFrom: "buildMiniMaxWorkflow (registry era)"` — dated provenance of what generated the fixture era; kept verbatim (byte-stable; a future deliberate regen may rename it, review-visible) |
-| `scripts/fixtures/registry-golden.json` (the other 28 lines) | the JSON-rendered engine enum `"type": "minimax"` + pack keys in the golden graphs | §1.3/§1.4 renderings inside the golden snapshot — the fixture is byte-parity contract |
+| `scripts/fixtures/registry-golden.json` (the other 28 lines) | the JSON-rendered engine enum `"type": "minimax"` + pack keys in the golden graphs (§1.3/§1.4 renderings; the fixture is byte-parity contract) |
 | `tests/workflows.test.js` (4) | lineage test titles ('official MiniMax prompt contracts', 'MiniMax Music 3'), the `minimax-h3` pack-key family loop, the Comfy-Org citation |
 | `tests/canvas.test.js`, `tests/h3img.test.js` (residual) | refusal-copy pins naming the family/pack (carve-out §1.7) |
 | `benchmarks/suites/*/build_*.py` (7) | graph builders carrying the engine enum `type: 'minimax'` (§1.4 Python rendering); dated measurement harness per R8 |
@@ -170,6 +171,30 @@ the app. Grouped; all dated 2026-10-13.
 - README.md `MINIMAX_START_CONFIG`/`MINIMAX_LAN_TOKEN`/`MINIMAX_TEST_BROWSER` → the `MONOKA_*` names (stale living-doc mentions, T4-review-routed).
 - `custom-nodes/minimax-lora-form-adapter/pyproject.toml` `PublisherId = "minimax-studio"` → `"monoka"` — the publisher of this first-party pack is the PROJECT (the old app name), not the model family; R3 pins only the adapter's directory/package name. Nothing consumes the value (`server/packVersioning.ts` reads version + `[tool.comfy]` presence only). T4 had flagged it "not in lane list — reported"; routed here by the T6 dispatch.
 - docs/architecture.md living pass: product name, diagram, `MONOKA_HOME`/`~/.monoka`, `window.monoka`, `monoka-media://` (with the migration history), `MONOKA_LAN_TOKEN`, `buildMonokaWorkflow` + a dated header note.
+
+### §2.7 — Outside the grep, recorded per triage (schema-audit D4/D5, 2026-10-13)
+
+These never appear in the exit-criterion residual (no `minimax` text in the
+cited lines, or hidden by path exclusion), but the controller's triage
+deferred them here for the committed record — the plan dir (.superpowers/)
+is untracked, so this file is where the decision lives.
+
+- **D4 — the write-only `assets` table is a deliberate NON-migration.** It is
+  in neither `RENAME_JSON_COLUMNS` nor `RENAME_TEXT_COLUMNS`
+  (server/db.ts:130-167), so any pre-rename `minimax-*` rows there persist
+  UNMIGRATED BY DESIGN — exactly what the zero-back-compat ruling requires
+  when the table has no read path: `server/repo.ts:91-98` upserts, zero
+  SELECTs anywhere in server/, so per R10 no DDL was proposed; a read
+  surface would be a NEW feature, at which point its columns get the rename
+  treatment in that feature's migration. Controller triage: KEEP as reserved
+  substrate. Do not "help" by adding assets columns to the rename wave
+  without a consumer.
+- **D5 — `prompts_fts` declared intent vs reality.** Its `source_id` /
+  `source_kind` columns were declared "for future producers (jobs, community
+  items)" (server/db.ts:128-131), but jobs actually index into `canvas_fts`
+  (migration 002's triggers) and only `saved_prompt` rows ever land in
+  `prompts_fts`. Harmless (contentless shape fine as-is); recorded so nobody
+  "fixes" it by double-indexing jobs into both FTS tables.
 
 ## §3 — Standing convention
 
