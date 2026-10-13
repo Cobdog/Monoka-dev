@@ -402,7 +402,7 @@ export const SCENARIOS: VisionScenario[] = [
         // fl2va: APPLIED. videoVae: names no registry file — the degraded
         // warning row (the legacy 'vae' key would migrate to the same place).
         // textEncoder/ref2va/merged/audioVae: unset — the auto labels.
-        modelOverrides: { minimax: { fl2va: mergeName, videoVae: 'a_vae_that_was_deleted.safetensors' } },
+        modelOverrides: { monoka: { fl2va: mergeName, videoVae: 'a_vae_that_was_deleted.safetensors' } },
       } } })
       await page.request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } })
       await page.goto('/')
@@ -414,14 +414,14 @@ export const SCENARIOS: VisionScenario[] = [
       // DOM truth before capture: the pick applied, the degradation warned,
       // the three per-lane checkpoint rows present (rq0lsax), and the
       // decoder-split VAE rows present with per-decoder auto labels (epdvxd4).
-      await expect(section.locator('[data-model-override-family="minimax"] [data-model-override-slot="fl2va"] select')).toHaveValue(mergeName, { timeout: 15_000 })
-      await expect(section.locator('[data-model-override-family="minimax"] [data-model-override-slot="ref2va"]')).toHaveCount(1)
-      await expect(section.locator('[data-model-override-family="minimax"] [data-model-override-slot="merged"]')).toHaveCount(1)
-      await expect(section.locator('[data-model-override-family="minimax"] [data-model-override-slot="checkpoint"]')).toHaveCount(0)
-      await expect(section.locator('[data-model-override-family="minimax"] [data-model-override-slot="videoVae"] [data-model-override-problem]')).toBeAttached()
-      await expect(section.locator('[data-model-override-family="minimax"] [data-model-override-slot="videoVae"]')).toHaveCount(1)
-      await expect(section.locator('[data-model-override-family="minimax"] [data-model-override-slot="audioVae"]')).toHaveCount(1)
-      await expect(section.locator('[data-model-override-family="minimax"] [data-model-override-slot="imageVae"]')).toHaveCount(0)
+      await expect(section.locator('[data-model-override-family="monoka"] [data-model-override-slot="fl2va"] select')).toHaveValue(mergeName, { timeout: 15_000 })
+      await expect(section.locator('[data-model-override-family="monoka"] [data-model-override-slot="ref2va"]')).toHaveCount(1)
+      await expect(section.locator('[data-model-override-family="monoka"] [data-model-override-slot="merged"]')).toHaveCount(1)
+      await expect(section.locator('[data-model-override-family="monoka"] [data-model-override-slot="checkpoint"]')).toHaveCount(0)
+      await expect(section.locator('[data-model-override-family="monoka"] [data-model-override-slot="videoVae"] [data-model-override-problem]')).toBeAttached()
+      await expect(section.locator('[data-model-override-family="monoka"] [data-model-override-slot="videoVae"]')).toHaveCount(1)
+      await expect(section.locator('[data-model-override-family="monoka"] [data-model-override-slot="audioVae"]')).toHaveCount(1)
+      await expect(section.locator('[data-model-override-family="monoka"] [data-model-override-slot="imageVae"]')).toHaveCount(0)
       await expect(section.locator('[data-model-override-family="h3image"] [data-model-override-slot="imageVae"]')).toHaveCount(1)
       // Pin the card to the TOP of the dock body before capture: the
       // toBeAttached-style checks never scroll, and a minimal scrollIntoView
