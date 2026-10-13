@@ -554,7 +554,7 @@ routesMaybe('(d) app-relative io defaults through the real settings pipeline + (
       // videoVae/audioVae/imageVae posted as auto (dropped at save) and the
       // legacy vae pick stayed a key no family exposes anymore.
       const legacyOverrides = await api('/api/lan/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: { ...fresh, modelOverrides: {
-        minimax: { checkpoint: 'legacy-merge.safetensors', fl2va: 'explicit-fl2va.safetensors', vae: '  ' },
+        monoka: { checkpoint: 'legacy-merge.safetensors', fl2va: 'explicit-fl2va.safetensors', vae: '  ' },
         h3image: { checkpoint: 'legacy-image.safetensors', vae: 'legacy-h3-video-vae.safetensors', videoVae: 'explicit-workbench-video-vae.safetensors' },
         music3: { vae: 'legacy-dav.safetensors' },
         // A REMOVED family's stored picks (acestep cut 2026-09-21, nn5ld47):
@@ -562,10 +562,10 @@ routesMaybe('(d) app-relative io defaults through the real settings pipeline + (
         acestep: { vae: 'legacy-ace-audio-vae.safetensors', imageVae: 'not-a-real-pick.safetensors' },
       } } }) })
       const normalized = legacyOverrides.body.settings.modelOverrides ?? {}
-      ok(normalized.minimax?.fl2va === 'explicit-fl2va.safetensors', `minimax: an explicit lane pick wins its lane (got ${JSON.stringify(normalized.minimax)})`)
-      ok(normalized.minimax?.ref2va === 'legacy-merge.safetensors', 'minimax: the legacy pick fills the UNSET lane')
-      ok(!('checkpoint' in (normalized.minimax ?? {})), 'minimax: the consumed legacy key never persists')
-      ok(!('vae' in (normalized.minimax ?? {})), 'minimax: a blank slot drops to auto')
+      ok(normalized.monoka?.fl2va === 'explicit-fl2va.safetensors', `monoka: an explicit lane pick wins its lane (got ${JSON.stringify(normalized.monoka)})`)
+      ok(normalized.monoka?.ref2va === 'legacy-merge.safetensors', 'monoka: the legacy pick fills the UNSET lane')
+      ok(!('checkpoint' in (normalized.monoka ?? {})), 'monoka: the consumed legacy key never persists')
+      ok(!('vae' in (normalized.monoka ?? {})), 'monoka: a blank slot drops to auto')
       ok(normalized.h3image?.fl2va === 'legacy-image.safetensors' && normalized.h3image?.ref2va === 'legacy-image.safetensors', 'h3image: the legacy pick lands on BOTH lanes (behavior-preserving)')
       ok(normalized.h3image?.videoVae === 'explicit-workbench-video-vae.safetensors', 'h3image: an explicit videoVae pick wins over the legacy vae value')
       ok(!('vae' in (normalized.h3image ?? {})), 'h3image: the consumed legacy vae key never persists')
@@ -573,7 +573,7 @@ routesMaybe('(d) app-relative io defaults through the real settings pipeline + (
       ok(normalized.acestep?.audioVae === undefined, 'acestep (removed 2026-09-21): a dead family\'s legacy vae pick DROPS — it never migrates to audioVae')
       ok(normalized.acestep?.imageVae === 'not-a-real-pick.safetensors', 'acestep (removed): an imageVae pick persists shape-wise — never a crash, and the renderer registry refuses it as an unknown family at consult')
       const reread = (await api('/api/lan/settings')).body.settings.modelOverrides ?? {}
-      ok(reread.minimax?.ref2va === 'legacy-merge.safetensors' && !('checkpoint' in (reread.minimax ?? {})), 'the migrated shape is what persists on disk')
+      ok(reread.monoka?.ref2va === 'legacy-merge.safetensors' && !('checkpoint' in (reread.monoka ?? {})), 'the migrated shape is what persists on disk')
       await api('/api/lan/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: fresh }) })
 
       // (tmz8vh7, 2026-09-20) The decoder-class routing + stored-wedge
@@ -586,12 +586,12 @@ routesMaybe('(d) app-relative io defaults through the real settings pipeline + (
       // with the T=1 message.
       const t1File = 'minimax_h3_t1_image_vae_step1597.safetensors'
       const t1Overrides = await api('/api/lan/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: { ...fresh, modelOverrides: {
-        minimax: { vae: t1File },
+        monoka: { vae: t1File },
         h3image: { vae: t1File },
         music3: { vae: 'a-video-vae.safetensors' },
       } } }) })
       const t1norm = t1Overrides.body.settings.modelOverrides ?? {}
-      ok(!t1norm.minimax?.videoVae && !('vae' in (t1norm.minimax ?? {})), `minimax: a T=1-named legacy pick has no legal slot — dropped, never wedged onto videoVae (got ${JSON.stringify(t1norm.minimax)})`)
+      ok(!t1norm.monoka?.videoVae && !('vae' in (t1norm.monoka ?? {})), `monoka: a T=1-named legacy pick has no legal slot — dropped, never wedged onto videoVae (got ${JSON.stringify(t1norm.monoka)})`)
       ok(t1norm.h3image?.imageVae === t1File && !t1norm.h3image?.videoVae, `h3image: a T=1-named legacy pick routes to imageVae — the one legal slot (got ${JSON.stringify(t1norm.h3image)})`)
       ok(!t1norm.music3?.audioVae, `music3: a video-named legacy pick on an audio family has no legal slot — dropped (got ${JSON.stringify(t1norm.music3)})`)
       await api('/api/lan/settings', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings: fresh }) })

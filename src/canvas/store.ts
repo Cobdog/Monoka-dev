@@ -169,10 +169,10 @@ function overrideOutcomeFor(family: ModelFamilyId, chainOverrides?: ModelOverrid
  *  Overrides apply through the seam — inference itself is untouched. */
 function selectionFor(turbo: 'off' | '4' | '8', family: string, chainOverrides?: ModelOverrideSlots): ModelSelection {
   const { models } = engineFacts()
-  return resolveModels('minimax',
+  return resolveModels('monoka',
     inferSelections(models, turbo, family || undefined),
     models,
-    familyOverrides('minimax', chainOverrides),
+    familyOverrides('monoka', chainOverrides),
   ).selection
 }
 
@@ -1216,7 +1216,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
             info: facts.info,
             clientId: engineBridge.clientId,
             h3PreviewOverrideNode: findH3PreviewOverrideNode(facts.info) || undefined,
-            modelOverrides: overrideOutcomeFor('minimax', context.settings.modelOverrides),
+            modelOverrides: overrideOutcomeFor('monoka', context.settings.modelOverrides),
           },
           {
             notify: (tone, text) => get().toast(tone === 'neutral' ? 'neutral' : tone, text),
@@ -1588,7 +1588,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       // it took and WHY — the triage transcript's first line for any render.
       dbg('route', {
         chainId, mediaType: settings.mediaType,
-        family: settings.mediaType === 'audio' ? `audio:${settings.audio.engine}` : settings.mediaType === 'image' ? `image:${settings.imageEngine}` : 'minimax-video',
+        family: settings.mediaType === 'audio' ? `audio:${settings.audio.engine}` : settings.mediaType === 'image' ? `image:${settings.imageEngine}` : 'monoka-video',
         mode: effectiveMode(settings),
         refs: referenceMedia.length + referenceVideos.length + referenceAudios.length,
         frames: Boolean(firstFrame || lastFrame),
@@ -1701,7 +1701,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
           info: facts.info,
           clientId: engineBridge.clientId,
           h3PreviewOverrideNode: findH3PreviewOverrideNode(facts.info) || undefined,
-          modelOverrides: overrideOutcomeFor('minimax', settings.modelOverrides),
+          modelOverrides: overrideOutcomeFor('monoka', settings.modelOverrides),
         },
         {
           notify: (tone, text) => get().toast(tone === 'neutral' ? 'neutral' : tone, text),
@@ -1773,7 +1773,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         modelReady: facts.settings ? h3StackReady({ selection, mode: request.mode, turbo: settings.turbo, vdn: settings.vdn, info: facts.info }) : false,
         selection,
         h3PreviewOverrideNode: findH3PreviewOverrideNode(facts.info) || undefined,
-        modelOverrides: overrideOutcomeFor('minimax', settings.modelOverrides),
+        modelOverrides: overrideOutcomeFor('monoka', settings.modelOverrides),
         info: facts.info,
       })
     },
@@ -2362,7 +2362,7 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         useCanvasStore.setState((current) => ({ chainJobs: { ...current.chainJobs, [tile.id]: jobId } }))
         useJobsStore.getState().setJobs((jobs) => [{
           id: jobId, mode: 'text', prompt: tile.prompt, createdAt: Date.now(), status: 'queued', progress: 0,
-          width: 1344, height: 768, duration: 6, provider: 'minimax', mediaType: 'video', manifest: { canvasPhase2Mock: true },
+          width: 1344, height: 768, duration: 6, provider: 'monoka', mediaType: 'video', manifest: { canvasPhase2Mock: true },
         }, ...jobs.filter((job) => job.id !== jobId)])
         useCanvasStore.getState().recompute()
         return { ok: true, chainId: tile.id, jobId }
@@ -2378,7 +2378,7 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         useCanvasStore.setState((current) => ({ chainJobs: { ...current.chainJobs, [tile.id]: jobId } }))
         useJobsStore.getState().setJobs((jobs) => [{
           id: jobId, mode: 'text', prompt: tile.prompt, createdAt: Date.now(), status: 'running', progress: 4, progressLabel: 'Waiting for ComfyUI to start', promptId: 'e2e-live-1',
-          width: 1344, height: 768, duration: 6, provider: 'minimax', mediaType: 'video', manifest: { canvasPhase2Mock: true },
+          width: 1344, height: 768, duration: 6, provider: 'monoka', mediaType: 'video', manifest: { canvasPhase2Mock: true },
         }, ...jobs.filter((job) => job.id !== jobId)])
         useCanvasStore.getState().recompute()
         return { ok: true, chainId: tile.id, jobId }
@@ -2711,7 +2711,7 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         modelReady: facts.settings ? h3StackReady({ selection, mode: request.mode, turbo: settings.turbo, vdn: settings.vdn, info: facts.info }) : false,
         selection,
         h3PreviewOverrideNode: findH3PreviewOverrideNode(facts.info) || undefined,
-        modelOverrides: overrideOutcomeFor('minimax', spec.modelOverrides),
+        modelOverrides: overrideOutcomeFor('monoka', spec.modelOverrides),
         info: facts.info,
       })
       // The graph builds regardless of the engine — construction is pure.

@@ -239,7 +239,7 @@ export function validateH3Render(request: H3RenderRequest, facts: Pick<H3SubmitF
   // it here with the named reason (the maintainer's 2026-09-22 session:
   // mat1 171x2560 × mat2 5120x5376 at preprocess_text_embeds, 27 s into a
   // real render). Correct picks pass untouched — a guard, not a reroute.
-  const teClassRefusal = facts.selection?.textEncoder ? teDimClassRefusal('minimax', facts.selection.textEncoder) : null
+  const teClassRefusal = facts.selection?.textEncoder ? teDimClassRefusal('monoka', facts.selection.textEncoder) : null
   if (teClassRefusal) return `Model resolution refused — textEncoder: ${teClassRefusal}`
   if (request.livePreview.enabled && request.livePreview.mode === 'h3-override' && !facts.h3PreviewOverrideNode) {
     return 'MiniMax H3 animated preview is selected, but its Preview Override node was not detected. Install or enable the custom node, restart ComfyUI, then click the Local engine status to refresh.'
@@ -280,7 +280,7 @@ export async function submitH3Render(
 ): Promise<{ ok: true; jobId: string } | { ok: false; message: string }> {
   const refusal = validateH3Render(request, facts)
   if (refusal) {
-    dbg('submit', { verdict: 'refused-at-validate', family: 'minimax', mode: request.mode, reason: refusal.slice(0, 160) })
+    dbg('submit', { verdict: 'refused-at-validate', family: 'monoka', mode: request.mode, reason: refusal.slice(0, 160) })
     io.notify('error', refusal)
     return { ok: false, message: refusal }
   }
@@ -414,7 +414,7 @@ export async function submitH3Render(
     } else {
       io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'running', progress: 4, progressLabel: 'Waiting for ComfyUI to start', manifest, graph } : item))
       io.notify('success', 'Generation added to the local ComfyUI queue.')
-      dbg('submit', { verdict: 'submitted', family: 'minimax', mode: request.mode, jobId: localId, promptId: response.prompt_id, nodes: Object.keys(graph).length })
+      dbg('submit', { verdict: 'submitted', family: 'monoka', mode: request.mode, jobId: localId, promptId: response.prompt_id, nodes: Object.keys(graph).length })
     }
     return { ok: true, jobId: localId }
   } catch (error) {

@@ -108,12 +108,38 @@ function readJson(key: string): unknown {
   }
 }
 
+/** The one-time copy's legacy-value rewrites (rename-sweep T1, 2026-10-12).
+ *  localStorage jobs recorded pre-rename carry provider 'minimax',
+ *  minimax-media:// URLs, and comfy-input:minimax-* references; the server's
+ *  schema (migration 008) accepts only the new vocabulary, so the copy
+ *  rewrites the SAME key/prefix targets the db migration rewrites — this is
+ *  one-time migration logic on a COPY (the localStorage original is never
+ *  touched), the one legacy-tolerant code the zero-back-compat ruling
+ *  allows. Filenames, engine enums, and labels ride through untouched. */
+function rewriteLegacyMediaRef(value: string): string {
+  let out = value
+  if (out.startsWith('minimax-media://')) out = `monoka-media://${out.slice('minimax-media://'.length)}`
+  return out.replace(/(^|[:/?=&]|%3D|%26)minimax-(desktop|mobile-references|mobile)(?=$|[/&]|%26|%2F)/g, (_match, lead: string, folder: string) => `${lead}monoka-${folder}`)
+}
+
+function rewriteLegacyJobValues(job: Record<string, unknown>): void {
+  if (job.provider === 'minimax') job.provider = 'monoka'
+  const manifest = job.manifest as Record<string, unknown> | undefined
+  if (manifest && typeof manifest === 'object' && manifest.provider === 'minimax') manifest.provider = 'monoka'
+  for (const field of ['outputUrl', 'localOutputPath'] as const) {
+    const value = job[field]
+    if (typeof value === 'string') job[field] = rewriteLegacyMediaRef(value)
+  }
+}
+
 /** Normalizes a legacy job to the persisted shape the API validates (old
  *  records can predate width/height); the localStorage original is never
  *  touched — this works on a copy. */
 function normalizedJob(entry: unknown): GenerationJob | null {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
-  const job = entry as Record<string, unknown>
+  const job = { ...(entry as Record<string, unknown>) }
+  if (job.manifest && typeof job.manifest === 'object') job.manifest = { ...(job.manifest as Record<string, unknown>) }
+  rewriteLegacyJobValues(job)
   const id = typeof job.id === 'string' ? job.id : ''
   if (!id) return null
   const numberOr = (value: unknown, fallback: number) => (typeof value === 'number' && Number.isFinite(value) ? value : fallback)

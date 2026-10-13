@@ -612,7 +612,8 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
         last_verified_at = excluded.last_verified_at, missing = excluded.missing
     `),
     blob: db.prepare('SELECT * FROM canvas_blob WHERE path = ?'),
-    blobsByHash: db.prepare('SELECT * FROM canvas_blob WHERE content_hash = ?'),
+    // (schema audit D3, rename-sweep T1) The by-hash lookup had zero callers
+    // — removed; canvas_blob.content_hash needs no index.
     listBlobs: db.prepare('SELECT * FROM canvas_blob'),
     listMissingBlobs: db.prepare('SELECT * FROM canvas_blob WHERE missing = 1'),
     setBlobMissing: db.prepare('UPDATE canvas_blob SET missing = ?, last_verified_at = ? WHERE path = ?'),

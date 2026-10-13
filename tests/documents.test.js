@@ -171,7 +171,11 @@ test('(a) migration: golden fixture N→N+1, fresh boot shape, 004 stray healing
     prompts: fixtureDb.prepare('SELECT * FROM saved_prompts').all(),
     projects: fixtureDb.prepare('SELECT * FROM projects').all(),
   }))
-  const applied = migrateDatabase(fixtureDb) // applies 002..007 (one-way, append-only)
+  // (rename-sweep T1, 2026-10-12) The byte-identity contract is about 002:
+  // scope the migration to the pre-rename prefix so the golden hash still
+  // means "002 never mangles legacy rows"; the monoka wave (008+) applies
+  // after, and its renames are pinned below + by the rename-migration suite.
+  const applied = migrateDatabase(fixtureDb, migrations.slice(0, 7)) // applies 002..007 (one-way, append-only)
   check(applied === 6, `golden fixture migration applies exactly 002 + 003 + 004 + 005 + 006 + 007 (got ${applied})`)
   const goldenAfter = sha256(JSON.stringify({
     jobs: fixtureDb.prepare('SELECT id, provider, media_type, mode, status, prompt, params_json, created_at, updated_at, error, width, height, duration, output_url FROM jobs').all(),
@@ -186,6 +190,10 @@ test('(a) migration: golden fixture N→N+1, fresh boot shape, 004 stray healing
   }
   const fixtureColumns = fixtureDb.prepare('PRAGMA table_info(jobs)').all().map((column) => column.name)
   for (const column of ['gpu_queue_state', 'plan_ref', 'failure_json']) check(fixtureColumns.includes(column), `jobs extension adds ${column}`)
+  // The monoka wave rides on top of the same fixture: 5 more rows, and the
+  // golden row's provider migrates forward (the wave's own contract).
+  check(migrateDatabase(fixtureDb) === 5, 'the monoka wave (008-012) applies on top of the pre-rename fixture')
+  check(fixtureDb.prepare("SELECT provider FROM jobs WHERE id = 'golden-1'").get().provider === 'monoka', 'the golden row\'s provider rides the rename wave')
   check(migrateDatabase(fixtureDb) === 0, 're-running migrations is a no-op (idempotent, one-way)')
   // --- migration 005: the per-chain, PER-KIND revision columns (R1 arrival-order gates; C-1 split them) ---
   const chainColumns = fixtureDb.prepare('PRAGMA table_info(canvas_chain)').all().map((column) => column.name)
@@ -216,7 +224,7 @@ test('(a) migration: golden fixture N→N+1, fresh boot shape, 004 stray healing
     strayDb.prepare("INSERT INTO canvas_take (id, output_id, artifacts_json, created_at) VALUES ('t-new', 'o1', '[]', 400)").run()
     strayDb.prepare("INSERT INTO canvas_take (id, output_id, artifacts_json, created_at) VALUES ('t-clean', 'o2', '[]', 500)").run()
     const strayApplied = migrateDatabase(strayDb)
-    check(strayApplied === 5, `the stray fixture applies exactly 003 + 004 + 005 + 006 + 007 (got ${strayApplied})`)
+    check(strayApplied === 10, `the stray fixture applies exactly 003..012 incl. the monoka wave (got ${strayApplied})`)
     const canonicalOf = (outputId) => strayDb.prepare('SELECT id FROM canvas_take WHERE output_id = ? AND superseded_by IS NULL').all(outputId).map((row) => row.id)
     check(JSON.stringify(canonicalOf('o1')) === JSON.stringify(['t-new']), `migration 004 heals strays to the newest take (got ${JSON.stringify(canonicalOf('o1'))})`)
     check(strayDb.prepare("SELECT superseded_by FROM canvas_take WHERE id = 't-mid'").get().superseded_by === 't-new', 'the healed stray is superseded BY the winner (marker semantics match appendTake)')
@@ -923,12 +931,23 @@ test('correctness wave 1 part 2: torn-copy repair, poisoned-list isolation, lock
     const ftsProject = await api.post('/api/lan/documents/projects', { name: 'Kind filter' })
     const ftsChain = await api.post('/api/lan/documents/chains', { projectId: ftsProject.body.project.id, inputSpec: { fresh: { prompt: 'needle-in-a-haystack unique chain prompt zqx' } } })
     for (let index = 0; index < 30; index += 1) {
-      await api.post('/api/lan/jobs', { jobs: [{ id: `fts-noise-${index}`, provider: 'minimax', mode: 'text', status: 'completed', prompt: 'needle', createdAt: Date.now() + index, width: 64, height: 64, duration: 1 }] })
+      await api.post('/api/lan/jobs', { jobs: [{ id: `fts-noise-${index}`, provider: 'monoka', mode: 'text', status: 'completed', prompt: 'needle', createdAt: Date.now() + index, width: 64, height: 64, duration: 1 }] })
     }
     // limit 1: pre-fix, the single slot goes to a short noise job and the
     // kind filter empties the result — the chain exists beyond the cut.
     const chainHits = await api.get(`/api/lan/documents/search?${new URLSearchParams({ q: 'needle', kind: 'chain', limit: '1' })}`)
     check(chainHits.status === 200 && chainHits.body.results.length === 1 && chainHits.body.results[0].source_id === ftsChain.body.chain.id, `kind-filtered search finds the chain past 30 noisier job rows at limit 1 (got ${JSON.stringify(chainHits.body.results)})`)
+
+    // (rename-sweep T1, schema audit C6) The status/provider vocabularies are
+    // closed at the WIRE, matching the schema CHECKs: a bogus status and the
+    // pre-rename provider name 400 with the named problem; a retired-but-
+    // known provider (historical data truth) still syncs.
+    const badStatus = await api.post('/api/lan/jobs', { jobs: [{ id: 'wire-bad-status', mode: 'text', status: 'bogus', prompt: 'x', createdAt: 1, width: 1, height: 1, duration: 1 }] })
+    check(badStatus.status === 400 && /status must be one of/.test(String(badStatus.body.error)), `an out-of-vocabulary status 400s at the wire (got ${badStatus.status}: ${badStatus.body.error})`)
+    const badProvider = await api.post('/api/lan/jobs', { jobs: [{ id: 'wire-bad-provider', provider: 'minimax', mode: 'text', status: 'completed', prompt: 'x', createdAt: 1, width: 1, height: 1, duration: 1 }] })
+    check(badProvider.status === 400 && /Unknown provider "minimax"/.test(String(badProvider.body.error)), `the pre-rename provider name 400s at the wire, zero back-compat (got ${badProvider.status}: ${badProvider.body.error})`)
+    const retiredProvider = await api.post('/api/lan/jobs', { jobs: [{ id: 'wire-retired-provider', provider: 'ltx25', mode: 'text', status: 'failed', prompt: 'x', createdAt: 1, width: 1, height: 1, duration: 1 }] })
+    check(retiredProvider.status === 200, `a retired-but-known provider still syncs (historical data truth; got ${retiredProvider.status})`)
   }
 })
 

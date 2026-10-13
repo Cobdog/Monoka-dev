@@ -151,8 +151,8 @@ export function h3StackReady(query: H3StackReadinessQuery): boolean {
 }
 
 export function h3StackReport(models: ModelFile[], overrides?: ModelOverrideSlots, info?: ObjectInfo | Record<string, unknown>) {
-  const quality = resolveModels('minimax', inferSelections(models, 'off'), models, overrides, { global: overrides })
-  const turbo = resolveModels('minimax', inferSelections(models, '8'), models, overrides, { global: overrides })
+  const quality = resolveModels('monoka', inferSelections(models, 'off'), models, overrides, { global: overrides })
+  const turbo = resolveModels('monoka', inferSelections(models, '8'), models, overrides, { global: overrides })
   const byTier: Record<'off' | '8', { selection: ModelSelection }> = { off: quality, '8': turbo }
   const rows: H3StackSlotRow[] = stackSlots.map((definition) => {
     const selected = byTier[definition.tier].selection[definition.field]
@@ -163,7 +163,7 @@ export function h3StackReport(models: ModelFile[], overrides?: ModelOverrideSlot
     // dimension-class guard on the RESOLVED selection — best-available can
     // resolve a 4B-class encoder NON-EMPTY (the crash class the old
     // readiness could not see). The row narrates the same verdict.
-    const teRefusal = definition.overrideSlot === 'textEncoder' && selected ? teDimClassRefusal('minimax', selected) : null
+    const teRefusal = definition.overrideSlot === 'textEncoder' && selected ? teDimClassRefusal('monoka', selected) : null
     const refusal = refused ? refused.reason : (teRefusal ?? undefined)
     const row: H3StackSlotRow = {
       label: definition.label,

@@ -156,7 +156,7 @@ function versionToken(value: string | undefined): string {
  *  names, profile ids) pass a one-token shape check instead of the prose
  *  sanitizer: a whitespace-free token cannot carry prompt semantics (the
  *  leak risk is multi-word content), and sanitizing them would eat real
- *  values the report exists to show ('minimax', 'Canny', 'default'). These
+ *  values the report exists to show ('monoka', 'Canny', 'default'). These
  *  values originate in the app's own state or as engine class identifiers;
  *  anything multi-word still goes through the sanitizer. */
 function codeToken(value: string | undefined, fallback = ''): string {
@@ -250,7 +250,7 @@ export function buildDiagnosticReport(input: DiagnosticReportInput): string {
       const graphText = graph
         ? ` graph=${codeToken(graph.family, '-')}/${codeToken(graph.topologyHash, '-')}${typeof graph.seed === 'number' ? ` seed=${graph.seed}` : ''}${typeof graph.steps === 'number' ? ` steps=${graph.steps}` : ''}${graph.turbo ? ` turbo=${codeToken(graph.turbo)}` : ''}${graph.sampler ? ` sampler=${codeToken(graph.sampler)}` : ''}${graph.scheduler ? ` scheduler=${codeToken(graph.scheduler)}` : ''}${graph.resolution ? ` res=${codeToken(graph.resolution)}` : ''}${typeof graph.frameCount === 'number' ? ` frames=${graph.frameCount}` : ''}${graph.references ? ` refs=${codeToken(graph.references)}` : ''}`
         : ''
-      push(`  ${iso(failure.at)} [${bucket.id}] ${codeToken(failure.provider, 'minimax')}/${codeToken(failure.mode, 'text')}${failure.nodeType ? ` node=${codeToken(failure.nodeType)}` : ''} ref=${codeToken(failure.id)}${graphText} reason=${sanitizeErrorMessage(failure.reason) || 'unavailable'}`)
+      push(`  ${iso(failure.at)} [${bucket.id}] ${codeToken(failure.provider, 'monoka')}/${codeToken(failure.mode, 'text')}${failure.nodeType ? ` node=${codeToken(failure.nodeType)}` : ''} ref=${codeToken(failure.id)}${graphText} reason=${sanitizeErrorMessage(failure.reason) || 'unavailable'}`)
     }
     if (input.failures.length > rows.length) push(`  … ${input.failures.length - rows.length} older failure(s) omitted`)
   }
