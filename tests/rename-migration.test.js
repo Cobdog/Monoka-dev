@@ -270,7 +270,7 @@ test('(1) the surgical rule: targets rewrite, lineage survives byte-identically'
 
   // The client record's manifest lineage: filenames byte-identical.
   check(params.manifest.models.videoVae.name === CARVEOUT_VAE, 'manifest model filename byte-identical')
-  check(params.manifest.engine.app === 'MiniMax Studio', 'display label untouched (carve-out)')
+  check(params.manifest.engine.app === 'MiniMax Studio', 'the stored engine.app label is PRE-rename data the migration never rewrites (migration scope, not a carve-out — §11.8 covers model-family display labels only)')
 })
 
 test('(2) workspace / projects / canvas / animation surfaces migrate', () => {
