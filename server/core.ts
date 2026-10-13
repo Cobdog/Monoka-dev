@@ -28,6 +28,7 @@ import { CORE_RENDER_CLASSES, missingCoreNodeClasses, preflightRefusal } from '.
 import { normalizeStoredOverrideSlots, OVERRIDE_SLOTS, type ModelOverrideSlotName } from '../src/lib/modelOverrides'
 import type { ExternalEngineStatus } from '../src/types'
 import { createStudioRepository, type StudioRepository } from './repo'
+import { JOB_PROVIDER_VALUES, JOB_STATUS_VALUES } from './db'
 import { CANVAS_SCHEMA_VERSION, CanvasSchemaVersionError, DocumentsRuleError, PlanConflictError } from './documents'
 import { exportProjectArchive, importProjectArchive } from './documentArchive'
 import { createRealtimeHub, type RealtimeHub } from './realtime'
@@ -247,12 +248,23 @@ async function readJson(request: IncomingMessage, maximumBytes = 36_000_000) {
 
 /** Shape-first validation for persisted job records (wave 1 storage): the
  *  scalar projection columns must be present with the right primitive types;
- *  everything else rides inside params_json untouched. Mirrors GenerationJob. */
+ *  everything else rides inside params_json untouched. Mirrors GenerationJob.
+ *  (rename-sweep T1 + schema audit C6) The status and provider vocabularies
+ *  are CLOSED at the wire — the same closed sets the schema CHECKs hold
+ *  (server/db.ts, migration 008): a status outside the client union or a
+ *  provider outside the known families (current + retired-but-persisted)
+ *  400s here instead of dying at the constraint. */
+const JOB_STATUS_SET: ReadonlySet<string> = new Set(JOB_STATUS_VALUES)
+const JOB_PROVIDER_SET: ReadonlySet<string> = new Set(JOB_PROVIDER_VALUES)
+
 function isStoredJobShape(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const job = value as Record<string, unknown>
+  // '' keeps the old silent coercion (jobParams writes it as NULL — it was
+  // never a provider value, and refusing it would strand a legacy copy).
+  if (job.provider !== undefined && job.provider !== null && job.provider !== '' && (typeof job.provider !== 'string' || !JOB_PROVIDER_SET.has(job.provider))) return false
   return typeof job.id === 'string' && job.id.length > 0 && job.id.length <= 200
-    && typeof job.mode === 'string' && typeof job.status === 'string' && typeof job.prompt === 'string'
+    && typeof job.mode === 'string' && typeof job.status === 'string' && JOB_STATUS_SET.has(job.status) && typeof job.prompt === 'string'
     && typeof job.createdAt === 'number' && Number.isFinite(job.createdAt)
     && typeof job.width === 'number' && Number.isFinite(job.width)
     && typeof job.height === 'number' && Number.isFinite(job.height)
@@ -1712,7 +1724,20 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           const body = await readJson(request, 12_000_000)
           const jobs = Array.isArray(body.jobs) ? body.jobs : []
           if (jobs.length < 1 || jobs.length > 100) return sendJson(response, 400, { error: 'Provide between 1 and 100 jobs per request.' })
-          if (!jobs.every((job) => isStoredJobShape(job))) return sendJson(response, 400, { error: 'Each job needs id, mode, status, prompt, createdAt, width, height, and duration.' })
+          if (!jobs.every((job) => isStoredJobShape(job))) {
+            // (rename-sweep T1, C6) Name the vocabulary problem when that is
+            // what it is — a closed-set status or provider is a contract the
+            // client can act on, not a shape typo.
+            const offender = (jobs as Array<Record<string, unknown>>).find((job) => job && typeof job === 'object'
+              && ((typeof job.status === 'string' && !JOB_STATUS_SET.has(job.status)) || (typeof job.provider === 'string' && !JOB_PROVIDER_SET.has(job.provider))))
+            if (offender && typeof offender.status === 'string' && !JOB_STATUS_SET.has(offender.status)) {
+              return sendJson(response, 400, { error: `Job status must be one of ${JOB_STATUS_VALUES.join('|')} (got "${String(offender.status).slice(0, 40)}").` })
+            }
+            if (offender && typeof offender.provider === 'string' && !JOB_PROVIDER_SET.has(offender.provider)) {
+              return sendJson(response, 400, { error: `Unknown provider "${String(offender.provider).slice(0, 40)}" — the known families are ${JOB_PROVIDER_VALUES.join(', ')}.` })
+            }
+            return sendJson(response, 400, { error: 'Each job needs id, mode, status, prompt, createdAt, width, height, and duration.' })
+          }
           return sendJson(response, 200, { saved: studioRepo.upsertJobs(jobs) })
         }
         if (url.pathname === '/api/lan/projects' && request.method === 'GET') {

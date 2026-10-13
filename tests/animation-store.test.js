@@ -211,18 +211,20 @@ function openScratchStudio(label) {
 // (a) migration 006
 // ---------------------------------------------------------------------------
 test('(a) migration 006 + 007 — tables, indexes, the append-only trigger, the continuation column', () => {
-  assert.equal(migrations.length, 7, 'the migration list carries seven entries')
+  // (rename-sweep T1, 2026-10-12) the wave appended 008-012; positions are
+  // stable (append-only) — 006/007 stay at index 5/6.
+  assert.equal(migrations.length, 12, 'the migration list carries twelve entries (7 pre-rename + the 008-012 monoka wave)')
   assert.equal(migrations[5].id, 6)
   assert.equal(migrations[5].name, '006-animation-documents')
   assert.equal(migrations[5].up, upAnimationTables, 'migration 6 runs upAnimationTables')
   assert.equal(migrations[6].id, 7)
   assert.equal(migrations[6].name, '007-animation-continuation')
   assert.equal(migrations[6].up, upAnimationContinuation, 'migration 7 runs upAnimationContinuation')
-  assert.equal(applied, 7, 'a fresh boot applies all seven migrations')
-  assert.equal(Number(db.pragma('user_version', { simple: true })), 7)
+  assert.equal(applied, 12, 'a fresh boot applies all twelve migrations (rename wave included)')
+  assert.equal(Number(db.pragma('user_version', { simple: true })), 12)
 
   const appliedRows = db.prepare('SELECT id, name FROM schema_migrations ORDER BY id').all()
-  assert.equal(appliedRows.length, 7)
+  assert.equal(appliedRows.length, 12)
   assert.deepEqual(appliedRows[5], { id: 6, name: '006-animation-documents' })
   assert.deepEqual(appliedRows[6], { id: 7, name: '007-animation-continuation' })
 

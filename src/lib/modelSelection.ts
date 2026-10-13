@@ -171,8 +171,8 @@ const H3_TE_EXPECTATION: TeDimClassExpectation = {
  *  anchored ladder's + the engine's, not the name classifier's. music3 has
  *  NO row: its TE ladder is fully anchored (no substring fallback), so the
  *  loosened-anchor crash class cannot fire there — absence = inert. */
-export const FAMILY_TE_DIM_CLASS: Readonly<Partial<Record<'minimax' | 'h3image' | 'klein' | string, TeDimClassExpectation>>> = {
-  minimax: H3_TE_EXPECTATION,
+export const FAMILY_TE_DIM_CLASS: Readonly<Partial<Record<'monoka' | 'h3image' | 'klein' | string, TeDimClassExpectation>>> = {
+  monoka: H3_TE_EXPECTATION,
   h3image: H3_TE_EXPECTATION,
   klein: {
     familyLabel: 'the klein refine engine',

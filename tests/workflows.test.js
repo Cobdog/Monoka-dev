@@ -215,7 +215,7 @@ test('model overrides take 1 (euxwdva): consulted picks, auto-unchanged, precede
   //    resolved pick — both H3 checkpoint lanes (the legacy single-checkpoint
   //    pick migrates onto fl2va+ref2va; only the mode's slot loads).
   assert.equal(inferredH3().fl2va, 'minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'sanity: inference finds the official file, never the merge')
-  const mergeResolved = resolveModels('minimax', inferredH3(), overrideScan, { checkpoint: mergeName })
+  const mergeResolved = resolveModels('monoka', inferredH3(), overrideScan, { checkpoint: mergeName })
   assert.equal(mergeResolved.selection.fl2va, mergeName, 'the community merge becomes FL2VA via override')
   assert.equal(mergeResolved.selection.ref2va, mergeName, 'the community merge becomes Ref2VA via override')
   assert.equal(mergeResolved.resolution.applied.fl2va, mergeName, 'the legacy pick applies on the migrated lanes')
@@ -225,7 +225,7 @@ test('model overrides take 1 (euxwdva): consulted picks, auto-unchanged, precede
   // 2. AUTO UNCHANGED when unset — empty overrides, no key, blank strings: the
   //    selection is byte-identical to inference and every slot reports auto.
   for (const emptyOverrides of [undefined, {}, { checkpoint: '' }, { checkpoint: '   ' }]) {
-    const auto = resolveModels('minimax', inferredH3(), overrideScan, emptyOverrides)
+    const auto = resolveModels('monoka', inferredH3(), overrideScan, emptyOverrides)
     assert.equal([auto.selection.fl2va, auto.selection.ref2va, auto.selection.textEncoder, auto.selection.videoVae, auto.selection.audioVae].join('|'),
       [inferredH3().fl2va, inferredH3().ref2va, inferredH3().textEncoder, inferredH3().videoVae, inferredH3().audioVae].join('|'),
       `auto selection is inference exactly (${JSON.stringify(emptyOverrides)})`)
@@ -241,7 +241,7 @@ test('model overrides take 1 (euxwdva): consulted picks, auto-unchanged, precede
   assert.equal(chainOverGlobal.textEncoder, 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', 'unset chain slot falls to global')
   const globalOnly = mergeModelOverrides(undefined, { vae: 'minimax_h3_video_vae_fp16.safetensors' })
   assert.equal(globalOnly.vae, 'minimax_h3_video_vae_fp16.safetensors')
-  const layered = resolveModels('minimax', inferredH3(), overrideScan, mergeModelOverrides({ textEncoder: 'music3_text_encoder_bf16.safetensors' }, { checkpoint: mergeName }))
+  const layered = resolveModels('monoka', inferredH3(), overrideScan, mergeModelOverrides({ textEncoder: 'music3_text_encoder_bf16.safetensors' }, { checkpoint: mergeName }))
   assert.equal(layered.selection.fl2va, mergeName, 'global checkpoint applies under a chain TE pick')
   assert.equal(layered.selection.textEncoder, 'music3_text_encoder_bf16.safetensors', 'chain text-encoder beats global absence')
 
@@ -251,18 +251,18 @@ test('model overrides take 1 (euxwdva): consulted picks, auto-unchanged, precede
   //    MIGRATED lane now AUTO-CLEARS with a warning instead of refusing —
   //    the user never chose it at that lane slot; a conscious post-split
   //    pick in the same slot still refuses, asserted after these.)
-  const wrongKind = resolveModelOverrides('minimax', overrideScan, { checkpoint: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors' })
+  const wrongKind = resolveModelOverrides('monoka', overrideScan, { checkpoint: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors' })
   assert.equal(wrongKind.slots.fl2va.state, 'cleared', 'D3: the migrated legacy wrong-kind pick auto-clears')
   assert.equal(wrongKind.refusals.length, 0, 'D3: nothing refuses — the render proceeds')
   assert.ok(wrongKind.warnings.some((warning) => warning.includes('legacy model pick')), 'D3: the clear warns visibly')
   assert.equal(wrongKind.applied.fl2va, undefined)
-  const wrongKindResolved = resolveModels('minimax', inferredH3(), overrideScan, { checkpoint: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors' })
+  const wrongKindResolved = resolveModels('monoka', inferredH3(), overrideScan, { checkpoint: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors' })
   assert.equal(wrongKindResolved.selection.fl2va, inferredH3().fl2va, 'the cleared pick never reaches the selection')
   // (Wave 2 R-12) The h3Form gate died with the local scan — the registry
   // lists filenames only, so nothing app-side clears or clears a file by
   // its internals: the legacy pick of the no-form file now simply APPLIES
   // and the engine decides at load.
-  const noForm = resolveModelOverrides('minimax', overrideScan, { checkpoint: 'community_noform_transformer.safetensors' })
+  const noForm = resolveModelOverrides('monoka', overrideScan, { checkpoint: 'community_noform_transformer.safetensors' })
   assert.equal(noForm.slots.fl2va.state, 'applied', 'registry-only: no app-side form gate exists — the engine is the arbiter')
   assert.equal(noForm.slots.fl2va.file, 'community_noform_transformer.safetensors')
   assert.equal(noForm.refusals.length, 0)
@@ -271,24 +271,24 @@ test('model overrides take 1 (euxwdva): consulted picks, auto-unchanged, precede
   // no longer lands there at all (tmz8vh7 decoder-class routing — see take 3
   // for the full matrix); the maintainer's first-session wedge was exactly
   // that legacy landing refusing every video render.
-  const t1VaeDirect = resolveModelOverrides('minimax', overrideScan, { videoVae: 'minimax_h3_t1_image_vae_step1597.safetensors' })
+  const t1VaeDirect = resolveModelOverrides('monoka', overrideScan, { videoVae: 'minimax_h3_t1_image_vae_step1597.safetensors' })
   assert.equal(t1VaeDirect.slots.videoVae.state, 'refused', 'the T=1 image VAE refuses on the videoVae slot directly')
   const unexposedSlot = resolveModelOverrides('music3', overrideScan, { imageVae: 'minimax_h3_t1_image_vae_step1597.safetensors' })
   assert.equal(unexposedSlot.slots.imageVae.state, 'refused', 'a slot the family does not expose refuses, never silently drops')
 
   // 5. MISSING-FILE DEGRADATION: the file vanished since it was set — auto with
   //    a visible warning, not a refusal.
-  const degraded = resolveModelOverrides('minimax', overrideScan, { checkpoint: 'deleted_merge_v2.safetensors' })
+  const degraded = resolveModelOverrides('monoka', overrideScan, { checkpoint: 'deleted_merge_v2.safetensors' })
   assert.equal(degraded.slots.fl2va.state, 'degraded')
   assert.equal(degraded.warnings.length, 2, 'both migrated lanes warn')
   assert.ok(degraded.warnings[0].includes('engine\'s model registry'), 'warning states the registry fallback: ' + degraded.warnings[0])
   assert.equal(degraded.applied.fl2va, undefined)
-  const degradedResolved = resolveModels('minimax', inferredH3(), overrideScan, { checkpoint: 'deleted_merge_v2.safetensors' })
+  const degradedResolved = resolveModels('monoka', inferredH3(), overrideScan, { checkpoint: 'deleted_merge_v2.safetensors' })
   assert.equal(degradedResolved.selection.fl2va, inferredH3().fl2va, 'degradation falls back to inference')
 
   // 6. CASE CANONICALIZATION: the pick resolves to the SCANNED file's real
   //    name, so a case-drifted pick never outlives its file.
-  const caseDrift = resolveModelOverrides('minimax', overrideScan, { checkpoint: 'tenstrip_10eros-max_BETA5_int8.safetensors' })
+  const caseDrift = resolveModelOverrides('monoka', overrideScan, { checkpoint: 'tenstrip_10eros-max_BETA5_int8.safetensors' })
   assert.equal(caseDrift.slots.fl2va.state, 'applied')
   assert.equal(caseDrift.slots.fl2va.file, mergeName)
 
@@ -343,10 +343,10 @@ test('model overrides take 1 (euxwdva): consulted picks, auto-unchanged, precede
   // 10. The single-pick outcome helper agrees with resolution (one validation
   //     path for the pickers and the ladder) and the auto label helper reports
   //     what auto resolves to.
-  assert.equal(overridePickOutcome('minimax', 'fl2va', mergeName, overrideScan).state, 'applied')
-  assert.equal(overridePickOutcome('minimax', 'fl2va', 'gone.safetensors', overrideScan).state, 'degraded')
-  assert.equal(inferredOverrideSlotFile('minimax', 'fl2va', overrideScan), 'minimax_h3_fl2va_pruned_int8_convrot.safetensors')
-  assert.equal(inferredOverrideSlotFile('minimax', 'textEncoder', overrideScan), 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors')
+  assert.equal(overridePickOutcome('monoka', 'fl2va', mergeName, overrideScan).state, 'applied')
+  assert.equal(overridePickOutcome('monoka', 'fl2va', 'gone.safetensors', overrideScan).state, 'degraded')
+  assert.equal(inferredOverrideSlotFile('monoka', 'fl2va', overrideScan), 'minimax_h3_fl2va_pruned_int8_convrot.safetensors')
+  assert.equal(inferredOverrideSlotFile('monoka', 'textEncoder', overrideScan), 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors')
   // 4 → 3 with the ACE-Step family's removal, 2026-09-21 (nn5ld47).
   assert.equal(MODEL_FAMILIES.length, 3)
 })
@@ -372,12 +372,12 @@ test('model overrides take 2 (rq0lsax, R-12): subpathed registry rows resolve ev
   //     of a subpathed row applies cleanly (no form vocabulary exists, no
   //     source tags exist), and the INFERENCE finds subpathed rows by their
   //     basename while returning the full registry name.
-  const instanceFl2va = resolveModelOverrides('minimax', instanceScan, { fl2va: 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
+  const instanceFl2va = resolveModelOverrides('monoka', instanceScan, { fl2va: 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
   assert.equal(instanceFl2va.slots.fl2va.state, 'applied', 'a subpathed registry pick applies')
   assert.equal(instanceFl2va.slots.fl2va.warning, undefined, 'no warning vocabulary for registry rows — the engine is the arbiter')
   assert.equal(instanceFl2va.refusals.length, 0)
   assert.equal(instanceFl2va.applied.fl2va, 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors')
-  const instanceBoth = resolveModelOverrides('minimax', instanceScan, { merged: 'H3/ssd/community_merged_full.safetensors' })
+  const instanceBoth = resolveModelOverrides('monoka', instanceScan, { merged: 'H3/ssd/community_merged_full.safetensors' })
   assert.equal(instanceBoth.slots.merged.state, 'applied', 'the subpathed community merge applies on the merged lane')
   // The loosened anchors (Wave 2): the ladder matches the BASENAME and
   // returns the full registry subpath. When flat and subpathed twins are
@@ -390,17 +390,17 @@ test('model overrides take 2 (rq0lsax, R-12): subpathed registry rows resolve ev
   assert.equal(subpathOnly.fl2va, 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'a subpath-only listing resolves by basename and returns the FULL registry name (what the loader accepts)')
   // The maintainer's exact report shape: the legacy single-checkpoint pick
   // of a subpathed registry file resolves onto both lanes, verbatim.
-  const maintainerCase = resolveModels('minimax', inferSelections(instanceScan, 'off'), instanceScan, { checkpoint: 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
+  const maintainerCase = resolveModels('monoka', inferSelections(instanceScan, 'off'), instanceScan, { checkpoint: 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
   assert.equal(maintainerCase.selection.fl2va, 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'the legacy pick of the subpathed file reaches the FL2VA lane')
   assert.equal(maintainerCase.resolution.refusals.length, 0, 'the H3/ssd refusal is gone')
 
   // 12. PER-MODE RESOLUTION (AC-2): each lane pick owns ITS lane; the other
   //     lane stays on inference — the split is real, not a rename.
-  const fl2vaLane = resolveModels('minimax', inferredH3(), overrideScan, { fl2va: mergeName })
+  const fl2vaLane = resolveModels('monoka', inferredH3(), overrideScan, { fl2va: mergeName })
   assert.equal(fl2vaLane.selection.fl2va, mergeName, 'the fl2va pick owns the FL2VA lane')
   assert.equal(fl2vaLane.selection.ref2va, inferredH3().ref2va, 'the Ref2VA lane stays on inference under an fl2va-only pick')
   assert.equal(fl2vaLane.selection.merged, undefined, 'no merged field unless the merged pick applies')
-  const ref2vaLane = resolveModels('minimax', inferredH3(), overrideScan, { ref2va: mergeName })
+  const ref2vaLane = resolveModels('monoka', inferredH3(), overrideScan, { ref2va: mergeName })
   assert.equal(ref2vaLane.selection.ref2va, mergeName, 'the ref2va pick owns the Ref2VA lane')
   assert.equal(ref2vaLane.selection.fl2va, inferredH3().fl2va, 'the FL2VA lane stays on inference under a ref2va-only pick')
   for (const [mode, expected] of [['text', mergeName], ['reference', 'minimax_h3_ref2va_pruned_int8_convrot.safetensors']]) {
@@ -415,7 +415,7 @@ test('model overrides take 2 (rq0lsax, R-12): subpathed registry rows resolve ev
   // 13. THE MERGED LANE (AC-2): a merged pick is ONE checkpoint for both lanes
   //     — it fills fl2va, ref2va AND merged, so both render modes load it and
   //     the readiness gates see a complete stack with zero extra plumbing.
-  const mergedResolved = resolveModels('minimax', inferredH3(), overrideScan, { merged: mergeName })
+  const mergedResolved = resolveModels('monoka', inferredH3(), overrideScan, { merged: mergeName })
   assert.equal(mergedResolved.selection.merged, mergeName)
   assert.equal(mergedResolved.selection.fl2va, mergeName, 'the merged pick fills the FL2VA lane')
   assert.equal(mergedResolved.selection.ref2va, mergeName, 'the merged pick fills the Ref2VA lane')
@@ -428,10 +428,10 @@ test('model overrides take 2 (rq0lsax, R-12): subpathed registry rows resolve ev
   const mergedManifest = manifestModule.buildRenderManifest({ mode: 'text', prompt: 'p', width: 352, height: 608, duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', refImageSize: 'match', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, mergedResolved.selection, overrideScan, 'http://engine', buildMiniMaxWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'p', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', referenceImages: [], referenceVideos: [], referenceAudios: [] }, mergedResolved.selection, { images: [], videos: [], audios: [] }))
   assert.equal(mergedManifest.models.diffusion.name, mergeName, 'the manifest carries the merged checkpoint')
   // Simultaneously-set lane picks are SUPERSEDED, loudly — never a silent drop.
-  const superseded = resolveModelOverrides('minimax', overrideScan, { merged: mergeName, fl2va: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
+  const superseded = resolveModelOverrides('monoka', overrideScan, { merged: mergeName, fl2va: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
   assert.ok(superseded.warnings.some((warning) => warning.includes('superseded')), 'a lane pick under a merged pick gets the superseded warning')
   assert.equal(superseded.refusals.length, 0)
-  const supersededSelection = resolveModels('minimax', inferredH3(), overrideScan, { merged: mergeName, fl2va: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors' }).selection
+  const supersededSelection = resolveModels('monoka', inferredH3(), overrideScan, { merged: mergeName, fl2va: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors' }).selection
   assert.equal(supersededSelection.fl2va, mergeName, 'the merged pick wins its lane when both are set')
 
   // 14. LEGACY MIGRATION (AC-5): the pre-split single-checkpoint pick drives
@@ -439,15 +439,15 @@ test('model overrides take 2 (rq0lsax, R-12): subpathed registry rows resolve ev
   //     2026-09-20: fl2va+ref2va, behavior-preserving — fl2va-only would have
   //     silently re-inferred the reference lane); fill-if-unset lets a new
   //     lane pick win its own lane over the legacy value.
-  const migrated = overridesModule.migrateLegacyModelOverrideSlots('minimax', { checkpoint: mergeName })
+  const migrated = overridesModule.migrateLegacyModelOverrideSlots('monoka', { checkpoint: mergeName })
   assert.equal(migrated.fl2va, mergeName, 'the legacy pick lands on the FL2VA lane')
   assert.equal(migrated.ref2va, mergeName, 'the legacy pick lands on the Ref2VA lane too — behavior preserved')
   assert.equal('checkpoint' in migrated, false, 'the legacy key is consumed, never re-refused as an unexposed slot')
-  const migratedPartial = overridesModule.migrateLegacyModelOverrideSlots('minimax', { checkpoint: mergeName, fl2va: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
+  const migratedPartial = overridesModule.migrateLegacyModelOverrideSlots('monoka', { checkpoint: mergeName, fl2va: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
   assert.equal(migratedPartial.fl2va, 'minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'an explicit new-lane pick wins its lane over the legacy value')
   assert.equal(migratedPartial.ref2va, mergeName, 'the unset lane inherits the legacy pick')
   assert.equal('checkpoint' in overridesModule.migrateLegacyModelOverrideSlots('music3', { checkpoint: 'x.safetensors' }), true, 'non-H3 families keep the generic checkpoint slot untouched')
-  const legacyResolution = resolveModelOverrides('minimax', overrideScan, { checkpoint: mergeName })
+  const legacyResolution = resolveModelOverrides('monoka', overrideScan, { checkpoint: mergeName })
   assert.equal(legacyResolution.slots.fl2va.state, 'applied', 'the resolution seam migrates a legacy pick at consult time')
   assert.equal(legacyResolution.slots.ref2va.state, 'applied')
   assert.equal(legacyResolution.refusals.length, 0, 'the consumed legacy key never trips the unexposed-slot refusal')
@@ -457,11 +457,11 @@ test('model overrides take 2 (rq0lsax, R-12): subpathed registry rows resolve ev
   assert.equal(laneLayered.fl2va, 'chain-lane.safetensors', 'chain beats global per lane')
   assert.equal(laneLayered.ref2va, 'global-ref.safetensors')
   assert.equal(laneLayered.merged, 'global-merge.safetensors')
-  assert.equal(overridePickOutcome('minimax', 'fl2va', mergeName, overrideScan).state, 'applied')
-  assert.equal(overridePickOutcome('minimax', 'ref2va', 'gone.safetensors', overrideScan).state, 'degraded')
-  assert.equal(inferredOverrideSlotFile('minimax', 'fl2va', overrideScan), 'minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'the fl2va auto label shows the FL2VA inference')
-  assert.equal(inferredOverrideSlotFile('minimax', 'ref2va', overrideScan), 'minimax_h3_ref2va_pruned_int8_convrot.safetensors', 'the ref2va auto label shows the Ref2VA inference')
-  assert.equal(inferredOverrideSlotFile('minimax', 'merged', overrideScan), '', 'the merged slot never infers — community merges are name-invisible by design')
+  assert.equal(overridePickOutcome('monoka', 'fl2va', mergeName, overrideScan).state, 'applied')
+  assert.equal(overridePickOutcome('monoka', 'ref2va', 'gone.safetensors', overrideScan).state, 'degraded')
+  assert.equal(inferredOverrideSlotFile('monoka', 'fl2va', overrideScan), 'minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'the fl2va auto label shows the FL2VA inference')
+  assert.equal(inferredOverrideSlotFile('monoka', 'ref2va', overrideScan), 'minimax_h3_ref2va_pruned_int8_convrot.safetensors', 'the ref2va auto label shows the Ref2VA inference')
+  assert.equal(inferredOverrideSlotFile('monoka', 'merged', overrideScan), '', 'the merged slot never infers — community merges are name-invisible by design')
 })
 
 // ---------------------------------------------------------------------------
@@ -495,13 +495,13 @@ const vaeSplitScan = overrideScan.concat([
 test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolution, per-family legality, marker refusals, legacy migration', () => {
   // 16. THE TRIO RESOLVES (AC-1): each slot independently overrides its own
   //     decoder; unset slots stay on inference.
-  const split = resolveModels('minimax', inferSelections(vaeSplitScan, 'off'), vaeSplitScan, {
+  const split = resolveModels('monoka', inferSelections(vaeSplitScan, 'off'), vaeSplitScan, {
     videoVae: 'minimax_h3_audio_vae_fp32.safetensors', // refused below — proves independence
   })
   assert.equal(split.resolution.slots.videoVae.state, 'refused', 'a cross-class pick refuses instead of landing')
-  const videoOnly = resolveModels('minimax', inferSelections(vaeSplitScan, 'off'), vaeSplitScan, { videoVae: 'minimax_h3_video_vae_fp16.safetensors' })
+  const videoOnly = resolveModels('monoka', inferSelections(vaeSplitScan, 'off'), vaeSplitScan, { videoVae: 'minimax_h3_video_vae_fp16.safetensors' })
   assert.equal(videoOnly.selection.audioVae, 'minimax_h3_audio_vae_fp32.safetensors', 'the audio lane stays on inference under a video-only pick')
-  const audioPicked = resolveModels('minimax', inferSelections(vaeSplitScan, 'off'), vaeSplitScan, { audioVae: 'minimax_h3_audio_vae_fp32.safetensors' })
+  const audioPicked = resolveModels('monoka', inferSelections(vaeSplitScan, 'off'), vaeSplitScan, { audioVae: 'minimax_h3_audio_vae_fp32.safetensors' })
   assert.equal(audioPicked.resolution.slots.audioVae.state, 'applied')
   assert.equal(audioPicked.selection.audioVae, 'minimax_h3_audio_vae_fp32.safetensors')
   // THE GRAPH: the two picks feed the graph's TWO VAELoader nodes (3/4).
@@ -534,26 +534,26 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
   //     unmarked-class limit applies (documented: no VAE header-shape
   //     detection exists; the engine stays arbiter).
   assert.deepEqual([...overridesModule.IMAGE_VAE_FAMILIES].sort(), ['h3image'], 'the T=1 legality map: only the workbench accepts an imageVae pick')
-  const videoFamilyImagePick = resolveModelOverrides('minimax', vaeSplitScan, { imageVae: t1Alt })
+  const videoFamilyImagePick = resolveModelOverrides('monoka', vaeSplitScan, { imageVae: t1Alt })
   assert.equal(videoFamilyImagePick.slots.imageVae.state, 'refused', 'the video family refuses the imageVae slot outright — every video graph is multi-frame (the factory ban)')
   const videoIntoImage = resolveModelOverrides('h3image', vaeSplitScan, { imageVae: 'minimax_h3_video_vae_fp16.safetensors' })
   assert.equal(videoIntoImage.slots.imageVae.state, 'refused', 'a video-class pick refuses on the imageVae slot')
   assert.ok(videoIntoImage.refusals[0].reason.includes('Mamad8'), 'the reason names the decoder class: ' + videoIntoImage.refusals[0].reason)
-  const audioIntoVideo = resolveModelOverrides('minimax', vaeSplitScan, { videoVae: 'minimax_h3_audio_vae_fp32.safetensors' })
+  const audioIntoVideo = resolveModelOverrides('monoka', vaeSplitScan, { videoVae: 'minimax_h3_audio_vae_fp32.safetensors' })
   assert.equal(audioIntoVideo.slots.videoVae.state, 'refused', 'an audio-class pick refuses on the videoVae slot')
   assert.ok(audioIntoVideo.refusals[0].reason.includes('audio'))
-  const videoIntoAudio = resolveModelOverrides('minimax', vaeSplitScan, { audioVae: 'minimax_h3_video_vae_fp16.safetensors' })
+  const videoIntoAudio = resolveModelOverrides('monoka', vaeSplitScan, { audioVae: 'minimax_h3_video_vae_fp16.safetensors' })
   assert.equal(videoIntoAudio.slots.audioVae.state, 'refused', 'a video-class pick refuses on the audioVae slot')
   assert.ok(videoIntoAudio.refusals[0].reason.includes('video'))
   const davIntoVideo = resolveModelOverrides('music3', vaeSplitScan, { videoVae: 'music3_dav.safetensors' })
   assert.equal(davIntoVideo.slots.videoVae.state, 'refused', 'music3 exposes no videoVae slot — its one decoder is audio-class')
-  const unmarked = resolveModelOverrides('minimax', vaeSplitScan, { audioVae: 'ace_1.5_vae.safetensors' })
+  const unmarked = resolveModelOverrides('monoka', vaeSplitScan, { audioVae: 'ace_1.5_vae.safetensors' })
   assert.equal(unmarked.slots.audioVae.state, 'applied', 'an unmarked-class VAE applies (the documented heuristic limit — the engine decides)')
 
   // 19. LEGACY MIGRATION (AC-5): the pre-split 'vae' pick lands on the slot
   //     that preserves its meaning PER FAMILY — videoVae on the video-bearing
   //     families, audioVae on the audio-only ones — never dropped.
-  for (const family of ['minimax', 'h3image']) {
+  for (const family of ['monoka', 'h3image']) {
     const migrated = overridesModule.migrateLegacyModelOverrideSlots(family, { vae: 'legacy-decoder.safetensors' })
     assert.equal(migrated.videoVae, 'legacy-decoder.safetensors', `${family}: the legacy vae pick lands on videoVae (the old slot's meaning)`)
     assert.equal('vae' in migrated, false, `${family}: the consumed key never re-refuses`)
@@ -564,7 +564,7 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
     assert.equal(migrated.audioVae, 'legacy-dav.safetensors', `${family}: the legacy vae pick lands on audioVae — the family's one decoder IS audio-class`)
     assert.equal('vae' in migrated, false)
   }
-  const explicitWins = overridesModule.migrateLegacyModelOverrideSlots('minimax', { vae: 'legacy.safetensors', videoVae: 'new.safetensors' })
+  const explicitWins = overridesModule.migrateLegacyModelOverrideSlots('monoka', { vae: 'legacy.safetensors', videoVae: 'new.safetensors' })
   assert.equal(explicitWins.videoVae, 'new.safetensors', 'an explicit split pick wins its slot over the legacy value')
   // 19b. DECODER-CLASS ROUTING (tmz8vh7, dated 2026-09-20): the pre-split
   //      slot's dropdown listed EVERY scanned VAE, so the pick's NAME routes
@@ -577,9 +577,9 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
   // (The ltx25/ltx23 arms of this loop were removed with LTX — Phase 0,
   // 2026-09-20; the minimax arm carries the routing contract.)
   const videoFamilyInferred = {
-    minimax: () => inferSelections(vaeSplitScan, 'off'),
+    monoka: () => inferSelections(vaeSplitScan, 'off'),
   }
-  for (const family of ['minimax']) {
+  for (const family of ['monoka']) {
     const dropped = overridesModule.migrateLegacyModelOverrideSlots(family, { vae: t1File })
     assert.equal('vae' in dropped, false, `${family}: the T=1-named legacy pick is consumed`)
     assert.equal(dropped.videoVae, undefined, `${family}: a T=1-named legacy pick never lands on videoVae`)
@@ -587,7 +587,7 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
     const throughSeam = resolveModels(family, videoFamilyInferred[family](), vaeSplitScan, { vae: t1File })
     assert.equal(throughSeam.resolution.refusals.length, 0, `${family}: the T=1 legacy pick no longer refuses anything (the maintainer's video render proceeds)`)
     assert.notEqual(throughSeam.selection.videoVae, t1File, `${family}: the T=1 file never reaches the video decoder field`)
-    if (family === 'minimax') assert.equal(throughSeam.selection.videoVae, 'minimax_h3_video_vae_fp16.safetensors', 'minimax: video decode falls back to the inferred pick')
+    if (family === 'monoka') assert.equal(throughSeam.selection.videoVae, 'minimax_h3_video_vae_fp16.safetensors', 'minimax: video decode falls back to the inferred pick')
   }
   const t1ToImageSlot = overridesModule.migrateLegacyModelOverrideSlots('h3image', { vae: t1File })
   assert.equal(t1ToImageSlot.imageVae, t1File, 'h3image: a T=1-named legacy pick routes to imageVae — the one slot where that decoder is legal')
@@ -595,7 +595,7 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
   const t1ToImageSeam = resolveModels('h3image', h3imageGraphModule.inferH3ImgSelection(vaeSplitScan), vaeSplitScan, { vae: t1File })
   assert.equal(t1ToImageSeam.selection.t1ImageVae, t1File, 'h3image: the routed legacy pick drives the T=1 profile decoder through the seam')
   assert.equal(t1ToImageSeam.resolution.refusals.length, 0)
-  const audioNamed = overridesModule.migrateLegacyModelOverrideSlots('minimax', { vae: 'minimax_h3_audio_vae_fp32.safetensors' })
+  const audioNamed = overridesModule.migrateLegacyModelOverrideSlots('monoka', { vae: 'minimax_h3_audio_vae_fp32.safetensors' })
   assert.equal(audioNamed.audioVae, 'minimax_h3_audio_vae_fp32.safetensors', 'an audio-named legacy pick routes to audioVae on the video family (its real decoder class)')
   assert.equal(audioNamed.videoVae, undefined, 'it never lands on videoVae where the marker gate would refuse it')
   const videoNamedOnAudio = overridesModule.migrateLegacyModelOverrideSlots('music3', { vae: 'minimax_h3_video_vae_fp16.safetensors' })
@@ -617,7 +617,7 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
   // round-trip lives in tests/instance.test.js; this is the contract at the
   // function the seam calls.
   const t1Name = 'minimax_h3_t1_image_vae_step1597.safetensors'
-  const loaded = overridesModule.normalizeStoredOverrideSlots('minimax', { vae: 'legacy.safetensors', videoVae: t1Name })
+  const loaded = overridesModule.normalizeStoredOverrideSlots('monoka', { vae: 'legacy.safetensors', videoVae: t1Name })
   assert.equal(loaded.videoVae, undefined, 'load seam: a stored cross-class WEDGE (videoVae naming the T=1 decoder) heals away — the unmarked legacy vae never overwrites the occupied slot')
   assert.equal(loaded.imageVae, undefined, 'load seam: minimax exposes no imageVae slot — the unrouteable name drops entirely')
   assert.equal(loaded.audioVae, undefined)
@@ -625,7 +625,7 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
   const healedToImage = overridesModule.normalizeStoredOverrideSlots('h3image', { videoVae: t1Name })
   assert.equal(healedToImage.imageVae, t1Name, 'load seam: on h3image the wedged videoVae re-routes to the one legal slot')
   assert.equal(healedToImage.videoVae, undefined)
-  const conscious = overridesModule.normalizeStoredOverrideSlots('minimax', { videoVae: t1Name }, { healCrossClassPicks: false })
+  const conscious = overridesModule.normalizeStoredOverrideSlots('monoka', { videoVae: t1Name }, { healCrossClassPicks: false })
   assert.equal(conscious.videoVae, t1Name, 'resolution time (heal OFF): a CONSCIOUS wrong-slot pick stays where the user put it — the seam refuses it loudly, never silently moves it')
   const droppedAudio = overridesModule.normalizeStoredOverrideSlots('music3', { audioVae: 'minimax_h3_video_vae_fp16.safetensors' })
   assert.equal(droppedAudio.audioVae, undefined, 'load seam: a video-named audioVae on the audio family has no legal landing — dropped')
@@ -633,11 +633,11 @@ test('model overrides take 3 (epdvxd4): the decoder-split VAE trio — resolutio
   assert.equal(keptCheckpoint.checkpoint, 'dit.safetensors', 'non-H3 families keep the generic checkpoint slot')
 
   // 20. The auto labels name each decoder's own inference.
-  assert.equal(inferredOverrideSlotFile('minimax', 'videoVae', vaeSplitScan), 'minimax_h3_video_vae_fp16.safetensors')
-  assert.equal(inferredOverrideSlotFile('minimax', 'audioVae', vaeSplitScan), 'minimax_h3_audio_vae_fp32.safetensors')
+  assert.equal(inferredOverrideSlotFile('monoka', 'videoVae', vaeSplitScan), 'minimax_h3_video_vae_fp16.safetensors')
+  assert.equal(inferredOverrideSlotFile('monoka', 'audioVae', vaeSplitScan), 'minimax_h3_audio_vae_fp32.safetensors')
   assert.equal(inferredOverrideSlotFile('h3image', 'imageVae', vaeSplitScan), 'minimax_h3_t1_image_vae_step1597.safetensors', 'the imageVae auto label shows the inferred Mamad8 file')
   assert.equal(inferredOverrideSlotFile('music3', 'audioVae', vaeSplitScan), 'music3_dav.safetensors', "the audio-only family's audioVae label reads its DAV inference")
-  assert.equal(inferredOverrideSlotFile('minimax', 'imageVae', vaeSplitScan), '', 'a slot the family does not expose has no auto label')
+  assert.equal(inferredOverrideSlotFile('monoka', 'imageVae', vaeSplitScan), '', 'a slot the family does not expose has no auto label')
 })
 
 // ---------------------------------------------------------------------------
@@ -683,7 +683,7 @@ test('the workflow-population audit (epdvxd4, AC-3): every family × every slot 
   // --- minimax (H3 video): fl2va/ref2va/merged → UNETLoader 1 per mode
   //     (take 2 §12-13 proves the per-mode routing; here the merged pick +
   //     the shared slots land in one text-mode graph), TE → 2, VAEs → 3/4.
-  const minimaxResolved = resolveModels('minimax', inferSelections(auditScan, 'off'), auditScan, {
+  const minimaxResolved = resolveModels('monoka', inferSelections(auditScan, 'off'), auditScan, {
     merged: mergeName,
     textEncoder: auditPicks.textEncoder,
     videoVae: auditPicks.videoVae,
@@ -741,7 +741,7 @@ test('the workflow-population audit (epdvxd4, AC-3): every family × every slot 
   //     appears above; every slot NOT exposed refuses (nothing silently
   //     no-ops).
   const expectedSlots = {
-    minimax: ['fl2va', 'ref2va', 'merged', 'textEncoder', 'videoVae', 'audioVae'],
+    monoka: ['fl2va', 'ref2va', 'merged', 'textEncoder', 'videoVae', 'audioVae'],
     h3image: ['fl2va', 'ref2va', 'merged', 'textEncoder', 'videoVae', 'audioVae', 'imageVae'],
     music3: ['checkpoint', 'textEncoder', 'audioVae'],
   }
@@ -750,7 +750,7 @@ test('the workflow-population audit (epdvxd4, AC-3): every family × every slot 
     // Legacy keys ('vae' everywhere; 'checkpoint' on the lane families) are
     // CONSUMED by migration — they migrate, never re-refuse — so the honest
     // unexposed-set is the live keys the family does not list.
-    const legacyHere = (slot) => slot === 'vae' || (slot === 'checkpoint' && (family.id === 'minimax' || family.id === 'h3image'))
+    const legacyHere = (slot) => slot === 'vae' || (slot === 'checkpoint' && (family.id === 'monoka' || family.id === 'h3image'))
     const unexposed = OVERRIDE_SLOT_KEYS.filter((slot) => !family.slots.includes(slot) && !legacyHere(slot))
     for (const slot of unexposed) {
       const refused = resolveModelOverrides(family.id, auditScan, { [slot]: auditScan[0].name })
@@ -835,7 +835,7 @@ test('the TE dimension-class guard (eyzcev5): the wrong-family encoder refuses a
   //     it — correct picks resolve EXACTLY as before (a guard, not a reroute).
   const bothVisible = inferSelections(mirrorFiles, 'off')
   assert.equal(bothVisible.textEncoder, TE_32B, 'sanity: with both TEs visible the size-class ranking picks the 32B')
-  assert.equal(teDimClassRefusal('minimax', bothVisible.textEncoder), null, 'the 32B-class pick passes the guard')
+  assert.equal(teDimClassRefusal('monoka', bothVisible.textEncoder), null, 'the 32B-class pick passes the guard')
   // (2) AUTO, only the 4B visible (the crash environment): the loosened
   //     anchor resolves the 4B — the root cause, kept on record — and the
   //     guard REFUSES it, naming both classes and the artifact to make
@@ -843,7 +843,7 @@ test('the TE dimension-class guard (eyzcev5): the wrong-family encoder refuses a
   const fourBOnlyFiles = mirrorFiles.filter((file) => file.name !== TE_32B)
   const trapped = inferSelections(fourBOnlyFiles, 'off')
   assert.equal(trapped.textEncoder, TE_4B, 'root cause on record: the substring fallback resolves the 4B when the 32B is invisible')
-  const refusal = teDimClassRefusal('minimax', trapped.textEncoder)
+  const refusal = teDimClassRefusal('monoka', trapped.textEncoder)
   assert.ok(refusal, 'the guard refuses the wrong-family pick')
   assert.ok(refusal.includes('4B-class') && refusal.includes('32B-class'), `the refusal names both classes (got: ${refusal})`)
   assert.ok(refusal.includes(TE_32B_CANONICAL), 'the refusal names the canonical artifact to make visible')
@@ -860,13 +860,13 @@ test('the TE dimension-class guard (eyzcev5): the wrong-family encoder refuses a
   //     32B pick applies; a name with NO class token applies too (the
   //     classifier refuses only what the filename itself classifies — the
   //     engine stays the arbiter for community renames).
-  const seamFourB = resolveModelOverrides('minimax', mirrorFiles, { textEncoder: TE_4B })
+  const seamFourB = resolveModelOverrides('monoka', mirrorFiles, { textEncoder: TE_4B })
   assert.equal(seamFourB.slots.textEncoder.state, 'refused', 'the conscious 4B pick refuses at the seam')
   assert.ok(seamFourB.refusals[0].reason.includes('32B-class'), 'the seam refusal carries the class reason')
-  const seam32B = resolveModelOverrides('minimax', mirrorFiles, { textEncoder: TE_32B })
+  const seam32B = resolveModelOverrides('monoka', mirrorFiles, { textEncoder: TE_32B })
   assert.equal(seam32B.slots.textEncoder.state, 'applied', 'the 32B pick applies')
   const unclassifiedFiles = mirrorFiles.concat([{ kind: 'text_encoders', name: 'qwen3vl_community_repack.safetensors', bytes: 0 }])
-  const seamUnclassified = resolveModelOverrides('minimax', unclassifiedFiles, { textEncoder: 'qwen3vl_community_repack.safetensors' })
+  const seamUnclassified = resolveModelOverrides('monoka', unclassifiedFiles, { textEncoder: 'qwen3vl_community_repack.safetensors' })
   assert.equal(seamUnclassified.slots.textEncoder.state, 'applied', 'no class token in the name → no refusal (the engine stays the arbiter)')
   const workbenchSeam = resolveModelOverrides('h3image', mirrorFiles, { textEncoder: TE_4B })
   assert.equal(workbenchSeam.slots.textEncoder.state, 'refused', 'the workbench family shares the 32B-class expectation')
@@ -899,10 +899,10 @@ test('the TE dimension-class guard (eyzcev5): the wrong-family encoder refuses a
   console.log = (...args) => { junctionLines.push(args.join(' ')) }
   try {
     dbgModule.setDbgEnabled(true)
-    teDimClassRefusal('minimax', TE_4B)
-    teDimClassRefusal('minimax', TE_32B)
+    teDimClassRefusal('monoka', TE_4B)
+    teDimClassRefusal('monoka', TE_32B)
     dbgModule.setDbgEnabled(false)
-    teDimClassRefusal('minimax', TE_4B)
+    teDimClassRefusal('monoka', TE_4B)
   } finally {
     console.log = originalLog
   }
@@ -961,7 +961,7 @@ test('THE R-12 INVARIANT: no graph ever references a model absent from the insta
   // --- AUTO (inference only): every family, every variant graph.
   for (const turbo of ['off', '8']) {
     for (const mode of ['text', 'reference']) {
-      const selection = resolveModels('minimax', inferSelections(INVARIANT_REGISTRY, turbo), INVARIANT_REGISTRY).selection
+      const selection = resolveModels('monoka', inferSelections(INVARIANT_REGISTRY, turbo), INVARIANT_REGISTRY).selection
       const graph = buildMiniMaxWorkflow(
         { mode, width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo, sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match', ...(mode === 'reference' ? { referenceImages: ['ref.png'] } : {}) },
         selection,
@@ -972,7 +972,7 @@ test('THE R-12 INVARIANT: no graph ever references a model absent from the insta
   }
   // The LoRA stack (user picks from the registry) rides the graph's stack
   // loaders — those names must be registry rows too.
-  const stackSelection = resolveModels('minimax', inferSelections(INVARIANT_REGISTRY, 'off'), INVARIANT_REGISTRY).selection
+  const stackSelection = resolveModels('monoka', inferSelections(INVARIANT_REGISTRY, 'off'), INVARIANT_REGISTRY).selection
   const stackGraph = buildMiniMaxWorkflow(
     { mode: 'text', width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match', loraStack: [{ name: 'community_style_adapter.safetensors', strength: 1 }] },
     stackSelection,
@@ -983,17 +983,17 @@ test('THE R-12 INVARIANT: no graph ever references a model absent from the insta
   // --- OVERRIDE LAYERS: picks that EXIST in the registry land; a pick the
   //     registry does NOT list degrades to auto and its name never reaches
   //     the graph.
-  const picked = resolveModels('minimax', inferSelections(INVARIANT_REGISTRY, 'off'), INVARIANT_REGISTRY, { fl2va: 'community_merged_full.safetensors', textEncoder: 'TE/qwen3vl_community_repack.safetensors' }).selection
+  const picked = resolveModels('monoka', inferSelections(INVARIANT_REGISTRY, 'off'), INVARIANT_REGISTRY, { fl2va: 'community_merged_full.safetensors', textEncoder: 'TE/qwen3vl_community_repack.safetensors' }).selection
   walkGraphModelInputs('minimax overrides', buildMiniMaxWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, picked, { images: [], videos: [], audios: [] }))
   assert.equal(picked.fl2va, 'community_merged_full.safetensors', 'sanity: the registry-listed pick applied')
-  const ghost = resolveModels('minimax', inferSelections(INVARIANT_REGISTRY, 'off'), INVARIANT_REGISTRY, { fl2va: 'ghost/not-in-registry.safetensors' })
+  const ghost = resolveModels('monoka', inferSelections(INVARIANT_REGISTRY, 'off'), INVARIANT_REGISTRY, { fl2va: 'ghost/not-in-registry.safetensors' })
   assert.equal(ghost.resolution.slots.fl2va.state, 'degraded', 'an out-of-registry pick degrades, never applies')
   const ghostGraph = buildMiniMaxWorkflow({ mode: 'text', width: 352, height: 608, prompt: 'invariant', duration: 5, seed: 7, steps: 20, turbo: 'off', sampler: 'res_multistep', scheduler: 'simple', filenamePrefix: 't', refImageSize: 'match' }, ghost.selection, { images: [], videos: [], audios: [] })
   assert.equal(ghostGraph['1'].inputs.unet_name, 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'the degraded pick fell back to the registry inference')
   walkGraphModelInputs('minimax ghost pick', ghostGraph)
   // A bare BASENAME pick never resolves to a subpathed row implicitly —
   // instance-invisible means the exact listed name or nothing.
-  const bare = resolveModelOverrides('minimax', INVARIANT_REGISTRY, { fl2va: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
+  const bare = resolveModelOverrides('monoka', INVARIANT_REGISTRY, { fl2va: 'minimax_h3_fl2va_pruned_int8_convrot.safetensors' })
   assert.equal(bare.slots.fl2va.state, 'degraded', 'the bare basename of a subpathed row is NOT in the registry — exact-name anchoring')
 
   // --- h3image (the workbench): both profile families through the seam.
@@ -1837,7 +1837,7 @@ test('Journey sweep #6: no [redacted] marker ever reaches a user-facing validati
 test('Wave 1 R-06: refusal layer attribution + D3 auto-clear of migrated legacy picks', () => {
   const { resolveModelOverrides, mergeModelOverrides } = overridesModule
   // A wrong-kind CONSCIOUS pick: the chain layer named in the refusal.
-  const conscious = resolveModelOverrides('minimax', vaeSplitScan,
+  const conscious = resolveModelOverrides('monoka', vaeSplitScan,
     mergeModelOverrides({ videoVae: 'minimax_h3_audio_vae_fp32.safetensors' }, {}),
     { chain: { videoVae: 'minimax_h3_audio_vae_fp32.safetensors' }, global: {} })
   assert.equal(conscious.refusals.length, 1)
@@ -1845,7 +1845,7 @@ test('Wave 1 R-06: refusal layer attribution + D3 auto-clear of migrated legacy 
   assert.equal(conscious.slots.videoVae.state, 'refused')
 
   // Same wrong-kind pick on the GLOBAL layer: named as global.
-  const globalWedge = resolveModelOverrides('minimax', vaeSplitScan,
+  const globalWedge = resolveModelOverrides('monoka', vaeSplitScan,
     mergeModelOverrides(undefined, { videoVae: 'minimax_h3_audio_vae_fp32.safetensors' }),
     { chain: undefined, global: { videoVae: 'minimax_h3_audio_vae_fp32.safetensors' } })
   assert.equal(globalWedge.refusals[0].layer, 'global', 'the refusal names the global Settings layer')
@@ -1858,7 +1858,7 @@ test('Wave 1 R-06: refusal layer attribution + D3 auto-clear of migrated legacy 
   // family with the user never having made a lane pick at all.)
   const wrongKindLegacy = { kind: 'text_encoders', name: 'qwen3vl_wrongkind_legacy.safetensors' }
   const scanWithWrongKind = vaeSplitScan.concat([wrongKindLegacy])
-  const legacyWedge = resolveModelOverrides('minimax', scanWithWrongKind,
+  const legacyWedge = resolveModelOverrides('monoka', scanWithWrongKind,
     mergeModelOverrides(undefined, { checkpoint: 'qwen3vl_wrongkind_legacy.safetensors' }),
     { chain: undefined, global: { checkpoint: 'qwen3vl_wrongkind_legacy.safetensors' } })
   assert.equal(legacyWedge.refusals.length, 0, 'D3: the migrated refusing pick does NOT wedge the submission')
@@ -1867,7 +1867,7 @@ test('Wave 1 R-06: refusal layer attribution + D3 auto-clear of migrated legacy 
   assert.equal(legacyWedge.applied.fl2va, undefined, 'the cleared slot falls back to auto')
 
   // A conscious pick in the SAME slot never auto-clears (D3's other edge).
-  const consciousKindRefusal = resolveModelOverrides('minimax', scanWithWrongKind,
+  const consciousKindRefusal = resolveModelOverrides('monoka', scanWithWrongKind,
     mergeModelOverrides({ fl2va: 'qwen3vl_wrongkind_legacy.safetensors' }, {}),
     { chain: { fl2va: 'qwen3vl_wrongkind_legacy.safetensors' }, global: {} })
   assert.equal(consciousKindRefusal.refusals.length, 1, 'a conscious chain pick still refuses (never silently cleared)')
@@ -1876,7 +1876,7 @@ test('Wave 1 R-06: refusal layer attribution + D3 auto-clear of migrated legacy 
   // Without the layers param (older callers), the D3 auto-clear still fires
   // — migration provenance is computable from the merged set alone (the
   // param only adds chain/global naming to refusals).
-  const noLayers = resolveModelOverrides('minimax', scanWithWrongKind, { checkpoint: 'qwen3vl_wrongkind_legacy.safetensors' })
+  const noLayers = resolveModelOverrides('monoka', scanWithWrongKind, { checkpoint: 'qwen3vl_wrongkind_legacy.safetensors' })
   assert.equal(noLayers.refusals.length, 0, 'no layers param → provenance still known → auto-clear still fires')
   assert.equal(noLayers.slots.fl2va.state, 'cleared')
 })
@@ -1915,7 +1915,7 @@ test('diagnostic report: canary-proof blob by construction, version shape allow-
     modelScan: [{ kind: 'diffusion_models', count: 3 }, { kind: 'text_encoders', count: 1 }, { kind: 'loras', count: 2 }],
     jobCounts: { total: 7, completed: 4, failed: 2, cancelled: 1 },
     failures: [
-      { id: 'f1', at: 1759999000000, provider: 'minimax', mode: 'text', reason: 'ComfyUI failed at node 84 (VAEDecodeTiled): ' + sanitizeForReport('torch.OutOfMemoryError: CUDA out of memory while rendering ' + canary), graph: { family: 'studio-2026-09', topologyHash: 'fnv1a-ab12cd34', seed: 12345, steps: 20, turbo: '8', sampler: 'res_multistep', scheduler: 'simple', resolution: '1344x768', frameCount: 121, references: '3i/1v/0a' } },
+      { id: 'f1', at: 1759999000000, provider: 'monoka', mode: 'text', reason: 'ComfyUI failed at node 84 (VAEDecodeTiled): ' + sanitizeForReport('torch.OutOfMemoryError: CUDA out of memory while rendering ' + canary), graph: { family: 'studio-2026-09', topologyHash: 'fnv1a-ab12cd34', seed: 12345, steps: 20, turbo: '8', sampler: 'res_multistep', scheduler: 'simple', resolution: '1344x768', frameCount: 121, references: '3i/1v/0a' } },
       { id: 'f2', at: 1759998000000, provider: 'ltx25', mode: 'image', nodeType: 'VAEDecodeTiled', reason: 'CUDA out of memory' },
     ],
     doctor: { ranAt: 1759997000000, checks: [{ id: 'ffmpeg', label: 'FFmpeg', status: 'ok', detail: 'ffmpeg version 7.1.1-3 — ' + canary }] },

@@ -172,7 +172,7 @@ export async function submitWorkbenchGeneration(
     width,
     height,
     duration: 0,
-    provider: 'minimax',
+    provider: 'monoka',
     mediaType: 'image',
   }
   io.setJobs((current) => [job, ...current])

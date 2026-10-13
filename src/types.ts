@@ -802,8 +802,9 @@ export type GenerationJob = {
   /** Historical jobs may carry removed providers ('ltx25', 'ltx23', 'zimage'
    *  — deleted 2026-09-20, Phase 0; 'acestep' — deleted 2026-09-21, the
    *  audio-lane ruling; git history is the archive) — they render as their
-   *  raw string, never crash. */
-  provider?: 'minimax' | 'music3' | (string & {})
+   *  raw string, never crash. ('monoka' — the renamed app-owned family,
+   *  rename-sweep T1, 2026-10-12; persisted values migrated forward.) */
+  provider?: 'monoka' | 'music3' | (string & {})
   /** Reproducibility record attached at submit time (persisted). */
   manifest?: Record<string, unknown>
   /** Submit-side graph for in-memory auto-retry only — stripped before

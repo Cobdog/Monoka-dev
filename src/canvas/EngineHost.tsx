@@ -61,7 +61,7 @@ export function CanvasEngineHost({ children }: { children?: ReactNode }) {
     let lastLostAt: number | null = null
     let lastResyncAt: number | null = null
     const unsubscribe = useSessionStore.subscribe((state) => {
-      const selection = resolveModels('minimax', inferSelections(state.models, 'off'), state.models, state.settings?.modelOverrides?.minimax).selection
+      const selection = resolveModels('monoka', inferSelections(state.models, 'off'), state.models, state.settings?.modelOverrides?.monoka).selection
       // (R2) The chip reads the ONE predicate: the text lane's membership
       // (FL2VA set — no blanket ref2va demand soft-gating first-frame
       // renders), no turbo requirement (the chip is modeless; a quality-tier

@@ -53,7 +53,7 @@ function canon(value) {
  *  the audio dock owns the audio engines' request settings, and image
  *  chains dial resolution+seed only (the workbench session owns the rest). */
 const STOCK_TABLE = [
-  { id: 'video.h3', label: 'MiniMax H3', mediaType: 'video', engineKey: 'h3', modelFamilyId: 'minimax', note: null, queuedRefusal: null,
+  { id: 'video.h3', label: 'MiniMax H3', mediaType: 'video', engineKey: 'h3', modelFamilyId: 'monoka', note: null, queuedRefusal: null,
     panel: { tier: true, turboFamily: true, models: true, duration: true, resolution: true, seed: true, loraTimeline: true, audioDock: false } },
   { id: 'image.h3-1f', label: 'H3 1F (T=1 Fast)', mediaType: 'image', engineKey: 'h3-1f', modelFamilyId: 'h3image', queuedRefusal: null,
     note: 'One latent frame through the Mamad8 T=1 image VAE on the hybrid stack — seconds-class stills.',
@@ -144,7 +144,7 @@ test('(d) inertness — an absent entry changes nothing', () => {
   // the never-registered baseline (the insert-only closure is exact).
   const before = canon(registry.engineFamilies())
   const unregister = registry.registerEngineFamily({
-    id: 'video.removed', label: 'Removed', mediaType: 'video', engineKey: 'removed', modelFamilyId: 'minimax',
+    id: 'video.removed', label: 'Removed', mediaType: 'video', engineKey: 'removed', modelFamilyId: 'monoka',
     panel: { tier: true, turboFamily: true, models: true, duration: true, resolution: true, seed: true, loraTimeline: true, audioDock: false },
   })
   unregister()

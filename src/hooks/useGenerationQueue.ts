@@ -173,7 +173,7 @@ export function useGenerationQueue(options: {
           // engine-reset + tiled-VAE retry before the error is surfaced —
           // most H3 failures on 16 GB cards are VRAM fragmentation that a
           // /free soft-reset clears.
-          if (observation.kind === 'executionError' && !job.retriedOnce && (job.provider ?? 'minimax') === 'minimax' && job.graph) {
+          if (observation.kind === 'executionError' && !job.retriedOnce && (job.provider ?? 'monoka') === 'monoka' && job.graph) {
             try {
               await window.minimax.freeComfyMemory(settings.comfyUrl)
               const retryGraph = withTiledVideoDecode(job.graph as Record<string, { class_type: string; inputs: Record<string, unknown> }>)

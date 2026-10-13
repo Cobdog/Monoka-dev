@@ -331,6 +331,7 @@ export function createDatasetStore(db: Database.Database, options: DatasetStoreO
       VALUES (@layer_id, @text, @author, @author_model, 0, NULL, NULL, @updated_at)
       ON CONFLICT(layer_id) DO UPDATE SET text = excluded.text, author = excluded.author, author_model = excluded.author_model, stale = 0, stale_reason = NULL, review_state = NULL, updated_at = excluded.updated_at`),
     captionByLayer: db.prepare('SELECT * FROM dataset_captions WHERE layer_id = ?'),
+    layerRowid: db.prepare('SELECT rowid AS rid FROM dataset_layers WHERE id = ?'),
     flagCaptionStale: db.prepare('UPDATE dataset_captions SET stale = 1, stale_reason = ?, review_state = CASE WHEN review_state IS NULL THEN NULL ELSE review_state END, updated_at = ? WHERE layer_id = ?'),
     setCaptionReview: db.prepare('UPDATE dataset_captions SET review_state = ?, updated_at = ? WHERE layer_id = ?'),
     insertCaptionHistory: db.prepare('INSERT INTO dataset_caption_history (layer_id, text, author, author_model, recorded_at) VALUES (?, ?, ?, ?, ?)'),
@@ -452,21 +453,26 @@ export function createDatasetStore(db: Database.Database, options: DatasetStoreO
     return hasher.digest()
   }
 
+  // (schema audit A5, rename-sweep T1) The layer's FTS row lives at the
+  // BACKING TABLE's rowid (dataset_layers.rowid — layer_id is that table's
+  // PK; migration 012 re-keyed every existing row onto it): delete+insert is
+  // a PK fetch + a rowid write, not an O(all-FTS-rows) scan over an
+  // UNINDEXED column per caption edit.
   function ftsIndexLayer(layer: LayerRow) {
-    const row = db.prepare('SELECT rowid AS rid FROM dataset_fts WHERE layer_id = ? LIMIT 1').get(layer.id) as { rid: number } | undefined
-    if (row) st.ftsDelete.run(row.rid)
+    const row = st.layerRowid.get(layer.id) as { rid: number } | undefined
+    if (!row) return
+    st.ftsDelete.run(row.rid)
     const parts: string[] = []
     if (layer.caption?.text) parts.push(layer.caption.text)
     if (layer.name) parts.push(layer.name)
     const source = hydrateSource(st.sourceById.get(layer.sourceId))
     if (source) parts.push(source.originNote, source.consentNote, layer.id)
     const text = parts.filter(Boolean).join(' ').slice(0, 8000)
-    const insert = db.prepare('INSERT INTO dataset_fts (text, source_id, layer_id, kind) VALUES (?, ?, ?, ?)')
-    insert.run(text, layer.sourceId, layer.id, 'layer')
+    st.ftsInsert.run(row.rid, text, layer.sourceId, layer.id, 'layer')
   }
 
   function ftsRemoveLayer(layerId: string) {
-    const row = db.prepare('SELECT rowid AS rid FROM dataset_fts WHERE layer_id = ? LIMIT 1').get(layerId) as { rid: number } | undefined
+    const row = st.layerRowid.get(layerId) as { rid: number } | undefined
     if (row) st.ftsDelete.run(row.rid)
   }
 

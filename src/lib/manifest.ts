@@ -13,7 +13,7 @@ export type RenderManifest = {
   manifestVersion: 1
   graphFamily: string
   createdAt: number
-  provider: 'minimax'
+  provider: 'monoka'
   mode: string
   prompt: string
   seed: number
@@ -82,7 +82,7 @@ export function buildRenderManifest(options: GenerationOptions, models: ModelSel
     manifestVersion: 1,
     graphFamily: GRAPH_FAMILY_VERSION,
     createdAt: Date.now(),
-    provider: 'minimax',
+    provider: 'monoka',
     mode: options.mode,
     prompt: options.prompt,
     seed: options.seed,
@@ -113,7 +113,7 @@ export function buildRenderManifest(options: GenerationOptions, models: ModelSel
 
 export function manifestFileName(job: GenerationJob) {
   const stamp = new Date(job.createdAt).toISOString().replace(/[:.]/g, '-')
-  return `manifest-${job.provider ?? 'minimax'}-${stamp}.json`
+  return `manifest-${job.provider ?? 'monoka'}-${stamp}.json`
 }
 
 /** Browser download of a manifest (or any JSON payload) without a server round

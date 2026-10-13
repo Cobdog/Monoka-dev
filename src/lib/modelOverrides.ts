@@ -83,7 +83,7 @@ export const OVERRIDE_SLOTS: readonly ModelOverrideSlotName[] = ['checkpoint', '
 
 // 'acestep' was removed with the ACE-Step cut (2026-09-21, nn5ld47) —
 // stored override picks under that key drop with the family (the LTX precedent).
-export type ModelFamilyId = 'minimax' | 'h3image' | 'music3'
+export type ModelFamilyId = 'monoka' | 'h3image' | 'music3'
 
 export type ModelFamilyInfo = {
   id: ModelFamilyId
@@ -116,7 +116,7 @@ export const IMAGE_VAE_FAMILIES: ReadonlySet<ModelFamilyId> = new Set(['h3image'
 /** The family registry the Settings page and the properties panel render. */
 export const MODEL_FAMILIES: readonly ModelFamilyInfo[] = [
   {
-    id: 'minimax',
+    id: 'monoka',
     label: 'MiniMax H3 video',
     note: 'The FL2VA and Ref2VA picks pin each render lane separately — only the mode\'s slot loads. The merged pick is ONE pre-merged checkpoint standing in for both lanes when set (unused unless needed). Text encoder is the Qwen3-VL companion; the video and audio VAE picks load the graph\'s two decoders (nodes 3/4). No image-VAE slot exists here — the video graph is always multi-frame and the Mamad8 T=1 decoder is factory-banned from it.',
     slots: ['fl2va', 'ref2va', 'merged', 'textEncoder', 'videoVae', 'audioVae'],
@@ -202,20 +202,20 @@ export function overrideLayerSummary(counts: { chain: number; global: number }):
  *  one decoder field is literally named 'vae' — the audioVae slot's target
  *  there is still the audio-class file. */
 const SLOT_FIELDS: Record<ModelFamilyId, Partial<Record<ModelOverrideSlotName, string[]>>> = {
-  minimax: { fl2va: ['fl2va'], ref2va: ['ref2va'], merged: ['merged'], textEncoder: ['textEncoder'], videoVae: ['videoVae'], audioVae: ['audioVae'] },
+  monoka: { fl2va: ['fl2va'], ref2va: ['ref2va'], merged: ['merged'], textEncoder: ['textEncoder'], videoVae: ['videoVae'], audioVae: ['audioVae'] },
   h3image: { fl2va: ['fl2va'], ref2va: ['ref2va'], merged: ['merged'], textEncoder: ['textEncoder'], videoVae: ['videoVae'], audioVae: ['audioVae'], imageVae: ['t1ImageVae'] },
   music3: { checkpoint: ['diffusion'], textEncoder: ['textEncoder'], audioVae: ['vae'] },
 }
 
 /** The families whose checkpoint slot split into the per-lane trio (rq0lsax). */
-const H3_LANE_FAMILIES: ReadonlySet<string> = new Set(['minimax', 'h3image'])
+const H3_LANE_FAMILIES: ReadonlySet<string> = new Set(['monoka', 'h3image'])
 
 /** The families whose legacy single 'vae' pick meant the VIDEO decoder
  *  (epdvxd4) — their graphs load a video+audio VAELoader pair and the old
  *  slot drove only the video one. (The removed LTX families also belonged
  *  here; a stored legacy 'vae' pick under those keys now drops with the
  *  family — Phase 0, 2026-09-20.) */
-const VIDEO_VAE_FAMILIES: ReadonlySet<string> = new Set(['minimax', 'h3image'])
+const VIDEO_VAE_FAMILIES: ReadonlySet<string> = new Set(['monoka', 'h3image'])
 
 /** The families whose legacy single 'vae' pick meant the AUDIO decoder
  *  (epdvxd4) — their one decoder is audio-class (music3's DAV), so landing
@@ -465,7 +465,7 @@ function slotRefusal(family: ModelFamilyInfo, slot: ModelOverrideSlotName, file:
 export function resolveModelOverrides(familyId: string, files: ModelFile[], overrides?: ModelOverrideSlots, layers?: { chain?: ModelOverrideSlots; global?: ModelOverrideSlots }): OverrideResolution {
   const family = modelFamilyInfo(familyId) as ModelFamilyInfo | null
   const resolution: OverrideResolution = {
-    family: (family?.id ?? 'minimax') as ModelFamilyId,
+    family: (family?.id ?? 'monoka') as ModelFamilyId,
     slots: {
       checkpoint: { slot: 'checkpoint', state: 'auto' },
       fl2va: { slot: 'fl2va', state: 'auto' },
@@ -678,7 +678,7 @@ export function inferredOverrideSlotFile(familyId: ModelFamilyId, slot: ModelOve
   const primary = SLOT_FIELDS[familyId][slot]?.[0]
   if (!primary) return ''
   let record: Record<string, unknown> | null = null
-  if (familyId === 'minimax') record = inferSelections(files, 'off')
+  if (familyId === 'monoka') record = inferSelections(files, 'off')
   else if (familyId === 'h3image') record = inferH3ImgSelection(files)
   else if (familyId === 'music3') record = inferMusic3Selection(files)
   const value = record ? record[primary] : undefined

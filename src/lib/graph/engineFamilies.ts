@@ -116,7 +116,7 @@ const STOCK_ENTRIES: EngineFamilyEntry[] = [
     label: 'MiniMax H3',
     mediaType: 'video',
     engineKey: 'h3',
-    modelFamilyId: 'minimax',
+    modelFamilyId: 'monoka',
     panel: VIDEO_PANEL,
   },
   {

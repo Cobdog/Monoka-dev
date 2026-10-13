@@ -278,7 +278,7 @@ export function DiagnosticsView() {
                 <span><AlertCircle size={14} /></span>
                 <div>
                   <strong>{bucket.label}{nodeFromError(job.error) ? ` · node ${nodeFromError(job.error)}` : ''}</strong>
-                  <small>{new Date(job.createdAt).toLocaleString()} · {job.provider ?? 'minimax'}/{job.mode}{graph?.topologyHash ? ` · ${graph.family ?? '-'}/${graph.topologyHash}${graph.steps !== undefined ? ` · ${graph.steps} steps` : ''}${graph.turbo ? ` · turbo ${graph.turbo}` : ''}` : ''}</small>
+                  <small>{new Date(job.createdAt).toLocaleString()} · {job.provider ?? 'monoka'}/{job.mode}{graph?.topologyHash ? ` · ${graph.family ?? '-'}/${graph.topologyHash}${graph.steps !== undefined ? ` · ${graph.steps} steps` : ''}${graph.turbo ? ` · turbo ${graph.turbo}` : ''}` : ''}</small>
                   <p>{sanitizeErrorMessage(job.error ?? '')}</p>
                   <p>{bucket.cause}</p>
                 </div>

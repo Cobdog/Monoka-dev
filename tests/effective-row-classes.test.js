@@ -205,33 +205,33 @@ const MERGE = 'TenStrip_10Eros-Max_beta5_int8.safetensors'
 
 test('(g) the resolver mapping — applied picks name their layer; failed picks are the ATTEMPT, never the value', () => {
   // 1. No picks anywhere: auto, no fabricated level.
-  const none = effectiveSlotSetting('minimax', 'fl2va', SCAN, {})
+  const none = effectiveSlotSetting('monoka', 'fl2va', SCAN, {})
   eq(none.value, FL2VA_INFERRED, 'no picks → the auto inference is the value')
   eq(none.origin.kind, 'auto', 'no picks → origin auto')
   eq(none.attempt, undefined, 'no picks → no attempt record')
   eq(none.attemptMessage, undefined, 'no picks → no message')
 
   // 2. A chain pick that applies: value = the pick, origin = chain.
-  const chainApplied = effectiveSlotSetting('minimax', 'fl2va', SCAN, { chain: { fl2va: MERGE } })
+  const chainApplied = effectiveSlotSetting('monoka', 'fl2va', SCAN, { chain: { fl2va: MERGE } })
   eq(chainApplied.value, MERGE, 'an applied chain pick is the value')
   eq(JSON.stringify(chainApplied.origin), '{"kind":"override","level":"chain"}', 'an applied chain pick names the chain level')
   eq(chainApplied.attempt, undefined, 'an applied pick carries no attempt')
 
   // 3. A global pick that applies (no chain pick): origin = global.
-  const globalApplied = effectiveSlotSetting('minimax', 'fl2va', SCAN, { global: { fl2va: MERGE } })
+  const globalApplied = effectiveSlotSetting('monoka', 'fl2va', SCAN, { global: { fl2va: MERGE } })
   eq(globalApplied.value, MERGE, 'an applied global pick is the value')
   eq(JSON.stringify(globalApplied.origin), '{"kind":"override","level":"global"}', 'an applied global pick names the global level')
 
   // 4. A chain pick SHADOWS a global pick on the same slot: origin = chain
   //    (the layer actually in force), the global not fabricated as origin.
-  const shadowing = effectiveSlotSetting('minimax', 'fl2va', SCAN, { chain: { fl2va: MERGE }, global: { fl2va: FL2VA_INFERRED } })
+  const shadowing = effectiveSlotSetting('monoka', 'fl2va', SCAN, { chain: { fl2va: MERGE }, global: { fl2va: FL2VA_INFERRED } })
   eq(shadowing.value, MERGE, 'the chain pick wins the value')
   eq(JSON.stringify(shadowing.origin), '{"kind":"override","level":"chain"}', 'the shadowing layer is the origin')
 
   // 5. A REFUSED global pick (the audio decoder named into the video VAE
   //    slot — in the registry, cross-class): effective = auto, attempt =
   //    global/refused. The failed pick never becomes the value.
-  const refusedGlobal = effectiveSlotSetting('minimax', 'videoVae', SCAN, { global: { videoVae: 'minimax_h3_audio_vae_fp32.safetensors' } })
+  const refusedGlobal = effectiveSlotSetting('monoka', 'videoVae', SCAN, { global: { videoVae: 'minimax_h3_audio_vae_fp32.safetensors' } })
   eq(refusedGlobal.value, VIDEO_VAE_INFERRED, 'a refused global pick falls back to the auto inference as the value')
   eq(refusedGlobal.origin.kind, 'auto', 'a refused global pick leaves origin auto (nothing lower than global)')
   eq(JSON.stringify(refusedGlobal.attempt), '{"level":"global","outcome":"refused"}', 'the refusal surfaces as the attempt record')
@@ -240,7 +240,7 @@ test('(g) the resolver mapping — applied picks name their layer; failed picks 
   // 6. A REFUSED chain pick with the global still standing: effective = the
   //    SURVIVING global override (exactly what clearing the failed pick puts
   //    in force), attempt = chain/refused.
-  const refusedChain = effectiveSlotSetting('minimax', 'videoVae', SCAN, {
+  const refusedChain = effectiveSlotSetting('monoka', 'videoVae', SCAN, {
     chain: { videoVae: 'minimax_h3_audio_vae_fp32.safetensors' },
     global: { videoVae: VIDEO_VAE_INFERRED },
   })
@@ -250,19 +250,19 @@ test('(g) the resolver mapping — applied picks name their layer; failed picks 
 
   // 7. A DEGRADED chain pick (file vanished from the registry), nothing
   //    beneath: effective = auto, attempt = chain/degraded.
-  const degradedChain = effectiveSlotSetting('minimax', 'videoVae', SCAN, { chain: { videoVae: 'GONE_video_decoder.safetensors' } })
+  const degradedChain = effectiveSlotSetting('monoka', 'videoVae', SCAN, { chain: { videoVae: 'GONE_video_decoder.safetensors' } })
   eq(degradedChain.value, VIDEO_VAE_INFERRED, 'a degraded pick falls back to the auto inference')
   eq(degradedChain.origin.kind, 'auto', 'a degraded pick leaves origin auto')
   eq(JSON.stringify(degradedChain.attempt), '{"level":"chain","outcome":"degraded"}', 'the drift surfaces as the chain attempt record')
   ok(String(degradedChain.attemptMessage).includes('not in the engine\'s model registry'), 'the attempt message carries the drift warning')
 
   // 8. A DEGRADED global pick: attempt = global/degraded.
-  const degradedGlobal = effectiveSlotSetting('minimax', 'audioVae', SCAN, { global: { audioVae: 'GONE_audio_decoder.safetensors' } })
+  const degradedGlobal = effectiveSlotSetting('monoka', 'audioVae', SCAN, { global: { audioVae: 'GONE_audio_decoder.safetensors' } })
   eq(JSON.stringify(degradedGlobal.attempt), '{"level":"global","outcome":"degraded"}', 'the global drift is the attempt record')
 
   // 9. Blank/whitespace picks are auto (the stored convention) — no
   //    fabricated level from an empty slot.
-  const blank = effectiveSlotSetting('minimax', 'fl2va', SCAN, { chain: { fl2va: '   ' }, global: { fl2va: '' } })
+  const blank = effectiveSlotSetting('monoka', 'fl2va', SCAN, { chain: { fl2va: '   ' }, global: { fl2va: '' } })
   eq(blank.origin.kind, 'auto', 'blank picks read as auto')
 
   // 10. Levels stay resolver-honest across every case: never 'node' (the
