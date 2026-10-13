@@ -109,7 +109,7 @@ const manifestFixture = {
   prompt: 'a lantern-lit courtyard', seed: 12345, steps: 30, turbo: 'off', sampler: 'res_multistep',
   scheduler: 'simple', resolution: '1344x768', durationSeconds: 5,
   models: { diffusion: { name: 'fl2va.safetensors', bytes: 1 } }, referenceCounts: { images: 0, videos: 0, audios: 0 },
-  graphVersion: 'fnv1a-deadbeef', engine: { comfyUrl: 'http://127.0.0.1:8188', app: 'MiniMax Studio' },
+  graphVersion: 'fnv1a-deadbeef', engine: { comfyUrl: 'http://127.0.0.1:8188', app: 'Monoka' },
 }
 
 const jobA = {

@@ -292,7 +292,7 @@ test('diagnostics dock renders, builds a scrubbed report, and copies it', async 
   const preview = page.locator('.diagnostics-report-preview')
   await expect(preview).toBeVisible()
   const text = await preview.innerText()
-  expect(text).toContain('MiniMax Studio diagnostic report')
+  expect(text).toContain('Monoka diagnostic report')
   expect(text).toContain('[ENGINE]')
   expect(text).toContain('external mode')
   expect(text).toContain('[MODEL SCAN]')
@@ -302,7 +302,7 @@ test('diagnostics dock renders, builds a scrubbed report, and copies it', async 
   await page.getByRole('button', { name: /copy report/i }).click()
   await expect(page.locator('.llm-test-result')).toContainText(/copied/i)
   const copied = await page.evaluate(() => navigator.clipboard.readText())
-  expect(copied.startsWith('MiniMax Studio diagnostic report')).toBe(true)
+  expect(copied.startsWith('Monoka diagnostic report')).toBe(true)
   expect(copied).toContain('[SETUP DOCTOR]')
 
   // Save: the report lands as a local file download, no server round trip.
