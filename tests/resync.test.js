@@ -128,7 +128,7 @@ function liveStore(models) {
 }
 
 maybe('(a)+(b)+(c) the mirror re-sync truth: light listing, sub-tick restart drift, observed recovery — against the real server + the environment mirror', async () => {
-  const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-resync-home-'))
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-resync-home-'))
   const enginePort = await freePort()
   const serverPort = await freePort()
 

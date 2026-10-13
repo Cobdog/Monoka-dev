@@ -514,7 +514,7 @@ beforeAll(async () => {
     try { return (await engineFetch('/system_stats')).ok } catch { return false }
   }, 15_000, 'the fake engine listening on its allocated port')
 
-  home = makeScratchDir(path.join(os.tmpdir(), 'minimax-animation-export-'))
+  home = makeScratchDir(path.join(os.tmpdir(), 'monoka-animation-export-'))
   fs.writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ comfyUrl: `http://127.0.0.1:${enginePort}` }))
 
   server = await bootServer(home, 'animation-export')

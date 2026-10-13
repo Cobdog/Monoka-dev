@@ -670,7 +670,7 @@ test('settings-GET Option B: token mode gates the read, the SPA editor path keep
   // webServer is open mode by design). Option B (maintainer decision
   // 2026-09-18): GET /settings requires the token in token mode; the SPA
   // attaches it from the launch link, so the settings editor loads.
-  const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-e2e-token-'))
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-e2e-token-'))
   const port = 5710 + Math.floor(Math.random() * 80) // this agent's 5700-5799 range
   const child = spawn(process.execPath, ['dist-server/server/index.js'], {
     env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1', MONOKA_LAN_TOKEN: '1' },
@@ -1108,7 +1108,7 @@ test('boot never POSTs an empty job list — no 400 on a fresh home', async ({ p
   const problems = await trackErrors(page)
   // A dedicated fresh home (the token-mode precedent): the shared e2e home
   // accumulates jobs across runs, which would mask the empty-list path.
-  const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-e2e-jobs400-'))
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-e2e-jobs400-'))
   const port = 6910 + Math.floor(Math.random() * 80) // this agent's 6900–6999 range
   const child = spawn(process.execPath, ['dist-server/server/index.js'], {
     env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1' },
@@ -1143,7 +1143,7 @@ test('a virgin home seeds no "Imported workspace" — the legacy import gates on
   const problems = await trackErrors(page)
   // A dedicated fresh home: virgin is exactly the phantom-project condition
   // (review M5) — no workspace_state, no jobs, no prompts, no characters.
-  const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-e2e-legacy-'))
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-e2e-legacy-'))
   const port = 6910 + Math.floor(Math.random() * 80) // this agent's 6900–6999 range
   const child = spawn(process.execPath, ['dist-server/server/index.js'], {
     env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1' },

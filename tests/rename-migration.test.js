@@ -43,7 +43,7 @@ const { migrations, openStudioDatabase } = require(path.join(REPO, 'dist-server/
 const { createDatasetManager } = require(path.join(REPO, 'dist-server/server/datasets/index.js'))
 
 function makeHome(label) {
-  return makeScratchDir(path.join(os.tmpdir(), `minimax-rename-${label}-`))
+  return makeScratchDir(path.join(os.tmpdir(), `monoka-rename-${label}-`))
 }
 
 let assertions = 0

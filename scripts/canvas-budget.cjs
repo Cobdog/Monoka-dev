@@ -55,7 +55,7 @@ function fail(message) {
 }
 
 // -- boot the built app --------------------------------------------------------
-const home = fs.mkdtempSync(path.join(os.tmpdir(), 'minimax-canvas-budget-'))
+const home = fs.mkdtempSync(path.join(os.tmpdir(), 'monoka-canvas-budget-'))
 const port = String(4590 + Math.floor(Math.random() * 200))
 const server = spawn(process.execPath, ['dist-server/server/index.js'], {
   env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: port, MONOKA_NO_HTTPS: '1' },

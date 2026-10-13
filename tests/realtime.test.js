@@ -235,7 +235,7 @@ test('(a) units against dist-server/server/realtime.js: framing, hashing, normal
 })
 
 test('(b) boot + WS hello + telemetry push without any ComfyUI engine', async () => {
-  const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-realtime-'))
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-realtime-'))
 
   // Fake upstream ComfyUI on a kernel-assigned port, known to the server via
   // settings BEFORE boot (the fabric connects upstream lazily on subscribe).
@@ -396,7 +396,7 @@ test('(e) SSE v2 fallback pushes telemetry', async () => {
 })
 
 test('(f) token mode: WS without/with a wrong token is refused before the handshake; the correct token connects', async () => {
-  const tokenHome = makeScratchDir(path.join(os.tmpdir(), 'minimax-realtime-token-'))
+  const tokenHome = makeScratchDir(path.join(os.tmpdir(), 'monoka-realtime-token-'))
   const tokenPort = await freePort()
   bootServer(tokenHome, tokenPort, { MONOKA_LAN_TOKEN: '1' })
   let refusedStatus = 0
@@ -469,7 +469,7 @@ test('(g) F6 live progress: stable server-side clientId + native-preview wiring 
   const enginePort = await listen(engineHttp)
   servers.push(engineHttp)
 
-  const f6Home = makeScratchDir(path.join(os.tmpdir(), 'minimax-realtime-f6-'))
+  const f6Home = makeScratchDir(path.join(os.tmpdir(), 'monoka-realtime-f6-'))
   fs.writeFileSync(path.join(f6Home, 'settings.json'), JSON.stringify({ comfyUrl: `http://127.0.0.1:${enginePort}` }))
   const f6Port = await freePort()
   bootServer(f6Home, f6Port)

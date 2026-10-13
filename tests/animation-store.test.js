@@ -173,7 +173,7 @@ let attemptG1 = null
 let home = ''
 
 beforeAll(() => {
-  home = makeScratchDir(path.join(os.tmpdir(), 'minimax-animation-store-'))
+  home = makeScratchDir(path.join(os.tmpdir(), 'monoka-animation-store-'))
   db = new Database(path.join(home, 'studio.db'))
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
@@ -193,7 +193,7 @@ afterAll(() => {
 // Opens a second scratch studio (migrations applied, document + animation
 // stores on the same handle) — the archive-import arms.
 function openScratchStudio(label) {
-  const scratch = makeScratchDir(path.join(os.tmpdir(), `minimax-animation-store-${label}-`))
+  const scratch = makeScratchDir(path.join(os.tmpdir(), `monoka-animation-store-${label}-`))
   const handle = new Database(path.join(scratch, 'studio.db'))
   handle.pragma('journal_mode = WAL')
   handle.pragma('foreign_keys = ON')
@@ -1048,7 +1048,7 @@ test('(h) project archive round-trips animation documents, attempts, and referen
   assert.throws(() => importProjectArchive(second.documents, archive), /already exists/, 're-importing the same project refuses')
 
   // A newer animation schema version riding an archive refuses loudly too.
-  const futureHome = makeScratchDir(path.join(os.tmpdir(), 'minimax-animation-store-future-'))
+  const futureHome = makeScratchDir(path.join(os.tmpdir(), 'monoka-animation-store-future-'))
   const futureDbFile = path.join(futureHome, 'studio.db')
   await db.backup(futureDbFile)
   const futureDb = new Database(futureDbFile)

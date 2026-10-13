@@ -87,7 +87,7 @@ const freePort = makePortAllocator('datasets')
 const sha256File = (file) => createHash('sha256').update(fs.readFileSync(file)).digest('hex')
 
 function makeHome(label) {
-  return makeScratchDir(path.join(os.tmpdir(), `minimax-datasets-${label}-`))
+  return makeScratchDir(path.join(os.tmpdir(), `monoka-datasets-${label}-`))
 }
 
 function runFfmpeg(args) {

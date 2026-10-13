@@ -141,14 +141,14 @@ function holdHttp(port) {
 }
 
 function makeHome() {
-  return makeScratchDir(path.join(os.tmpdir(), 'minimax-runtime-home-'))
+  return makeScratchDir(path.join(os.tmpdir(), 'monoka-runtime-home-'))
 }
 
 /** A stub "ComfyUI checkout": temp dir containing main.py (node-JS stub
  *  content — node runs it regardless of extension, so the PRODUCTION argv
  *  `pythonPath main.py --port N` is exercised exactly). */
 function makeCheckout(fixture = 'runtime-stub.cjs') {
-  const checkout = makeScratchDir(path.join(os.tmpdir(), 'minimax-runtime-checkout-'))
+  const checkout = makeScratchDir(path.join(os.tmpdir(), 'monoka-runtime-checkout-'))
   fs.copyFileSync(path.join(FIXTURES, fixture), path.join(checkout, 'main.py'))
   return checkout
 }
@@ -165,7 +165,7 @@ async function suiteStartPort() {
  * comfyUrl); the suite never persists through normalizeSettings. */
 function makeSettings(checkout, extra = {}) {
   const { engine: engineExtra = {}, paths: pathsExtra = {}, ...rest } = extra
-  const modelRoot = makeScratchDir(path.join(os.tmpdir(), 'minimax-runtime-models-'))
+  const modelRoot = makeScratchDir(path.join(os.tmpdir(), 'monoka-runtime-models-'))
   const kindDirs = {
     diffusion_models: path.join(modelRoot, 'diffusion_models'),
     text_encoders: path.join(modelRoot, 'text_encoders'),
@@ -247,7 +247,7 @@ class MiniMaxH3Model:
  *  main.py (the runnable node stub — a launch must actually boot), the
  *  comfy/ldm/minimax/model.py layout under test, and a stated version. */
 function makePatchCheckout(layoutText, comfyVersion) {
-  const checkout = makeScratchDir(path.join(os.tmpdir(), 'minimax-runtime-patch-'))
+  const checkout = makeScratchDir(path.join(os.tmpdir(), 'monoka-runtime-patch-'))
   fs.copyFileSync(path.join(FIXTURES, 'runtime-stub.cjs'), path.join(checkout, 'main.py'))
   const targetDir = path.join(checkout, 'comfy', 'ldm', 'minimax')
   fs.mkdirSync(targetDir, { recursive: true })
@@ -264,7 +264,7 @@ function patchTargetOf(checkout) {
 
 /** A tiny local fixture "pack" with code, a weight, and junk to skip. */
 function makeFixtureVendorRoot() {
-  const vendorRoot = makeScratchDir(path.join(os.tmpdir(), 'minimax-runtime-vendor-'))
+  const vendorRoot = makeScratchDir(path.join(os.tmpdir(), 'monoka-runtime-vendor-'))
   const pack = path.join(vendorRoot, 'fixture-pack')
   fs.mkdirSync(path.join(pack, 'weights'), { recursive: true })
   fs.mkdirSync(path.join(pack, '__pycache__'), { recursive: true })
@@ -337,7 +337,7 @@ afterAll(async () => {
 maybe('(a) extra_model_paths.yaml generation', async () => {
   console.log('runtime: extra_model_paths.yaml generation')
   {
-    const realDir = makeScratchDir(path.join(os.tmpdir(), 'minimax-runtime-root-'))
+    const realDir = makeScratchDir(path.join(os.tmpdir(), 'monoka-runtime-root-'))
     ok(validateModelRoot(realDir) === path.resolve(realDir), 'an existing absolute root validates and resolves')
     ok(validateModelRoot('relative/path') === null, 'relative root rejected')
     ok(validateModelRoot('/definitely/not/here') === null, 'nonexistent root rejected')
@@ -474,7 +474,7 @@ maybe('(d) failure taxonomy: exit-before-ready + unexpected crash', async () => 
     ok(failed.lastError && failed.lastError.includes('exited with code 3'), `unexpected death lands failed with the exit code (got "${failed.lastError}")`)
     ok(!isAlive(started.status.pid), 'crashed process reaped')
 
-    const failCheckout = makeScratchDir(path.join(os.tmpdir(), 'minimax-runtime-checkout-'))
+    const failCheckout = makeScratchDir(path.join(os.tmpdir(), 'monoka-runtime-checkout-'))
     fs.writeFileSync(path.join(failCheckout, 'main.py'), "process.stderr.write('stub: failing before ready\\n'); process.exit(7)\n")
     const failRuntime = makeManager(makeHome(), makeSettings(failCheckout), { startPort: await suiteStartPort() })
     await assert.rejects(failRuntime.start(), /did not become ready/, 'exit-before-ready rejects the start')
@@ -976,7 +976,7 @@ maybe('(k) consent patch manager (increment 2): layout detect, apply/backup/atom
 maybe('(l) weight symlink policy (increment 2): linkNeverCopy chain + linkWeightIntoModelRoot + the suite PASS summary', async () => {
   console.log('runtime: weight symlink policy')
   {
-    const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-runtime-links-'))
+    const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-runtime-links-'))
     const weightSource = path.join(home, 'vdn-branch.safetensors')
     fs.writeFileSync(weightSource, 'WEIGHT-BYTES')
     const settings = makeSettings(makeCheckout())

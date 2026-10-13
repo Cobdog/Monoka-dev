@@ -39,7 +39,7 @@ afterAll(() => { void removeAllScratchDirs() })
 
 const freePort = makePortAllocator('storage')
 
-const home = makeScratchDir(path.join(os.tmpdir(), 'minimax-storage-'))
+const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-storage-'))
 let child = null
 let output = ''
 
@@ -470,7 +470,7 @@ test('in-process seams: comfyFetch SSRF funnel + rotateToken scheme', async () =
   const { pathToFileURL } = require('node:url')
   const coreUrl = pathToFileURL(path.join(REPO, 'dist-server', 'server', 'core.js')).href
   const { createStudioServer } = await import(coreUrl)
-  const guardHome = makeScratchDir(path.join(os.tmpdir(), 'minimax-storage-guard-'))
+  const guardHome = makeScratchDir(path.join(os.tmpdir(), 'monoka-storage-guard-'))
   const guardPort = await freePort()
   const studio = createStudioServer({
     settingsFile: path.join(guardHome, 'settings.json'),
@@ -507,7 +507,7 @@ test('(h) settings-GET Option B: token-gated whenever token mode is on', async (
   const { pathToFileURL } = require('node:url')
   const coreUrl = pathToFileURL(path.join(REPO, 'dist-server', 'server', 'core.js')).href
   const { createStudioServer } = await import(coreUrl)
-  const tokenHome = makeScratchDir(path.join(os.tmpdir(), 'minimax-storage-settings-'))
+  const tokenHome = makeScratchDir(path.join(os.tmpdir(), 'monoka-storage-settings-'))
   const tokenPort = await freePort()
   fs.writeFileSync(path.join(tokenHome, 'lan-access-token.txt'), '0123456789abcdef0123456789abcdef\n')
   const studio = createStudioServer({
