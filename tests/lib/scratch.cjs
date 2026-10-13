@@ -7,7 +7,9 @@
  * Every temp dir a suite or spec creates now goes through makeScratchDir and
  * the suite's afterAll calls removeAllScratchDirs — scratch cleanup is part
  * of the suite contract, verified by the clean-slate check: a full local run
- * (TMPDIR=/home/agent/tmp-gpu) leaves ZERO `monoka-` or `mm-` strays.
+ * (TMPDIR=/home/agent/tmp-gpu) leaves ZERO `monoka-`, `mm-`, or `bench-tests-`
+ * strays. (2026-10-13, rename-T6) `bench-tests-` (tests/benchmarks.test.js)
+ * always went through makeScratchDir; the contract wording now names it.
  *
  * (2026-10-12 rename sweep) Prefixes were `minimax-*` before the sweep; every
  * suite moved to `monoka-*` in one commit so no suite ever sees a foreign
