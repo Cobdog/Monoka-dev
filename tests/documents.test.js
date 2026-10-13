@@ -677,7 +677,7 @@ test('(i) unknown-newer refuses loudly; old surface untouched', async () => {
   const futureRead = await api.get('/api/lan/documents/project?id=legacy:project')
   check(futureRead.status === 400, 'unknown-newer document version is a LOUD refusal (400)')
   check(/schema version 999/.test(futureRead.body.error) && futureRead.body.error.includes('9.9.9-future'), 'the refusal names the version AND the writing app version (§2)')
-  check(futureRead.body.error.includes('upgrade MiniMax Studio'), 'the refusal says what to do')
+  check(futureRead.body.error.includes('upgrade Monoka'), 'the refusal says what to do')
 
   // old surface byte-identical: job upsert keeps the canvas extension columns
   const queueSet = await api.post('/api/lan/documents/jobs/state', { id: 'doc-job-5', gpuQueueState: 'queued_for_gpu', planRef: 'plan-x' })
