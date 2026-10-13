@@ -32,7 +32,7 @@ export const PREVIEW_ENTRY: OptimizationEntry = {
   id: 'preview.h3-override',
   label: 'H3 live preview override',
   kind: 'preview',
-  appliesTo: ['minimax'],
+  appliesTo: ['monoka'],
   wraps: 'modelChain',
   detect(info: ObjectInfo | undefined) {
     const node = info ? findH3PreviewOverrideNode(info) : undefined
