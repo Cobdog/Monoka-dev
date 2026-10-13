@@ -22,7 +22,7 @@ export const FRAMINGS: Record<string, [number, number]> = {
   'wide shot': [0.097, 0.34],
 }
 
-export const MINIMAX_FORMATS = ['coordinate only', 'coordinate + H3 sections', 'compact JSON', 'compact JSON (no boxes)']
+export const MONOKA_FORMATS = ['coordinate only', 'coordinate + H3 sections', 'compact JSON', 'compact JSON (no boxes)']
 
 /** Editor limits for the elevation slider. Past about 20 degrees the horizon
  *  has already left the frame, so the wide range mostly made the control

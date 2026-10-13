@@ -30,7 +30,7 @@ export interface Pose {
 
 export type Interpolation = 'smooth' | 'linear'
 export type PromptDetail = 'v15 baseline' | 'extended contracts'
-export type MinimaxFormat =
+export type MonokaFormat =
   | 'coordinate only'
   | 'coordinate + H3 sections'
   | 'compact JSON'
@@ -138,7 +138,7 @@ export interface CompileResult {
   /** Human-readable diagnostics banner. */
   info: string
   /** Same trajectory in the requested minimax_format. */
-  minimaxPrompt: string
+  monokaPrompt: string
   /** Frame count the plan was timed against (wire into generation length). */
   frames: number
   /** 24 — wire into the video node's fps. */
@@ -153,7 +153,7 @@ export interface CompileCameraParams {
   interpolation: string
   instruction: string
   subjectFraming?: string | null
-  minimaxFormat?: string | null
+  monokaFormat?: string | null
   referenceImage?: ImageShape | null
   elevationRange?: string | null
   orbitDirection?: string | null
