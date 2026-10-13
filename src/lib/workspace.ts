@@ -82,7 +82,7 @@ export function normalizeWorkspace(stored: Partial<PersistedWorkspace>): Persist
 
 export function readWorkspace(): PersistedWorkspace {
   try {
-    const stored = JSON.parse(localStorage.getItem('minimax.workspace') ?? '{}') as Partial<PersistedWorkspace>
+    const stored = JSON.parse(localStorage.getItem('monoka.workspace') ?? '{}') as Partial<PersistedWorkspace>
     return normalizeWorkspace(stored && typeof stored === 'object' ? stored : {})
   } catch {
     return workspaceDefaults

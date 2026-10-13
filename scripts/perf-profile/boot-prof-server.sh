@@ -5,9 +5,9 @@
 # artifacts/server-prof.pid — never by pattern (agent-resources.md rules).
 set -euo pipefail
 cd "$(dirname "$0")/../.."   # worktree root
-export MINIMAX_STUDIO_HOME="$PWD/test-results/perf-profile/home-prof"
-export MINIMAX_LAN_PORT=5302
-export MINIMAX_NO_HTTPS=1
+export MONOKA_HOME="$PWD/test-results/perf-profile/home-prof"
+export MONOKA_LAN_PORT=5302
+export MONOKA_NO_HTTPS=1
 exec node \
   --cpu-prof \
   --cpu-prof-dir="$PWD/test-results/perf-profile/profiles" \

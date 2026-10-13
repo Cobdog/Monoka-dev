@@ -1108,7 +1108,7 @@ async function startDedicatedStudio(slug: string): Promise<DedicatedStudio> {
 
 function spawnStudio(port: number, home: string): ChildProcess {
   const child = spawn('node', [path.join(process.cwd(), 'dist-server/server/index.js')], {
-    env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(port), MINIMAX_NO_HTTPS: '1' },
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   // Drain + keep the boot log (the engine spawn's own pattern): a stopped

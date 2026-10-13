@@ -3,7 +3,7 @@
  * Probes, in the house verifier tradition:
  *  (a) GOLDEN SNAPSHOTS — every matrix config in lib/h3img-matrix.cjs
  *      rebuilds canonically equal to fixtures/h3img-golden.json
- *      (`MINIMAX_UPDATE_GOLDEN=1 vitest run h3img` re-snapshots; review the
+ *      (`MONOKA_UPDATE_GOLDEN=1 vitest run h3img` re-snapshots; review the
  *      diff — the fixture IS the contract).
  *  (b) RECIPE PINS — the pinned defaults table (T=1 recipe verbatim, hybrid
  *      window, tiers, directed tail, keep band, LoRA ceilings, SeedVR2
@@ -63,9 +63,9 @@ afterAll(async () => { await removeAllScratchDirs() })
 
 const FIXTURE = path.resolve(__dirname, '..', 'scripts', 'fixtures', 'h3img-golden.json')
 
-// Golden regeneration: `MINIMAX_UPDATE_GOLDEN=1 pnpm test:h3img` (vitest
+// Golden regeneration: `MONOKA_UPDATE_GOLDEN=1 pnpm test:h3img` (vitest
 // swallows forwarded CLI flags, so the env var is the cross-platform form).
-const UPDATE_GOLDEN = process.argv.includes('--update-golden') || process.env.MINIMAX_UPDATE_GOLDEN === '1'
+const UPDATE_GOLDEN = process.argv.includes('--update-golden') || process.env.MONOKA_UPDATE_GOLDEN === '1'
 const maybe = UPDATE_GOLDEN ? test.skip : test
 const updateMaybe = UPDATE_GOLDEN ? test : test.skip
 

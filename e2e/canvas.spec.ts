@@ -3358,8 +3358,8 @@ test('the measured gap menu: five entries with honest verdicts; the FLF splice w
   // localStorage keys the character/location studios persist through (each
   // test gets a fresh context, so this is the only way they exist).
   await page.addInitScript(() => {
-    localStorage.setItem('minimax.character-projects', JSON.stringify([{ id: 'e2e-char-vera', name: 'Vera' }]))
-    localStorage.setItem('minimax.location-projects', JSON.stringify([{ id: 'e2e-loc-depot', name: 'Depot' }]))
+    localStorage.setItem('monoka.character-projects', JSON.stringify([{ id: 'e2e-char-vera', name: 'Vera' }]))
+    localStorage.setItem('monoka.location-projects', JSON.stringify([{ id: 'e2e-loc-depot', name: 'Depot' }]))
   })
   await page.goto('/?canvas=1')
   await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')

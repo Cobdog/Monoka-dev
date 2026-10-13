@@ -54,8 +54,8 @@ const KREA2_FIXTURE = path.resolve(__dirname, '..', 'scripts', 'fixtures', 'krea
 
 // Golden regeneration is a deliberate act: `vitest run registry -- --update-golden`
 // (vitest forwards args after `--` into process.argv) or the env-var form
-// (cross-platform) `MINIMAX_UPDATE_GOLDEN=1 vitest run registry`.
-const UPDATE_GOLDEN = process.argv.includes('--update-golden') || process.env.MINIMAX_UPDATE_GOLDEN === '1'
+// (cross-platform) `MONOKA_UPDATE_GOLDEN=1 vitest run registry`.
+const UPDATE_GOLDEN = process.argv.includes('--update-golden') || process.env.MONOKA_UPDATE_GOLDEN === '1'
 const maybe = UPDATE_GOLDEN ? test.skip : test
 const updateMaybe = UPDATE_GOLDEN ? test : test.skip
 

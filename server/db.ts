@@ -1,6 +1,6 @@
 /**
  * The studio database (wave 1 storage substrate): a single better-sqlite3
- * file at <MINIMAX_STUDIO_HOME>/studio.db.
+ * file at <MONOKA_HOME>/studio.db.
  *
  * Decision record (2026-09-11): better-sqlite3 over node:sqlite because FTS5
  * is required for prompt search and node:sqlite is still RC without FTS5.
@@ -905,7 +905,7 @@ export function migrateDatabase(db: Database.Database, list: Migration[] = migra
       // must not push megabytes through the (deliberately uncapped)
       // app-authored channel.
       const appliedName = /^[0-9]{3}-[a-z0-9-]{1,64}$/.test(applied[index].name) ? applied[index].name : sanitizeErrorMessage(applied[index].name)
-      throw appAuthoredDiagnostic(`Migration ${expected.id} was amended on this branch: this home applied '${appliedName}' but the code ships '${expected.name}'. Rebuild the scratch home (delete its studio.db / reset MINIMAX_STUDIO_HOME) — an amended migration never re-runs against an applied history.`)
+      throw appAuthoredDiagnostic(`Migration ${expected.id} was amended on this branch: this home applied '${appliedName}' but the code ships '${expected.name}'. Rebuild the scratch home (delete its studio.db / reset MONOKA_HOME) — an amended migration never re-runs against an applied history.`)
     }
   }
   const runMigration = db.transaction((migration: Migration) => {

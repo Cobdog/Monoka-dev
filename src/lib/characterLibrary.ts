@@ -2,7 +2,7 @@ import type { CharacterProject, MediaFile } from '../types'
 import { createId } from './createId'
 import { persistToLocalStorage } from './libraryStorage'
 
-const KEY = 'minimax.character-projects'
+const KEY = 'monoka.character-projects'
 export const CHARACTER_LIBRARY_EVENT = 'minimax-character-library-changed'
 
 export function newCharacterProject(index = 1): CharacterProject {

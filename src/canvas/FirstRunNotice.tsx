@@ -16,7 +16,7 @@ import { useSessionStore } from '../state/sessionStore'
 import { useCanvasStore } from './store'
 import { WIZARD_STATE_EVENT } from './FirstRunWizard'
 
-const DISMISS_KEY = 'minimax.first-run-dismissed'
+const DISMISS_KEY = 'monoka.first-run-dismissed'
 
 /** Reopen signal the notice's CTA fires (the wizard listens and resets its
  *  skipped/done state — reopening is one click from the fallback surface). */
@@ -41,7 +41,7 @@ export function FirstRunNotice() {
   const [wizardPresenting, setWizardPresenting] = useState(false)
   const readWizardPresenting = () => {
     try {
-      const raw = localStorage.getItem('minimax.wizard')
+      const raw = localStorage.getItem('monoka.wizard')
       const parsed = raw ? JSON.parse(raw) as { done?: boolean; skipped?: boolean } : {}
       return parsed.done !== true && parsed.skipped !== true
     } catch { return false }

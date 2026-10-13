@@ -299,9 +299,9 @@ function historyOutput(history: Record<string, unknown>, promptId: string, kind:
 
 /** Default LAN posture (2026-09-10 decision): open, like ComfyUI itself.
  *  Token gating stays available for hostile networks via --token or
- *  MINIMAX_LAN_TOKEN=1. */
+ *  MONOKA_LAN_TOKEN=1. */
 function lanAuthRequired() {
-  return process.argv.includes('--token') || /^(1|true|yes)$/i.test(process.env.MINIMAX_LAN_TOKEN ?? '')
+  return process.argv.includes('--token') || /^(1|true|yes)$/i.test(process.env.MONOKA_LAN_TOKEN ?? '')
 }
 
 /** Constant-time token comparison; digests are compared so token length is
@@ -705,7 +705,7 @@ export function createStudioServer(paths: StudioServerPaths) {
     // roots); the hand-typed path ROWS are gone from the Settings surface.
     // App-relative io defaults (task 9om4bi9, dated decision 2026-09-19):
     // the APP FOLDER ROOT is the studio home — the directory holding
-    // settings.json (MINIMAX_STUDIO_HOME, default ~/.minimax-studio). It is
+    // settings.json (MONOKA_HOME, default ~/.monoka). It is
     // the one directory the app owns on every platform (the token and
     // studio.db already live there), it isolates automatically under test
     // homes, and — unlike an install-root-relative path — it stays writable
@@ -3756,11 +3756,11 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
       if (!(filePath === distRoot || filePath.startsWith(distRoot + sep)) || !existsSync(filePath)) {
         const fallback = join(distRoot, 'index.html')
         response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff', 'content-security-policy': CONTENT_SECURITY_POLICY })
-        if (process.env.MINIMAX_DBG) {
+        if (process.env.MONOKA_DBG) {
           // (A-DBG) same junction-logging channel as the primary index.html
           // serve below — SPA-route reloads get the hot start too.
           return void readFile(fallback, 'utf8').then((html) => {
-            response.end(html.replace('<head>', '<head><meta name="minimax-dbg" content="1">'))
+            response.end(html.replace('<head>', '<head><meta name="monoka-dbg" content="1">'))
           }).catch(() => createReadStream(fallback).pipe(response))
         }
         return createReadStream(fallback).pipe(response)
@@ -3791,15 +3791,15 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
         headers['content-encoding'] = 'gzip'
       }
       response.writeHead(200, headers)
-      if (requested === 'index.html' && servedPath === filePath && process.env.MINIMAX_DBG) {
+      if (requested === 'index.html' && servedPath === filePath && process.env.MONOKA_DBG) {
         // (A-DBG, directive c250ab36) The junction logger's launcher channel:
-        // MINIMAX_DBG=1 at boot starts the renderer's dbg() hot — the meta
+        // MONOKA_DBG=1 at boot starts the renderer's dbg() hot — the meta
         // tag is read once at module init (src/lib/dbg.ts). The localStorage
         // / ?dbg=1 toggles remain the runtime flips. (Precompressed bodies
         // are never re-written — the env flag just falls back to the plain
         // stream there.)
         readFile(servedPath, 'utf8').then((html) => {
-          response.end(html.replace('<head>', '<head><meta name="minimax-dbg" content="1">'))
+          response.end(html.replace('<head>', '<head><meta name="monoka-dbg" content="1">'))
         }).catch(() => createReadStream(servedPath).pipe(response))
         return
       }
@@ -3832,12 +3832,12 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
   }
 
   async function startLanServer() {
-    const configuredPort = Number(process.env.MINIMAX_LAN_PORT)
+    const configuredPort = Number(process.env.MONOKA_LAN_PORT)
     const port = Number.isInteger(configuredPort) && configuredPort >= 1024 && configuredPort <= 65535 ? configuredPort : 4178
-    // Launcher host bind (task ukyxwfa): MINIMAX_LAN_HOST narrows the listen
+    // Launcher host bind (task ukyxwfa): MONOKA_LAN_HOST narrows the listen
     // address (e.g. 127.0.0.1 = local only). Unset keeps today's behavior —
     // every interface — byte for byte.
-    const host = process.env.MINIMAX_LAN_HOST && /^[A-Za-z0-9._:-]{1,255}$/.test(process.env.MINIMAX_LAN_HOST) ? process.env.MINIMAX_LAN_HOST : '0.0.0.0'
+    const host = process.env.MONOKA_LAN_HOST && /^[A-Za-z0-9._:-]{1,255}$/.test(process.env.MONOKA_LAN_HOST) ? process.env.MONOKA_LAN_HOST : '0.0.0.0'
     // Settings load BEFORE listen: the origin guard's host allowlist (and the
     // whole settings cache) must be warm when the first request arrives, so a
     // custom-hostname setup is never refused by a cold cache.
@@ -3848,9 +3848,9 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
     const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1'
     const address = loopback ? '127.0.0.1' : lanAddress()
     // HTTPS by default (PWA install, and no cleartext tokens on hostile LANs);
-    // --no-https / MINIMAX_NO_HTTPS=1 falls back to plain HTTP, as does a
+    // --no-https / MONOKA_NO_HTTPS=1 falls back to plain HTTP, as does a
     // missing openssl.
-    const httpsPreferred = !process.argv.includes('--no-https') && !/^(1|true|yes)$/i.test(process.env.MINIMAX_NO_HTTPS ?? '')
+    const httpsPreferred = !process.argv.includes('--no-https') && !/^(1|true|yes)$/i.test(process.env.MONOKA_NO_HTTPS ?? '')
     const certificate = httpsPreferred ? await ensureSelfSignedCertificate(dirname(paths.lanTokenFile), address) : null
     return new Promise<void>((resolvePromise) => {
       const handler = (request: IncomingMessage, response: ServerResponse) => void handleLanRequest(request, response)

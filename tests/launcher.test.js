@@ -1,5 +1,5 @@
 // start.sh launcher contract suite (task ukyxwfa). Drives the REAL script
-// through `sh` with hermetic scratch configs (MINIMAX_START_CONFIG) and
+// through `sh` with hermetic scratch configs (MONOKA_START_CONFIG) and
 // scratch studio homes — the launcher's repo-root .start-config.json is never
 // touched, and no e2e home or foreign port is ever read. Every dry run /
 // boot rides a freshly probed 7000–7099 port (house discipline: never assume
@@ -11,10 +11,10 @@
 //   (c) invalid saved config (bad JSON, bad field) refuses to boot and names
 //       the offender; --set is the documented single-field repair path
 //   (d) flag parsing: unknown flag → usage error; bare --dev → honest hint
-//   (e) env precedence: caller-set MINIMAX_LAN_PORT / MINIMAX_STUDIO_HOME win
+//   (e) env precedence: caller-set MONOKA_LAN_PORT / MONOKA_HOME win
 //   (f) busy-port honesty: occupied port → refusal naming the port and the
 //       holding PID (the test's own listener), never a kill
-//   (g) prompts-configure (MINIMAX_START_TUI=prompts, piped stdin): full save
+//   (g) prompts-configure (MONOKA_START_TUI=prompts, piped stdin): full save
 //       including the engine-URL write into <home>/settings.json (other
 //       fields preserved) and token regeneration; cancel path saves nothing
 //   (h) missing dependencies: a start.sh copy without node_modules/ reports
@@ -32,7 +32,7 @@
 // per section; the win32 NOTE-skip became conditional test registration; the
 // port probe draws from this suite's disjoint range (tests/lib/ports.cjs).
 // DATED FIX (z7ogmig, 2026-09-20): sections (b), (c), (e) and (f) now pin a
-// freshly probed MINIMAX_VITE_PORT — main's versions omitted it, so any
+// freshly probed MONOKA_VITE_PORT — main's versions omitted it, so any
 // dev-mode --print against a freshly seeded config probed the DEFAULT 5173,
 // and on this shared box (foreign listener squatting 5173) the suite failed
 // environmentally. This aligns those sections with the suite's own stated
@@ -123,7 +123,7 @@ maybe('(a) first-run seeding + dry-run plan', async () => {
   const config = path.join(dir, 'config.json')
   const port = await freePort()
   const vitePort = port === 7099 ? 7098 : 7099
-  const result = run(['--print'], { env: { MINIMAX_START_CONFIG: config, MINIMAX_LAN_PORT: String(port), MINIMAX_VITE_PORT: String(vitePort) } })
+  const result = run(['--print'], { env: { MONOKA_START_CONFIG: config, MONOKA_LAN_PORT: String(port), MONOKA_VITE_PORT: String(vitePort) } })
   ok(result.code === 0, `first dry run exits 0 (got ${result.code})\n${result.out}`)
   ok(fs.existsSync(config), 'first run seeds the config file')
   const saved = JSON.parse(fs.readFileSync(config, 'utf8'))
@@ -146,9 +146,9 @@ maybe('(b) --set / --print round-trip + field validation', async () => {
   const vitePort = port === 7099 ? 7098 : 7099
   // DATED (z7ogmig, 2026-09-20): main's section (b) did not pin a vite port,
   // so the dev-mode dry run probed the default 5173 — environmentally flaky
-  // on the shared box. A probed MINIMAX_VITE_PORT makes the section hermetic
+  // on the shared box. A probed MONOKA_VITE_PORT makes the section hermetic
   // like every other (the file-level discipline this suite itself states).
-  const env = { MINIMAX_START_CONFIG: config, MINIMAX_LAN_PORT: String(port), MINIMAX_VITE_PORT: String(vitePort) }
+  const env = { MONOKA_START_CONFIG: config, MONOKA_LAN_PORT: String(port), MONOKA_VITE_PORT: String(vitePort) }
   ok(run(['--set', `port=${port}`], { env }).code === 0, '--set port succeeds')
   ok(JSON.parse(fs.readFileSync(config, 'utf8')).port === port, '--set persists to the config file')
   const after = run(['--print'], { env })
@@ -176,27 +176,27 @@ maybe('(c) invalid saved config refuses to boot; --set is the documented repair 
   const dir = scratch()
   const config = path.join(dir, 'config.json')
   fs.writeFileSync(config, 'not json {')
-  const broken = run(['--print'], { env: { MINIMAX_START_CONFIG: config } })
+  const broken = run(['--print'], { env: { MONOKA_START_CONFIG: config } })
   ok(broken.code !== 0 && broken.out.includes('is not valid JSON'), 'unparseable config refuses to boot naming the file')
   ok(broken.out.includes('refusing to boot'), 'the refusal is explicit, never a silent wrong boot')
   fs.writeFileSync(config, JSON.stringify({ port: 12 }))
-  const badField = run(['--print'], { env: { MINIMAX_START_CONFIG: config } })
+  const badField = run(['--print'], { env: { MONOKA_START_CONFIG: config } })
   ok(badField.code !== 0 && badField.out.includes('port: expected an integer'), 'out-of-range port names the field')
 
   // The documented repair path: --set rewrites the offending field.
   const port = await freePort()
-  const repairEnv = { MINIMAX_START_CONFIG: config, MINIMAX_VITE_PORT: String(defaultVitePort) }
+  const repairEnv = { MONOKA_START_CONFIG: config, MONOKA_VITE_PORT: String(defaultVitePort) }
   ok(run(['--set', `port=${port}`], { env: repairEnv }).code === 0, '--set repairs a single bad field')
   ok(run(['--print'], { env: repairEnv }).code === 0, 'the repaired config boots (dry run)')
   fs.writeFileSync(config, JSON.stringify({ frob: 1 }))
-  const unknownField = run(['--print'], { env: { MINIMAX_START_CONFIG: config } })
+  const unknownField = run(['--print'], { env: { MONOKA_START_CONFIG: config } })
   ok(unknownField.code !== 0 && unknownField.out.includes('unknown config field'), 'unknown config fields are refused, not ignored')
 })
 
 maybe('(d) flag parsing: unknown flag → usage error; bare --dev → honest hint', () => {
   console.log('launcher: flag parsing')
   const dir = scratch()
-  const env = { MINIMAX_START_CONFIG: path.join(dir, 'config.json') }
+  const env = { MONOKA_START_CONFIG: path.join(dir, 'config.json') }
   const unknown = run(['--frobnicate'], { env })
   ok(unknown.code === 2 && unknown.out.includes('unknown flag: --frobnicate'), 'unknown flag exits 2 with usage')
   ok(unknown.out.includes('usage: ./start.sh'), 'usage text follows the error')
@@ -212,10 +212,10 @@ maybe('(e) env precedence: caller env wins over the config file', async () => {
   const config = path.join(dir, 'config.json')
   const envPort = await freePort()
   const savedPort = envPort === 7001 ? 7002 : 7001
-  run(['--set', `port=${savedPort}`], { env: { MINIMAX_START_CONFIG: config } })
-  const result = run(['--print'], { env: { MINIMAX_START_CONFIG: config, MINIMAX_LAN_PORT: String(envPort), MINIMAX_STUDIO_HOME: path.join(dir, 'env-home'), MINIMAX_VITE_PORT: String(defaultVitePort) } })
-  ok(result.code === 0 && result.out.includes(`port=${envPort}`), 'MINIMAX_LAN_PORT overrides the saved port')
-  ok(result.out.includes(`home=${path.join(dir, 'env-home')}`), 'MINIMAX_STUDIO_HOME overrides the saved home')
+  run(['--set', `port=${savedPort}`], { env: { MONOKA_START_CONFIG: config } })
+  const result = run(['--print'], { env: { MONOKA_START_CONFIG: config, MONOKA_LAN_PORT: String(envPort), MONOKA_HOME: path.join(dir, 'env-home'), MONOKA_VITE_PORT: String(defaultVitePort) } })
+  ok(result.code === 0 && result.out.includes(`port=${envPort}`), 'MONOKA_LAN_PORT overrides the saved port')
+  ok(result.out.includes(`home=${path.join(dir, 'env-home')}`), 'MONOKA_HOME overrides the saved home')
   ok(!result.out.includes(`port=${savedPort} `), 'the overridden port is not reported as active')
 })
 
@@ -226,8 +226,8 @@ maybe('(f) busy-port honesty: occupied port → refusal naming the port + holder
   const port = await freePort()
   const holder = http.createServer((request, response) => { response.end('occupied') })
   await new Promise((resolve) => holder.listen(port, '0.0.0.0', resolve))
-  run(['--set', `port=${port}`], { env: { MINIMAX_START_CONFIG: config } })
-  const result = run(['--print'], { env: { MINIMAX_START_CONFIG: config } })
+  run(['--set', `port=${port}`], { env: { MONOKA_START_CONFIG: config } })
+  const result = run(['--print'], { env: { MONOKA_START_CONFIG: config } })
   ok(result.code !== 0, `dry run on a busy port fails (port ${port})`)
   ok(result.out.includes(`port ${port} is not available`), 'the refusal names the port')
   const pidMatch = result.out.match(/held by PID (\d+)/)
@@ -238,7 +238,7 @@ maybe('(f) busy-port honesty: occupied port → refusal naming the port + holder
   }
   ok(result.out.includes('never kills'), 'the message states the never-kill posture')
   await new Promise((resolve) => holder.close(resolve))
-  const freed = run(['--print'], { env: { MINIMAX_START_CONFIG: config, MINIMAX_VITE_PORT: String(defaultVitePort) } })
+  const freed = run(['--print'], { env: { MONOKA_START_CONFIG: config, MONOKA_VITE_PORT: String(defaultVitePort) } })
   ok(freed.code === 0, 'the same config boots once the port is released')
 })
 
@@ -256,7 +256,7 @@ maybe('(g) prompts-configure save: engine-URL write + token regen; cancel saves 
   // (Wave 1 A-DBG added the junction-logging prompt inside the dev block.)
   const answers = [String(port), 'y', 'y', 'y', '', 'http://127.0.0.1:8199', 'y', '', '', 'y', 'y', 'y', 'n', String(vitePort), 'y']
   const result = run(['--configure', '--dev', '--print'], {
-    env: { MINIMAX_START_CONFIG: config, MINIMAX_STUDIO_HOME: home, MINIMAX_START_TUI: 'prompts' },
+    env: { MONOKA_START_CONFIG: config, MONOKA_HOME: home, MONOKA_START_TUI: 'prompts' },
     input: `${answers.join('\n')}\n`,
   })
   ok(result.code === 0, `prompts configure + preview exits 0\n${result.out}`)
@@ -274,7 +274,7 @@ maybe('(g) prompts-configure save: engine-URL write + token regen; cancel saves 
   // nine keeps, then "n" at the save confirm.
   const before = fs.readFileSync(config, 'utf8')
   const cancelled = run(['--configure', '--print'], {
-    env: { MINIMAX_START_CONFIG: config, MINIMAX_STUDIO_HOME: home, MINIMAX_START_TUI: 'prompts' },
+    env: { MONOKA_START_CONFIG: config, MONOKA_HOME: home, MONOKA_START_TUI: 'prompts' },
     input: '\n\n\n\n\n\n\n\n\nn\n',
   })
   ok(cancelled.code === 0 && cancelled.out.includes('nothing was saved'), 'cancel path saves nothing')
@@ -287,7 +287,7 @@ maybe('(h) missing dependencies: honest pnpm-install report (print + interactive
   const copied = path.join(dir, 'start.sh')
   fs.copyFileSync(START_SH, copied)
   const config = path.join(dir, 'config.json')
-  const env = { MINIMAX_START_CONFIG: config, MINIMAX_START_TUI: 'prompts' }
+  const env = { MONOKA_START_CONFIG: config, MONOKA_START_TUI: 'prompts' }
   const repoConfig = path.join(REPO, '.start-config.json')
   const repoConfigBefore = fs.existsSync(repoConfig) ? fs.readFileSync(repoConfig, 'utf8') : null
   // Running the COPY from a cwd outside the repo also proves the script is
@@ -309,14 +309,14 @@ maybe('(h2) configure-to-save with no studio env vars set reaches the engine wri
   const copied = path.join(dir, 'start.sh')
   fs.copyFileSync(START_SH, copied)
   const config = path.join(dir, 'config.json')
-  const env = { MINIMAX_START_CONFIG: config, MINIMAX_START_TUI: 'prompts' }
+  const env = { MONOKA_START_CONFIG: config, MONOKA_START_TUI: 'prompts' }
   // All-EOF answers keep every default, save, run the engine write (where the
   // bug fired), then hit the missing-node_modules guard — which is the honest
   // terminal state for a scratch dir. The OLD code died at the engine write
-  // with "MINIMAX_STUDIO_HOME: unbound variable" before any deps report.
+  // with "MONOKA_HOME: unbound variable" before any deps report.
   const ran = run(['--configure', '--dev'], { cwd: dir, env, script: copied, input: '\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n' })
   ok(ran.code !== 0, 'terminates (nonzero) at the honest guard, not a crash loop')
-  ok(!ran.out.includes('unbound variable'), `no set -u blow on unset MINIMAX_STUDIO_HOME\n${ran.out}`)
+  ok(!ran.out.includes('unbound variable'), `no set -u blow on unset MONOKA_HOME\n${ran.out}`)
   ok(ran.out.includes('pnpm install'), 'reached the missing-dependencies report after the engine write')
   ok(fs.existsSync(config), 'the scratch config was saved')
 })
@@ -327,7 +327,7 @@ maybe('(i) dev-vs-prod boot plan selection + the source-map flag toggle', async 
   const config = path.join(dir, 'config.json')
   const port = await freePort()
   const vitePort = port === 7099 ? 7098 : 7099
-  const env = { MINIMAX_START_CONFIG: config, MINIMAX_LAN_PORT: String(port), MINIMAX_VITE_PORT: String(vitePort) }
+  const env = { MONOKA_START_CONFIG: config, MONOKA_LAN_PORT: String(port), MONOKA_VITE_PORT: String(vitePort) }
   run(['--set', 'dev=false'], { env })
   const prod = run(['--print'], { env })
   if (hasBuild) {
@@ -356,12 +356,12 @@ maybe('(j) real production boot through the launcher (recorded PID only, SIGTERM
   const config = path.join(dir, 'config.json')
   const home = path.join(dir, 'boot-home')
   const port = await freePort()
-  const env = { MINIMAX_START_CONFIG: config }
+  const env = { MONOKA_START_CONFIG: config }
   run(['--set', `port=${port}`], { env })
   run(['--set', 'dev=false'], { env })
   const child = spawn('sh', [START_SH], {
     cwd: REPO,
-    env: { ...process.env, MINIMAX_START_CONFIG: config, MINIMAX_STUDIO_HOME: home, MINIMAX_NO_HTTPS: '1' },
+    env: { ...process.env, MONOKA_START_CONFIG: config, MONOKA_HOME: home, MONOKA_NO_HTTPS: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let output = ''
@@ -379,7 +379,7 @@ maybe('(j) real production boot through the launcher (recorded PID only, SIGTERM
     } catch { return false }
   }, 60_000, 'launcher-booted server to answer /api/lan/settings')
   ok(ready, 'the launcher boots the real server and it serves the API')
-  ok(output.includes('MiniMax Studio launcher') && output.includes(`port=${port}`), 'the boot banner states the active config')
+  ok(output.includes('Monoka launcher') && output.includes(`port=${port}`), 'the boot banner states the active config (Monoka launcher, renamed T2)')
   child.kill('SIGTERM') // the recorded PID only — never anything else
   const exited = await new Promise((resolve) => {
     const timer = setTimeout(() => resolve(false), 30_000)

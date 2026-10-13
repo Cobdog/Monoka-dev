@@ -9,9 +9,9 @@ const appVersion = (JSON.parse(fs.readFileSync(new URL('./package.json', import.
 
 // Dev flow: `pnpm start:server` (or dev:server) runs the app on :4178 — no
 // proxy needed. `pnpm dev` (vite HMR on :5173) proxies API calls to a server
-// already running on 4178 — or whatever MINIMAX_LAN_PORT the start.sh
+// already running on 4178 — or whatever MONOKA_LAN_PORT the start.sh
 // launcher configured (default unchanged: 4178).
-const apiPort = process.env.MINIMAX_LAN_PORT ?? '4178'
+const apiPort = process.env.MONOKA_LAN_PORT ?? '4178'
 export default defineConfig({
   plugins: [react()],
   base: './',

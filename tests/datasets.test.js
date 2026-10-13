@@ -100,7 +100,7 @@ async function bootServer(home, label) {
   const output = { text: '', label }
   const port = await freePort()
   const child = spawn(process.execPath, [path.join(REPO, 'dist-server/server/index.js')], {
-    env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(port), MINIMAX_NO_HTTPS: '1', FFMPEG_PATH: ffmpeg() },
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1', FFMPEG_PATH: ffmpeg() },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   child.stdout.on('data', (chunk) => { output.text += String(chunk) })

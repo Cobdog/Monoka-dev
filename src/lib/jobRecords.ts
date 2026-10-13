@@ -20,7 +20,7 @@ export function hydrateLoadedJobs(stored: GenerationJob[]): GenerationJob[] {
 
 export const initialJobs = (): GenerationJob[] => {
   try {
-    const stored = JSON.parse(localStorage.getItem('minimax.jobs') ?? '[]') as GenerationJob[]
+    const stored = JSON.parse(localStorage.getItem('monoka.jobs') ?? '[]') as GenerationJob[]
     return hydrateLoadedJobs(Array.isArray(stored) ? stored : [])
   } catch {
     return []
@@ -30,9 +30,9 @@ export const initialJobs = (): GenerationJob[] => {
 export function recordMovieOutput(link: MovieLink | undefined, outputUrl: string) {
   if (!link) return
   try {
-    const projects = JSON.parse(localStorage.getItem('minimax.movie-projects') ?? '[]') as MovieProject[]
+    const projects = JSON.parse(localStorage.getItem('monoka.movie-projects') ?? '[]') as MovieProject[]
     const next = projects.map((project) => project.id !== link.projectId ? project : { ...project, updatedAt: Date.now(), scenes: project.scenes.map((scene) => scene.id !== link.sceneId ? scene : { ...scene, shots: scene.shots.map((shot) => shot.id !== link.shotId ? shot : { ...shot, outputUrl, renderedAt: Date.now(), stage: 'rendered' as const }) }) })
-    localStorage.setItem('minimax.movie-projects', JSON.stringify(next))
+    localStorage.setItem('monoka.movie-projects', JSON.stringify(next))
   } catch { /* Keep the completed generation even if legacy movie data cannot be updated. */ }
 }
 

@@ -566,7 +566,7 @@ test('Wave 1 A-DBG: ?dbg=1 turns the console into a tagged triage transcript; of
   const quietLines: string[] = []
   quiet.on('console', (message) => { if (message.text().includes('[dbg:')) quietLines.push(message.text()) })
   await quiet.goto('/?canvas=1')
-  await quiet.evaluate(() => window.localStorage.removeItem('minimax-dbg'))
+  await quiet.evaluate(() => window.localStorage.removeItem('monoka-dbg'))
   await quiet.reload()
   await expect(quiet.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
   await quiet.waitForTimeout(2_000)

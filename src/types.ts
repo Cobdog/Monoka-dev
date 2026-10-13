@@ -658,7 +658,7 @@ export type LanStatus = {
   url?: string
   desktopUrl?: string
   port?: number
-  /** The address the listener actually bound (launcher MINIMAX_LAN_HOST;
+  /** The address the listener actually bound (launcher MONOKA_LAN_HOST;
    * absent = the default every-interface bind). */
   host?: string
   error?: string

@@ -10,7 +10,7 @@ import { defineConfig } from '@playwright/test'
 // script, and no `playwright install` command is run anywhere — CI included:
 // GitHub's ubuntu runners and typical dev boxes already ship Chrome/Chromium).
 // Resolution order:
-//   1. MINIMAX_TEST_BROWSER env — explicit executable path override (any OS).
+//   1. MONOKA_TEST_BROWSER env — explicit executable path override (any OS).
 //   2. Common install paths for chromium / google-chrome / chrome (Linux + Windows).
 //   3. A scan of $PATH for the same binary names.
 // If nothing is found the config throws with one clear line — a missing system
@@ -44,10 +44,10 @@ const PATH_BINARY_NAMES = process.platform === 'win32'
   : ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable', 'chrome']
 
 function detectSystemChromium(): string {
-  const override = process.env.MINIMAX_TEST_BROWSER?.trim()
+  const override = process.env.MONOKA_TEST_BROWSER?.trim()
   if (override) {
     if (!fs.existsSync(override)) {
-      throw new Error(`MINIMAX_TEST_BROWSER points at a missing executable: ${override}`)
+      throw new Error(`MONOKA_TEST_BROWSER points at a missing executable: ${override}`)
     }
     return override
   }
@@ -63,7 +63,7 @@ function detectSystemChromium(): string {
     }
   }
   throw new Error(
-    'No system Chromium/Chrome found — install one (or set MINIMAX_TEST_BROWSER to its executable). This suite never downloads a bundled browser.',
+    'No system Chromium/Chrome found — install one (or set MONOKA_TEST_BROWSER to its executable). This suite never downloads a bundled browser.',
   )
 }
 
@@ -82,10 +82,10 @@ const systemChromium = detectSystemChromium()
 // the per-view shots at test-results/shots/ live OUTSIDE that wipe so a
 // captured bundle survives later Playwright runs until its judge/report step.
 // The e2e/vision webServer port. Fixed 4199 by default (CI), but overridable
-// via MINIMAX_E2E_PORT — REQUIRED on the shared dev box, where concurrent
+// via MONOKA_E2E_PORT — REQUIRED on the shared dev box, where concurrent
 // agents each own a port range (agent-resources.md) and a second run against
 // the fixed port fails on the bind instead of retrying.
-const e2ePort = process.env.MINIMAX_E2E_PORT ?? '4199'
+const e2ePort = process.env.MONOKA_E2E_PORT ?? '4199'
 
 export default defineConfig({
   testDir: 'e2e',
@@ -130,9 +130,9 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 30_000,
     env: {
-      MINIMAX_STUDIO_HOME: 'test-home',
-      MINIMAX_LAN_PORT: e2ePort,
-      MINIMAX_NO_HTTPS: '1',
+      MONOKA_HOME: 'test-home',
+      MONOKA_LAN_PORT: e2ePort,
+      MONOKA_NO_HTTPS: '1',
     },
   },
 })

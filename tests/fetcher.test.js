@@ -1,9 +1,9 @@
 // Local-first fetcher suite (task hgjbea2). NO REAL NETWORK anywhere: the
 // engine-level sections inject in-memory transports, the HTTP-path section
 // points the production transport at a LOCAL origin server via
-// MINIMAX_STUDIO_FETCH_TEST_ORIGIN (the allowlist still runs against the
+// MONOKA_FETCH_TEST_ORIGIN (the allowlist still runs against the
 // logical hosts), and the route section boots the real built server with
-// MINIMAX_STUDIO_FETCH_MOCK_ROOT pointing at a fixture tree. Sections:
+// MONOKA_FETCH_MOCK_ROOT pointing at a fixture tree. Sections:
 //   (a) catalog integrity: schema, license presence, destination validity,
 //       single-sourcing against ENGINE_NODE_PACKS, pin kinds, detect globs
 //   (b) consent gating: no transport call without a recorded, license-
@@ -685,7 +685,7 @@ maybe('(h) production HTTP transport against a local origin: redirect allowlist,
       app.listen(0, '127.0.0.1', () => resolveServer(app))
     })
     const port = server.address().port
-    process.env.MINIMAX_STUDIO_FETCH_TEST_ORIGIN = `http://127.0.0.1:${port}`
+    process.env.MONOKA_FETCH_TEST_ORIGIN = `http://127.0.0.1:${port}`
     const transport = createHttpFetchTransport({ backoffMs: [20, 40] })
 
     const resolved = await transport.resolveHfRevision('alibaba-pai/MiniMax-H3-Fun-Controlnet-Union', 'main')
@@ -724,7 +724,7 @@ maybe('(h) production HTTP transport against a local origin: redirect allowlist,
       'a redirect to a non-allowlisted host is a hard failure',
     )
     ok(!fs.existsSync(evilDest) && !fs.existsSync(`${evilDest}.part`), 'nothing landed from the refused redirect')
-    delete process.env.MINIMAX_STUDIO_FETCH_TEST_ORIGIN
+    delete process.env.MONOKA_FETCH_TEST_ORIGIN
     server.close()
   }
 })
@@ -754,7 +754,7 @@ routesMaybe('(i) routes against the real built server: catalog GET, 403 without 
     const port = await freePort()
     const child = spawn(process.execPath, [path.join(REPO, 'dist-server', 'server', 'index.js')], {
       cwd: REPO,
-      env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(port), MINIMAX_STUDIO_FETCH_MOCK_ROOT: mockRoot },
+      env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_FETCH_MOCK_ROOT: mockRoot },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     let serverOutput = ''
@@ -826,10 +826,10 @@ maybe('transport selection: the mock root env selects the filesystem transport (
   console.log('fetcher: transport selection')
   {
     const home = makeHome()
-    process.env.MINIMAX_STUDIO_FETCH_MOCK_ROOT = home
+    process.env.MONOKA_FETCH_MOCK_ROOT = home
     const selected = transportForEnvironment()
     ok(typeof selected.resolveHfRevision === 'function' && typeof selected.download === 'function', 'the mock root env selects the filesystem transport (zero network)')
-    delete process.env.MINIMAX_STUDIO_FETCH_MOCK_ROOT
+    delete process.env.MONOKA_FETCH_MOCK_ROOT
   }
 
   console.log(`\nfetcher suite: ${passed} assertions passed`)

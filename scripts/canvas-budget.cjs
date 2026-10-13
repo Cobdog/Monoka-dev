@@ -40,13 +40,13 @@ const CANDIDATES = [
   '/usr/bin/chromium',
   '/usr/bin/chromium-browser',
   '/usr/bin/chrome',
-  ...(process.env.MINIMAX_TEST_BROWSER ? [process.env.MINIMAX_TEST_BROWSER] : []),
+  ...(process.env.MONOKA_TEST_BROWSER ? [process.env.MONOKA_TEST_BROWSER] : []),
 ]
 function resolveChromium() {
   for (const candidate of CANDIDATES) {
     if (fs.existsSync(candidate)) return candidate
   }
-  fail(`no system Chromium/Chrome found — install one or set MINIMAX_TEST_BROWSER (this script never downloads a browser)`)
+  fail(`no system Chromium/Chrome found — install one or set MONOKA_TEST_BROWSER (this script never downloads a browser)`)
 }
 function fail(message) {
   console.error(`canvas-budget: ${message}`)
@@ -58,7 +58,7 @@ function fail(message) {
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'minimax-canvas-budget-'))
 const port = String(4590 + Math.floor(Math.random() * 200))
 const server = spawn(process.execPath, ['dist-server/server/index.js'], {
-  env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: port, MINIMAX_NO_HTTPS: '1' },
+  env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: port, MONOKA_NO_HTTPS: '1' },
   stdio: ['ignore', 'ignore', 'ignore'],
   cwd: ROOT,
 })

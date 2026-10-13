@@ -83,7 +83,7 @@ let filmstrip = null
 beforeAll(async () => {
   const port = await freePort()
   child = spawn(process.execPath, [path.resolve(__dirname, '..', 'dist-server', 'server', 'index.js')], {
-    env: { ...process.env, MINIMAX_STUDIO_HOME: home, MINIMAX_LAN_PORT: String(port), MINIMAX_NO_HTTPS: '1' },
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   child.stdout.on('data', (chunk) => { output += String(chunk) })
