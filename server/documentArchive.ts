@@ -204,7 +204,7 @@ export function unpackZip(archive: Buffer): Map<string, Buffer> {
 // export / import (§7)
 // ---------------------------------------------------------------------------
 type ArchiveManifest = {
-  format: 'minimax-canvas-archive'
+  format: 'monoka-canvas-archive'
   archiveVersion: number
   schemaVersion: number
   writerAppVersion: string
@@ -338,7 +338,7 @@ export function exportProjectArchive(store: DocumentStore, projectId: string): {
   }
 
   const manifest: ArchiveManifest = {
-    format: 'minimax-canvas-archive',
+    format: 'monoka-canvas-archive',
     archiveVersion: CANVAS_ARCHIVE_VERSION,
     schemaVersion: Number(projectRow.schema_version),
     writerAppVersion: String(projectRow.app_version ?? 'unknown'),
@@ -418,7 +418,12 @@ export function importProjectArchive(store: DocumentStore, archive: Buffer): Arc
   } catch (error) {
     throw new Error(`The archive payloads are not readable JSON: ${error instanceof Error ? error.message : String(error)}`)
   }
-  if (manifest.format !== 'minimax-canvas-archive') throw new Error('This file is not a MiniMax canvas archive.')
+  // New-only (rename-sweep T3, ruling R11 — the recorded edge): pre-rename
+  // archives carry the 'minimax-canvas-archive' marker and refuse LOUDLY.
+  // Zero back-compat is deliberate — re-export from a current build.
+  if (manifest.format !== 'monoka-canvas-archive') {
+    throw new Error(`Unknown archive format ${JSON.stringify(manifest.format ?? null)} — this build imports "monoka-canvas-archive" only. Archives exported before the Monoka rename are not importable: re-export them from a current build.`)
+  }
   if (manifest.archiveVersion > CANVAS_ARCHIVE_VERSION) {
     throw new CanvasSchemaVersionError(manifest.archiveVersion, CANVAS_ARCHIVE_VERSION, manifest.writerAppVersion, 'project archive (format)')
   }

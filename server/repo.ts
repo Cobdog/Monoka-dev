@@ -88,6 +88,7 @@ export function createStudioRepository(dbFile: string, options?: { allowedSource
     nextEventSeq: db.prepare('SELECT COALESCE(MAX(seq), 0) + 1 AS seq FROM job_events WHERE job_id = ?'),
     insertJobEvent: db.prepare('INSERT INTO job_events (job_id, seq, ts, type, payload_json) VALUES (?, ?, ?, ?, ?)'),
     listJobs: db.prepare('SELECT * FROM jobs ORDER BY created_at DESC, rowid ASC LIMIT ?'),
+    countActiveJobs: db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE status IN ('queued', 'running')"),
     upsertAsset: db.prepare(`
       INSERT INTO assets (id, kind, path, mime, bytes, width, height, duration_ms, fps, frame_count, sha256, created_at)
       VALUES (@id, @kind, @path, @mime, @bytes, @width, @height, @duration_ms, @fps, @frame_count, @sha256, @created_at)
@@ -288,6 +289,10 @@ export function createStudioRepository(dbFile: string, options?: { allowedSource
     }),
 
     listJobs: (limit = 100) => (statements.listJobs.all(Math.max(1, Math.min(500, Math.trunc(limit) || 100))) as Array<Record<string, unknown>>).map(hydrateJob),
+
+    /** Queued + running job count — the boot-time folder migration's idle
+     *  check (a busy queue defers the move to the next idle boot). */
+    countActiveJobs: () => Number((statements.countActiveJobs.get() as { n: number }).n),
 
     /** Frame-indexed asset metadata upsert (media bytes live on disk). */
     upsertAsset: (asset: Record<string, unknown>) => {

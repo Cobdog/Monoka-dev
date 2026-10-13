@@ -411,7 +411,7 @@ export type ManifestAttemptLineage = {
 
 export type ExportManifest = {
   manifestVersion: number
-  kind: 'minimax-animation-sequence'
+  kind: 'monoka-animation-sequence'
   frozenAt: number
   staleAcknowledged: boolean
   document: {
@@ -533,7 +533,7 @@ export function buildManifest(input: {
   const height = body.settings.outputHeight
   return {
     manifestVersion: ANIMATION_EXPORT_MANIFEST_VERSION,
-    kind: 'minimax-animation-sequence',
+    kind: 'monoka-animation-sequence',
     frozenAt,
     staleAcknowledged,
     document: {
@@ -651,7 +651,7 @@ export function createAnimationExportService(deps: AnimationExportDeps): Animati
       const toolOptions = { ffmpegPath: tool, logFailure }
       const width = frozenDocument.body.settings.outputWidth
       const height = frozenDocument.body.settings.outputHeight
-      const work = await mkdtemp(join(tmpdir(), 'minimax-animation-export-'))
+      const work = await mkdtemp(join(tmpdir(), 'monoka-animation-export-'))
       let finalVideoPath = ''
       try {
         const segmentPaths: string[] = []

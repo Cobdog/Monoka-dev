@@ -31,7 +31,7 @@ function authToken() {
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
-  headers.set('x-minimax-token', authToken())
+  headers.set('x-monoka-token', authToken())
   const response = await fetch(path, { ...init, headers })
   const body = await response.json().catch(() => ({})) as Record<string, unknown> & T
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : `Request failed (${response.status})`)

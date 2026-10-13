@@ -1054,7 +1054,7 @@ test('RTX upscale + output selection (exact-filename attribution, P0-1)', () => 
   assert.equal(recovered.filename, fileA.filename)
   assert.equal(recovered.subfolder, fileA.subfolder)
   assert.equal(recovered.type, fileA.type)
-  assert.equal(outputFileFromUrl('minimax-media://local?path=C%3A%5Cout%5Cx.mp4'), undefined)
+  assert.equal(outputFileFromUrl('monoka-media://local?path=C%3A%5Cout%5Cx.mp4'), undefined)
   assert.equal(outputFileFromUrl('http://127.0.0.1:8188/view?filename=x.mp4'), undefined)
 })
 
@@ -1247,11 +1247,11 @@ test('library persistence survives localStorage quota exhaustion (P0-2)', () => 
   assert.equal(events.length, 0)
 
   quotaFailures = 1
-  const mediaUrlFile = { path: 'x.png', preview: 'minimax-media://selected?path=x.png' }
+  const mediaUrlFile = { path: 'x.png', preview: 'monoka-media://selected?path=x.png' }
   const dataUrlFile = { path: 'y.png', preview: 'data:image/png;base64,AAAA' }
   assert.equal(persistToLocalStorage('k2', [mediaUrlFile, dataUrlFile]), true)
   const stored = JSON.parse(storage.getItem('k2'))
-  assert.equal(stored[0].preview, 'minimax-media://selected?path=x.png')
+  assert.equal(stored[0].preview, 'monoka-media://selected?path=x.png')
   assert.equal(stored[1].preview, undefined)
   assert.equal(stored[1].path, 'y.png')
   assert.equal(events.length, 1)

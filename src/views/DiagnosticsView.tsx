@@ -206,7 +206,7 @@ export function DiagnosticsView() {
   }
   const onSave = () => {
     if (!report) return
-    saveTextFile(report, `minimax-diagnostics-${new Date(generatedAt).toISOString().replace(/[:.]/g, '-')}.txt`)
+    saveTextFile(report, `monoka-diagnostics-${new Date(generatedAt).toISOString().replace(/[:.]/g, '-')}.txt`)
     setActionNote('Report saved as a local file.')
   }
 

@@ -968,7 +968,7 @@ function frameArtifactOf(outputs: NonNullable<EngineJobStatus['outputs']>, frame
  *  keyframe seeking and no timestamp rounding, so frame N is frame N (the
  *  export module's own length discipline, applied to a single frame). */
 export async function decodeClipFrame(ffmpegPath: string, clipBytes: Buffer, frameIndex: number): Promise<Buffer> {
-  const work = await mkdtemp(join(tmpdir(), 'minimax-animation-frame-'))
+  const work = await mkdtemp(join(tmpdir(), 'monoka-animation-frame-'))
   try {
     // ffmpeg probes container content, not the extension — the staged input
     // carries no format claim.

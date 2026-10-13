@@ -309,7 +309,7 @@ test('diagnostics dock renders, builds a scrubbed report, and copies it', async 
   const downloadPromise = page.waitForEvent('download')
   await page.getByRole('button', { name: /save report/i }).click()
   const download = await downloadPromise
-  expect(download.suggestedFilename()).toMatch(/^minimax-diagnostics-.*\.txt$/)
+  expect(download.suggestedFilename()).toMatch(/^monoka-diagnostics-.*\.txt$/)
 
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
@@ -684,7 +684,7 @@ test('settings-GET Option B: token mode gates the read, the SPA editor path keep
     }
     expect(token).toMatch(/^[a-f0-9]{32}$/i)
     for (let attempt = 0; attempt < 50; attempt += 1) {
-      try { if ((await fetch(`${base}/api/lan/settings`, { headers: { 'x-minimax-token': token } })).ok) break } catch { /* booting */ }
+      try { if ((await fetch(`${base}/api/lan/settings`, { headers: { 'x-monoka-token': token } })).ok) break } catch { /* booting */ }
       await new Promise((resolve) => setTimeout(resolve, 200))
     }
     // Option B, mode 1 — token mode: the bare read is 401 (checked from a

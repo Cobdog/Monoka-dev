@@ -378,7 +378,7 @@ export function extractOutputUrl(history: Record<string, unknown>, promptId: str
   if (!file) return undefined
   const query = new URLSearchParams({ filename: file.filename, subfolder: file.subfolder ?? '', type: file.type ?? 'output' })
   const upstream = `${comfyUrl.replace(/\/+$/, '')}/view?${query.toString()}`
-  return `minimax-media://comfy?url=${encodeURIComponent(upstream)}`
+  return `monoka-media://comfy?url=${encodeURIComponent(upstream)}`
 }
 
 /** EVERY output file of one media type a finished prompt reported, ordered
@@ -417,12 +417,12 @@ export function extractAllOutputFiles(history: Record<string, unknown>, promptId
     .map((item) => item.file)
 }
 
-/** Recovers the output descriptor encoded in a minimax-media://comfy URL that
+/** Recovers the output descriptor encoded in a monoka-media://comfy URL that
  *  extractOutputUrl built, so a persisted job's exact output can be re-resolved
  *  on disk without touching ComfyUI again. */
 export function outputFileFromUrl(url: string): ComfyOutputFile | undefined {
-  if (!url.startsWith('minimax-media://comfy?')) return undefined
-  const upstream = new URLSearchParams(url.slice('minimax-media://comfy?'.length)).get('url')
+  if (!url.startsWith('monoka-media://comfy?')) return undefined
+  const upstream = new URLSearchParams(url.slice('monoka-media://comfy?'.length)).get('url')
   if (!upstream) return undefined
   const params = new URL(upstream).searchParams
   const filename = params.get('filename')

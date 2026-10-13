@@ -42,7 +42,7 @@ function sendToDatasets(tile: Tile) {
   const token = new URLSearchParams(window.location.search).get('token') ?? ''
   void fetch('/api/lan/datasets/ingest/canvas', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-minimax-token': token },
+    headers: { 'content-type': 'application/json', 'x-monoka-token': token },
     body: JSON.stringify({ path: tile.artifactPath }),
   }).then(async (response) => {
     const body = await response.json().catch(() => ({}))

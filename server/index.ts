@@ -63,5 +63,11 @@ studio.startLanServer().then(() => {
   } else {
     console.log(`  TLS:        plain HTTP (PWA install and token mode are safer over HTTPS; install openssl or drop --no-https)`)
   }
-  console.log(`  Auth:       ${process.argv.includes('--token') || /^(1|true|yes)$/i.test(process.env.MONOKA_LAN_TOKEN ?? '') ? 'token required (passed as ?token= or x-minimax-token)' : 'open on the LAN (pass --token to require a token)'}`)
+  console.log(`  Auth:       ${process.argv.includes('--token') || /^(1|true|yes)$/i.test(process.env.MONOKA_LAN_TOKEN ?? '') ? 'token required (passed as ?token= or x-monoka-token)' : 'open on the LAN (pass --token to require a token)'}`)
+}).catch((error) => {
+  // The one-time folder move's collision refusal (rename-sweep T3) rejects
+  // the start — print its manual-resolution message and refuse to start,
+  // exactly like the data-home boundary above.
+  console.error(error instanceof Error ? error.message : String(error))
+  process.exit(1)
 })

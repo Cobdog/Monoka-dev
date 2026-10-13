@@ -236,7 +236,7 @@ export async function sha256File(path: string): Promise<string> {
 /** One download attempt: Range-resume from an existing .part, append-mode
  *  writes, and verification AFTER the full file exists on disk. */
 async function downloadOnce(options: DownloadOptions, partPath: string, partialBytes: number, timeoutMs: number): Promise<DownloadResult> {
-  const headers: Record<string, string> = { 'User-Agent': 'minimax-studio-fetcher' }
+  const headers: Record<string, string> = { 'User-Agent': 'monoka-fetcher/1' }
   if (partialBytes > 0) headers.Range = `bytes=${partialBytes}-`
   const response = await requestUrl(options.url, { headers, timeoutMs })
   if (response.status === 429 || response.status >= 500) {

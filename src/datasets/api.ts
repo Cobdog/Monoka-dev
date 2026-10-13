@@ -5,7 +5,7 @@
  */
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
-  headers.set('x-minimax-token', new URLSearchParams(window.location.search).get('token') ?? '')
+  headers.set('x-monoka-token', new URLSearchParams(window.location.search).get('token') ?? '')
   const response = await fetch(path, { ...init, headers })
   const body = await response.json().catch(() => ({})) as Record<string, unknown> & T
   if (!response.ok) throw new Error(typeof body.error === 'string' ? body.error : `datasets request failed (${response.status})`)

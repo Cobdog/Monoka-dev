@@ -20,7 +20,7 @@ export class DocumentsHttpError extends Error {
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
-  headers.set('x-minimax-token', new URLSearchParams(window.location.search).get('token') ?? '')
+  headers.set('x-monoka-token', new URLSearchParams(window.location.search).get('token') ?? '')
   const response = await fetch(path, { ...init, headers })
   const body = await response.json().catch(() => ({})) as Record<string, unknown> & T
   if (!response.ok) throw new DocumentsHttpError(response.status, typeof body.error === 'string' ? body.error : `documents request failed (${response.status})`)
@@ -81,7 +81,7 @@ export const documentsApi = {
   getProject: async (id: string): Promise<CanvasDocument> => {
     const headers = new Headers()
     const token = new URLSearchParams(window.location.search).get('token')
-    if (token) headers.set('x-minimax-token', token)
+    if (token) headers.set('x-monoka-token', token)
     const remembered = rememberedDocuments.get(id)
     if (remembered) headers.set('if-none-match', remembered.etag)
     const response = await fetch(`/api/lan/documents/project?id=${encodeURIComponent(id)}`, { headers })
@@ -183,7 +183,7 @@ export const documentsApi = {
    *  token. */
   exportProjectArchive: async (projectId: string): Promise<{ fileName: string }> => {
     const headers = new Headers()
-    headers.set('x-minimax-token', new URLSearchParams(window.location.search).get('token') ?? '')
+    headers.set('x-monoka-token', new URLSearchParams(window.location.search).get('token') ?? '')
     const response = await fetch(`/api/lan/documents/export?id=${encodeURIComponent(projectId)}`, { headers })
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as { error?: string }

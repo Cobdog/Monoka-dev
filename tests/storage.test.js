@@ -528,11 +528,15 @@ test('(h) settings-GET Option B: token-gated whenever token mode is on', async (
     const tokenBase = `http://127.0.0.1:${tokenPort}`
     const noToken = await fetch(`${tokenBase}/api/lan/settings`)
     assert.equal(noToken.status, 401, `token mode: GET /settings without a token must 401 (got ${noToken.status})`)
-    const wrongToken = await fetch(`${tokenBase}/api/lan/settings`, { headers: { 'x-minimax-token': 'wrong' } })
+    const wrongToken = await fetch(`${tokenBase}/api/lan/settings`, { headers: { 'x-monoka-token': 'wrong' } })
     assert.equal(wrongToken.status, 401, `token mode: a wrong token must 401 (got ${wrongToken.status})`)
     const liveToken = fs.readFileSync(path.join(tokenHome, 'lan-access-token.txt'), 'utf8').trim()
-    const withToken = await fetch(`${tokenBase}/api/lan/settings`, { headers: { 'x-minimax-token': liveToken } })
+    const withToken = await fetch(`${tokenBase}/api/lan/settings`, { headers: { 'x-monoka-token': liveToken } })
     assert.equal(withToken.status, 200, `token mode: the SPA's header token reads settings (got ${withToken.status})`)
+    // New-only (rename-sweep T3, zero back-compat): the PRE-RENAME header
+    // name is not read even when it carries the correct token.
+    const legacyHeader = await fetch(`${tokenBase}/api/lan/settings`, { headers: { 'x-minimax-token': liveToken } })
+    assert.equal(legacyHeader.status, 401, `the legacy x-minimax-token header is not read (got ${legacyHeader.status})`)
     const tokenBody = await withToken.json()
     assert.ok(tokenBody.settings && typeof tokenBody.settings.comfyUrl === 'string', 'the tokened read returns the settings object (the editor data source)')
   } finally {
