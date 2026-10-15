@@ -35,6 +35,7 @@ const RANGES = {
   'animation-rendering': [4600, 40],
   'animation-routes': [4640, 40],
   'animation-export': [4680, 40],
+  jobwatcher: [4720, 40],
   instance: [6520, 40],
   resync: [6560, 40],
   launcher: [7000, 100],

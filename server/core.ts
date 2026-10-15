@@ -33,6 +33,8 @@ import { JOB_PROVIDER_VALUES, JOB_STATUS_VALUES } from './db'
 import { CANVAS_SCHEMA_VERSION, CanvasSchemaVersionError, DocumentsRuleError, PlanConflictError } from './documents'
 import { exportProjectArchive, importProjectArchive } from './documentArchive'
 import { createRealtimeHub, type RealtimeHub } from './realtime'
+import { createJobWatcher, type JobWatcher } from './jobWatcher'
+import { ingestEngineOutputFile, resolveEngineOutputFile } from './engineOutputs'
 import { createAnimationStore } from './animation/store'
 import { createAnimationRenderingService, createComfyEnginePort, makeDocumentStoreBlobSink, makeFramePreparer, type EnginePort } from './animation/rendering'
 import { createAnimationExportService } from './animation/export'
@@ -338,24 +340,15 @@ function lanAddress() {
   return candidates.sort((left, right) => right.score - left.score)[0]?.address ?? '127.0.0.1'
 }
 
-/** Resolves a ComfyUI-reported output file inside the configured output
- *  directory. Attributing outputs by exact filename — instead of scanning for
- *  the newest file — is what keeps concurrent renders from being credited to
- *  the wrong job (and the wrong character library entry). */
 /** Content-Security-Policy for the SPA document. ws:/wss: are required for
  *  the realtime fabric's /ws upgrade (and, over TLS, its secure twin). */
 const CONTENT_SECURITY_POLICY = "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
+/** Resolves a ComfyUI-reported output file inside the configured output
+ *  directory — the shared exact-descriptor resolution (server/engineOutputs,
+ *  gfv5h0g) the routes and the job watcher both land through. */
 function resolveOutputFile(outputDirectory: string, file: { filename: string; subfolder?: string; type?: string }) {
-  if (!outputDirectory || !file.filename) return null
-  if (file.type && file.type !== 'output') return null
-  const relativePath = file.subfolder ? join(file.subfolder, file.filename) : file.filename
-  if (isAbsolute(relativePath) || relativePath.split(/[\\/]/).includes('..')) return null
-  const root = resolve(outputDirectory)
-  const candidate = resolve(root, relativePath)
-  const containment = relative(root, candidate)
-  if (containment.startsWith('..') || isAbsolute(containment)) return null
-  return existsSync(candidate) ? candidate : null
+  return resolveEngineOutputFile(outputDirectory, file)
 }
 
 /** Local file response for the privileged protocol (Electron shell) with
@@ -692,6 +685,40 @@ export function createStudioServer(paths: StudioServerPaths) {
   let animationBootResolve: (() => void) | null = null
   let animationReadyPromise: Promise<void> = Promise.resolve()
   const animation: AnimationSurface | null = studioRepo ? createAnimationSurface(studioRepo.documents) : null
+
+  // SERVER-OWNED JOBS (gfv5h0g — the R2 fix, 2026-10-15): the completion
+  // owner for studio generation jobs. The watcher observes engine completion
+  // (the hub's shared upstream tap for immediacy + its own history poll as
+  // the authoritative loop that needs no subscriber), settles job rows from
+  // engine truth through the SAME jobReducer the client poll ran, and lands
+  // takes through the document store's own appendTake — so a render that
+  // outlives its browser tab is never silently lost. Surfaces become
+  // readers: the `landing` envelopes on the job channel are their signal.
+  const jobWatcher: JobWatcher | null = studioRepo ? createJobWatcher({
+    repo: () => studioRepo,
+    settings: () => loadSettingsCached(),
+    history: async (promptId) => {
+      const history = await comfyFetch(loadSettingsCached().comfyUrl, `/history/${encodeURIComponent(promptId)}`)
+      return (history && typeof history === 'object' ? history : {}) as Record<string, unknown>
+    },
+    resolveOutput: (file) => resolveEngineOutputFile(loadSettingsCached().outputDirectory, file),
+    ingest: async (file, kind) => {
+      const settings = loadSettingsCached()
+      const result = await ingestEngineOutputFile({
+        viewBase: cleanUrl(settings.comfyUrl),
+        outputDirectory: settings.outputDirectory,
+        registerBlobFile: (blobKind, path) => studioRepo!.documents.registerBlobFile(blobKind, path),
+        file,
+        kind,
+      })
+      return { path: result.path }
+    },
+    emit: (type, payload) => realtimeHub.emitJob(type, payload),
+    setWatchDemand: (wanted) => realtimeHub.setWatchDemand(wanted),
+    logEvent,
+    logFailure,
+  }) : null
+  if (jobWatcher) realtimeHub.addEngineEventTap(jobWatcher.tap)
 
   function defaultSettings(): AppSettings {
     const root = join(paths.documentsDirectory, 'ComfyUI', 'models')
@@ -2340,7 +2367,9 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           // subfolder/output-dir mismatch) is fetched from the engine's /view
           // through the same proxy the media route uses, landed as an
           // output-dir copy + content-addressed blob — the render becomes
-          // durable instead of dying with the engine's output rotation.
+          // durable instead of dying with the engine's output rotation. The
+          // fetch+land logic is the SHARED helper (server/engineOutputs) the
+          // job watcher lands through too — one mechanism, not two.
           if (url.pathname === '/api/lan/documents/blobs/ingest-output' && request.method === 'POST') {
             const body = await readJson(request, 100_000)
             const filename = typeof body.filename === 'string' ? body.filename : ''
@@ -2351,22 +2380,16 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
             // (proxyLanMedia) — an output descriptor, never a path.
             if (!filename || filename.includes('/') || filename.includes('\\')) return sendJson(response, 400, { error: 'Invalid output filename.' })
             if (subfolder && (isAbsolute(subfolder) || subfolder.split(/[\\/]/).includes('..'))) return sendJson(response, 400, { error: 'Invalid output subfolder.' })
-            const fileType = body.type === 'input' ? 'input' : 'output'
             try {
-              const query = new URLSearchParams({ filename, subfolder, type: fileType })
-              const upstream = await fetch(`${cleanUrl(settings.comfyUrl)}/view?${query}`)
-              if (!upstream.ok || !upstream.body) return sendJson(response, 502, { error: 'The engine output could not be fetched — the engine may be unreachable or the output rotated away.' })
-              const bytes = Buffer.from(await upstream.arrayBuffer())
-              if (!bytes.length) return sendJson(response, 400, { error: 'The engine output carried no bytes.' })
-              const extension = extname(filename).toLowerCase().slice(0, 8) || (kind === 'image' ? '.png' : kind === 'audio' ? '.mp3' : '.mp4')
-              const safeStem = basename(filename, extname(filename)).replace(/[^a-z0-9._-]+/gi, '_').slice(0, 80) || 'engine-output'
-              const folder = join(settings.outputDirectory, 'canvas-media')
-              const outputPath = join(folder, `${safeStem}-${randomUUID().slice(0, 8)}${extension}`)
-              await mkdir(folder, { recursive: true })
-              await writeFile(outputPath, bytes)
-              const blob = documents.registerBlobFile(kind, outputPath)
-              logEvent({ kind: 'documents.blob-ingest', bytes: bytes.length, hash: blob.hash ? 'present' : 'missing' })
-              return sendJson(response, 200, { path: outputPath, blob })
+              const result = await ingestEngineOutputFile({
+                viewBase: cleanUrl(settings.comfyUrl),
+                outputDirectory: settings.outputDirectory,
+                registerBlobFile: (blobKind, path) => documents.registerBlobFile(blobKind, path),
+                file: { filename, subfolder: subfolder || undefined, type: typeof body.type === 'string' ? body.type : undefined },
+                kind,
+              })
+              logEvent({ kind: 'documents.blob-ingest', hash: result.blob.hash ? 'present' : 'missing' })
+              return sendJson(response, 200, { path: result.path, blob: result.blob })
             } catch (error) {
               return sendJson(response, 502, { error: `The engine output could not be stored: ${error instanceof Error ? error.message : String(error)}` })
             }
@@ -3898,12 +3921,16 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
         if (animation) {
           void animation.boot().catch((error: unknown) => logFailure('animation/reconcile', error, undefined, 'warn'))
         }
+        // The job watcher rides the same posture (gfv5h0g): its first sweep
+        // re-settles anything that completed while the studio was down.
+        if (jobWatcher) jobWatcher.start()
         resolvePromise()
       })
     })
   }
 
   function stopLanServer() {
+    jobWatcher?.stop()
     realtimeHub.close()
     // No supervised sidecar outlives the server that started it: graceful
     // quit line first, forced tree-kill for whatever ignores it. The runtime

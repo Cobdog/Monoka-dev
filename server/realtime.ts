@@ -461,12 +461,15 @@ export function createRealtimeHub(options: RealtimeHubOptions) {
     for (const event of normalized.events) {
       if (event.type === 'execution_start') upstream.activePromptId = event.promptId
       else if (event.type === 'executing' && event.node) upstream.activePromptId = event.promptId
-      // The single engine-event tap (animation lane, task k2q0n9s/5): the
-      // completion owner observes through the SAME shared upstream — no
-      // second engine socket (§10.1's no-shadow-client rule). A consumer
+      // The engine-event taps (animation lane + the server-owned job
+      // watcher): every consumer observes through the SAME shared upstream —
+      // no second engine socket (§10.1's no-shadow-client rule). A consumer
       // failure is contained here: it must not take the fan-out down.
       if (engineEventTap) {
         try { engineEventTap(event) } catch (error) { logFailure('realtime/engine-tap', error, undefined, 'debug') }
+      }
+      for (const tap of extraEngineTaps) {
+        try { tap(event) } catch (error) { logFailure('realtime/engine-tap', error, undefined, 'debug') }
       }
       pushChannel('job', event.type, event)
     }
@@ -496,7 +499,7 @@ export function createRealtimeHub(options: RealtimeHubOptions) {
   }
 
   function refreshUpstreamInterest() {
-    let wanted = false
+    let wanted = watchDemand
     for (const client of clients) {
       // 'system' counts since 0pktw5h: the system channel now carries
       // upstream-derived Manager queue events (cm-queue envelopes), so a
@@ -817,10 +820,16 @@ export function createRealtimeHub(options: RealtimeHubOptions) {
   let drainTicker: ReturnType<typeof setInterval> | null = null
   let pingTimer: ReturnType<typeof setInterval> | null = null
 
-  /** The engine-event tap (animation lane): normalized upstream events handed
-   *  to ONE consumer beside the job-channel fan-out — the animation
-   *  completion owner, which correlates promptId → attemptId itself. */
+  /** The engine-event taps: the animation lane's completion owner holds the
+   *  single legacy slot (`tapEngineEvent`), and the server-owned job watcher
+   *  subscribes through `addEngineEventTap` — both observe the SAME shared
+   *  upstream (no second engine socket), each failure contained per-tap. */
   let engineEventTap: ((event: JobLifecycleEvent) => void) | null = null
+  const extraEngineTaps = new Set<(event: JobLifecycleEvent) => void>()
+  /** Watcher demand (gfv5h0g): while jobs are active the shared upstream
+   *  should be connected even with zero subscribers, so terminal engine
+   *  events reach the watcher's fast path. */
+  let watchDemand = false
 
   return {
     attach(server: Server) {
@@ -864,6 +873,14 @@ export function createRealtimeHub(options: RealtimeHubOptions) {
     emitSystem(type: string, payload: unknown) {
       pushChannel('system', type, payload)
     },
+    /** Job channel emitter (gfv5h0g): server-owned settlement events — the
+     *  job watcher's `landing` envelopes (outcome + ids + the settled
+     *  record) that let surfaces drop their own engine polls and become
+     *  readers. Rides the same envelope + per-channel-seq contract as the
+     *  upstream-derived job events. */
+    emitJob(type: string, payload: unknown) {
+      pushChannel('job', type, payload)
+    },
     /** Animation channel emitter (animation module task 5, k2q0n9s): the
      *  authoring surface's envelopes — attempt-state / attempt-ready /
      *  document-changed / reconciliation — fanned out to animation
@@ -878,6 +895,21 @@ export function createRealtimeHub(options: RealtimeHubOptions) {
     tapEngineEvent(tap: ((event: JobLifecycleEvent) => void) | null) {
       engineEventTap = tap
     },
+    /** Adds an ADDITIONAL engine-event consumer beside the animation slot
+     *  (gfv5h0g: the server-owned job watcher). Returns the unsubscribe. */
+    addEngineEventTap(tap: (event: JobLifecycleEvent) => void): () => void {
+      extraEngineTaps.add(tap)
+      return () => { extraEngineTaps.delete(tap) }
+    },
+    /** The watcher's upstream demand (gfv5h0g): while jobs are active the
+     *  shared engine socket stays connected even with zero subscribers so
+     *  terminal events reach the watcher's fast path; the history-poll
+     *  sweep remains the authoritative loop either way. */
+    setWatchDemand(wanted: boolean) {
+      if (watchDemand === wanted) return
+      watchDemand = wanted
+      refreshUpstreamInterest()
+    },
     close() {
       if (drainTicker) clearInterval(drainTicker)
       if (pingTimer) clearInterval(pingTimer)
@@ -890,6 +922,8 @@ export function createRealtimeHub(options: RealtimeHubOptions) {
       upstream.linger = null
       upstream.retry = null
       upstream.wanted = false
+      watchDemand = false
+      extraEngineTaps.clear()
       upstream.socket?.close()
       upstream.socket = null
       for (const client of clients) client.close()
