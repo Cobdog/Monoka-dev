@@ -40,6 +40,7 @@ import type { JobLifecycleEvent } from '../src/types'
 import type { GenerationJob } from '../src/types'
 import { extractExecutionError, isPastRunningDeadline, isTerminalStatus, reduceJobPoll, type PollObservation } from '../src/lib/jobReducer'
 import { extractAllOutputFiles, extractOutputFile, extractOutputUrl } from '../src/lib/workflow'
+import { webMediaUrl } from '../src/lib/mediaUrls'
 import { activeLorasOf } from '../src/canvas/loraTimeline'
 import type { EngineOutputDescriptor } from './engineOutputs'
 import type { StudioRepository } from './repo'
@@ -197,7 +198,10 @@ export function createJobWatcher(deps: {
             // render the engine already finished.
             const settings = deps.settings()
             const remote = settings ? extractOutputUrl(history, promptId, settings.comfyUrl, mediaType) : undefined
-            observation = { kind: 'completed', outputUrl: remote ?? '', localOutputPath: record.localOutputPath }
+            // The same playable translation the client landing applied
+            // (webMediaUrl — pure): the stored row stays servable, never a
+            // bare monoka-media:// descriptor.
+            observation = { kind: 'completed', outputUrl: webMediaUrl(remote) ?? remote ?? '', localOutputPath: record.localOutputPath }
           }
         }
       } else {
