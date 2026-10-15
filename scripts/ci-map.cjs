@@ -77,6 +77,7 @@ const SUITES = {
   'engine-contract': { build: null, windows: false, python: false, ffmpeg: false },
   'engine-families': { build: null, windows: false, python: false, ffmpeg: false },
   enginewatch: { build: null, windows: false, python: false, ffmpeg: false },
+  jobwatcher: { build: 'full', windows: false, python: false, ffmpeg: false },
   'extension-gate': { build: null, windows: false, python: false, ffmpeg: false },
   'field-classes': { build: null, windows: false, python: false, ffmpeg: false },
   fetcher: { build: 'full', windows: true, python: false, ffmpeg: false },
@@ -111,10 +112,10 @@ const SUITES = {
 
 /** Every suite that boots dist-server/server/index.js directly (route-level
  *  integration): the honest fan-out for the server seams. */
-const BOOTING = ['animation-export', 'animation-routes', 'datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const BOOTING = ['animation-export', 'animation-routes', 'datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'jobwatcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 
 /** Every suite drawing scratch ports through tests/lib/ports.cjs. */
-const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'jobwatcher', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 /** Every kit suite reading src/styles.css through the shared sheet reader
  *  (tests/lib/styleSheet.cjs — the near-term-A parser consolidation). */
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
@@ -306,7 +307,9 @@ const RULES = [
   { match: ['server/animation/export.ts'], suites: ['animation-assembly', 'animation-export'], reason: 'the export pipeline (task 14, spec §11.3) — its own suite owns it end to end: the pure gate + manifest derivations and the real assembly (server + fake engine + ffmpeg) over HTTP; task 15a added the assembly-agreement suite, which drives the same gate against the preview (the shared-edge pin).' },
   { match: ['server/animation/routes.ts'], suites: ['animation-routes', 'animation-continuation-overlay'], reason: 'the animation HTTP block — a pure handler mounted by core.ts; its suite boots the real server against the fake engine. The continuation-overlay suite (Codex batch C, audit M-7) pins the fabric emitter continuation envelopes (the settlement-generation stamp) out of the built module.' },
   { match: ['server/documents.ts', 'server/documentArchive.ts'], suites: ['documents', 'animation-store', 'rename-disk'], reason: 'document store + zip archive — the animation round-trip (spec §11.3) rides the same archive, exercised by the animation-store suite; the rename-disk suite pins the R11 legacy-marker refusal off the same module.' },
-  { match: ['server/realtime.ts'], suites: ['realtime', 'manager-install', 'animation-routes'], reason: 'the fabric — WS realtime framing/delivery; the Manager cm-queue event normalizer (0pktw5h) is exercised by the manager-install suite too, and the animation channel + emitAnimation + the engine-event tap (animation module task 5) are driven end-to-end by the animation-routes suite.' },
+  { match: ['server/realtime.ts'], suites: ['realtime', 'manager-install', 'animation-routes', 'jobwatcher'], reason: 'the fabric — WS realtime framing/delivery; the Manager cm-queue event normalizer (0pktw5h) is exercised by the manager-install suite too, the animation channel + emitAnimation + the engine-event tap (animation module task 5) are driven end-to-end by the animation-routes suite, and the multi-tap + emitJob seams are driven by the jobwatcher suite (gfv5h0g).' },
+  { match: ['server/jobWatcher.ts'], suites: ['jobwatcher'], reason: 'the server-owned job watcher (gfv5h0g) — its suite boots the built server against the standing fake engine and drives observation, settlement (the shared jobReducer), take landing through the document store, the packet backstop, and the fabric landing envelopes end to end.' },
+  { match: ['server/engineOutputs.ts'], suites: ['jobwatcher', 'documents'], reason: 'the shared engine-output landing helpers (gfv5h0g): the jobwatcher suite drives both halves (resolution + remote ingest), and the documents suite pins the /documents/blobs/ingest-output route that now rides the same helper.' },
   { match: ['server/llm/**'], suites: ['llm'], reason: 'LLM family registry + providers.' },
   { match: ['server/datasets/**'], suites: ['datasets'], reason: 'dataset manager domain.' },
   { match: ['server/engineProcess.ts'], suites: ['engine-process', 'runtime'], reason: 'process supervision — its own suite + the runtime manager.' },

@@ -272,13 +272,24 @@ export function createStudioRepository(dbFile: string, options?: { allowedSource
      *  (or tabs) writing overlapping sets each win per job: the newest write
      *  per id survives and the other tab's jobs are never lost. Terminal
      *  transitions append a job_events row (the realtime fabric writes the
-     *  running tail later; terminal + failure records start now). */
+     *  running tail later; terminal + failure records start now).
+     *
+     *  (gfv5h0g) The server-owned terminal guard: a NON-terminal write onto
+     *  a terminal row is ignored — the job watcher settles rows from engine
+     *  truth, and a stale client POST (a debounced persist that left before
+     *  the settlement) must not resurrect a settled job. One documented
+     *  exception: the r3q1o49 auto-retry's resubmission (failed → queued
+     *  with retriedOnce set) stays a legal transition. */
     upsertJobs: db.transaction((jobs: Array<Record<string, unknown>>) => {
       let saved = 0
       for (const job of jobs) {
         const params = jobParams(job)
         if (!params.id) continue
         const previous = statements.selectJobStatus.get(params.id) as { status: string } | undefined
+        if (previous && TERMINAL_STATUSES.has(previous.status) && !TERMINAL_STATUSES.has(params.status)) {
+          const resubmission = previous.status === 'failed' && params.status === 'queued' && job.retriedOnce === true
+          if (!resubmission) continue
+        }
         statements.upsertJob.run(params)
         if (TERMINAL_STATUSES.has(params.status) && (!previous || previous.status !== params.status)) {
           appendJobEvent(params.id, 'status', { from: previous?.status ?? null, to: params.status, error: params.error ?? undefined })

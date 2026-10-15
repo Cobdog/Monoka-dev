@@ -1794,6 +1794,14 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
       return hydrateTake(statements.take.get(id) as Record<string, unknown>)
     }),
     listTakes: (outputId: string) => (statements.takesByOutput.all(outputId) as Array<Record<string, unknown>>).map(hydrateTake),
+    /** The (newest) take landed for a job id — the job-watch landing's
+     *  idempotence probe beside appendTake's own jobId guard (a live
+     *  surface's scored packet must not be superseded by the server's
+     *  backstop re-landing). */
+    takeByJob: (jobId: string) => {
+      const row = statements.takeByJob.get(jobId) as Record<string, unknown> | undefined
+      return row ? hydrateTake(row) : null
+    },
     canonicalTake: (outputId: string) => {
       const row = statements.canonicalTake.get(outputId) as Record<string, unknown> | undefined
       return row ? hydrateTake(row) : null
