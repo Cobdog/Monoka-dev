@@ -1148,6 +1148,22 @@ test('job poll reduction (P1 family): completion, stale polls, tolerance, struct
     assert.equal(extractExecutionError({ p1: { status: { messages: [['execution_success', {}]] } } }, 'p1'), null, 'no execution_error message → null')
     assert.equal(extractExecutionError({ p1: { status: { messages: ['not-a-tuple'] } } }, 'p1'), null, 'malformed message → null')
 
+    // (r3q1o49) The preview-crash signature: when the engine's stock previewer
+    // construction dies ('NoneType' object has no attribute
+    // 'show_progress_bar' — a broken/absent taeh3 decoder winning the prefix
+    // match), the WHOLE job dies at ~1% and the auto-retry rescues it. The
+    // rescue must SURFACE as the preview event it is, so the reducer exposes
+    // the signature predicate the retry branch matches on — and it must match
+    // the SANITIZED reason (the observation never carries raw engine text).
+    const { isPreviewCrashSignature } = load('src/lib/jobReducer.ts')
+    const crashReason = sanitizeForReducer("AttributeError: 'NoneType' object has no attribute 'show_progress_bar'")
+    assert.ok(crashReason.includes('show_progress_bar'), 'the signature token survives sanitization')
+    assert.equal(isPreviewCrashSignature({ kind: 'executionError', nodeType: 'MiniMaxH3ImageToVideo', reason: crashReason }), true, 'the real preview-crash reason matches the signature')
+    assert.equal(isPreviewCrashSignature({ kind: 'executionError', nodeType: 'KSampler', reason: sanitizeForReducer('Traceback names latent_preview.prepare_callback') }), true, 'the latent_preview frame matches too')
+    assert.equal(isPreviewCrashSignature({ kind: 'executionError', nodeType: 'VAEDecodeTiled', reason: oomReason }), false, 'an OOM failure is not the preview crash')
+    assert.equal(isPreviewCrashSignature({ kind: 'completed', outputUrl: '' }), false, 'non-error observations never match')
+    assert.equal(isPreviewCrashSignature({ kind: 'executionError', reason: '' }), false, 'an empty reason never matches')
+
     // P1-6: completed-but-no-output spins at 98% for a bounded count, then fails.
     let spinning = baseJob
     for (let i = 1; i < NO_OUTPUT_POLL_CAP; i++) {

@@ -812,6 +812,11 @@ export type GenerationJob = {
   graph?: unknown
   /** Set after the automatic engine-reset + tiled-VAE retry. */
   retriedOnce?: boolean
+  /** (r3q1o49) The render wanted live previews but this engine has no
+   *  verified preview path (the PreviewOverride pack) — the submit went out
+   *  WITHOUT a stock preview request (the null-previewer crash class), noted
+   *  where the live-preview state renders. */
+  previewUnavailable?: boolean
   mediaType?: 'video' | 'audio' | 'image'
   movieLink?: { projectId: string; sceneId: string; shotId: string }
   characterProjectId?: string
