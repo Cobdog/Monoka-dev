@@ -160,13 +160,15 @@ test('(a) fresh boot creates studio.db with the schema version stamped', () => {
 })
 
 // Fresh-home default engine URL (audit follow-up, 3dvcjxr): a home with no
-// saved settings must ship comfyUrl 8189 — the default landed in c5d08df and
-// this rail reds the moment anyone points it back at the reserved personal
-// 8188. Runs before any settings PATCH in this suite, so the answer is the
-// pristine default, not a test-mutated value.
-test('(a2) fresh-home default settings pin the engine URL at 8189', async () => {
+// saved settings must ship comfyUrl 8188. The default landed in c5d08df at
+// 8189 (the 2026-10-02 box-specific agent-safety rail), flipped to 8188 by
+// the maintainer's 2026-10-15 ruling — the shipped default matches the
+// world's ComfyUI port; agent tests pin explicit URLs and never ride the
+// default. Runs before any settings PATCH in this suite, so the answer is
+// the pristine default, not a test-mutated value.
+test('(a2) fresh-home default settings pin the engine URL at 8188', async () => {
   const settings = (await get('/api/lan/settings')).body.settings
-  assert.equal(settings.comfyUrl, 'http://127.0.0.1:8189', 'the shipped default engine URL must be 8189, never the reserved personal 8188')
+  assert.equal(settings.comfyUrl, 'http://127.0.0.1:8188', 'the shipped default engine URL must be 8188, the world ComfyUI default (maintainer ruling 2026-10-15)')
 })
 
 test('(b) job upsert round-trip: graph stripped, manifest preserved; shape-first validation refuses unknown shapes', async () => {

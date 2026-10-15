@@ -338,7 +338,7 @@ let apiE = null
 
 beforeAll(async () => {
   // The fake engine first: the scratch settings.json must point the server
-  // at it BEFORE boot (the default comfyUrl is the 8189 testbed — the test
+  // at it BEFORE boot (the default comfyUrl is 8188, the world default — the test
   // never lets the server near it; asserted, not assumed).
   enginePort = await freePort()
   engine = spawn(process.execPath, [
