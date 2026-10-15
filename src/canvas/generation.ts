@@ -503,10 +503,14 @@ export function buildCanvasRenderRequest(
     // PreviewOverride pack's node is served and a taeh3 decoder is present,
     // the submit path wires the pack's node into the model chain (its
     // minimax_h3_preview_override stream owns previews; the server skips
-    // the stock preview_method request for that graph); otherwise this is
-    // the engine-side vae_approx decode (taeh3 for H3) — the pack-absent
-    // fallback. The explicit 'h3-override' mode remains the old surface's
-    // strict opt-in.
+    // the stock preview_method request for that graph). (r3q1o49) Pack
+    // absent means previews-OFF at the wire — the old engine-side
+    // vae_approx fallback WAS the null-previewer crash class (a fresh
+    // engine's latent_preview dies constructing the stock previewer at ~1%,
+    // rescued only by the silent auto-retry); the submit gate sends no
+    // preview request for it and the tile notes previews are unavailable.
+    // The explicit 'h3-override' mode remains the old surface's strict
+    // opt-in.
     livePreview: { enabled: true, mode: 'standard' },
     ...(chain ? { chain } : {}),
     filenamePrefix: `video/Canvas_H3_${Date.now()}`,

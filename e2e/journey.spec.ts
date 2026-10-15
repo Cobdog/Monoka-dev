@@ -482,3 +482,181 @@ test('reference prep on the mirror: longest side to the resolution, aspect prese
   expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
   expect(mirrorLog).not.toContain('EADDRINUSE')
 })
+
+/** (r3q1o49) THE FRESH-ENGINE PREVIEW GATE, execution-adjacent truth on the
+ *  mirror: the canvas default (live preview on, mode standard) used to ride
+ *  EVERY submission as a stock `preview_method: 'taesd'` request — on a
+ *  fresh engine (no PreviewOverride pack, no vae_approx listing) the real
+ *  engine's latent_preview constructs a stock previewer from whatever taeh3*
+ *  file wins its prefix match and the WHOLE job dies at ~1%, rescued 3 s
+ *  later by the silent auto-retry (minus previews). The gate: pack-absent
+ *  submits with NO preview request at all, the render completes on ONE
+ *  submission (engine history carries one prompt_id — never the
+ *  fail→resubmit pair), and the job record honestly notes previews are
+ *  unavailable where the live-preview state renders. */
+test('a pack-absent fresh engine receives NO stock preview request and renders clean — no crash-retry detour (r3q1o49)', async ({ page, request }) => {
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const holder = http.createServer(() => undefined)
+  const mirrorPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  // The STOCK profile: the full H3 weight stack but NO pack classes and NO
+  // vae_approx listing — exactly the fresh-engine repro shape.
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', 'e2e/mirror/profiles/stock-h3.json'], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+    const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${mirrorPort}`,
+      engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
+    } } })
+    await resetSession(page)
+    // Slow the render so the honest note is observably present while the job
+    // is active (the note shows exactly as long as the job does — a
+    // transient-by-design surface; the durable record assertion follows).
+    await mirrorJson(mirrorPort, '/__control', { method: 'POST', body: JSON.stringify({ stepDelayMs: 1200 }) })
+
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'true', { timeout: 20_000 })
+    await page.locator('[data-canvas-prompt]').fill('a lighthouse over a black sea, fresh engine')
+    await page.locator('[data-canvas-submit]').click()
+    await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 15_000 })
+
+    // The honest note, where the live-preview state renders (named condition:
+    // the job record carries previewUnavailable from submit; the job stays
+    // active ~12 s at the slowed cadence, so the window is wide).
+    await expect(page.locator('[data-canvas-live-preview-off]')).toBeVisible({ timeout: 10_000 })
+
+    // The engine received ONE prompt, carrying NO preview request.
+    await expect.poll(async () => {
+      const history = (await mirrorJson(mirrorPort, '/history')) as Record<string, MirrorHistoryEntry>
+      return Object.keys(history).length
+    }, { timeout: 60_000 }).toBe(1)
+    const history = (await mirrorJson(mirrorPort, '/history')) as Record<string, MirrorHistoryEntry>
+    const [entry] = Object.values(history)
+    const extraData = entry.prompt?.[3] as Record<string, unknown> | string | undefined
+    const extraRecord = extraData && typeof extraData === 'object' ? extraData : {}
+    expect('preview_method' in extraRecord, `no preview_method reaches a pack-absent engine (got: ${JSON.stringify(extraData)})`).toBe(false)
+    const receivedGraph = (entry.prompt?.[2] ?? {}) as Record<string, { class_type?: string }>
+    expect(Object.values(receivedGraph).some((node) => typeof node?.class_type === 'string' && /minimax.*h3.*preview.*override/i.test(node.class_type)), 'the pack-absent graph carries no override node').toBe(false)
+    expect(entry.status?.completed, 'the single submission completed').toBe(true)
+
+    // No silent rescue ever fired: the job record is a clean single-attempt
+    // completion that notes previews were unavailable. (One bounded poll for
+    // the whole named condition — the app's 1 s poll lags the mirror's
+    // history write, so a read-after-history-settle races the completion.)
+    await expect.poll(async () => {
+      const jobs = ((await (await request.get('/api/lan/jobs')).json()) as { jobs: Array<{ status: string; retriedOnce?: boolean; previewUnavailable?: boolean }> }).jobs
+      const clean = jobs.find((job) => job.previewUnavailable === true && job.retriedOnce !== true)
+      return clean?.status === 'completed' ? 'completed' : null
+    }, { timeout: 15_000 }).toBe('completed')
+
+    // No harness-caused page errors (business failures are honest toasts).
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+
+    // ---- teardown ----------------------------------------------------------
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } })
+    await resetSession(page)
+  } finally {
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+})
+
+/** (r3q1o49) The auto-retry's SURFACING contract: when a render carrying the
+ *  preview request dies with the preview-crash signature, the existing
+ *  engine-reset retry must surface as a FIRST-CLASS event — a named toast
+ *  ("Preview unavailable on this engine — retrying without previews") and a
+ *  job record that says the landed take rendered without previews — never
+ *  the silent failure→un-failure flash. The mirror's one-shot preview-crash
+ *  failMode models the real mechanism's recovery shape: the crash fires once
+ *  (on the real engine the retry cannot re-crash, because it submits without
+ *  preview_method), and the resubmission renders clean. */
+test('the preview-crash retry surfaces as a first-class named event, never a silent flash (r3q1o49)', async ({ page, request }) => {
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const holder = http.createServer(() => undefined)
+  const mirrorPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', MIRROR_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+    const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${mirrorPort}`,
+      engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
+    } } })
+    await resetSession(page)
+    // Arm the one-shot crash BEFORE the submit (the mirror's established
+    // failMode control).
+    await mirrorJson(mirrorPort, '/__control', { method: 'POST', body: JSON.stringify({ failMode: 'preview-crash' }) })
+
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'true', { timeout: 20_000 })
+    await page.locator('[data-canvas-prompt]').fill('a lighthouse over a black sea, preview crash surfacing')
+    await page.locator('[data-canvas-submit]').click()
+    await expect(page.locator('[data-canvas-tile]').first()).toBeVisible({ timeout: 15_000 })
+
+    // FIRST-CLASS: the named toast appears (named condition: the mirror fails
+    // at step 3 (~1.3 s), the app's 1 s poll sweep classifies the signature
+    // and fires the notice — the neutral toast lives 4.2 s, the poll samples
+    // well inside that window).
+    await expect(page.locator('[data-canvas-toast]', { hasText: 'Preview unavailable on this engine — retrying without previews' }).first()).toBeVisible({ timeout: 20_000 })
+
+    // The rescue lands: the job completes on the resubmission.
+    await expect.poll(async () => {
+      const jobs = ((await (await request.get('/api/lan/jobs')).json()) as { jobs: Array<{ status: string; retriedOnce?: boolean; previewUnavailable?: boolean; progressLabel?: string }> }).jobs
+      return jobs.find((job) => job.status === 'completed') ?? {}
+    }, { timeout: 60_000 }).toMatchObject({ status: 'completed', retriedOnce: true, previewUnavailable: true })
+
+    // Engine history holds the fail→retry PAIR, and the resubmission carried
+    // no preview request (the retry's honest drop).
+    const history = (await mirrorJson(mirrorPort, '/history')) as Record<string, MirrorHistoryEntry>
+    expect(Object.keys(history).length, 'exactly two submissions: the failed attempt + the retry').toBe(2)
+    const statuses = Object.values(history).map((entry) => entry.status)
+    expect(statuses.filter((status) => status?.status_str === 'error').length, 'the first attempt errored').toBe(1)
+    expect(statuses.filter((status) => status?.completed).length, 'the retry completed').toBe(1)
+    for (const entry of Object.values(history)) {
+      const extraData = entry.prompt?.[3] as Record<string, unknown> | string | undefined
+      const extraRecord = extraData && typeof extraData === 'object' ? extraData : {}
+      expect('preview_method' in extraRecord, 'no submission ever carries the stock preview_method here (the pack owns previews; the retry drops them)').toBe(false)
+    }
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+
+    // ---- teardown ----------------------------------------------------------
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } })
+    await resetSession(page)
+  } finally {
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+})

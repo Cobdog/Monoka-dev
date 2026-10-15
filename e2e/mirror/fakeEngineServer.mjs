@@ -22,7 +22,7 @@
  *          --profile e2e/mirror/profiles/stock-h3.json
  *
  * Live control (for break-it-on-purpose legs, no restart):
- *   POST /__control {"failMode":"validation"|"error"|"hang"|null,
+ *   POST /__control {"failMode":"validation"|"error"|"hang"|"preview-crash"|null,
  *                    "steps":n,"stepDelayMs":n,
  *                    "hideHistoryFor":"<promptId>"|null,
  *                    "videoOnly":true|false,
@@ -205,7 +205,7 @@ const sampleMp4 = fs.readFileSync(path.join(repoRoot, 'e2e/fixtures/sample-clip.
 
 // ---------------------------------------------------------------- state
 const state = {
-  failMode: null, // null | 'validation' | 'error' | 'hang'
+  failMode: null, // null | 'validation' | 'error' | 'hang' | 'preview-crash' (one-shot, see runPrompt)
   steps: profile.render?.steps ?? 8,
   stepDelayMs: profile.render?.stepDelayMs ?? 350,
   outputKind: profile.render?.outputKind ?? 'video', // video | image
@@ -570,21 +570,36 @@ function runPrompt(job) {
   const advance = () => {
     if (my.interrupted) return
     step += 1
-    if (state.failMode === 'error' && step === 3) {
+    if ((state.failMode === 'error' || state.failMode === 'preview-crash') && step === 3) {
+      const previewCrash = state.failMode === 'preview-crash'
+      // (r3q1o49) ONE-SHOT: the real preview crash cannot recur on the app's
+      // retry — the resubmission carries no preview_method, so latent_preview
+      // never constructs the stock previewer. The fake disarms after firing
+      // so the retry renders clean, exactly like the recovery it models.
+      if (previewCrash) state.failMode = null
+      // The SAME payload rides the ws envelope AND the history record (the
+      // app's poll sweep classifies from history, the realtime fabric from
+      // the envelope — one crash, one text, both consumers).
+      const errorData = previewCrash ? {
+        prompt_id: promptId,
+        node_type: 'MiniMaxH3ImageToVideo',
+        node_id: 'sampler',
+        exception_type: 'AttributeError',
+        exception_message: "'NoneType' object has no attribute 'show_progress_bar'",
+        traceback: 'File "/engine/comfy/latent_preview.py", line 109, in create_taesd_previewer',
+        current_inputs: {},
+      } : {
+        prompt_id: promptId,
+        node_type: 'MiniMaxH3ImageToVideo',
+        node_id: 'sampler',
+        exception_type: 'OOM',
+        exception_message: 'CUDA out of memory. Tried to allocate 2.34 GiB (GPU 0; 23.99 GiB total capacity)',
+        traceback: 'fake traceback',
+        current_inputs: {},
+      }
       send({ type: 'executing', data: { prompt_id: promptId, node: 'KSamplerSelect' } })
-      send({
-        type: 'execution_error',
-        data: {
-          prompt_id: promptId,
-          node_type: 'MiniMaxH3ImageToVideo',
-          node_id: 'sampler',
-          exception_type: 'OOM',
-          exception_message: 'CUDA out of memory. Tried to allocate 2.34 GiB (GPU 0; 23.99 GiB total capacity)',
-          traceback: 'fake traceback',
-          current_inputs: {},
-        },
-      })
-      finishRecord([], 'error')
+      send({ type: 'execution_error', data: errorData })
+      finishRecord([], 'error', errorData)
       send({ type: 'status', data: { status: { exec_info: { queue_remaining: queueRemaining() } } } })
       running = null
       startNextPending()

@@ -16,7 +16,7 @@
  *  component re-rendered in between. */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppSettings, GenerationJob } from '../types'
-import { extractExecutionError, isPastRunningDeadline, isTerminalStatus, POLL_FAILURE_STREAK_LIMIT, reduceJobPoll, type PollObservation, type PollReduction } from '../lib/jobReducer'
+import { extractExecutionError, isPastRunningDeadline, isPreviewCrashSignature, isTerminalStatus, POLL_FAILURE_STREAK_LIMIT, reduceJobPoll, type PollObservation, type PollReduction } from '../lib/jobReducer'
 import { extractOutputFile, extractOutputUrl, withTiledVideoDecode } from '../lib/workflow'
 import { extractAutomatedReferenceSet, hydrateLoadedJobs, playableOutputUrl, recordCharacterSheetImages, recordCharacterTurntable, recordLocationWalkthrough, recordMovieOutput } from '../lib/jobRecords'
 import { fetchServerJobs, saveServerJobs, serverStorageMigrationDone } from '../lib/serverStorage'
@@ -172,16 +172,32 @@ export function useGenerationQueue(options: {
           // Queue hygiene: a failed MiniMax render gets one automatic
           // engine-reset + tiled-VAE retry before the error is surfaced —
           // most H3 failures on 16 GB cards are VRAM fragmentation that a
-          // /free soft-reset clears.
+          // /free soft-reset clears. (r3q1o49) The retry is never a silent
+          // flash: when the failure carries the stock-preview crash
+          // signature, the notice and the tile label name it — the retry
+          // submits WITHOUT a preview request, so the take lands without
+          // previews and the record says so.
           if (observation.kind === 'executionError' && !job.retriedOnce && (job.provider ?? 'monoka') === 'monoka' && job.graph) {
+            const previewCrash = isPreviewCrashSignature(observation)
             try {
               await window.monoka.freeComfyMemory(settings.comfyUrl)
               const retryGraph = withTiledVideoDecode(job.graph as Record<string, { class_type: string; inputs: Record<string, unknown> }>)
               const resubmitted = await window.monoka.submitPrompt(settings.comfyUrl, retryGraph)
               setJobs((current) => current.map((item) => item.id === job.id
-                ? { ...item, promptId: resubmitted.prompt_id, status: 'queued', progress: 2, progressLabel: 'Auto-retrying after engine reset (tiled VAE)', error: undefined, retriedOnce: true }
+                ? {
+                    ...item,
+                    promptId: resubmitted.prompt_id,
+                    status: 'queued',
+                    progress: 2,
+                    progressLabel: previewCrash ? 'Preview unavailable on this engine — retrying without previews' : 'Auto-retrying after engine reset (tiled VAE)',
+                    error: undefined,
+                    retriedOnce: true,
+                    ...(previewCrash ? { previewUnavailable: true } : {}),
+                  }
                 : item))
-              notify('neutral', 'A render failed — the engine was reset and the job re-queued once with tiled VAE decoding.')
+              notify('neutral', previewCrash
+                ? 'Preview unavailable on this engine — retrying without previews.'
+                : 'A render failed — the engine was reset and the job re-queued once with tiled VAE decoding.')
               return
             } catch { /* Fall through to the normal failure handling. */ }
           }

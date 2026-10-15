@@ -70,6 +70,20 @@ export function extractExecutionError(history: Record<string, unknown>, promptId
   return null
 }
 
+/** (r3q1o49) The stock-preview crash signature: when ComfyUI's latent_preview
+ *  constructs the stock TAEHV previewer from a broken/absent taeh3 decoder,
+ *  the whole job dies at ~1% with 'NoneType' object has no attribute
+ *  'show_progress_bar'. The auto-retry absorbs it (its resubmission carries
+ *  no preview request) — this predicate lets the retry branch name the event
+ *  for what it is instead of flashing a generic failure. Matches the
+ *  SANITIZED reason (the observation never carries raw engine text); the
+ *  snake_case token survives logSanitize, as does the constructing module's
+ *  name in a traceback echo. */
+export function isPreviewCrashSignature(observation: PollObservation): boolean {
+  if (observation.kind !== 'executionError') return false
+  return /show_progress_bar|latent_preview/i.test(`${observation.reason} ${observation.nodeType ?? ''}`)
+}
+
 /** The user-facing failure line for an execution error: node id + class +
  *  sanitized reason, plus the taxonomy's human-cause label when the class is
  *  known ("GPU memory exhausted", not a traceback). */

@@ -139,6 +139,10 @@ function TileLiveProgress({ jobId }: { jobId: string }) {
     <div className="canvas-tile-live-readout" data-canvas-live-readout>
       {job.progress > 0 ? <span className="canvas-tile-live-pct">{Math.round(job.progress)}%</span> : null}
       {job.progressLabel ? <span className="canvas-tile-live-label">{job.progressLabel}</span> : null}
+      {/* (r3q1o49) The honest note where the live-preview state renders: the
+          submit went out without a preview request (no verified preview path
+          on this engine) — the blank live frame is a fact, not a hang. */}
+      {job.previewUnavailable ? <span className="canvas-tile-live-label canvas-tile-live-preview-off" data-canvas-live-preview-off="">live preview unavailable</span> : null}
     </div>
   </div>
 }

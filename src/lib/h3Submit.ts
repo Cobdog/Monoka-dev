@@ -124,11 +124,14 @@ export type H3SubmitIo = {
  *  forwards — the server correspondingly skips the stock preview_method
  *  'taesd' request for graphs carrying the node (the fragile class: the
  *  engine's latent_preview constructs a TAEHV previewer from whatever
- *  arbitrary taeh3* file wins the prefix match). Pack absent (or no decoder
- *  file) keeps the vae_approx file convention exactly as before. Mode
- *  'h3-override' stays the strict explicit path (its validation refusals are
- *  unchanged); mode 'standard' now ROUTES — the pack when present, the stock
- *  engine previews when not. Pure — VM-harness tested. */
+ *  arbitrary taeh3* file wins the prefix match). (r3q1o49) Pack absent (or no
+ *  decoder file) means previews-OFF — the stock vae_approx fallback IS the
+ *  null-previewer crash class: on a fresh engine the whole job dies at ~1%
+ *  when latent_preview's previewer construction fails, and the submit never
+ *  sends a stock preview request for it. Mode 'h3-override' stays the strict
+ *  explicit path (its validation refusals are unchanged); mode 'standard'
+ *  ROUTES — the pack when present, no previews when not. Pure — VM-harness
+ *  tested. */
 export function resolvePreviewOverride(
   livePreview: H3RenderRequest['livePreview'],
   facts: Pick<H3SubmitFacts, 'h3PreviewOverrideNode'> & { selection: Pick<ModelSelection, 'previewVae'> },
@@ -144,11 +147,11 @@ export function resolvePreviewOverride(
   // empty and the pack silently didn't engage. The junction below makes that
   // silent drop visible in the debug transcript instead.
   if (!facts.h3PreviewOverrideNode) {
-    dbg('route', { verdict: 'preview-stock', reason: 'pack-node-absent', previewVae: facts.selection.previewVae || '' })
+    dbg('route', { verdict: 'preview-off', reason: 'pack-node-absent', previewVae: facts.selection.previewVae || '' })
     return undefined
   }
   if (!facts.selection.previewVae) {
-    dbg('route', { verdict: 'preview-stock', reason: 'decoder-absent-from-registry', packNode: facts.h3PreviewOverrideNode })
+    dbg('route', { verdict: 'preview-off', reason: 'decoder-absent-from-registry', packNode: facts.h3PreviewOverrideNode })
     return undefined
   }
   dbg('route', { verdict: 'preview-pack', node: facts.h3PreviewOverrideNode, vaeName: facts.selection.previewVae })
@@ -285,6 +288,12 @@ export async function submitH3Render(
     return { ok: false, message: refusal }
   }
   const { settings } = facts
+  // (r3q1o49) The preview gate resolves ONCE and drives three decisions: the
+  // graph's override node, the wire-level preview request, and the job
+  // record's honest note. Stock taesd previews are NEVER requested — the
+  // pack-absent fallback is previews-off (the stock request is the
+  // null-previewer crash class that kills whole jobs on fresh engines).
+  const previewOverride = resolvePreviewOverride(request.livePreview, facts)
   // Degraded overrides (the picked file vanished from the registry) proceed on
   // auto — visibly: the warning rides the notice tier right where the render
   // starts, never a silent swap.
@@ -306,6 +315,9 @@ export async function submitH3Render(
     movieLink: request.movieLink,
     characterProjectId: request.characterProjectId,
     locationProjectId: request.locationProjectId,
+    // (r3q1o49) The render wanted previews but this engine has no verified
+    // preview path — noted where the live-preview state renders.
+    ...(request.livePreview.enabled && !previewOverride ? { previewUnavailable: true } : {}),
   }
   io.setJobs((current) => [job, ...current])
   io.onJobCreated?.(localId)
@@ -358,7 +370,7 @@ export async function submitH3Render(
       upscale: upscale.mode === 'rtx' ? { type: 'rtx', model: request.rtxModel } : upscale.mode === 'lbh2d' || upscale.mode === 'lbh3d' ? { type: upscale.mode, model: upscale.lbhModel } : undefined,
       refImageSize: request.refImageSize,
       sigmaShift: request.sigmaShift,
-      previewOverride: resolvePreviewOverride(request.livePreview, facts),
+      previewOverride,
       filenamePrefix,
       firstFrame: request.firstFrame?.path,
       lastFrame: request.lastFrame?.path,
@@ -404,9 +416,13 @@ export async function submitH3Render(
     // native sampler previews via extra_data.preview_method — EXCEPT when
     // the graph carries the pack's preview-override node, where the pack's
     // own minimax_h3_preview_override stream owns previews and the stock
-    // request is deliberately skipped server-side); clientId stays for
-    // interface compatibility — the server pins its own session id.
-    const response = await window.monoka.submitPrompt(settings.comfyUrl, graph, facts.clientId, request.livePreview.enabled)
+    // request is deliberately skipped server-side). (r3q1o49) The gate: the
+    // request goes out ONLY when the pack's override resolved — a pack-absent
+    // engine gets NO preview request (the stock taesd request is the
+    // null-previewer crash class), never silently: the job record notes
+    // previews are unavailable. clientId stays for interface compatibility —
+    // the server pins its own session id.
+    const response = await window.monoka.submitPrompt(settings.comfyUrl, graph, facts.clientId, request.livePreview.enabled && previewOverride !== undefined)
     if (io.cancellationRequests.current.has(localId)) {
       await window.monoka.cancelPrompt(settings.comfyUrl, response.prompt_id)
       io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'cancelled', error: undefined } : item))

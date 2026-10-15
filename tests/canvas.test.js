@@ -25,6 +25,7 @@
 // tests in the same order.
 import { test } from 'vitest'
 import { createRequire } from 'node:module'
+import { fileURLToPath } from 'node:url'
 
 const require = createRequire(import.meta.url)
 
@@ -319,8 +320,23 @@ const localStorageStub = {
 }
 const generation = loadTs('src/canvas/generation.ts', { localStorage: localStorageStub, window: { dispatchEvent: () => undefined, addEventListener: () => undefined } })
 const options = loadTs('src/canvas/options.ts')
-const h3Submit = loadTs('src/lib/h3Submit.ts', { localStorage: localStorageStub })
+// (r3q1o49) The submit-side preview-wire spy: the FIRST load of h3Submit binds
+// the module's VM context, so the window.monoka stub must exist HERE; the
+// stub's behavior is shared state the wire-gate test reads.
+const h3Submitted = []
+const h3SubmitMonoka = {
+  submitPrompt: async (url, graph, clientId, livePreview) => { h3Submitted.push({ url, graph, clientId, livePreview }); return { prompt_id: 'wire-1' } },
+  uploadInput: async () => { throw new Error('unexpected uploadInput on the text-only wire-gate path') },
+  uploadImageData: async () => { throw new Error('unexpected uploadImageData on the text-only wire-gate path') },
+  cancelPrompt: async () => undefined,
+}
+const h3Submit = loadTs('src/lib/h3Submit.ts', { localStorage: localStorageStub, window: { monoka: h3SubmitMonoka } })
 const ops = loadTs('src/canvas/ops.ts')
+// The REAL captured engine schema (the contract fixture) — the submit-time
+// preflight diffs the built graph against it, so the wire-gate run submits
+// against the canonical install's class set, not a hand-written stub.
+const nodePath = require('node:path')
+const REAL_INFO = require(nodePath.resolve(nodePath.dirname(fileURLToPath(import.meta.url)), '..', 'scripts', 'fixtures', 'engine-object-info.json')).nodes
 
 const media = (path, kind) => ({ path, name: path.split('/').pop(), kind })
 const take = (id, overrides) => ({ id, outputId: 'out-1', jobId: null, artifacts: [], latentPath: null, metrics: null, createdAt: 1, supersededBy: null, evicted: false, contentHash: null, ...overrides })
@@ -753,6 +769,76 @@ test('(p) the shared validation ladder (lib/h3Submit)', () => {
   ok(h3Submit.resolvePreviewOverride(live('standard'), bareFacts) === undefined, 'route: pack absent → the stock vae_approx file convention (no override node)')
   ok(h3Submit.resolvePreviewOverride(live('standard'), noDecoderFacts) === undefined, 'route: pack present but no decoder file → stock fallback (no override node without a vae_name to wire)')
   ok(h3Submit.resolvePreviewOverride({ enabled: false, mode: 'standard' }, packFacts) === undefined, 'route: live preview disabled → nothing wired, either path')
+})
+
+test('(p2) the preview wire gate — stock taesd previews ride ONLY the verified pack route (r3q1o49)', async () => {
+  // The P0 (r3q1o49): the canvas default (livePreview enabled, mode standard)
+  // used to ride EVERY submission as a stock `preview_method: 'taesd'` request
+  // — on a fresh engine (no PreviewOverride pack) the engine's latent_preview
+  // constructs a stock previewer from whatever taeh3* file wins its prefix
+  // match and the WHOLE job dies at ~1% ('NoneType' object has no attribute
+  // 'show_progress_bar'); the hidden auto-retry then rescued it silently,
+  // minus previews. The gate: the submit asks for previews ONLY when the
+  // pack's override node resolved (the graph self-previews; the server skips
+  // the stock method anyway) — pack-absent submits with NO preview request.
+  const template = {
+    mode: 'text', prompt: 'a lone drummer', width: 1344, height: 768, duration: 6, seed: 1, steps: 30,
+    turbo: 'off', turboLoader: 'auto', experimentalSampling: false, loraStrength: 1, sampler: 'res_multistep', scheduler: 'simple',
+    refImageSize: 'match', upscale: { mode: 'off', model: '', vae: '', lbhModel: '', missingNodes: [] }, rtxModel: '',
+    firstFrame: null, lastFrame: null, referenceImages: [], referenceVideos: [], referenceAudios: [], timelineGuides: [],
+    livePreview: { enabled: true, mode: 'standard' },
+  }
+  const fullSelection = { previewVae: '', fl2va: 'f.safetensors', ref2va: 'r.safetensors', textEncoder: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', videoVae: 'v.safetensors', audioVae: 'a.safetensors', fl2vLora: 'l.safetensors', ref2vLora: 'rl.safetensors' }
+  let jobState = []
+  const io = {
+    notify: () => undefined,
+    setJobs: (update) => { jobState = update(jobState) },
+    cancellationRequests: { current: new Set() },
+  }
+  const facts = (overrides) => ({
+    settings: { comfyUrl: 'http://engine.test' },
+    connected: true,
+    modelReady: true,
+    selection: fullSelection,
+    models: [],
+    info: REAL_INFO,
+    clientId: 'wire-client',
+    ...overrides,
+  })
+
+  // Arm A — the FRESH ENGINE (the repro): the pack's node is absent from the
+  // real captured schema and no decoder is registry-listed. The render still
+  // submits (previews-off, never a refusal) but the engine receives NO
+  // preview request, and the job record carries the honest note.
+  h3Submitted.length = 0
+  jobState = []
+  const bare = await h3Submit.submitH3Render(template, facts({}), io)
+  eq(bare.ok, true, 'gate: a pack-absent engine still accepts the render (previews-off, not a refusal)')
+  eq(h3Submitted.length, 1, 'gate: exactly one engine prompt')
+  eq(h3Submitted[0].livePreview, false, 'gate: pack absent → NO stock preview request on the wire (the crash class is unreachable)')
+  ok(!Object.values(h3Submitted[0].graph).some((node) => /minimax.*h3.*preview.*override/i.test(String(node.class_type))), 'gate: the pack-absent graph carries no override node')
+  eq(jobState[0].previewUnavailable, true, 'gate: the job record notes previews are unavailable on this engine')
+
+  // Arm B — the PACK ENGINE: the override node resolves (registry-listed
+  // decoder + served class), the graph self-previews, and the request still
+  // rides enabled — the server skips the stock preview_method for
+  // self-previewing graphs (the A-DBG ruling, unchanged). This arm proves the
+  // gate is NOT previews-off-everywhere.
+  h3Submitted.length = 0
+  jobState = []
+  const packInfo = { ...REAL_INFO, MiniMaxH3PreviewOverride: { input: { required: {} } } }
+  const packed = await h3Submit.submitH3Render(template, facts({ info: packInfo, h3PreviewOverrideNode: 'MiniMaxH3PreviewOverride', selection: { ...fullSelection, previewVae: 'taeh3_decoder.safetensors' } }), io)
+  eq(packed.ok, true, 'gate: the pack-present render submits clean')
+  ok(Object.values(h3Submitted[0].graph).some((node) => node.class_type === 'MiniMaxH3PreviewOverride'), 'gate: the pack-present graph carries the override node (previews ride)')
+  eq(h3Submitted[0].livePreview, true, 'gate: the pack route still rides the preview request (the server skips the stock method for self-previews)')
+  ok(!jobState[0].previewUnavailable, 'gate: no unavailable note when previews actually ride')
+
+  // Arm C — previews disabled: nothing is requested and nothing is noted,
+  // pack present or not.
+  h3Submitted.length = 0
+  await h3Submit.submitH3Render({ ...template, livePreview: { enabled: false, mode: 'standard' } }, facts({ info: packInfo, h3PreviewOverrideNode: 'MiniMaxH3PreviewOverride', selection: { ...fullSelection, previewVae: 'taeh3_decoder.safetensors' } }), io)
+  eq(h3Submitted[0].livePreview, false, 'gate: disabled previews never request anything')
+  ok(!Object.values(h3Submitted[0].graph).some((node) => node.class_type === 'MiniMaxH3PreviewOverride'), 'gate: disabled previews wire no override node')
 })
 
 test('(q) graph construction per selection (engine-free, L4)', () => {
