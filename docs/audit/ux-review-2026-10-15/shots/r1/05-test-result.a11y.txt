@@ -1,0 +1,100 @@
+- banner:
+  - navigation "Surfaces":
+    - link "canvas":
+      - /url: /
+      - img
+      - text: canvas
+    - link "datasets":
+      - /url: /?datasets=1
+      - img
+      - text: datasets
+    - link "images":
+      - /url: /?images=1
+      - img
+      - text: images
+    - link "gallery":
+      - /url: /?gallery=1
+      - img
+      - text: gallery
+  - button "engine on · models missing"
+  - button "timeline V":
+    - img
+    - text: timeline V
+  - button "library V":
+    - img
+    - text: library V
+  - button "diagnostics":
+    - img
+    - text: diagnostics
+  - button "settings":
+    - img
+    - text: settings
+  - button "index ⌘K"
+- text: 90%
+- button "Zoom out":
+  - img
+- button "Zoom in":
+  - img
+- button "Zoom to fit":
+  - img
+- dialog "First-run setup wizard":
+  - banner:
+    - strong: Set up the studio 1 of 4 — Engine
+    - button "Skip for now"
+    - button "Close the setup wizard":
+      - img
+  - paragraph: Point the studio at a ComfyUI engine. Nothing is scanned or configured manually — the engine's own registry is the model source of truth.
+  - text: Engine address
+  - textbox "Engine address":
+    - /placeholder: http://127.0.0.1:8188 — ComfyUI's default port
+    - text: http://127.0.0.1:17651
+  - button "Test":
+    - img
+    - text: Test
+  - paragraph:
+    - img
+    - text: "Engine reachable — cuda:0 NVIDIA GeForce RTX 3090 : cudaMallocAsync."
+  - text: Not sure of the port? The probe asks each common port for a heartbeat — you click, it asks; nothing probes on its own.
+  - button "Probe common ports"
+  - paragraph: Prefer the studio to launch its own engine? That lives in Settings → Setup → Managed engine — this wizard only needs an address to try.
+  - contentinfo:
+    - list "Wizard progress":
+      - listitem: Engine
+      - listitem: Models
+      - listitem: Node packs
+      - listitem: First prompt
+    - button "Next — Models"
+- heading "A blank canvas" [level=1]
+- paragraph: Describe a shot, or drop anything — the canvas is already the app.
+- textbox "Describe the shot… (/ to focus · Enter to spawn)":
+  - /placeholder: Describe the shot…  (/ to focus · Enter to spawn)
+- button "Spawn video seed" [disabled]:
+  - img
+  - text: Spawn video seed
+- group "Entry chips":
+  - radiogroup "Prompt media type":
+    - radio "image prompt":
+      - img
+      - text: image prompt
+    - radio "video prompt" [checked]:
+      - img
+      - text: video prompt
+  - button "no dialogue":
+    - img
+    - text: no dialogue
+  - button "drop / pick media":
+    - img
+    - text: drop / pick media
+- banner:
+  - strong: Resume
+  - button "new canvas":
+    - img
+    - text: new canvas
+- paragraph: No other canvases yet — the first prompt creates one.
+- contentinfo:
+  - text: canvas Describe a shot in the prompt bar above — or press /
+  - button "models missing"
+- status:
+  - text: Engine connected — node registry and model inventory re-synced (0 files on the engine).
+  - button "Dismiss": ×
+- button "Choose File"

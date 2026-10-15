@@ -1,0 +1,71 @@
+- banner:
+  - img
+  - text: Dataset manager
+  - navigation "Surfaces":
+    - link "canvas":
+      - /url: /
+      - img
+      - text: canvas
+    - link "datasets":
+      - /url: /?datasets=1
+      - img
+      - text: datasets
+    - link "images":
+      - /url: /?images=1
+      - img
+      - text: images
+    - link "gallery":
+      - /url: /?gallery=1
+      - img
+      - text: gallery
+  - navigation:
+    - button "library"
+    - button "dashboard"
+    - button "export"
+    - button "trash"
+  - button "Settings":
+    - img
+  - text: "trigger:"
+  - code: (unset)
+  - text: minterpolate
+  - button "Refresh":
+    - img
+- complementary:
+  - heading "Import" [level=4]
+  - button "Upload from LAN":
+    - img
+    - text: Upload from LAN
+  - button "Reference a file":
+    - img
+    - text: Reference a file
+  - button "From canvas take":
+    - img
+    - text: From canvas take
+  - heading "Search & filter" [level=4]
+  - img
+  - textbox "FTS over captions + provenance"
+  - radiogroup "Filter by media kind":
+    - radio "all" [checked]
+    - radio "video"
+    - radio "image"
+  - radiogroup "Filter by caption state":
+    - radio "any caption" [checked]
+    - radio "missing"
+    - radio "stale"
+  - heading "Curation" [level=4]
+  - button "Dedup pass":
+    - img
+    - text: Dedup pass
+  - button "Batch VLM (skip hand)":
+    - img
+    - text: Batch VLM (skip hand)
+  - button "Batch draft → review queue":
+    - img
+    - text: Batch draft → review queue
+  - heading "Selection" [level=4]
+  - paragraph: 0 layer(s) selected
+  - button "Export…":
+    - img
+    - text: Export…
+- paragraph: The dataset is empty — import raw footage (by reference or LAN upload), then crop layers.
+- paragraph: "The source is sacred: nothing you do here ever modifies an imported file."

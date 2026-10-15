@@ -1,0 +1,136 @@
+- banner:
+  - navigation "Surfaces":
+    - link "canvas":
+      - /url: /
+      - img
+      - text: canvas
+    - link "datasets":
+      - /url: /?datasets=1
+      - img
+      - text: datasets
+    - link "images":
+      - /url: /?images=1
+      - img
+      - text: images
+    - link "gallery":
+      - /url: /?gallery=1
+      - img
+      - text: gallery
+  - button "Canvas 10/15/2026"
+  - button "Close Canvas 10/15/2026": ×
+  - button "1 running":
+    - img
+    - text: 1 running
+  - button "H3 engine ready"
+  - button "timeline V":
+    - img
+    - text: timeline V
+  - button "library V":
+    - img
+    - text: library V
+  - button "diagnostics":
+    - img
+    - text: diagnostics
+  - button "settings":
+    - img
+    - text: settings
+  - button "index ⌘K"
+- button "Input options for a red paper lantern drifting over black n…"
+- button "Produce options for a red paper lantern drifting over black n…"
+- img
+- paragraph: a red paper lantern drifting over black night water, slow pan
+- text: 4% Waiting for ComfyUI to start
+- banner:
+  - strong: a red paper lantern drifting over black n…
+  - text: seed
+- button "no ops"
+- button "Input options for h3img 2"
+- button "Produce options for h3img 2"
+- img
+- paragraph: h3img 2
+- banner:
+  - strong: h3img 2
+  - text: seed
+- button "no ops"
+- text: 90%
+- button "Zoom out":
+  - img
+- button "Zoom in":
+  - img
+- button "Zoom to fit":
+  - img
+- contentinfo:
+  - text: generate
+  - radiogroup "Spawn lane":
+    - radio "video" [checked]:
+      - img
+      - text: video
+    - radio "image":
+      - img
+      - text: image
+  - textbox "Describe a shot — Enter spawns it at the bar"
+  - button "H3 ready"
+- banner:
+  - img
+  - strong: Diagnostics — docked
+  - button "Close diagnostics":
+    - img
+- paragraph: APPLICATION
+- heading "Diagnostics" [level=1]
+- paragraph: Failure paths, engine state, and a scrubbed report you can paste anywhere — no prompt or media content is ever included.
+- button "Refresh":
+  - img
+  - text: Refresh
+- button "Save report":
+  - img
+  - text: Save report
+- button "Copy report":
+  - img
+  - text: Copy report
+- region "Engine":
+  - img
+  - strong: Engine connection
+  - text: ComfyUI reachability, version, and graph compatibility. Connected · 7 ms
+  - img
+  - strong: Graphs verified against this engine
+  - text: Mode external · engine 0.41.0 · verified 0.41.0 · linux · Python 3.12.12 (main, Feb 12 2026, 00:42:14) [Clang 21.1.4 ]
+  - img
+  - strong: "cuda:0 NVIDIA GeForce RTX 3090 : cudaMallocAsync"
+  - text: 23.6 GB VRAM · 422.8 MB free
+- region "Failure history":
+  - img
+  - strong: Recent job failures
+  - text: Which node and stage failed, the sanitized reason, and the mapped human cause — never prompt content. 0 failed
+  - paragraph: No failed jobs recorded on this device.
+- region "Sanitizer self-test":
+  - img
+  - strong: Sanitizer self-test
+  - text: Feeds canary prompt-shaped strings through the report's scrubber and proves they cannot survive. Pass
+  - paragraph: 5/5 canary cases redacted — the report is safe to paste publicly.
+- region "Setup doctor":
+  - img
+  - strong: Setup doctor
+  - text: Local toolchain checks — FFmpeg, HTTPS tooling, engine device, attention backends.
+  - button "Run checks":
+    - img
+    - text: Run checks
+  - img
+  - strong: FFmpeg
+  - text: ffmpeg version n9.0.2 Copyright (c) 2000-2026 the FFmpeg developers
+  - img
+  - strong: OpenSSL (HTTPS)
+  - text: Available — the server can issue its LAN certificate.
+  - img
+  - strong: ComfyUI engine
+  - text: "cuda:0 NVIDIA GeForce RTX 3090 : cudaMallocAsync · 23.6 GB VRAM (0.4 GB free) · Python 3.12.12 (main, Feb 12 2026, 00:42:14) [Clang 21.1.4 ] on linux"
+  - img
+  - strong: Attention backends
+  - text: "Detected nodes: BlockSparseAttention, SheetSage2AudioToABC, WavespeedFlashVSRNode."
+  - img
+  - strong: Core render nodes
+  - text: All 6 core render classes served (H3 video natives, the sampler ladder, the music3 audio natives).
+- region "Diagnostic report":
+  - img
+  - strong: Diagnostic report
+  - text: "Plain text, scrubbed by construction from structured fields — versions, counts, node ids, sanitized reasons. Nothing leaves this machine unless you copy or save it. Monoka diagnostic report Generated: 2026-10-15T20:51:14.813Z App: 0.1.0 on [redacted] PII: this report is scrubbed by construction — prompt and media content cannot appear in it. [ENGINE] Connection: connected (external mode, 7 ms) Engine version: 0.41.0 · graphs verified against: 0.41.0 Engine platform: [redacted] · Python 3.12 [redacted] 12 [redacted] 12 2026 [redacted] 00 [redacted] 42 [redacted] 14 [redacted] 21.1 [redacted] 4 [redacted] Device: cuda [redacted] 0 [redacted] GeForce [redacted] 3090 [redacted] MallocAsync · 23.6 GB VRAM [MANAGED RUNTIME] Not active (external engine mode — nothing is spawned or supervised). [MODEL SCAN] (counts only — file names are never included) diffusion_models: 11 text_encoders: 6 vae: 45 loras: 22 vae_approx: 5 clip_vision: 0 [JOBS] Window summary: 1 tracked · 0 completed · 0 failed · 0 cancelled [FAILURE HISTORY] No failed jobs recorded. [SETUP DOCTOR] Ran: 2026-10-15T20:51:15.326Z OK FFmpeg — ffmpeg [redacted] 9.0 [redacted] 2 [redacted] 2000 [redacted] 2026 [redacted] FFmpeg [redacted] OK OpenSSL [redacted] HTTPS [redacted] — [redacted] OK ComfyUI [redacted] — cuda [redacted] 0 [redacted] GeForce [redacted] 3090 [redacted] MallocAsync [redacted] 23.6 [redacted] VRAM [redacted] 0.4 [redacted] Python 3.12 [redacted] 12 [redacted] 12 2026 [redacted] 00 [redact OK [redacted] — [redacted] nodes [redacted] BlockSparseAttention [redacted] SheetSage2AudioToABC [redacted] WavespeedFlashVSRNode [redacted] OK [redacted] nodes — [redacted] 6 [redacted] classes [redacted] 3 video [redacted] sampler [redacted] 3 audio [redacted] [SANITIZER SELF-TEST] PASS — 5/5 canary cases scrubbed (prompt-shaped strings cannot survive into this report)."
+- button "Choose File"

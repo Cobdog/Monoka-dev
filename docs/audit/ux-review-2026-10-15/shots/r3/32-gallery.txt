@@ -1,0 +1,523 @@
+Component gallery
+<NAV label="Surfaces">
+<A label="Canvas (Alt+1)">
+canvas
+<A label="Dataset manager (Alt+2)">
+datasets
+<A label="Image workbench (Alt+3)">
+images
+<A label="Component gallery (Alt+4)">
+gallery
+16 components · 122 cells · 21 justified N/A
+Button
+The button API — the closed variant matrix × the machine states. busy = LoaderCircle + aria-busy + disabled (an in-flight action is never also clickable). The hover/focus cells render at rest and are DRIVEN by the suite with the real pointer/keyboard — never a synthetic class.
+variant: primary · secondary · ghost · danger · icon  ×  state: rest · hover · focus · busy · disabled
+primary · rest
+Run primary
+primary · hover
+Run primary
+primary · focus
+Run primary
+primary · busy
+Checking…
+busy composes with every variant — the spinner replaces the icon, the geometry stays the surface's.
+primary · disabled
+Run primary
+secondary · rest
+Run secondary
+secondary · hover
+Run secondary
+secondary · focus
+Run secondary
+secondary · busy
+Checking…
+secondary · disabled
+Run secondary
+ghost · rest
+Run ghost
+ghost · hover
+Run ghost
+ghost · focus
+Run ghost
+ghost · busy
+Checking…
+ghost · disabled
+Run ghost
+danger · rest
+Run danger
+danger · hover
+Run danger
+danger · focus
+Run danger
+danger · busy
+Checking…
+danger · disabled
+Run danger
+icon · rest
+<BUTTON label="Open the index">
+icon-only buttons REQUIRE an aria-label — the accessible name is the icon otherwise (buttonWarnFor, dev-time).
+icon · hover
+<BUTTON label="Open the index">
+icon · focus
+<BUTTON label="Open the index">
+icon · busy
+<BUTTON label="Open the index">
+icon · disabled
+<BUTTON label="Open the index">
+Chip
+The chip system — tone is what a chip IS (the closed census fold), state is what the user did. selected renders the chip--selected recipe; busy renders aria-busy + the busy recipe.
+tone: neutral · accent · danger · warning · muted  ×  state: rest · selected · busy
+neutral · rest
+neutral
+neutral · selected
+neutral
+neutral · busy
+neutral
+accent · rest
+accent
+accent · selected
+accent
+accent · busy
+accent
+danger · rest
+danger
+danger · selected
+danger
+danger · busy
+danger
+warning · rest
+warning
+warning · selected
+warning
+warning · busy
+warning
+muted · rest
+muted
+muted · selected
+muted
+muted · busy
+muted
+Chip (ChipGroup)
+The selection semantics — exclusive groups carry the radiogroup contract (controlled value, roving tabindex: the selected chip — or the first AVAILABLE one — is the group's single tab stop; arrows move selection AND focus, wrapping over the available members only), independent toggles are PRESSED BUTTONS (aria-pressed, never aria-checked). Drive these with clicks and arrow keys.
+shape: radiogroup-none · radiogroup-selected · radiogroup-disabled · toggle-unpressed · toggle-pressed
+radiogroup-none
+<DIV label="Media type">
+video
+image
+audio
+nothing selected — the FIRST chip is still the group's tab stop (roving tabindex).
+radiogroup-selected
+<DIV label="Media type">
+video
+image
+audio
+radiogroup-disabled
+<DIV label="Media type">
+video
+image
+audio
+the first member is unavailable: traversal AND the initial tab stop exclude it — arrows can never select a disabled chip (C03, Codex code audit 2026-10-05).
+toggle-unpressed
+no dialogue · off
+toggle-pressed
+no dialogue · on
+aria-pressed, flipped by the button's own Space/Enter activation — never aria-checked (the r3 correction).
+ProgressBar
+The scalar bar — determinate (the retired fetch width math verbatim: Math.round of the fraction's percent) × the compact size step × the tone recipes. Indeterminate is one class-toggle that WINS over value (no width, no aria-value triple). The local tone reads the surface's --bar-tone bridge.
+mode: empty · partial · full · indeterminate  ×  size: default · compact  ×  tone: accent · local
+empty · default · accent
+<SPAN label="empty bar, default, accent">
+a missing value renders an empty bar — the role stays, the value triple does not.
+empty · default · local
+<SPAN label="empty bar, default, local">
+empty · compact · accent
+<SPAN label="empty bar, compact, accent">
+empty · compact · local
+<SPAN label="empty bar, compact, local">
+partial · default · accent
+<SPAN label="partial bar, default, accent">
+partial · default · local
+<SPAN label="partial bar, default, local">
+the local fill + track tint read --bar-tone (set here to the info token) — never :root.
+partial · compact · accent
+<SPAN label="partial bar, compact, accent">
+partial · compact · local
+<SPAN label="partial bar, compact, local">
+full · default · accent
+<SPAN label="full bar, default, accent">
+full · default · local
+<SPAN label="full bar, default, local">
+full · compact · accent
+<SPAN label="full bar, compact, accent">
+full · compact · local
+<SPAN label="full bar, compact, local">
+indeterminate · default · accent
+<SPAN label="indeterminate bar, default, accent">
+the sweep class suppresses value, width, and aria-value — the census fold of the two retired dialects.
+indeterminate · default · local
+<SPAN label="indeterminate bar, default, local">
+indeterminate · compact · accent
+<SPAN label="indeterminate bar, compact, accent">
+indeterminate · compact · local
+<SPAN label="indeterminate bar, compact, local">
+ToastHost
+The toast strip — PURE PROPS (P07: the adapter owns the store, the timeouts, the window). Each tone announces through its own role (error → alert/assertive; everything else → status/polite), the retained canvas-toast vocabulary renders the item, and the × owns dismissal. The two placements position the host; the fixed one is contained here by the frame's transform.
+tone: error · success · neutral  ×  placement: bottom-left · bottom-right
+error · bottom-left
+Render failed — the engine closed the socket mid-sample
+<BUTTON label="Dismiss">
+×
+error · bottom-right
+Render failed — the engine closed the socket mid-sample
+<BUTTON label="Dismiss">
+×
+success · bottom-left
+Take landed on the canvas
+<BUTTON label="Dismiss">
+×
+success · bottom-right
+Take landed on the canvas
+<BUTTON label="Dismiss">
+×
+neutral · bottom-left
+Render queued behind 2 jobs
+<BUTTON label="Dismiss">
+×
+neutral · bottom-right
+Render queued behind 2 jobs
+<BUTTON label="Dismiss">
+×
+NoticeBanner
+The inline banner — the closed tone × role × dismiss matrices. The role renders WITH the aria-live it implies (status→polite, alert→assertive) so the pair can never disagree; the × renders only when onDismiss is supplied and OWNS the one dismiss contract.
+tone: accent · danger  ×  role: status · alert  ×  dismiss: persistent · dismissible
+accent · status · persistent
+Session writes flush every 2 s — the queue drains in order.
+accent · status · dismissible
+Session writes flush every 2 s — the queue drains in order.
+<BUTTON label="Dismiss">
+×
+accent · alert · persistent
+Session writes flush every 2 s — the queue drains in order.
+accent · alert · dismissible
+Session writes flush every 2 s — the queue drains in order.
+<BUTTON label="Dismiss">
+×
+danger · status · persistent
+The engine closed the connection mid-sample — the job was cancelled.
+danger · status · dismissible
+The engine closed the connection mid-sample — the job was cancelled.
+<BUTTON label="Dismiss">
+×
+danger · alert · persistent
+The engine closed the connection mid-sample — the job was cancelled.
+danger · alert · dismissible
+The engine closed the connection mid-sample — the job was cancelled.
+<BUTTON label="Dismiss">
+×
+SaveStatus
+The save-state tier — the CLOSED four-state machine. idle is SILENT (renders nothing); saving is the busy idiom; saved the muted confirmation; failed the danger tone at the ≥11px floor with the SERVER REASON verbatim and the retry affordance when onRetry is supplied.
+state: idle · saving · saved · failed  ×  retry: absent · present
+idle · absent
+SILENT by contract: the component renders nothing at rest — the empty stage under this label IS the exhibit.
+idle · present
+N/A —
+the retry affordance renders only on the failed state — onRetry supplied while idle would be silently dropped (saveStatusWarnFor flags it).
+saving · absent
+Saving draft…
+saving · present
+N/A —
+the retry affordance renders only on the failed state — nothing has failed while a save is in flight.
+saved · absent
+Draft saved.
+saved · present
+N/A —
+the retry affordance renders only on the failed state — a landed save has nothing to retry.
+failed · absent
+Draft not saved — 422 Unprocessable Entity — resolution not in the family set
+failed · present
+Draft not saved — 422 Unprocessable Entity — resolution not in the family set
+<BUTTON label="Retry saving the draft now">
+retry
+detail is the SERVER REASON, rendered verbatim; retry re-runs the caller's seam.
+Refusal
+The honest-no tier — a PRECONDITION gate, facts plainly: title (WHAT is refused), reason (WHY), and the optional satisfy escape hatch. The warning tone, never danger: a refusal is a state, not a failure. A satisfy-less refusal stands on its reason — never a fabricated affordance.
+satisfy: absent · present
+absent
+Generate (T=1 Fast) is not available
+No local LLM is connected — the distill and enhance assists cannot run, and none can be started from here.
+no remedy exists here — the refusal stands on its reason (the caller's honest call).
+present
+Generate (T=1 Fast) is not available
+The image engine reports no checkpoint loaded for the T=1 lane.
+Open settings — engine connection
+the satisfy action is caller-supplied: the component states the refusal, it never resolves it.
+HandoffResult
+The write ≠ refresh tier — the FULL 3×4 write×refresh matrix. The two facts are INDEPENDENT per step: a failed refresh after a landed write renders DONE-WITH-STALE-MARKER (warning tone inside a polite row), never failed; the danger tone, the alert, and the retry belong to a failed fact alone.
+write: pending · done · failed  ×  refresh: pending · fresh · stale · failed
+pending · pending
+Seed the video chain
+the spinner is the pending write's whole idiom — this interface has no queued-versus-busy distinction (the T22 review's queued-spinner note: 'pending' covers both).
+pending · fresh
+N/A —
+the refresh is the write's companion fact — it never resolves before the write lands (handoffRefreshText renders no marker beside an unlanded write).
+pending · stale
+N/A —
+the refresh is the write's companion fact — an unresolved write has no staleness claim to make.
+pending · failed
+N/A —
+the refresh is the write's companion fact — the refresh attempt only runs after its write lands.
+done · pending
+Seed the video chain
+landed
+an in-flight refresh renders as this silent cell — the interface has no refresh-busy idiom of its own (the T22 review's refresh-busy note; a future spinner arm would live on the refresh fact).
+done · fresh
+Seed the video chain
+landed
+done · stale
+Seed the video chain
+landed
+view stale — the canvas rehydrated before the write landed
+the standing condition: the view is known not to reflect the landed write. No retry — the caller failed nothing.
+done · failed
+Seed the video chain
+landed
+not refreshed — the reload request errored (timeout)
+<BUTTON label="Refresh "Seed the video chain" now">
+refresh
+the failed ATTEMPT: 'not refreshed' + the refresh affordance — the cheaper act that never re-runs the landed write.
+failed · pending
+Seed the video chain
+failed — 500 Internal Server Error — the documents route rejected the chain
+<BUTTON label="Retry "Seed the video chain" now">
+retry
+failed · fresh
+N/A —
+a failed write's refresh never ran — the step carries only its write failure and the retry.
+failed · stale
+N/A —
+a failed write's refresh never ran — there is no landed write for the view to be stale about.
+failed · failed
+N/A —
+write and refresh failures are mutually exclusive at real states — the refresh only runs after its write lands.
+EffectiveSettingRow
+The origin ≠ outcome display tier — WHERE the effective value comes from × the tried-but-not-in-force ATTEMPT × the reset affordance. An override renders its level as a chip; auto renders the plain auto/default text and NEVER a fabricated level; a refused/degraded pick rides its own chip (danger/warning) without rewriting the effective value.
+origin: auto · node · chain · global  ×  attempt: none · refused · degraded  ×  reset: absent · present
+auto · none · absent
+FL2VA checkpoint
+minimax_h3_fl2va_pruned_int8_convrot.safetensors
+auto/default
+auto · none · present
+N/A —
+the row owns no override to reset — onReset against an auto origin would render an affordance with nothing to reset (effectiveRowWarnFor flags it).
+auto · refused · absent
+FL2VA checkpoint
+minimax_h3_fl2va_pruned_int8_convrot.safetensors
+auto/default
+global · refused
+origin ≠ outcome in one cell: the pick was REFUSED, so the effective value fell back to auto — the attempt rides its own chip beside it.
+auto · refused · present
+N/A —
+the row owns no override to reset — the refused ATTEMPT is carried as a chip, but resetting happens at the level that holds the pick, never here.
+auto · degraded · absent
+FL2VA checkpoint
+minimax_h3_fl2va_pruned_int8_convrot.safetensors
+auto/default
+global · degraded
+auto · degraded · present
+N/A —
+the row owns no override to reset — the degraded attempt is a chip on this row, not a pick this row can clear.
+node · none · absent
+N/A —
+the node level exists in the row's vocabulary for a future per-node seam — no resolver emits one today (the T19 ruling); exhibiting a fabricated node pick would lie.
+node · none · present
+N/A —
+the node level has no resolver (the T19 ruling) — there is no honest node pick to exhibit, with or without a reset.
+node · refused · absent
+N/A —
+no resolver emits node-level picks, so no node-level refusal can exist either.
+node · refused · present
+N/A —
+no resolver emits node-level picks — the entire node column is vocabulary, not states.
+node · degraded · absent
+N/A —
+no resolver emits node-level picks — the entire node column is vocabulary, not states.
+node · degraded · present
+N/A —
+no resolver emits node-level picks — the entire node column is vocabulary, not states.
+chain · none · absent
+FL2VA checkpoint
+TenStrip_10Eros-Max_beta5_int8.safetensors
+chain
+chain · none · present
+FL2VA checkpoint
+TenStrip_10Eros-Max_beta5_int8.safetensors
+chain
+<BUTTON label="Reset FL2VA checkpoint — clear this row's pick only">
+reset
+the reset reveals the layer beneath (the standing global pick, or auto) and deletes nothing upstream.
+chain · refused · absent
+FL2VA checkpoint
+minimax_h3_ref2va_pruned_int8_convrot.safetensors
+chain
+chain · refused
+chain · refused · present
+FL2VA checkpoint
+minimax_h3_ref2va_pruned_int8_convrot.safetensors
+chain
+chain · refused
+<BUTTON label="Reset FL2VA checkpoint — clear this row's pick only">
+reset
+chain · degraded · absent
+FL2VA checkpoint
+minimax_h3_ref2va_pruned_int8_convrot.safetensors
+chain
+chain · degraded
+chain · degraded · present
+FL2VA checkpoint
+minimax_h3_ref2va_pruned_int8_convrot.safetensors
+chain
+chain · degraded
+<BUTTON label="Reset FL2VA checkpoint — clear this row's pick only">
+reset
+global · none · absent
+FL2VA checkpoint
+minimax_h3_ref2va_pruned_int8_convrot.safetensors
+global
+global · none · present
+FL2VA checkpoint
+minimax_h3_ref2va_pruned_int8_convrot.safetensors
+global
+<BUTTON label="Reset FL2VA checkpoint — clear this row's pick only">
+reset
+global · refused · absent
+FL2VA checkpoint
+minimax_h3_fl2va_pruned_int8_convrot.safetensors
+global
+global · refused
+global · refused · present
+FL2VA checkpoint
+minimax_h3_fl2va_pruned_int8_convrot.safetensors
+global
+global · refused
+<BUTTON label="Reset FL2VA checkpoint — clear this row's pick only">
+reset
+global · degraded · absent
+FL2VA checkpoint
+minimax_h3_fl2va_pruned_int8_convrot.safetensors
+global
+global · degraded
+environmental drift: rendering proceeds on the degraded pick's fallback — the warning chip, never danger.
+global · degraded · present
+FL2VA checkpoint
+minimax_h3_fl2va_pruned_int8_convrot.safetensors
+global
+global · degraded
+<BUTTON label="Reset FL2VA checkpoint — clear this row's pick only">
+reset
+Field
+The form-field association tier — the precedence matrix error > hint > silent as ONE description slot. The wiring is real: the label's htmlFor and the control's aria-describedby both resolve through the cloned control's id; silent carries NO aria-describedby at all (never a dangling ref).
+error: absent · present  ×  hint: absent · present
+absent · absent
+Trigger token
+SILENT: the control carries no aria-describedby at all — absence is the contract, not a missing wire.
+absent · present
+Trigger token
+the token the dataset watcher keys captions on
+present · absent
+Trigger token
+the token must start with a letter (a–z) — digits are reserved for layers
+present · present
+Trigger token
+the token must start with a letter (a–z) — digits are reserved for layers
+precedence: the error alone describes the control — the hint element leaves the DOM entirely.
+StudioSelect
+The one styled NATIVE select — the platform semantics (dropdown, typeahead, EAGER value capture) with the affordances the bare select never had: the chevron over the retired platform arrow, ellipsis overflow for long option text, visible focus. The form tier rides the retained .select-wrap geometry.
+wrap: bare · form  ×  content: short · long
+bare · short
+<SELECT label="Sampler">
+euler
+dpmpp_2m
+bare · long
+<SELECT label="Sampler">
+euler
+res_multistep-sde-dpmpp-3m-sde-karras-ancestral (a very long sampler name)
+long option text truncates with an ellipsis — never spills the control.
+form · short
+<SELECT label="Sampler">
+euler
+dpmpp_2m
+wrapClassName="select-wrap": the retained 38px house form row, block-level like the div it replaced.
+form · long
+<SELECT label="Sampler">
+euler
+res_multistep-sde-dpmpp-3m-sde-karras-ancestral (a very long sampler name)
+PopoverMenu
+The ONE dismissal idiom for anchored menus — a routed Escape closes exactly the TOPMOST registered layer (Base UI's own document-level Escape never sees the routed keystroke), outside-press lands in the same onClose, and the local arrows walk the enabled rows (disabled rows cannot hold focus). The F8 clamp keeps the whole menu inside the viewport. The row-count axis exhibits the Tab-cycle containment at its cardinality edges (C02, Codex code audit 2026-10-05): one tabbable cycles back to itself, zero keep focus on the panel.
+backdrop: absent · present  ×  rows: four · one · none
+absent · four
+N/A —
+the no-backdrop path is LATENT (no consumer): the popup portals with neither the fixed anchor wrapper nor stacking — an in-panel consumer needs the portal-container extension first. There is no honest demo of it yet.
+absent · one
+N/A —
+the no-backdrop path is LATENT (no consumer): the popup portals with neither the fixed anchor wrapper nor stacking — an in-panel consumer needs the portal-container extension first. There is no honest demo of it yet.
+absent · none
+N/A —
+the no-backdrop path is LATENT (no consumer): the popup portals with neither the fixed anchor wrapper nor stacking — an in-panel consumer needs the portal-container extension first. There is no honest demo of it yet.
+present · four
+open the anchored menu
+the canvas idiom: the dimmed backdrop (Base UI owns the click-close) + the fixed anchor wrapper the component clamps.
+present · one
+open the anchored menu
+containment at the edge: exactly ONE enabled row — Tab cycles back to it, never escaping to the background (C02).
+present · none
+open the anchored menu
+containment at the edge: ZERO enabled rows — focus stays on the panel itself through Tab and Shift+Tab (C02).
+StudioDock
+The dock shell — the Rnd, the reactive rank (registration rides the mount; a grab anywhere re-raises), the shared header recipe (the drag handle IS the header), the close affordance, and the resize wiring per policy (the common gate grows down/right only, so a resize can never drag the title bar off the viewport). Drag the headers; grab raises.
+band: solo · stacked-pair
+solo
+Demo dock — settings shape
+<BUTTON label="Close the demo dock">
+drag the header to move · resize from the bottom/right edges · a grab anywhere raises the dock
+one dock in the arena — drag the header, resize from the bottom/right edges, close and restore it.
+stacked-pair
+Demo dock — settings shape
+<BUTTON label="Close the demo dock">
+drag the header to move · resize from the bottom/right edges · a grab anywhere raises the dock
+Demo dock — diagnostics shape
+<BUTTON label="Close the second demo dock">
+two docks share the band: z = calc(var(--z-dock-base) + rank), consecutive and renormalized
+two docks share the band: z = calc(var(--z-dock-base) + rank), consecutive and renormalized — grab either header and watch it raise.
+ConfirmDialog + PromptDialog
+The shared asks — behavior entirely the dialog stack's (Base UI focus trap/restore + outside-press, the registry routing Escape topmost-only). ConfirmDialog resolves true ONLY from the confirm action (danger swaps the Button recipe, nothing else). PromptDialog's outcome contract is hard: null = cancelled, '' = submitted-empty — never coalesce them.
+shape: confirm-neutral · confirm-danger · prompt-empty · prompt-prefilled
+confirm-neutral
+open the confirm
+last resolve:
+(unresolved)
+confirm-danger
+open the destructive ask
+last resolve:
+(unresolved)
+the destructive frame: the confirm action renders the danger Button recipe — the only thing danger changes.
+prompt-empty
+open the empty prompt
+last resolve:
+(unresolved)
+press OK on the empty field and the readout shows "" — the caller APPLIES the empty value (the retired ?? '' ran the default batch on cancel instead).
+prompt-prefilled
+open the prefilled prompt
+last resolve:
+(unresolved)
+the initial prop — T15 shipped it interface-faithful with no production consumer exercising it; this gallery is that arm's first exercised home.
+The layer registry (stacking demos)
+The layer registry stacking demos — layers register in open order and one routed Escape closes exactly the TOPMOST. Open the lower ask, then the upper surface from inside it: the first Escape unwinds only the top layer; everything beneath survives the press.
+stack: dialog-over-dialog · popover-over-dialog
+dialog-over-dialog
+open the lower ask, then the upper
+one Escape unwinds exactly the topmost layer — press it twice and watch the order.
+two modal asks: the upper registers after the lower, so it IS the topmost — one Escape, one dismissal.
+popover-over-dialog
+open the ask, then a menu over it
+one Escape unwinds exactly the topmost layer — press it twice and watch the order.
+an anchored menu over a modal ask: the menu registered later, so the Escape is its — the dialog survives the press.

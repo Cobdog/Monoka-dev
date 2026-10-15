@@ -1,0 +1,88 @@
+- banner:
+  - navigation "Surfaces":
+    - link "canvas":
+      - /url: /
+      - img
+      - text: canvas
+    - link "datasets":
+      - /url: /?datasets=1
+      - img
+      - text: datasets
+    - link "images":
+      - /url: /?images=1
+      - img
+      - text: images
+    - link "gallery":
+      - /url: /?gallery=1
+      - img
+      - text: gallery
+  - button "H3 engine ready"
+  - button "timeline V":
+    - img
+    - text: timeline V
+  - button "library V":
+    - img
+    - text: library V
+  - button "diagnostics":
+    - img
+    - text: diagnostics
+  - button "settings":
+    - img
+    - text: settings
+  - button "index ⌘K"
+- text: 90%
+- button "Zoom out":
+  - img
+- button "Zoom in":
+  - img
+- button "Zoom to fit":
+  - img
+- dialog "First-run setup wizard":
+  - banner:
+    - strong: Set up the studio 3 of 4 — Node packs
+    - button "Skip for now"
+    - button "Close the setup wizard":
+      - img
+  - paragraph: Node packs the studio can place for you — detection always reads the connected engine's live registry, and each row installs with one consented click.
+  - paragraph: 0 of 14 packs active on the engine — the missing ones can be fetched or installed from their rows.
+  - button "Open the pack board (Settings)"
+  - button "Open the library — get models"
+  - contentinfo:
+    - list "Wizard progress":
+      - listitem: Engine
+      - listitem: Models
+      - listitem: Node packs
+      - listitem: First prompt
+    - button "Back"
+    - button "Next — First prompt"
+- heading "A blank canvas" [level=1]
+- paragraph: Describe a shot, or drop anything — the canvas is already the app.
+- textbox "Describe the shot… (/ to focus · Enter to spawn)":
+  - /placeholder: Describe the shot…  (/ to focus · Enter to spawn)
+- button "Spawn video seed" [disabled]:
+  - img
+  - text: Spawn video seed
+- group "Entry chips":
+  - radiogroup "Prompt media type":
+    - radio "image prompt":
+      - img
+      - text: image prompt
+    - radio "video prompt" [checked]:
+      - img
+      - text: video prompt
+  - button "no dialogue":
+    - img
+    - text: no dialogue
+  - button "drop / pick media":
+    - img
+    - text: drop / pick media
+- banner:
+  - strong: Resume
+  - button "new canvas":
+    - img
+    - text: new canvas
+- paragraph: No other canvases yet — the first prompt creates one.
+- contentinfo:
+  - text: canvas Describe a shot in the prompt bar above — or press /
+  - button "H3 ready"
+- button "Choose File"
