@@ -842,6 +842,12 @@ export function PropertiesPanel() {
   // message updates as commits land. Both are cheap single-chain walks.
   const bindings = chainId ? chainBindings(chainId) : []
   const validation = chainId ? validateChain(chainId) : null
+  // (gfv5h0g, F2 — 2026-10-15) The generate click NEVER dead-clicks: one
+  // submission path, and every outcome that did not submit produces an
+  // INLINE refusal naming why (the blind review's enabled-but-silent button
+  // — no request, no error). Declared with the other hooks — before the
+  // panel's early return; the refusal clears on the next attempt.
+  const [submitRefusal, setSubmitRefusal] = useState<string | null>(null)
 
   if (!open || !chain || !draft || !tile) return null
 
@@ -889,15 +895,24 @@ export function PropertiesPanel() {
   const referenceSlots = bindings.length
   const guideWarnings = draft.timelineGuides.map((guide) => guideFrameWarning(guide.seconds, draft.duration)).filter(Boolean) as string[]
 
+  // (gfv5h0g, F2 — 2026-10-15) The generate click NEVER dead-clicks: one
+  // submission path, and every outcome that did not submit produces an
+  // INLINE refusal naming why (the blind review's enabled-but-silent button
+  // — no request, no error). The refusal clears on the next attempt.
   const generate = async () => {
     if (!chainId || submitting) return
     setSubmitting(true)
+    setSubmitRefusal(null)
     try {
       // Commit the draft immediately — submit reads the persisted settings.
       // (A02) A FAILED save aborts here: the previously persisted prompt is
       // never submitted as if the user had authored it.
-      if (!await saveDraft(chainId, draft)) return
-      await submitChain(chainId)
+      if (!await saveDraft(chainId, draft)) {
+        setSubmitRefusal('The settings could not be saved, so nothing was submitted — the save status beside Generate names the seam. Retry the save, then generate again.')
+        return
+      }
+      const result = await submitChain(chainId)
+      if (!result.ok) setSubmitRefusal(result.message ?? 'The submission was refused.')
     } finally {
       setSubmitting(false)
     }
@@ -1658,6 +1673,17 @@ export function PropertiesPanel() {
           detail={visibleSave?.error ?? undefined}
           onRetry={visibleSave?.state === 'failed' ? retryFailedSave : undefined}
         />
+        {/* (gfv5h0g, F2) The click-time refusal: a generate that did not
+            submit states why HERE — inline, named, dismissable by the next
+            attempt. The pre-gate Refusal above owns standing preconditions;
+            this one owns the click's own outcome (the submit ladder's
+            refusal or the failed save that aborted it). */}
+        {submitRefusal && (
+          <Refusal
+            title="Generate refused — nothing was submitted"
+            reason={submitRefusal}
+          />
+        )}
         {tile.jobId && (tile.status === 'running' || tile.status === 'queued-gpu')
           ? <button type="button" className="canvas-properties-generate" data-canvas-cancel onClick={() => void cancelChainJob(chain.id)}><Square size={12} /> stop</button>
           : <button type="button" className="canvas-properties-generate" data-canvas-generate onClick={() => void generate()} disabled={submitting}>
