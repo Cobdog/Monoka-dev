@@ -1155,7 +1155,8 @@ test('a virgin home seeds no "Imported workspace" — the legacy import gates on
       await new Promise((resolve) => setTimeout(resolve, 200))
     }
     // Hermetic engine target (hbdzmoa): a virgin home inherits the shipped
-    // 8189 default — on the dev box that is the LIVE shared testbed, so this
+    // default (8188 since the 2026-10-15 ruling) — on the dev box that is the
+    // maintainer's live engine, so this
     // engine-independent test's boot polls (comfy-status → object-info, the
     // registry listing) would proxy a real engine and can still be pending
     // when the child dies below, racing post-kill refused fetches. Pin the
