@@ -1,0 +1,904 @@
+- banner:
+  - navigation "Surfaces":
+    - link "canvas":
+      - /url: /
+      - img
+      - text: canvas
+    - link "datasets":
+      - /url: /?datasets=1
+      - img
+      - text: datasets
+    - link "images":
+      - /url: /?images=1
+      - img
+      - text: images
+    - link "gallery":
+      - /url: /?gallery=1
+      - img
+      - text: gallery
+  - button "Canvas 10/15/2026"
+  - button "Close Canvas 10/15/2026": ×
+  - button "1 running":
+    - img
+    - text: 1 running
+  - button "H3 engine ready"
+  - button "timeline V":
+    - img
+    - text: timeline V
+  - button "library V":
+    - img
+    - text: library V
+  - button "diagnostics":
+    - img
+    - text: diagnostics
+  - button "settings":
+    - img
+    - text: settings
+  - button "index ⌘K"
+- button "Input options for a red paper lantern drifting over black n…"
+- button "Produce options for a red paper lantern drifting over black n…"
+- img
+- paragraph: a red paper lantern drifting over black night water, slow pan
+- text: 4% Waiting for ComfyUI to start
+- banner:
+  - strong: a red paper lantern drifting over black n…
+  - text: seed
+- button "no ops"
+- button "Input options for h3img 2"
+- button "Produce options for h3img 2"
+- img
+- paragraph: h3img 2
+- banner:
+  - strong: h3img 2
+  - text: seed
+- button "no ops"
+- text: 90%
+- button "Zoom out":
+  - img
+- button "Zoom in":
+  - img
+- button "Zoom to fit":
+  - img
+- contentinfo:
+  - text: generate
+  - radiogroup "Spawn lane":
+    - radio "video" [checked]:
+      - img
+      - text: video
+    - radio "image":
+      - img
+      - text: image
+  - textbox "Describe a shot — Enter spawns it at the bar"
+  - button "H3 ready"
+- banner:
+  - img
+  - strong: Settings — docked
+  - button "Close settings":
+    - img
+- paragraph: APPLICATION
+- heading "Settings" [level=1]
+- paragraph: Engine and connection, daily defaults, and diagnostics — the model library has its own surface.
+- navigation "Settings groups":
+  - button "Setup"
+  - button "Defaults"
+  - button "Status & diagnostics"
+- region "Setup":
+  - heading "Setup once — engine, node packs, the model library, input & output" [level=2]
+  - img
+  - strong: ComfyUI engine
+  - text: The desktop app communicates only with this local address. Connected Server URL
+  - textbox "Server URL": http://127.0.0.1:17651
+  - button "Test connection":
+    - img
+    - text: Test connection
+  - img
+  - strong: "cuda:0 NVIDIA GeForce RTX 3090 : cudaMallocAsync"
+  - text: 23.6 GB VRAM · 506.8 MB free The four-step setup walk (engine → models → packs → first prompt) is one click away.
+  - button "Reopen the setup wizard"
+  - region "Managed engine":
+    - img
+    - strong: Managed engine
+    - text: The studio launches and supervises its own ComfyUI from a checkout you nominate. External mode keeps the connection above. external
+    - button "External Use the ComfyUI address above — the studio never launches an engine." [pressed]:
+      - strong: External
+      - text: Use the ComfyUI address above — the studio never launches an engine.
+    - button "Managed The studio starts, configures, and stops its own instance. Ports stay clear of 8188/8189.":
+      - strong: Managed
+      - text: The studio starts, configures, and stops its own instance. Ports stay clear of 8188/8189.
+    - text: External custom nodes folder
+    - textbox "External custom nodes folder":
+      - /placeholder: /path/to/ComfyUI/custom_nodes — pack installs land here
+    - paragraph: External mode keeps the connection above as the engine. With a custom nodes folder set, the node packs below install into it — from a local copy here, or one consented fetch of the pinned revision (Fetchable items). Model inventory is pulled from the instance itself, so no local model roots are required.
+    - status: "Live · 9 ms · ComfyUI 0.41.0 · queue 2 jobs · cuda:0 NVIDIA GeForce RTX 3090 : cudaMallocAsync"
+  - region "Node packs":
+    - img
+    - strong: Node packs
+    - text: Custom nodes the studio can place on this engine — grouped by the feature they serve, with each row's install state and version verdict beside it. How installs work is one click below.
+    - button "Refresh":
+      - img
+      - text: Refresh
+    - status:
+      - img
+      - text: "ComfyUI-Manager is not serving this engine — the connected engine does not advertise ComfyUI-Manager (the extension.manager.supports_csrf_post feature flag is absent — the pip Manager is not installed, or the engine was not started with --enable-manager). Installs use the studio's own paths: the vendored payload, a consented Fetch…, or a local copy."
+    - paragraph: H3 video
+    - strong: ComfyUI-VDN-H3
+    - text: "Apache-2.0 vendored no install target The VDN port we adopted as our own (upstream removed 2026-09-26 — the vendored tree is the code of record). A node pack, not a fork: VDN-proper is applied as runtime model patches on ComfyUI's native MiniMax-H3 ModelPatcher, nothing outside custom_nodes/, no core patch, no new dependencies. Stage weights are separate Hugging Face fetches that land under models/vdn (the engine enumerates them itself). https://github.com/Saganaki22/ComfyUI-VDN-H3 @ 3eb63496c24c — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Install" [disabled]
+    - button "Uninstall" [disabled]
+    - strong: ComfyUI-MiniMax-H3-Turbo
+    - text: Apache-2.0 user-fetch no install target Larryvrh's turbo-LoRA loader node (the pack the optimization registry detects as larryvrhTurbo) plus the h3_silu_temb_grid fix for pruned bases. License-clean (Apache-2.0) but not vendored yet — install from a local copy of the repo. https://github.com/Larryvrh/ComfyUI-MiniMax-H3-Turbo @ 4274783a23af — a valid ComfyUI checkout (with main.py) is required before packs can be installed.
+    - button "Uninstall" [disabled]
+    - strong: ComfyUI_MinimaxH3_AutoContext
+    - text: "Apache-2.0 user-fetch no install target supElement’s one-click segmented-inference pack for MiniMax H3: prompt-timeline slicing (Clip_Tag/timeline/sequential/global), per-segment reference filtering (only prompt-declared refs are passed), 3-channel inter-segment anchoring (initial-latent splice + video_context_denoise dial, cond-row motion keyframes, untagged context-audio ref), hash-keyed per-segment latent cache with resume, video_guide bridging, audio_drive, and a pixel-domain seam-correction node. Deep-read: docs/research/autocontext-deepread.md. https://github.com/supElement/ComfyUI_MinimaxH3_AutoContext @ f1062d34e3c2 — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Uninstall" [disabled]
+    - strong: ComfyUI-H3-Motion-Context
+    - text: "GPL-3.0-only user-fetch no install target NikoDemon80's clip-chaining pack for MiniMax H3: pins the tail of the previous clip — picture and sound — so the next clip genuinely continues it (the picture is sliced out of the previous latent with no VAE round trip; the pinned audio window ends at the join so the soundtrack continues rather than restarts). The engine side of canvas latent continuation: chain renders save their sampler latents and latents forks continue from the source clip through these nodes. https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context @ 5335715abe54 — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Uninstall" [disabled]
+    - strong: Comfyui_Minimax_h3_latent_Upscaler
+    - text: "MIT user-fetch no install target LBH-123-AI's learned latent upscaler for MiniMax H3 (24ch): 2× in latent space, bypassing the 5B-param VAE decode/encode round trip. Powers the upscale registry's LBH latent 2D/3D 2× hires-fix entries — latent-space scaling keeps the audio path intact where the RTX pixel path drops it. The upscaler weights are a separate download into the engine's upscale models root (the engine's own model list is the honest availability signal). https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler @ 40316cf008b2 — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Uninstall" [disabled]
+    - strong: ComfyUI-MiniMaxH3-PreviewOverride
+    - text: "MIT user-fetch no install target simsim9-stack's live preview override for MiniMax H3: a single node between the model and the sampler that decodes the H3 video latent itself on every step (a trained 24-channel tiny autoencoder from vae_approx — TAEHV/TAESD only, channel-checked, animated Latent2RGB as the graceful fallback) and streams true-RGB frames over the minimax_h3_preview_override websocket event, suppressing the stock sampler preview while sampling. The maintainer-endorsed answer to the fragile stock preview path (its null-previewer crash class when an arbitrary taeh3* file wins the engine's prefix match). Ships its own 39.4 MB taeh3_decoder.safetensors (minivae/ — copy into vae_approx per its README); the Kijai 9.3 MB fetch row serves the same slot when the pack is absent. https://github.com/simsim9-stack/ComfyUI-MiniMaxH3-PreviewOverride @ d1eb17beb5e1 — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Uninstall" [disabled]
+    - paragraph: Studio tooling
+    - strong: minimax-lora-form-adapter
+    - text: "MIT first-party no install target The studio's own form-adaptive LoRA loader for MiniMax-H3 (first-party code, MIT, independently releasable): detects curve(pruned) vs full-width adaln forms from live tensor shapes on both the model and the LoRA, passes matching/adaln-free LoRAs through the stock machinery, and projects full-width adaln LoRAs onto curve bases at load time (centered [C|1] encoder + adaln bias delta, golden-tested against kijai's published conversion). Installs from the studio's own payload — no network, no third-party license. https://github.com/Cobdog/Monoka-dev @ v1.0.0 — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Install" [disabled]
+    - button "Uninstall" [disabled]
+    - paragraph: H3 image
+    - strong: ComfyUI_MinimaxH3HybridLoader
+    - text: "MIT user-fetch no install target scottmudge's hybrid loader for MiniMax H3: overlays selected tensor groups of one checkpoint onto another AT LOAD (MiniMaxH3HybridLoader, block_range_adaln 25..49 = the b25-49 fl2va+ref2va hybrid the H3 Image Workbench packet/T=1 profiles run on). One mmap per checkpoint — no pre-merged duplicate on disk; behaves exactly like the stock loader when the preset is \"none\". https://github.com/scottmudge/ComfyUI_MinimaxH3HybridLoader @ a44c69b02242 — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Uninstall" [disabled]
+    - strong: ComfyUI-MiniMax-H3-Image-Studio
+    - text: "Unlicense user-fetch no install target astropuzzo's H3 image studio pack: a parallel conditioning implementation (12 nodes, no core patching, no dependencies — works on ComfyUI ≥0.30) that constructs the packed H3 AV latent itself, making single-frame (T=1) latents legal end-to-end and hitting the 9/13-frame packet tiers exactly where stock nodes snap both to a 22-frame sample. The load-bearing classes are the Prepare set + the exact/slice frame decode; its sampling/resolution/selector nodes duplicate capability the app already owns. https://github.com/astropuzzo/ComfyUI-MiniMax-H3-Image-Studio @ 47dea30d0bf0 — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Uninstall" [disabled]
+    - strong: ComfyUI-Fizgig-H3-Still
+    - text: "MIT user-fetch no install target shootthesound's 94-line stills pack for MiniMax H3 (zero dependencies, official weights only): a true one-frame packed AV latent — the trainer's preview path — plus a decode that replicates the lone latent into the 5-latent temporal group the H3 ViT decoder was chunk-trained on and keeps pixel frame 3 (past the causal lead-in). The stock decode's banded/dark lone-token output fixed at the source; challenges the T=1 lane's Mamad8 decode head-on. https://github.com/shootthesound/ComfyUI-Fizgig-H3-Still @ f3252d2b6c94 — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Uninstall" [disabled]
+    - paragraph: Audio
+    - strong: comfyui-minimax-h3-audio-T8
+    - text: "GPL-3.0-or-later user-fetch no install target T8mars' audio sidecar pack (H3 audio editing). GPL-3.0-or-later: pattern-adopted in our own code where ideas were useful, but fetchable-but-flagged for your own instance via the consent flow — the studio never vendors or redistributes it. The fetcher stamps the resolved HEAD SHA of the main branch at fetch time. https://github.com/T8mars/comfyui-minimax-h3-audio-T8 @ main — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Uninstall" [disabled]
+    - paragraph: Krea 2 edit
+    - strong: comfyui-krea2edit
+    - text: "Apache-2.0 user-fetch no install target lbouaraba's Identity Edit node pack for Krea 2 (Krea2EditModelPatch + Krea2EditGroundedEncode) — the dual-conditioning carrier the krea2_identity_edit_v1_2 LoRA was trained with: the source rides both the in-context VAE latent path (RoPE frame 1) and the image-grounded Qwen3-VL encode. Powers the Instruct, removal and two-reference edit families. https://github.com/lbouaraba/comfyui-krea2edit @ 86f886dac230 — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Uninstall" [disabled]
+    - strong: krea2-anypaint
+    - text: MIT user-fetch no install target alexw5702-afk's AnyPaint nodes (Krea2AnyPaintPrepare/Encode/ModelPatch) for the krea2_anypaint_rank32 functional adapter — arbitrary-mask inpaint/outpaint/mixed edits on Krea 2 Turbo with per-step latent restoration, a 384px semantic reference and an isolated reference K/V cache. Powers the refine and outpaint edit families. https://github.com/alexw5702-afk/krea2-anypaint @ 675be5a91ead — a valid ComfyUI checkout (with main.py) is required before packs can be installed.
+    - button "Uninstall" [disabled]
+    - strong: comfyui-krea2-ostris-edit
+    - text: "MIT user-fetch no install target ostris' Kontext-style multi-reference edit conditioning for Krea 2 (TextEncodeKrea2OstrisEdit + Krea2OstrisEditModelPatch): reference images ride the Qwen3-VL encode AND attach as VAE reference latents, carried by the patched model as t=0 tokens (\"index_timestep_zero\", the ai-toolkit recipe) with an optional isolated reference K/V cache. Powers the krea2edit.ostris inpaint-edit family with Cierpliwy's krea2-inpaint-edit LoRA (the black-region masked-edit weights). https://github.com/ostris/ComfyUI-Krea2-Ostris-Edit @ 7756566160c4 — a valid ComfyUI checkout (with main.py) is required before packs can be installed."
+    - button "Uninstall" [disabled]
+    - group:
+      - strong: How node-pack installs work
+      - text: targets, pins, licenses, what uninstall touches +>
+  - region "Library and models":
+    - img
+    - strong: Library — get models
+    - text: "The consent-gated catalog: engine checkouts, node packs, and model weights (license verdicts on every row; weights link, never copy). Its own surface — not part of this scroll."
+    - button "Open the library":
+      - img
+      - text: Open the library
+  - img
+  - strong: Input & output
+  - text: Renders and prepared media stay local, under the app folder by default. Input directory
+  - textbox "Input directory": /home/agent/tmp-gpu/ux-home-3/data/input
+  - status:
+    - img
+    - text: No such directory yet — nothing scans here until it exists. Saves as typed.
+  - text: Output directory
+  - textbox "Output directory": /home/agent/tmp-gpu/ux-home-3/data/output
+  - status:
+    - img
+    - text: No such directory yet — nothing scans here until it exists. Saves as typed.
+  - text: FFmpeg executable
+  - textbox "FFmpeg executable": ffmpeg
+  - paragraph:
+    - text: Unset, both default under the app's own data folder (
+    - code: <app>/data/input
+    - text: ","
+    - code: <app>/data/output
+    - text: ) — nothing lands in Documents. An absolute path you set is kept as-is. The clip editor uses FFmpeg for frame extraction, trim points, joining, and full-project export.
+- region "Defaults":
+  - heading "Defaults daily — generation, model picks, the LLM layer" [level=2]
+  - img
+  - strong: Generation defaults
+  - text: Choose the starting values for the main Create workspace — every NEW chain starts from them.
+  - button "Reset to recommended" [disabled]
+  - button "Native Quality 1344 × 768 · 30 steps · no upscale":
+    - strong: Native Quality
+    - text: 1344 × 768 · 30 steps · no upscale
+  - button "Turbo 8 Native canvas · official LoRA 1.0":
+    - strong: Turbo 8
+    - text: Native canvas · official LoRA 1.0
+  - button "Preview 864 × 480 · official Turbo 8":
+    - strong: Preview
+    - text: 864 × 480 · official Turbo 8
+  - text: Default resolution
+  - combobox "Default resolution":
+    - option "16:9 · 1344 × 768" [selected]
+    - option "1:1 · 448 × 448"
+    - option "1:1 · 480 × 480"
+    - option "1:1 · 512 × 512"
+    - option "4:3 · 608 × 448"
+    - option "3:4 · 448 × 608"
+    - option "1:1 · 544 × 544"
+    - option "4:3 · 640 × 480"
+    - option "3:4 · 480 × 640"
+    - option "1:1 · 576 × 576"
+    - option "4:3 · 672 × 512"
+    - option "3:4 · 512 × 672"
+    - option "16:9 · 800 × 448"
+    - option "9:16 · 448 × 800"
+    - option "1:1 · 608 × 608"
+    - option "4:3 · 736 × 544"
+    - option "3:4 · 544 × 736"
+    - option "1:1 · 640 × 640"
+    - option "16:9 · 864 × 480"
+    - option "9:16 · 480 × 864"
+    - option "4:3 · 768 × 576"
+    - option "3:4 · 576 × 768"
+    - option "1:1 · 672 × 672"
+    - option "16:9 · 896 × 512"
+    - option "9:16 · 512 × 896"
+    - option "21:9 · 1056 × 448"
+    - option "4:3 · 800 × 608"
+    - option "3:4 · 608 × 800"
+    - option "1:1 · 704 × 704"
+    - option "16:9 · 960 × 544"
+    - option "9:16 · 544 × 960"
+    - option "21:9 · 1120 × 480"
+    - option "1:1 · 736 × 736"
+    - option "4:3 · 864 × 640"
+    - option "3:4 · 640 × 864"
+    - option "16:9 · 1024 × 576"
+    - option "9:16 · 576 × 1024"
+    - option "1:1 · 768 × 768"
+    - option "4:3 · 896 × 672"
+    - option "3:4 · 672 × 896"
+    - option "21:9 · 1184 × 512"
+    - option "4:3 · 928 × 704"
+    - option "3:4 · 704 × 928"
+    - option "16:9 · 1088 × 608"
+    - option "9:16 · 608 × 1088"
+    - option "21:9 · 1280 × 544"
+    - option "4:3 · 992 × 736"
+    - option "3:4 · 736 × 992"
+    - option "16:9 · 1152 × 640"
+    - option "9:16 · 640 × 1152"
+    - option "21:9 · 1344 × 576"
+    - option "4:3 · 1024 × 768"
+    - option "3:4 · 768 × 1024"
+    - option "16:9 · 1184 × 672"
+    - option "9:16 · 672 × 1184"
+    - option "21:9 · 1408 × 608"
+    - option "16:9 · 1248 × 704"
+    - option "9:16 · 704 × 1248"
+    - option "21:9 · 1504 × 640"
+    - option "16:9 · 1312 × 736"
+    - option "9:16 · 736 × 1312"
+    - option "9:16 · 768 × 1344"
+  - text: Default duration (seconds)
+  - spinbutton "Default duration (seconds)": "5"
+  - text: Default quality
+  - combobox "Default quality":
+    - option "Native quality · 30 steps" [selected]
+    - option "Official Turbo 8"
+  - text: Full-quality steps
+  - spinbutton "Full-quality steps": "30"
+  - text: Reference image fidelity
+  - combobox "Reference image fidelity":
+    - option "Match output · faster" [selected]
+    - option "Maximum identity · slower"
+  - text: Default post-render upscale
+  - combobox "Default post-render upscale":
+    - option "Off · recommended for diagnosis" [selected]
+    - option "RTX/CUDA frames · 2× · experimental"
+  - checkbox "Live preview by default Uses ComfyUI progress and preview events." [checked]
+  - strong: Live preview by default
+  - text: Uses ComfyUI progress and preview events.
+  - group:
+    - img
+    - strong: Experimental sampling
+    - text: Custom samplers, shifts, LoRA strength, and 4-step FL2V can make output less stable.
+    - img
+  - paragraph: The production path is 1344 × 768, 30 steps, res_multistep + simple, CFG 1, denoise 1, 24 fps, native 12/3 shifts, and upscale off. Custom sampling is intentionally separated because it complicates quality diagnosis.
+  - region "Model overrides":
+    - img
+    - strong: Model overrides
+    - text: Pin the exact checkpoint, text encoder, or VAE per engine family — for files the name-pattern inference can never find (a community merge, a renamed quant). Auto keeps the inferred pick; a per-chain pick (the chain's properties panel) beats these, which beat auto. The H3 families expose FL2VA / Ref2VA / merged checkpoint lanes; the VAE picks split by decoder — video, audio, and (the workbench only) the T=1 image decoder.
+    - strong: MiniMax H3 video
+    - text: The FL2VA and Ref2VA picks pin each render lane separately — only the mode's slot loads. The merged pick is ONE pre-merged checkpoint standing in for both lanes when set (unused unless needed). Text encoder is the Qwen3-VL companion; the video and audio VAE picks load the graph's two decoders (nodes 3/4). No image-VAE slot exists here — the video graph is always multi-frame and the Mamad8 T=1 decoder is factory-banned from it.
+    - strong: FL2VA checkpoint (first-frame lane)
+    - text: 11 diffusion models files on the connected engine
+    - combobox "MiniMax H3 video — FL2VA checkpoint (first-frame lane)":
+      - option "auto (inferred) — minimax_h3_fl2va_pruned_int8_convrot.safetensors" [selected]
+      - option "anima-base-v1.0.safetensors"
+      - option "Flux2-Klein-9B-True-fp8.safetensors"
+      - option "krea2_raw_bf16.safetensors"
+      - option "krea2_turbo_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_viggle_pruned_int8_convrot.safetensors"
+      - option "wan_animate_2_distill_int8_convrot.safetensors"
+      - option "wan2.1_14B_SCAIL_2_int8_convrot.safetensors"
+    - text: FL2VA checkpoint (first-frame lane) minimax_h3_fl2va_pruned_int8_convrot.safetensors auto/default
+    - strong: Ref2VA checkpoint (reference lane)
+    - text: 11 diffusion models files on the connected engine
+    - combobox "MiniMax H3 video — Ref2VA checkpoint (reference lane)":
+      - option "auto (inferred) — minimax_h3_ref2va_pruned_int8_convrot.safetensors" [selected]
+      - option "anima-base-v1.0.safetensors"
+      - option "Flux2-Klein-9B-True-fp8.safetensors"
+      - option "krea2_raw_bf16.safetensors"
+      - option "krea2_turbo_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_viggle_pruned_int8_convrot.safetensors"
+      - option "wan_animate_2_distill_int8_convrot.safetensors"
+      - option "wan2.1_14B_SCAIL_2_int8_convrot.safetensors"
+    - text: Ref2VA checkpoint (reference lane) minimax_h3_ref2va_pruned_int8_convrot.safetensors auto/default
+    - strong: Merged checkpoint (both lanes)
+    - text: 11 diffusion models files on the connected engine
+    - combobox "MiniMax H3 video — Merged checkpoint (both lanes)":
+      - option "auto (inferred) — nothing detected" [selected]
+      - option "anima-base-v1.0.safetensors"
+      - option "Flux2-Klein-9B-True-fp8.safetensors"
+      - option "krea2_raw_bf16.safetensors"
+      - option "krea2_turbo_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_viggle_pruned_int8_convrot.safetensors"
+      - option "wan_animate_2_distill_int8_convrot.safetensors"
+      - option "wan2.1_14B_SCAIL_2_int8_convrot.safetensors"
+    - text: Merged checkpoint (both lanes) auto/default
+    - strong: Text encoder
+    - text: 6 text encoders files on the connected engine
+    - combobox "MiniMax H3 video — Text encoder":
+      - option "auto (inferred) — qwen3vl_32b_int8_convrot.safetensors" [selected]
+      - option "qwen_3_06b_base.safetensors"
+      - option "qwen_3vl_4b_fp8_scaled.safetensors · 4B-class companion"
+      - option "qwen3-8b.safetensors · 8B-class companion"
+      - option "qwen3vl_32b_int8_convrot.safetensors · 32B-class · H3"
+      - option "qwen3vl_4b_bf16.safetensors · 4B-class companion"
+      - option "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    - text: Text encoder qwen3vl_32b_int8_convrot.safetensors auto/default
+    - strong: Video VAE
+    - text: 45 vae files on the connected engine
+    - combobox "MiniMax H3 video — Video VAE":
+      - option "auto (inferred) — minimax_h3_video_vae_fp16.safetensors" [selected]
+      - option "flux1_vae_bf16.safetensors · VAE (unclassified)"
+      - option "flux2.safetensors · VAE (unclassified)"
+      - option "krea2_vae.safetensors · VAE (unclassified)"
+      - option "minimax_h3_audio_vae_fp32.safetensors · audio decoder"
+      - option "minimax_h3_audio_vae/model.safetensors · audio decoder"
+      - option "minimax_h3_t1_image_vae_step1597.safetensors · T=1 image decoder"
+      - option "minimax_h3_video_vae_fp16__setBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBdense.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBfa4.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBflex.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBsage.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJresume.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setSABr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__vedaAlias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16.safetensors · video decoder"
+      - option "musubi_audio_vae_fp32.safetensors · audio decoder"
+      - option "musubi_video_vae_fp16.safetensors · video decoder"
+      - option "qwen_image_vae__setDalias.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae__setDalias2.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae.safetensors · VAE (unclassified)"
+      - option "Wan2_1_VAE_bf16.safetensors · VAE (unclassified)"
+    - text: Video VAE minimax_h3_video_vae_fp16.safetensors auto/default
+    - strong: Audio VAE
+    - text: 45 vae files on the connected engine
+    - combobox "MiniMax H3 video — Audio VAE":
+      - option "auto (inferred) — minimax_h3_audio_vae_fp32.safetensors" [selected]
+      - option "flux1_vae_bf16.safetensors · VAE (unclassified)"
+      - option "flux2.safetensors · VAE (unclassified)"
+      - option "krea2_vae.safetensors · VAE (unclassified)"
+      - option "minimax_h3_audio_vae_fp32.safetensors · audio decoder"
+      - option "minimax_h3_audio_vae/model.safetensors · audio decoder"
+      - option "minimax_h3_t1_image_vae_step1597.safetensors · T=1 image decoder"
+      - option "minimax_h3_video_vae_fp16__setBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBdense.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBfa4.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBflex.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBsage.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJresume.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setSABr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__vedaAlias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16.safetensors · video decoder"
+      - option "musubi_audio_vae_fp32.safetensors · audio decoder"
+      - option "musubi_video_vae_fp16.safetensors · video decoder"
+      - option "qwen_image_vae__setDalias.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae__setDalias2.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae.safetensors · VAE (unclassified)"
+      - option "Wan2_1_VAE_bf16.safetensors · VAE (unclassified)"
+    - text: Audio VAE minimax_h3_audio_vae_fp32.safetensors auto/default
+    - strong: MiniMax H3 image workbench
+    - text: The still-image families share the H3 stack. FL2VA and Ref2VA pin the stock lanes (and the runtime-merge loader's base/overlay inputs); the merged pick feeds the hybrid line as one plain-loaded file — a pre-merged checkpoint needs no runtime merge. The video/audio VAE picks load nodes 3/4; the image VAE pick is the Mamad8 T=1 decoder the T=1 Fast profile decodes through (the only family where it is legal).
+    - strong: FL2VA checkpoint (first-frame lane)
+    - text: 11 diffusion models files on the connected engine
+    - combobox "MiniMax H3 image workbench — FL2VA checkpoint (first-frame lane)":
+      - option "auto (inferred) — minimax_h3_fl2va_pruned_int8_convrot.safetensors" [selected]
+      - option "anima-base-v1.0.safetensors"
+      - option "Flux2-Klein-9B-True-fp8.safetensors"
+      - option "krea2_raw_bf16.safetensors"
+      - option "krea2_turbo_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_viggle_pruned_int8_convrot.safetensors"
+      - option "wan_animate_2_distill_int8_convrot.safetensors"
+      - option "wan2.1_14B_SCAIL_2_int8_convrot.safetensors"
+    - text: FL2VA checkpoint (first-frame lane) minimax_h3_fl2va_pruned_int8_convrot.safetensors auto/default
+    - strong: Ref2VA checkpoint (reference lane)
+    - text: 11 diffusion models files on the connected engine
+    - combobox "MiniMax H3 image workbench — Ref2VA checkpoint (reference lane)":
+      - option "auto (inferred) — minimax_h3_ref2va_pruned_int8_convrot.safetensors" [selected]
+      - option "anima-base-v1.0.safetensors"
+      - option "Flux2-Klein-9B-True-fp8.safetensors"
+      - option "krea2_raw_bf16.safetensors"
+      - option "krea2_turbo_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_viggle_pruned_int8_convrot.safetensors"
+      - option "wan_animate_2_distill_int8_convrot.safetensors"
+      - option "wan2.1_14B_SCAIL_2_int8_convrot.safetensors"
+    - text: Ref2VA checkpoint (reference lane) minimax_h3_ref2va_pruned_int8_convrot.safetensors auto/default
+    - strong: Merged checkpoint (both lanes)
+    - text: 11 diffusion models files on the connected engine
+    - combobox "MiniMax H3 image workbench — Merged checkpoint (both lanes)":
+      - option "auto (inferred) — nothing detected" [selected]
+      - option "anima-base-v1.0.safetensors"
+      - option "Flux2-Klein-9B-True-fp8.safetensors"
+      - option "krea2_raw_bf16.safetensors"
+      - option "krea2_turbo_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_viggle_pruned_int8_convrot.safetensors"
+      - option "wan_animate_2_distill_int8_convrot.safetensors"
+      - option "wan2.1_14B_SCAIL_2_int8_convrot.safetensors"
+    - text: Merged checkpoint (both lanes) auto/default
+    - strong: Text encoder
+    - text: 6 text encoders files on the connected engine
+    - combobox "MiniMax H3 image workbench — Text encoder":
+      - option "auto (inferred) — qwen3vl_32b_int8_convrot.safetensors" [selected]
+      - option "qwen_3_06b_base.safetensors"
+      - option "qwen_3vl_4b_fp8_scaled.safetensors · 4B-class companion"
+      - option "qwen3-8b.safetensors · 8B-class companion"
+      - option "qwen3vl_32b_int8_convrot.safetensors · 32B-class · H3"
+      - option "qwen3vl_4b_bf16.safetensors · 4B-class companion"
+      - option "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    - text: Text encoder qwen3vl_32b_int8_convrot.safetensors auto/default
+    - strong: Video VAE
+    - text: 45 vae files on the connected engine
+    - combobox "MiniMax H3 image workbench — Video VAE":
+      - option "auto (inferred) — minimax_h3_video_vae_fp16.safetensors" [selected]
+      - option "flux1_vae_bf16.safetensors · VAE (unclassified)"
+      - option "flux2.safetensors · VAE (unclassified)"
+      - option "krea2_vae.safetensors · VAE (unclassified)"
+      - option "minimax_h3_audio_vae_fp32.safetensors · audio decoder"
+      - option "minimax_h3_audio_vae/model.safetensors · audio decoder"
+      - option "minimax_h3_t1_image_vae_step1597.safetensors · T=1 image decoder"
+      - option "minimax_h3_video_vae_fp16__setBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBdense.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBfa4.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBflex.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBsage.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJresume.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setSABr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__vedaAlias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16.safetensors · video decoder"
+      - option "musubi_audio_vae_fp32.safetensors · audio decoder"
+      - option "musubi_video_vae_fp16.safetensors · video decoder"
+      - option "qwen_image_vae__setDalias.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae__setDalias2.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae.safetensors · VAE (unclassified)"
+      - option "Wan2_1_VAE_bf16.safetensors · VAE (unclassified)"
+    - text: Video VAE minimax_h3_video_vae_fp16.safetensors auto/default
+    - strong: Audio VAE
+    - text: 45 vae files on the connected engine
+    - combobox "MiniMax H3 image workbench — Audio VAE":
+      - option "auto (inferred) — minimax_h3_audio_vae_fp32.safetensors" [selected]
+      - option "flux1_vae_bf16.safetensors · VAE (unclassified)"
+      - option "flux2.safetensors · VAE (unclassified)"
+      - option "krea2_vae.safetensors · VAE (unclassified)"
+      - option "minimax_h3_audio_vae_fp32.safetensors · audio decoder"
+      - option "minimax_h3_audio_vae/model.safetensors · audio decoder"
+      - option "minimax_h3_t1_image_vae_step1597.safetensors · T=1 image decoder"
+      - option "minimax_h3_video_vae_fp16__setBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBdense.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBfa4.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBflex.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBsage.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJresume.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setSABr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__vedaAlias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16.safetensors · video decoder"
+      - option "musubi_audio_vae_fp32.safetensors · audio decoder"
+      - option "musubi_video_vae_fp16.safetensors · video decoder"
+      - option "qwen_image_vae__setDalias.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae__setDalias2.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae.safetensors · VAE (unclassified)"
+      - option "Wan2_1_VAE_bf16.safetensors · VAE (unclassified)"
+    - text: Audio VAE minimax_h3_audio_vae_fp32.safetensors auto/default
+    - strong: Image VAE (T=1)
+    - text: 45 vae files on the connected engine
+    - combobox "MiniMax H3 image workbench — Image VAE (T=1)":
+      - option "auto (inferred) — minimax_h3_t1_image_vae_step1597.safetensors" [selected]
+      - option "flux1_vae_bf16.safetensors · VAE (unclassified)"
+      - option "flux2.safetensors · VAE (unclassified)"
+      - option "krea2_vae.safetensors · VAE (unclassified)"
+      - option "minimax_h3_audio_vae_fp32.safetensors · audio decoder"
+      - option "minimax_h3_audio_vae/model.safetensors · audio decoder"
+      - option "minimax_h3_t1_image_vae_step1597.safetensors · T=1 image decoder"
+      - option "minimax_h3_video_vae_fp16__setBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBdense.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBfa4.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBflex.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBsage.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJresume.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setSABr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__vedaAlias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16.safetensors · video decoder"
+      - option "musubi_audio_vae_fp32.safetensors · audio decoder"
+      - option "musubi_video_vae_fp16.safetensors · video decoder"
+      - option "qwen_image_vae__setDalias.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae__setDalias2.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae.safetensors · VAE (unclassified)"
+      - option "Wan2_1_VAE_bf16.safetensors · VAE (unclassified)"
+    - text: Image VAE (T=1) minimax_h3_t1_image_vae_step1597.safetensors auto/default
+    - strong: MiniMax Music 3
+    - text: "The Music 3 song engine: diffusion model, text encoder, and the DAV audio VAE — the family's one decoder is audio-class."
+    - strong: Checkpoint / diffusion model
+    - text: 11 diffusion models files on the connected engine
+    - combobox "MiniMax Music 3 — Checkpoint / diffusion model":
+      - option "auto (inferred) — nothing detected" [selected]
+      - option "anima-base-v1.0.safetensors"
+      - option "Flux2-Klein-9B-True-fp8.safetensors"
+      - option "krea2_raw_bf16.safetensors"
+      - option "krea2_turbo_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_int8_convrot.safetensors"
+      - option "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
+      - option "minimax_h3_ref2va_viggle_pruned_int8_convrot.safetensors"
+      - option "wan_animate_2_distill_int8_convrot.safetensors"
+      - option "wan2.1_14B_SCAIL_2_int8_convrot.safetensors"
+    - text: Checkpoint / diffusion model auto/default
+    - strong: Text encoder
+    - text: 6 text encoders files on the connected engine
+    - combobox "MiniMax Music 3 — Text encoder":
+      - option "auto (inferred) — nothing detected" [selected]
+      - option "qwen_3_06b_base.safetensors"
+      - option "qwen_3vl_4b_fp8_scaled.safetensors · 4B-class companion"
+      - option "qwen3-8b.safetensors · 8B-class companion"
+      - option "qwen3vl_32b_int8_convrot.safetensors · 32B-class · H3"
+      - option "qwen3vl_4b_bf16.safetensors · 4B-class companion"
+      - option "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+    - text: Text encoder auto/default
+    - strong: Audio VAE
+    - text: 45 vae files on the connected engine
+    - combobox "MiniMax Music 3 — Audio VAE":
+      - option "auto (inferred) — nothing detected" [selected]
+      - option "flux1_vae_bf16.safetensors · VAE (unclassified)"
+      - option "flux2.safetensors · VAE (unclassified)"
+      - option "krea2_vae.safetensors · VAE (unclassified)"
+      - option "minimax_h3_audio_vae_fp32.safetensors · audio decoder"
+      - option "minimax_h3_audio_vae/model.safetensors · audio decoder"
+      - option "minimax_h3_t1_image_vae_step1597.safetensors · T=1 image decoder"
+      - option "minimax_h3_video_vae_fp16__setBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBdense.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBfa4.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBflex.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setCMBsage.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setDPCr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setEnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJalias2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setJresume.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setKnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setLnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMcan3.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setMnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPalias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setPnull.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__setSABr2.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16__vedaAlias.safetensors · video decoder"
+      - option "minimax_h3_video_vae_fp16.safetensors · video decoder"
+      - option "musubi_audio_vae_fp32.safetensors · audio decoder"
+      - option "musubi_video_vae_fp16.safetensors · video decoder"
+      - option "qwen_image_vae__setDalias.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae__setDalias2.safetensors · VAE (unclassified)"
+      - option "qwen_image_vae.safetensors · VAE (unclassified)"
+      - option "Wan2_1_VAE_bf16.safetensors · VAE (unclassified)"
+    - text: Audio VAE auto/default
+    - status: Music 3 needs its own DAV audio VAE (minimax_music3_dav.safetensors) — the H3 video family's audio VAE is a different decoder and never auto-fills this slot.
+    - paragraph: "Picks are exact names from the connected engine's model registry — the engine-relative subpath the graph loader accepts. A pick the registry later stops listing falls back to auto with a warning at render time; a pick the family cannot load (wrong folder, a cross-class VAE) refuses the render with the reason — never a doomed graph. The registry lists filenames only, so nothing about a file's internals is verified app-side: the engine loads the pick or fails loudly with a readable error. The H3 families pin FL2VA and Ref2VA per render lane; the merged pick is ONE pre-merged checkpoint for both lanes and wins when set. VAE slots are decoder-specific (video / audio / image): a pick whose filename marks another decoder class refuses — the T=1 image decoder is legal only on the workbench's image-VAE slot, never in a video graph."
+  - region "LLM router":
+    - img
+    - strong: LLM · llama.cpp router
+    - text: One router endpoint serves every text model (DeepSeek, Gemma, Qwen…). Empty address keeps the Ollama fallback below. Ollama fallback Router address (router mode)
+    - textbox "Router address (router mode)":
+      - /placeholder: http://127.0.0.1:8080 — empty = Ollama fallback
+    - button "Test connection":
+      - img
+      - text: Test connection
+    - status:
+      - img
+      - text: fetch failed
+    - checkbox "Unload models before generating Frees VRAM by unloading non-sticky router models when a render submits (≈2 s budget, never blocks the queue)." [checked]
+    - strong:
+      - img
+      - text: Unload models before generating
+    - text: Frees VRAM by unloading non-sticky router models when a render submits (≈2 s budget, never blocks the queue).
+    - checkbox "Thinking by default (freeform) Structured/JSON requests always run thinking-off for speed; this sets the default for freeform enhancement."
+    - strong: Thinking by default (freeform)
+    - text: Structured/JSON requests always run thinking-off for speed; this sets the default for freeform enhancement. Prompt writing style
+    - combobox "Prompt writing style":
+      - option "SFW · concrete visual" [selected]
+      - option "Suggestive · sensual mood"
+      - option "NSFW · explicit and precise"
+    - text: Sticky models (never unload)
+    - textbox "Sticky models (never unload)":
+      - /placeholder: comma-separated ids or substrings
+    - text: Vision model (router)
+    - combobox "Vision model (router)"
+    - paragraph: Router mode auto-loads the requested model per call and unloads non-sticky models before each render. Gemma needs the server started with --jinja. The vision model serves image and video captioning (the dataset manager) and vision scenarios — empty picks the first vision-capable router model. Nothing leaves this workstation.
+  - img
+  - strong: Ollama prompt assistant
+  - text: Fallback provider — active while no router address is set above. Uses only text models installed on this computer. Offline Ollama URL
+  - textbox "Ollama URL": http://127.0.0.1:11434
+  - text: Local model
+  - combobox "Local model" [disabled]:
+    - option "No local text models detected" [selected]
+  - button "Refresh models":
+    - img
+    - text: Refresh models
+  - paragraph: Prompts go directly to the local Ollama server. Embedding and cloud-backed models are excluded.
+- region "Status and diagnostics":
+  - heading "Status & diagnostics what the engine and this workstation actually have" [level=2]
+  - img
+  - strong: Model inventory
+  - text: The connected engine's own registry is the model source of truth (instance-invisible = nonexistent) — there is no local folder list and no manual pointing. Refresh asks the engine to re-scan its folders and reads the listing again.
+  - button "Refresh from engine":
+    - img
+    - text: Refresh from engine
+  - img
+  - strong: Diffusion models
+  - text: FL2VA and Ref2VA checkpoints 11 files on the engine
+  - img
+  - strong: Text encoders
+  - text: Qwen3-VL MiniMax encoder 6 files on the engine
+  - img
+  - strong: VAE models
+  - text: Video and audio decoders 45 files on the engine
+  - img
+  - strong: LoRAs
+  - text: 4-step and 8-step turbo adapters 22 files on the engine
+  - img
+  - strong: Preview models
+  - text: Tiny H3 preview decoder 5 files on the engine
+  - img
+  - strong: Vision encoders
+  - text: Optional reference encoders 0 files on the engine
+  - img
+  - strong: H3 engine stack
+  - text: What the graphs will load, resolved the same way submission resolves it — auto-inferred picks and your overrides alike. Canonical names are guidance, not a gate. Incomplete
+  - img
+  - strong: FL2VA
+  - text: minimax_h3_fl2va_pruned_int8_convrot.safetensors
+  - emphasis: Inferred
+  - img
+  - strong: Text encoder
+  - text: "qwen3vl_32b_int8_convrot.safetensors · canonical: qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
+  - emphasis: Inferred
+  - img
+  - strong: Video VAE
+  - text: minimax_h3_video_vae_fp16.safetensors
+  - emphasis: Inferred
+  - img
+  - strong: Audio VAE
+  - text: minimax_h3_audio_vae_fp32.safetensors
+  - emphasis: Inferred
+  - img
+  - strong: Turbo 8
+  - text: "Not found — make the official 8-step turbo LoRA or a lightx2v fl2v 8-step name — the turbo ladder is anchored on purpose (no loose fallback: a wrong-tier pick is worse than none) visible to the engine"
+  - emphasis: Not found
+  - img
+  - strong: Official Ref2V 4-step
+  - text: minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors
+  - emphasis: 4 steps
+  - img
+  - strong: lightx2v Ref2VA 8-step
+  - text: minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors
+  - emphasis: 8 steps
+  - img
+  - strong: alibaba-pai PDD Ref2VA 8-step
+  - text: MiniMax-H3-Ref2VA-Acc-8Step.safetensors
+  - emphasis: 8 steps
+  - paragraph:
+    - img
+    - text: The H3 stack is incomplete — make the named components visible to the engine, then refresh. Video renders refuse until every slot resolves.
+  - strong: Fixed quality comparison
+  - text: Queues Native Quality and Turbo 8 at 1344 × 768, 5 seconds, seed 12345, with no upscale.
+  - button "Run H3 Quality Test" [disabled]:
+    - img
+    - text: Run H3 Quality Test
+  - img
+  - strong: Setup doctor
+  - text: Verifies FFmpeg, HTTPS tooling, the engine device, and attention backends — with exact fixes.
+  - button "Run checks":
+    - img
+    - text: Run checks
+  - img
+  - strong: Graph compatibility
+  - text: The ComfyUI version this studio's graph families were last verified against.
+  - img
+  - strong: Graphs verified against this engine
+  - text: "Connected engine: 0.41.0. Graphs last verified against: 0.41.0."
+  - region "Krea 2 edit modes availability":
+    - img
+    - strong: Krea 2 edit modes
+    - text: Availability + recipe readout — the real editing UI lives on the canvas/workbench surfaces (the settings exit, R-15).
+    - group:
+      - strong: Edit-mode availability & recipes
+      - text: per-workflow graphs over the resident Krea 2 pair +>
+  - region "About and license":
+    - img
+    - strong: About & license
+    - text: The app is free software — AGPLv3; the full third-party inventory lives in docs/LICENSES.md.
+    - group:
+      - strong: License & source
+      - text: AGPLv3 + the third-party inventory +>
+- contentinfo:
+  - status: All changes saved
+  - button "Save settings":
+    - img
+    - text: Save settings
+- button "Choose File"

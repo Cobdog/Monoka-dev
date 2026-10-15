@@ -1,0 +1,85 @@
+- banner:
+  - navigation "Surfaces":
+    - link "canvas":
+      - /url: /
+      - img
+      - text: canvas
+    - link "datasets":
+      - /url: /?datasets=1
+      - img
+      - text: datasets
+    - link "images":
+      - /url: /?images=1
+      - img
+      - text: images
+    - link "gallery":
+      - /url: /?gallery=1
+      - img
+      - text: gallery
+  - button "Canvas 10/15/2026"
+  - button "Close Canvas 10/15/2026": ×
+  - button "1 running":
+    - img
+    - text: 1 running
+  - button "H3 engine ready"
+  - button "timeline V":
+    - img
+    - text: timeline V
+  - button "library V":
+    - img
+    - text: library V
+  - button "diagnostics":
+    - img
+    - text: diagnostics
+  - button "settings":
+    - img
+    - text: settings
+  - button "index ⌘K"
+- button "Input options for a red paper lantern drifting over black n…"
+- button "Produce options for a red paper lantern drifting over black n…"
+- img
+- paragraph: a red paper lantern drifting over black night water, slow pan
+- text: 4% Waiting for ComfyUI to start
+- banner:
+  - strong: a red paper lantern drifting over black n…
+  - text: seed
+- button "no ops"
+- button "Input options for h3img 2"
+- button "Produce options for h3img 2"
+- img
+- paragraph: h3img 2
+- banner:
+  - strong: h3img 2
+  - text: seed
+- button "no ops"
+- text: 90%
+- button "Zoom out":
+  - img
+- button "Zoom in":
+  - img
+- button "Zoom to fit":
+  - img
+- contentinfo:
+  - text: generate
+  - radiogroup "Spawn lane":
+    - radio "video" [checked]:
+      - img
+      - text: video
+    - radio "image":
+      - img
+      - text: image
+  - textbox "Describe a shot — Enter spawns it at the bar"
+  - button "H3 ready"
+- dialog "Timeline":
+  - banner:
+    - img
+    - strong: Timeline — chain outputs (unplanned chronology)
+    - text: 0 items · 0s planned
+    - button "New plan":
+      - img
+      - text: New plan
+    - button "Close timeline":
+      - img
+  - text: Chain outputs appear here in creation order — drop or generate media, then plan the chronology.
+  - contentinfo: V cycles · timeline → library → canvas projections inherit the no-silent-failure contract
+- button "Choose File"

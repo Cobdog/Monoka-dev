@@ -1,0 +1,45 @@
+Dataset manager
+<NAV label="Surfaces">
+<A label="Canvas (Alt+1)">
+canvas
+<A label="Dataset manager (Alt+2)">
+datasets
+<A label="Image workbench (Alt+3)">
+images
+<A label="Component gallery (Alt+4)">
+gallery
+library
+dashboard
+export
+trash
+<BUTTON label="Settings">
+<SPAN label="Dataset trigger token">
+trigger:
+(unset)
+<SPAN label="rife-ncnn-vulkan absent — minterpolate fallback (A1 final)">
+minterpolate
+<BUTTON label="Refresh">
+Import
+Upload from LAN
+Reference a file
+From canvas take
+Search & filter
+<INPUT label="FTS over captions + provenance">
+<DIV label="Filter by media kind">
+all
+video
+image
+<DIV label="Filter by caption state">
+any caption
+missing
+stale
+Curation
+Dedup pass
+Batch VLM (skip hand)
+Batch draft → review queue
+Selection
+0
+layer(s) selected
+Export…
+The dataset is empty — import raw footage (by reference or LAN upload), then crop layers.
+The source is sacred: nothing you do here ever modifies an imported file.

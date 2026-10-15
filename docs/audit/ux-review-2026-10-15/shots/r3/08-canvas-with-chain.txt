@@ -1,0 +1,346 @@
+<NAV label="Surfaces">
+<A label="Canvas (Alt+1)">
+canvas
+<A label="Dataset manager (Alt+2)">
+datasets
+<A label="Image workbench (Alt+3)">
+images
+<A label="Component gallery (Alt+4)">
+gallery
+Canvas 10/15/2026
+<BUTTON label="Close Canvas 10/15/2026">
+×
+<BUTTON label="Zoom to the worst item needing attention">
+1 running
+<BUTTON label="Local engine connected — MiniMax H3 ready">
+H3 engine ready
+<BUTTON label="The timeline projection — the plan chronology + measured transitions (V)">
+timeline
+V
+<BUTTON label="The library projection — every completed output across the session (V)">
+library
+V
+<BUTTON label="Diagnostics — the PII-scrubbed report surface, docked">
+diagnostics
+<BUTTON label="Settings — docked as a floating panel on the canvas surface (other surfaces link here)">
+settings
+index
+⌘K
+<BUTTON label="Input options for a red paper lantern drifting over black n…">
+<BUTTON label="Produce options for a red paper lantern drifting over black n…">
+<DIV label="seed">
+a red paper lantern drifting over black night water, slow pan
+4
+%
+Waiting for ComfyUI to start
+<SPAN label="running">
+a red paper lantern drifting over black n…
+seed
+<DIV label="Op stack">
+no ops
+90%
+<BUTTON label="Zoom out">
+<BUTTON label="Zoom in">
+<BUTTON label="Zoom to fit">
+a red paper lantern drifting over black n…
+text → video
+<BUTTON label="Close properties">
+Text-only shot — bind a picture to switch to reference mode; set both end frames for first + last frame mode.
+Prompt
+// presets
+<DIV label="Prompt mode">
+freeform
+structured
+<TEXTAREA label="Chain prompt">
+a red paper lantern drifting over black night water, slow pan
+Insert
+Type
+//
+or browse
+206
+production presets
+<BUTTON label="Connect a local text model — the llama.cpp router or Ollama, docked at the LLM section (nothing leaves this workstation)">
+Connect a text model…
+<BUTTON label="Connect a local text model (llama.cpp router or Ollama) in Settings — nothing leaves this workstation">
+enhance
+<BUTTON label="Connect a local text model in Settings">
+audio pass
+<BUTTON label="Connect a local text model in Settings">
+timeline → Flow
+<BUTTON label="Search public Civitai generation metadata for reusable prompts">
+library
+Engine —
+MiniMax H3
+tier
+<DIV label="Speed tier">
+<BUTTON label="full-step native">
+Quality
+<BUTTON label="turbo LoRA">
+Fast · 4-step
+<BUTTON label="turbo LoRA">
+Fast · 8-step
+VDN
+<DIV label="VDN acceleration">
+Off
+no VDN
+VDN · 8-step
+stage-dmd, distilled
+VDN · 50-step
+stage-b, full steps
+VDN pack not served by the engine — install vdn-h3 from the Packs board, then refresh the engine.
+turbo family
+auto — registry-ranked
+Official MiniMax FL2V 8-step
+(not installed)
+lightx2v FL2V 8-step (768p)
+(not installed)
+Official Ref2V 4-step
+lightx2v Ref2VA 8-step
+lightx2v FL2V 4-step (default speed)
+(not installed)
+drbaph 4-step (larryvrh lineage)
+(not installed)
+larryvrh v4 8-step (drbaph conversion)
+(not installed)
+alibaba-pai PDD FL2VA 8-step
+(not installed)
+alibaba-pai PDD Ref2VA 8-step
+Not fetchable through the library — the model catalog carries no turbo LoRA rows. Each option's note names where its weights come from; fetch consent applies only to cataloged items.
+models
+MiniMax H3 video
+·
+auto (inferred)
+FL2VA checkpoint (first-frame lane)
+auto — minimax_h3_fl2va_pruned_int8_convrot.safetensors
+anima-base-v1.0.safetensors
+Flux2-Klein-9B-True-fp8.safetensors
+krea2_raw_bf16.safetensors
+krea2_turbo_int8_convrot.safetensors
+minimax_h3_fl2va_int8_convrot.safetensors
+minimax_h3_fl2va_pruned_int8_convrot.safetensors
+minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors
+minimax_h3_ref2va_pruned_int8_convrot.safetensors
+minimax_h3_ref2va_viggle_pruned_int8_convrot.safetensors
+wan_animate_2_distill_int8_convrot.safetensors
+wan2.1_14B_SCAIL_2_int8_convrot.safetensors
+FL2VA checkpoint (first-frame lane)
+minimax_h3_fl2va_pruned_int8_convrot.safetensors
+auto/default
+Ref2VA checkpoint (reference lane)
+auto — minimax_h3_ref2va_pruned_int8_convrot.safetensors
+anima-base-v1.0.safetensors
+Flux2-Klein-9B-True-fp8.safetensors
+krea2_raw_bf16.safetensors
+krea2_turbo_int8_convrot.safetensors
+minimax_h3_fl2va_int8_convrot.safetensors
+minimax_h3_fl2va_pruned_int8_convrot.safetensors
+minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors
+minimax_h3_ref2va_pruned_int8_convrot.safetensors
+minimax_h3_ref2va_viggle_pruned_int8_convrot.safetensors
+wan_animate_2_distill_int8_convrot.safetensors
+wan2.1_14B_SCAIL_2_int8_convrot.safetensors
+Ref2VA checkpoint (reference lane)
+minimax_h3_ref2va_pruned_int8_convrot.safetensors
+auto/default
+Merged checkpoint (both lanes)
+auto — nothing detected
+anima-base-v1.0.safetensors
+Flux2-Klein-9B-True-fp8.safetensors
+krea2_raw_bf16.safetensors
+krea2_turbo_int8_convrot.safetensors
+minimax_h3_fl2va_int8_convrot.safetensors
+minimax_h3_fl2va_pruned_int8_convrot.safetensors
+minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors
+minimax_h3_ref2va_pruned_int8_convrot.safetensors
+minimax_h3_ref2va_viggle_pruned_int8_convrot.safetensors
+wan_animate_2_distill_int8_convrot.safetensors
+wan2.1_14B_SCAIL_2_int8_convrot.safetensors
+Merged checkpoint (both lanes)
+auto/default
+Text encoder
+auto — qwen3vl_32b_int8_convrot.safetensors
+qwen_3_06b_base.safetensors
+qwen_3vl_4b_fp8_scaled.safetensors · 4B-class companion
+qwen3-8b.safetensors · 8B-class companion
+qwen3vl_32b_int8_convrot.safetensors · 32B-class · H3
+qwen3vl_4b_bf16.safetensors · 4B-class companion
+umt5_xxl_fp8_e4m3fn_scaled.safetensors
+Text encoder
+qwen3vl_32b_int8_convrot.safetensors
+auto/default
+Video VAE
+auto — minimax_h3_video_vae_fp16.safetensors
+flux1_vae_bf16.safetensors · VAE (unclassified)
+flux2.safetensors · VAE (unclassified)
+krea2_vae.safetensors · VAE (unclassified)
+minimax_h3_audio_vae_fp32.safetensors · audio decoder
+minimax_h3_audio_vae/model.safetensors · audio decoder
+minimax_h3_t1_image_vae_step1597.safetensors · T=1 image decoder
+minimax_h3_video_vae_fp16__setBalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBalias2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBdense.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBfa4.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBflex.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBsage.safetensors · video decoder
+minimax_h3_video_vae_fp16__setDalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setDPCnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setDPCr2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setEalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setEalias2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setEnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setJalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setJalias2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setJnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setJresume.safetensors · video decoder
+minimax_h3_video_vae_fp16__setKcan2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setKcan3.safetensors · video decoder
+minimax_h3_video_vae_fp16__setKnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setLcan2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setLcan3.safetensors · video decoder
+minimax_h3_video_vae_fp16__setLnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setMcan2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setMcan3.safetensors · video decoder
+minimax_h3_video_vae_fp16__setMnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setPalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setPnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setSABr2.safetensors · video decoder
+minimax_h3_video_vae_fp16__vedaAlias.safetensors · video decoder
+minimax_h3_video_vae_fp16.safetensors · video decoder
+musubi_audio_vae_fp32.safetensors · audio decoder
+musubi_video_vae_fp16.safetensors · video decoder
+qwen_image_vae__setDalias.safetensors · VAE (unclassified)
+qwen_image_vae__setDalias2.safetensors · VAE (unclassified)
+qwen_image_vae.safetensors · VAE (unclassified)
+Wan2_1_VAE_bf16.safetensors · VAE (unclassified)
+Video VAE
+minimax_h3_video_vae_fp16.safetensors
+auto/default
+Audio VAE
+auto — minimax_h3_audio_vae_fp32.safetensors
+flux1_vae_bf16.safetensors · VAE (unclassified)
+flux2.safetensors · VAE (unclassified)
+krea2_vae.safetensors · VAE (unclassified)
+minimax_h3_audio_vae_fp32.safetensors · audio decoder
+minimax_h3_audio_vae/model.safetensors · audio decoder
+minimax_h3_t1_image_vae_step1597.safetensors · T=1 image decoder
+minimax_h3_video_vae_fp16__setBalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBalias2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBdense.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBfa4.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBflex.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setCMBsage.safetensors · video decoder
+minimax_h3_video_vae_fp16__setDalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setDPCnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setDPCr2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setEalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setEalias2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setEnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setJalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setJalias2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setJnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setJresume.safetensors · video decoder
+minimax_h3_video_vae_fp16__setKcan2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setKcan3.safetensors · video decoder
+minimax_h3_video_vae_fp16__setKnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setLcan2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setLcan3.safetensors · video decoder
+minimax_h3_video_vae_fp16__setLnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setMcan2.safetensors · video decoder
+minimax_h3_video_vae_fp16__setMcan3.safetensors · video decoder
+minimax_h3_video_vae_fp16__setMnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setPalias.safetensors · video decoder
+minimax_h3_video_vae_fp16__setPnull.safetensors · video decoder
+minimax_h3_video_vae_fp16__setSABr2.safetensors · video decoder
+minimax_h3_video_vae_fp16__vedaAlias.safetensors · video decoder
+minimax_h3_video_vae_fp16.safetensors · video decoder
+musubi_audio_vae_fp32.safetensors · audio decoder
+musubi_video_vae_fp16.safetensors · video decoder
+qwen_image_vae__setDalias.safetensors · VAE (unclassified)
+qwen_image_vae__setDalias2.safetensors · VAE (unclassified)
+qwen_image_vae.safetensors · VAE (unclassified)
+Wan2_1_VAE_bf16.safetensors · VAE (unclassified)
+Audio VAE
+minimax_h3_audio_vae_fp32.safetensors
+auto/default
+A pick here beats the global Settings pick, which beats auto inference. Picks are exact scanned filenames; the resolved files ride the take's manifest. The H3 lanes pin FL2VA / Ref2VA separately; the merged pick is one pre-merged checkpoint for both and wins when set. The VAE picks are decoder-specific (video / audio) — the image decoder is workbench-only.
+seconds
+ratio
+16:9
+9:16
+4:3
+3:4
+1:1
+21:9
+free
+1344 × 768
+— optimal
+1312 × 736
+1248 × 704
+1184 × 672
+1152 × 640
+1088 × 608
+1024 × 576
+960 × 544
+896 × 512
+864 × 480
+800 × 448
+seed
+<INPUT label="Seed">
+<BUTTON label="Randomize seed">
+LoRA timeline
+paint ranges · engine frame grid (5/22/39…)
+<svg label="LoRA timeline rail — painted ranges and the compiled segment layout">
+painted ranges above · compiled segments + transition windows below · drag boundaries (grid-snapped)
++ paint range
+Paint LoRA ranges over this clip — the compiler generates one chain per range, grid-conformed (the engine’s 5/22/39… frame ladder) and joined by measured transitions. Nothing submits until you generate.
+<BUTTON label="Compile the ranges into a Director Suite plan and seed one chain per segment (nothing auto-submits)">
+compile → — segments
+References
+0
+of 9 slots
+No references — the chain renders from its prompt
+.
+clothing policy
+assigned wardrobe
+identity underwear
+scene prompt decides
+Keyframe guides
+AddGuide frames
++ guide image
+Takes
+0
+prior
+s
+· none yet
+No takes yet.
+running
+stop
+<SPAN label="a red paper lantern drifting over black night water, slow pan">
+a red paper lantern drifting over black n…
+text → video
+running
+no identity payload
+<SPAN label="Hop count + per-hop drift metrics (L28)">
+drift ·
+0
+hop
+s
+no takes
+no forks yet
+<BUTTON label="Lock — propagation is gated; every take stays resident">
+unlocked
+P
+fork
+B
+Uploading inputs and preparing the ComfyUI graph…
+<BUTTON label="Dismiss">
+×
+Generation added to the local ComfyUI queue.
+<BUTTON label="Dismiss">
+×

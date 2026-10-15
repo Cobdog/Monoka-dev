@@ -1,0 +1,73 @@
+<NAV label="Surfaces">
+<A label="Canvas (Alt+1)">
+canvas
+<A label="Dataset manager (Alt+2)">
+datasets
+<A label="Image workbench (Alt+3)">
+images
+<A label="Component gallery (Alt+4)">
+gallery
+<BUTTON label="Local engine connected — MiniMax H3 ready">
+H3 engine ready
+<BUTTON label="The timeline projection — the plan chronology + measured transitions (V)">
+timeline
+V
+<BUTTON label="The library projection — every completed output across the session (V)">
+library
+V
+<BUTTON label="Diagnostics — the PII-scrubbed report surface, docked">
+diagnostics
+<BUTTON label="Settings — docked as a floating panel on the canvas surface (other surfaces link here)">
+settings
+index
+⌘K
+90%
+<BUTTON label="Zoom out">
+<BUTTON label="Zoom in">
+<BUTTON label="Zoom to fit">
+<DIV label="First-run setup wizard">
+Set up the studio
+1
+of 4 —
+Engine
+Skip for now
+<BUTTON label="Close the setup wizard">
+Point the studio at a ComfyUI engine. Nothing is scanned or configured manually — the engine's own registry is the model source of truth.
+Engine address
+<INPUT label="http://127.0.0.1:8188 — ComfyUI's default port">
+Test
+Not sure of the port? The probe asks each common port for a heartbeat — you click, it asks; nothing probes on its own.
+Probe common ports
+Prefer the studio to launch its own engine? That lives in Settings → Setup → Managed engine — this wizard only needs an address to try.
+<OL label="Wizard progress">
+Engine
+Models
+Node packs
+First prompt
+Next —
+Models
+A blank canvas
+Describe a shot, or drop anything — the canvas is already the app.
+<TEXTAREA label="Describe the shot…  (/ to focus · Enter to spawn)">
+Spawn video seed
+<DIV label="Entry chips">
+<DIV label="Prompt media type">
+<BUTTON label="New seeds spawn as IMAGE chains — a still per take (the workbench's families)">
+image prompt
+<BUTTON label="New seeds spawn as VIDEO chains — the derived mode follows what you later bind (R-23)">
+video prompt
+<BUTTON label="Adds the no-dialogue policy to the prompt — the render scores the shot with no spoken lines">
+no dialogue
+drop / pick media
+<DIV label="Resume a canvas">
+Resume
+new canvas
+No other canvases yet — the first prompt creates one.
+canvas
+Describe a shot in the prompt bar above — or press
+/
+<BUTTON label="Local engine connected — MiniMax H3 ready">
+H3 ready
+Engine connected — node registry and model inventory re-synced (89 files on the engine).
+<BUTTON label="Dismiss">
+×

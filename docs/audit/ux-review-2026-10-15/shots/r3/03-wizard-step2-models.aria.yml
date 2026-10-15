@@ -1,0 +1,108 @@
+- banner:
+  - navigation "Surfaces":
+    - link "canvas":
+      - /url: /
+      - img
+      - text: canvas
+    - link "datasets":
+      - /url: /?datasets=1
+      - img
+      - text: datasets
+    - link "images":
+      - /url: /?images=1
+      - img
+      - text: images
+    - link "gallery":
+      - /url: /?gallery=1
+      - img
+      - text: gallery
+  - button "H3 engine ready"
+  - button "timeline V":
+    - img
+    - text: timeline V
+  - button "library V":
+    - img
+    - text: library V
+  - button "diagnostics":
+    - img
+    - text: diagnostics
+  - button "settings":
+    - img
+    - text: settings
+  - button "index ⌘K"
+- text: 90%
+- button "Zoom out":
+  - img
+- button "Zoom in":
+  - img
+- button "Zoom to fit":
+  - img
+- dialog "First-run setup wizard":
+  - banner:
+    - strong: Set up the studio 2 of 4 — Models
+    - button "Skip for now"
+    - button "Close the setup wizard":
+      - img
+  - paragraph: The connected engine's own model registry — everything it can see, nothing it can't. Add weights where the engine reads them, then refresh.
+  - list:
+    - listitem:
+      - strong: diffusion models
+      - text: "11"
+    - listitem:
+      - strong: loras
+      - text: "22"
+    - listitem:
+      - strong: text encoders
+      - text: "6"
+    - listitem:
+      - strong: vae
+      - text: "45"
+    - listitem:
+      - strong: vae approx
+      - text: "5"
+  - paragraph: The H3 stack is incomplete — make the missing components visible to the engine (any name shape the pickers recognize resolves), then refresh.
+  - button "Refresh from the engine":
+    - img
+    - text: Refresh from the engine
+  - contentinfo:
+    - list "Wizard progress":
+      - listitem: Engine
+      - listitem: Models
+      - listitem: Node packs
+      - listitem: First prompt
+    - button "Back"
+    - button "Next — Node packs"
+- heading "A blank canvas" [level=1]
+- paragraph: Describe a shot, or drop anything — the canvas is already the app.
+- textbox "Describe the shot… (/ to focus · Enter to spawn)":
+  - /placeholder: Describe the shot…  (/ to focus · Enter to spawn)
+- button "Spawn video seed" [disabled]:
+  - img
+  - text: Spawn video seed
+- group "Entry chips":
+  - radiogroup "Prompt media type":
+    - radio "image prompt":
+      - img
+      - text: image prompt
+    - radio "video prompt" [checked]:
+      - img
+      - text: video prompt
+  - button "no dialogue":
+    - img
+    - text: no dialogue
+  - button "drop / pick media":
+    - img
+    - text: drop / pick media
+- banner:
+  - strong: Resume
+  - button "new canvas":
+    - img
+    - text: new canvas
+- paragraph: No other canvases yet — the first prompt creates one.
+- contentinfo:
+  - text: canvas Describe a shot in the prompt bar above — or press /
+  - button "H3 ready"
+- status:
+  - text: Model inventory re-synced — the engine restarted or its models changed (89 files on the engine).
+  - button "Dismiss": ×
+- button "Choose File"

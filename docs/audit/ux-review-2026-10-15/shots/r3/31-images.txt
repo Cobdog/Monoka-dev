@@ -1,0 +1,108 @@
+<NAV label="Surfaces">
+<A label="Canvas (Alt+1)">
+canvas
+<A label="Dataset manager (Alt+2)">
+datasets
+<A label="Image workbench (Alt+3)">
+images
+<A label="Component gallery (Alt+4)">
+gallery
+<BUTTON label="Settings — docked right here (R-21: opening it never leaves this surface)">
+settings
+H3 Image Workbench
+engine online
+Generate (frame packet)
+<NAV label="Workbench modes">
+Generate
+Compose
+Edit
+Refine
+Burst
+Exit
+<NAV label="Generate lanes">
+<BUTTON label="Text (or an anchored source) to a 5/9/13-frame packet on the hybrid profile — one take whose artifacts are the packet frames; the first-party scorer picks the best frame and you can override it on the take strip.">
+Frame packet
+<BUTTON label="The directed profile for structural changes (re-pose, character swap, new camera angle): a 39-frame settle where the change completes by ~65% of the sequence and the tail holds still — the scorer prefers frames 34-38.">
+Directed video edit (39-frame settle)
+<BUTTON label="H3ImagePrepare — the MiniMax H3 Image Studio pack (user-fetch: Settings → Node packs → ComfyUI-MiniMax-H3-Image-Studio, Fetch…). Stock engines refuse this profile's single-frame latent at validation (ComfyUI issue #15644: the stock conditioning node enforces length ≥ 5 server-side), so without the pack's conditioning the render would fail on the engine — never a silent submit. — Needs the Mamad8 T=1 image VAE (minimax_h3_t1_image_vae_step1597.safetensors), an FL2VA turbo LoRA, ideally the hybrid loader, and the MiniMax H3 Image Studio pack (user-fetch from Settings → Node packs — its conditioning makes single-frame latents legal; stock engines refuse length<5 at validation).">
+T=1 Fast
+unavailable
+<BUTTON label="H3ImagePrepare — the MiniMax H3 Image Studio pack (user-fetch: Settings → Node packs → ComfyUI-MiniMax-H3-Image-Studio, Fetch…). Stock engines refuse this profile's single-frame latent at validation (ComfyUI issue #15644: the stock conditioning node enforces length ≥ 5 server-side), so without the pack's conditioning the render would fail on the engine — never a silent submit. — Needs the H3 Image Studio pack (its Prepare builds the context latent and its single_latent_slice decode is the point of this profile), the Mamad8 T=1 image VAE, an FL2VA turbo LoRA, and ideally the hybrid loader.">
+Fast-sharp slice
+unavailable
+No generation yet — describe what you want and generate. The packet lands here as ONE take; its frames line up on the take strip below.
+Intent
+<TEXTAREA label="Scene-style prompt: describe the whole resulting image — subject, environment, lighting, camera. The packet is one short generation; every frame decodes from the same latent.">
+Ownership contract (generated — never hand-written)
+Preservation of unspecified traits: Preserve the subject's identity and the overall scene; the requested change is a large pose/composition move, so framing may reshape around it (keep-dial 0.55 — the documented band for large moves).
+
+A short, nearly still 5-frame sequence depicting this single scene; one frame will be selected as the final image.
+
+Change nothing else.
+The packet decodes through the video VAE: stills carry video-VAE smoothing (the softness ceiling). Frames vary in quality within a packet — that is expected; picking is part of the pipeline.
+References
+0
+/9
+9 native references is the v1 budget (the engine's REF2VA cap). More requires RefMod bundling, which arrives with the RefMod factory — for now, curate down: keep the identity anchor plus one reference per distinct role, and drop near-duplicates (they are what blurs into a hybrid). Semantic-only overflow is an expert experimental toggle, off by default.
+add image
+from canvas
+<A label="Open the pose rig; its export sends the render back here as a pose reference">
+from pose rig
+Keep unspecified traits
+0.55
+The documented start band for large pose/composition moves.
+LoRA slots
+<SPAN label="Combined 0.00 — healthy ≤ ~0.9; collapse risk ≥ ~1.05">
+combined
+0.00
+· healthy
+Slot 1 rides the form adapter first (cross-form safety) when its node pack is installed.
++ LoRA slot
+Packet tier
+5 frames
+9 frames · samples 22 on stock nodes
+13 frames · samples 22 on stock nodes
+Resolution
+<SELECT label="Aspect ratio">
+16:9
+9:16
+4:3
+3:4
+1:1
+21:9
+free
+<SELECT label="Resolution">
+1344x768
+— optimal
+1664x928
+1888x1056
+2112x1184
+2336x1312
+2688x1504
+3232x1824
+3744x2112
+1312x736
+1248x704
+1184x672
+1152x640
+1088x608
+1024x576
+960x544
+896x512
+864x480
+800x448
+Seed
+<LABEL label="Semantic-only overflow beyond 9 — expert-experimental, off by default (demoted per decision 4)">
+semantic overflow
+experimental
+Generate
+(5 frames)
+Staging: Generate → free → Refine/Burst → free → Exit (24 GB discipline — stages never run concurrently).
+<BUTTON label="Pin the picked frame to the canvas as a media object (consent-gated: this explicit action)">
+Pin frame to canvas
+<BUTTON label="Seed a video chain anchored on this frame (created, never submitted)">
+Start-frame exit →
+<BUTTON label="Bind this session into an animation document — the contract, the reference strip, and the picked frame">
+Open animation →
+<FOOTER label="Takes — the pick surface">
+No takes yet.
