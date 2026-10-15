@@ -1,33 +1,33 @@
-/** The generation job queue: persistence, the ComfyUI history poll loop with
- *  terminal-state guards, the offline deadline sweep, and cancellation.
+/** The generation job queue: persistence, the server-owned landing reader,
+ *  and cancellation.
  *
  *  Wave 1: durable storage lives in the server's SQLite database (POST
- *  /api/lan/jobs per-job upserts). The localStorage snapshot still paints
- *  instantly at boot and serves as the degraded-mode fallback write when the
- *  API is unreachable.
+ *  /api/lan/jobs per-job upserts).
  *
  *  Wave 2a: `jobs` and `cancellingIds` live in `useJobsStore` (zustand) —
  *  every setJobs call site kept its exact value/updater form, and the store
- *  actions are stable references (safe for flows to capture). The poll loop,
- *  deadline sweep, retry, and persistence logic below are UNCHANGED; only
- *  where the state lives moved. `jobsRef` still mirrors the list for the
- *  interval-driven loops — via a store subscription rather than a render
- *  assignment, so the loops always read the latest list even when no
- *  component re-rendered in between. */
+ *  actions are stable references (safe for flows to capture).
+ *
+ *  SERVER-OWNED JOBS (gfv5h0g, 2026-10-15): the ComfyUI history poll loop,
+ *  the offline deadline sweep, and the engine-loss grace path are RETIRED —
+ *  the server's job watcher owns observation, terminal writes, and take
+ *  landing; this hook APPLIES the watcher's `landing` envelopes (and the
+ *  boot/resync server reads). The localStorage jobs mirror is now a READ
+ *  CACHE (the boot paint + the degraded boot when the API is unreachable);
+ *  nothing writes it anymore — the server store is the only truth. What
+ *  stays client-owned: submission (the in-memory graph), the one crash
+ *  retry (the graph lives nowhere else), cancellation, and the debounced
+ *  persist that delivers NEW job records to the server. */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppSettings, GenerationJob } from '../types'
-import { extractExecutionError, isPastRunningDeadline, isPreviewCrashSignature, isTerminalStatus, POLL_FAILURE_STREAK_LIMIT, reduceJobPoll, type PollObservation, type PollReduction } from '../lib/jobReducer'
-import { extractOutputFile, extractOutputUrl, withTiledVideoDecode } from '../lib/workflow'
-import { extractAutomatedReferenceSet, hydrateLoadedJobs, playableOutputUrl, recordCharacterSheetImages, recordCharacterTurntable, recordLocationWalkthrough, recordMovieOutput } from '../lib/jobRecords'
+import { isPreviewCrashSignature, isTerminalStatus } from '../lib/jobReducer'
+import { extractOutputFile, withTiledVideoDecode } from '../lib/workflow'
+import { extractAutomatedReferenceSet, hydrateLoadedJobs, recordCharacterSheetImages, recordCharacterTurntable, recordLocationWalkthrough, recordMovieOutput } from '../lib/jobRecords'
 import { fetchServerJobs, saveServerJobs, serverStorageMigrationDone } from '../lib/serverStorage'
-import { registerOutputAsset } from '../media/httpPreview'
 import { dbg } from '../lib/dbg'
-import { startPollLoop } from '../lib/promptWatch'
-import { engineRestartFailure, engineUnreachableFailure, ENGINE_LOST_JOB_GRACE_MS } from '../lib/engineWatch'
 import type { LiveProgress } from '../lib/useLivePreview'
 import { subscribe } from '../lib/useRealtime'
 import { useJobsStore } from '../state/jobsStore'
-import { useSessionStore } from '../state/sessionStore'
 import { useDebouncedPersist } from './useDebouncedPersist'
 
 export type NoticeTone = 'error' | 'success' | 'neutral'
@@ -37,7 +37,7 @@ export function useGenerationQueue(options: {
   connected: boolean
   notify(tone: NoticeTone, text: string): void
 }) {
-  const { settings, connected, notify } = options
+  const { settings, notify } = options
   const jobs = useJobsStore((state) => state.jobs)
   const cancellingIds = useJobsStore((state) => state.cancellingIds)
   // Stable store actions — captured once, never go stale.
@@ -46,7 +46,6 @@ export function useGenerationQueue(options: {
   const cancellationRequests = useRef(new Set<string>())
   const jobsRef = useRef(jobs)
   useEffect(() => useJobsStore.subscribe((state) => { jobsRef.current = state.jobs }), [])
-  const pendingKey = jobs.filter((job) => job.status === 'queued' || job.status === 'running').map((job) => job.id).join(',')
 
   // Boot load: the server store is authoritative. The localStorage snapshot
   // (already in state) paints instantly for a pre-migration first boot; the
@@ -106,250 +105,131 @@ export function useGenerationQueue(options: {
       // Empty-jobs guard (both review waves found this independently — g5x37k8
       // M13 + d6iy68r m2, 2026-09-19): the boot transition used to POST
       // {"jobs":[]} on every fresh boot; the server rejects empty batches
-      // with a 400 and the catch mirrored [] to localStorage as bogus
-      // "degraded mode". An empty list has nothing to persist.
+      // with a 400. An empty list has nothing to persist.
       if (!persistable.length) return
+      // (gfv5h0g) No localStorage fallback write anymore: the mirror is a
+      // read cache (boot paint + degraded boot), and a failed POST retries
+      // on the next debounce — the server store is the only landing truth,
+      // and the watcher reads IT, never this tab's copy.
       void saveServerJobs(persistable).catch(() => {
-        // Degraded mode: mirror to the legacy store so a boot while the API
-        // is unreachable still finds the history (the boot loader reads it
-        // when the server answer fails).
-        try { localStorage.setItem('monoka.jobs', JSON.stringify(persistable)) } catch { /* Quota: the next debounced write retries. */ }
+        dbg('queue', { verdict: 'persist-deferred', count: persistable.length })
       })
     })
   }, [jobs, persistJobs, storageBootDone])
 
-  // The fabric resync path (below) triggers one immediate sweep through this
-  // ref; declared before the poll effect that assigns it.
-  const sweepRef = useRef<(() => void) | null>(null)
-  useEffect(() => {
-    if (!settings || !pendingKey || !connected) return
-    // Applies a reduction only while the job is still non-terminal, so a stale
-    // in-flight poll response can neither resurrect nor duplicate work.
-    const applyReduction = (jobId: string, reduction: PollReduction) => {
-      setJobs((current) => {
-        let changed = false
-        const next = current.map((item) => {
-          if (item.id !== jobId || isTerminalStatus(item.status) || reduction.job === item) return item
-          changed = true
-          return reduction.job
-        })
-        return changed ? next : current
-      })
-    }
-    const sweep = () => {
-      for (const job of jobsRef.current.filter((j) => j.status === 'queued' || j.status === 'running')) {
-        const promptId = job.promptId
-        if (!promptId) continue
-        void window.monoka.getHistory(settings.comfyUrl, promptId).then(async (history) => {
-          const entry = history[promptId] as { status?: { status_str?: string; completed?: boolean; messages?: unknown[] } } | undefined
-          const mediaType = job.mediaType ?? 'video'
-          const outputUrl = playableOutputUrl(extractOutputUrl(history, promptId, settings.comfyUrl, mediaType))
-          let observation: PollObservation
-          if (entry?.status?.status_str === 'error') {
-            // Structural failure capture: which node/class failed plus a
-            // SANITIZED reason from the history's execution_error message —
-            // never the raw exception text, which can echo input values.
-            const detail = extractExecutionError(history, promptId)
-            observation = detail
-              ? { kind: 'executionError', node: detail.node, nodeType: detail.nodeType, reason: detail.reason }
-              : { kind: 'executionError', reason: '' }
-          } else if (entry?.status?.completed) {
-            // Attribute the output by the exact filename ComfyUI reported —
-            // never by the newest file on disk, which can belong to a
-            // concurrent render and would poison library reference sets. A
-            // descriptor that resolves remotely but not locally still
-            // completes the job (streamed via the media proxy).
-            const file = extractOutputFile(history, promptId, mediaType)
-            if (file) {
-              const localOutput = await window.monoka.resolveOutput(settings.outputDirectory, file)
-              observation = { kind: 'completed', outputUrl: outputUrl ?? localOutput ?? '', localOutputPath: localOutput ?? undefined }
-            } else {
-              observation = { kind: 'completedNoLocalOutput' }
-            }
-          } else {
-            observation = { kind: 'incomplete' }
-          }
-          // Queue hygiene: a failed MiniMax render gets one automatic
-          // engine-reset + tiled-VAE retry before the error is surfaced —
-          // most H3 failures on 16 GB cards are VRAM fragmentation that a
-          // /free soft-reset clears. (r3q1o49) The retry is never a silent
-          // flash: when the failure carries the stock-preview crash
-          // signature, the notice and the tile label name it — the retry
-          // submits WITHOUT a preview request, so the take lands without
-          // previews and the record says so.
-          if (observation.kind === 'executionError' && !job.retriedOnce && (job.provider ?? 'monoka') === 'monoka' && job.graph) {
-            const previewCrash = isPreviewCrashSignature(observation)
-            try {
-              await window.monoka.freeComfyMemory(settings.comfyUrl)
-              const retryGraph = withTiledVideoDecode(job.graph as Record<string, { class_type: string; inputs: Record<string, unknown> }>)
-              const resubmitted = await window.monoka.submitPrompt(settings.comfyUrl, retryGraph)
-              setJobs((current) => current.map((item) => item.id === job.id
-                ? {
-                    ...item,
-                    promptId: resubmitted.prompt_id,
-                    status: 'queued',
-                    progress: 2,
-                    progressLabel: previewCrash ? 'Preview unavailable on this engine — retrying without previews' : 'Auto-retrying after engine reset (tiled VAE)',
-                    error: undefined,
-                    retriedOnce: true,
-                    ...(previewCrash ? { previewUnavailable: true } : {}),
-                  }
-                : item))
-              notify('neutral', previewCrash
-                ? 'Preview unavailable on this engine — retrying without previews.'
-                : 'A render failed — the engine was reset and the job re-queued once with tiled VAE decoding.')
-              return
-            } catch { /* Fall through to the normal failure handling. */ }
-          }
-          const reduction = reduceJobPoll(job, observation, Date.now())
-          if (reduction.transitionedTo === 'completed') {
-            dbg('landing', { jobId: job.id, promptId, verdict: 'completed', mediaType, node: observation.kind === 'executionError' ? observation.node : undefined })
-            // Re-check live state: an earlier in-flight response may have
-            // already completed this job and fired these side effects.
-            const current = jobsRef.current.find((item) => item.id === job.id)
-            if (current && !isTerminalStatus(current.status)) {
-              const remote = reduction.job.outputUrl ?? ''
-              recordMovieOutput(job.movieLink, remote)
-              let extractionError: string | null = null
-              const local = reduction.job.localOutputPath
-              // Output attribution (wave 2d): the moment a video lands a
-              // local path, register the frame-indexed asset record and
-              // warm-start its filmstrip sheet — fire-and-forget, so a
-              // thumbnail problem can never surface on the completion path.
-              if (local && mediaType === 'video') {
-                registerOutputAsset({ path: local, width: job.width, height: job.height, duration: job.duration })
-              }
-              const imageDescriptor = job.mediaType === 'image' ? extractOutputFile(history, promptId, mediaType) : undefined
-              if (job.characterProjectId && imageDescriptor) {
-                extractionError = await recordCharacterSheetImages(job.characterProjectId, imageDescriptor, settings)
-              } else if (job.characterProjectId) {
-                recordCharacterTurntable(job.characterProjectId, local ?? remote)
-                if (local) extractionError = await extractAutomatedReferenceSet('character', job.characterProjectId, local, job.duration, settings)
-              } else if (job.locationProjectId) {
-                recordLocationWalkthrough(job.locationProjectId, local ?? remote)
-                if (local) extractionError = await extractAutomatedReferenceSet('location', job.locationProjectId, local, job.duration, settings)
-              }
-              if (extractionError) notify('error', `The video rendered, but its reference frames could not be extracted: ${extractionError}`)
-            }
-          }
-          applyReduction(job.id, reduction)
-          if (reduction.transitionedTo === 'failed') dbg('queue', { jobId: job.id, promptId, verdict: 'failed', reason: (reduction.job.error ?? '').slice(0, 160) })
-        }).catch(() => {
-          // (R-26, audit B P2-2) A poll that cannot even reach the engine is
-          // an observation too — feed it through the reducer so the
-          // consecutive-failure streak fails the job honestly in
-          // seconds-to-minutes instead of spinning "running" to the 60-min
-          // deadline sweep (which stays as the independent backstop).
-          const reduction = reduceJobPoll(job, { kind: 'pollFailed' }, Date.now())
-          if (reduction.transitionedTo === 'failed') {
-            dbg('queue', { jobId: job.id, promptId, verdict: 'failed', reason: 'poll-failure streak', streak: POLL_FAILURE_STREAK_LIMIT })
-          }
-          applyReduction(job.id, reduction)
-        })
-      }
-    }
-    sweepRef.current = sweep
-    // (§1.1 wiring, 2026-09-26) The sweep rides the shared prompt-watch
-    // kernel (lib/promptWatch) — the loop mechanics (immediate-run guard,
-    // cancel, teardown) come from there instead of a bare setInterval. The
-    // kernel's own tolerance/deadline stay inert BY DESIGN here: a failed
-    // poll is an observation the reducer already counts per job (the streak
-    // in reduceJobPoll), and per-job deadlines belong to the 30 s deadline
-    // sweep below — so the tick never throws and the wall-clock cap is
-    // disabled. The armed flag preserves setInterval's first-fire-at-t+1s
-    // semantics exactly (startPollLoop otherwise ticks immediately).
-    let armed = false
-    const loop = startPollLoop({
-      tick: async () => {
-        if (!armed) { armed = true; return false }
-        sweep()
-        return jobsRef.current.every((job) => isTerminalStatus(job.status))
-      },
-      intervalMs: 1000,
-      deadlineMs: Number.MAX_SAFE_INTEGER,
-      onExhausted: (message) => {
-        dbg('queue', { verdict: 'sweep-exhausted', message })
-        notify('error', message)
-      },
-    })
-    return () => { sweepRef.current = null; loop.cancel() }
-  }, [connected, notify, pendingKey, setJobs, settings])
-
-  // Realtime fabric resync (wave 1): a per-channel sequence gap means the
-  // server dropped envelopes (bounded overflow) — one immediate history sweep
-  // re-reconciles any missed progress. The 1s poll loop above STAYS untouched
-  // as the reconciliation path: its terminal-state guards remain the safety
-  // net, and demoting the poll is a LATER decision, only after the fabric
-  // proves out in real use.
+  // SERVER-OWNED LANDING (gfv5h0g — the R2 fix, 2026-10-15): the poll-and-
+  // write loop is RETIRED. The server's job watcher observes engine
+  // completion (its own history poll + the fabric's shared upstream), settles
+  // job rows through the same jobReducer, lands takes through the document
+  // store, and announces every settlement as a `landing` envelope on the
+  // job channel. This surface is a READER: it applies settled records
+  // (terminal-guarded — a stale envelope can neither resurrect nor duplicate
+  // a settlement) and re-fetches server truth on a fabric sequence gap (the
+  // resync path's new shape; the local history sweep is gone with the poll).
+  // What remains client-owned: submission (the in-memory graph), the one
+  // crash retry below (the graph lives nowhere else), cancellation, and the
+  // debounced persist that delivers new job records TO the server.
   useEffect(() => subscribe('job', (envelope) => {
-    if (envelope.type === 'resync') sweepRef.current?.()
-  }), [])
-
-  // R-01 (Wave 1): engine-loss honesty — the acceptance bar's step 5. Two
-  // paths, both seconds-to-minutes (the 60-min deadline sweep below stays as
-  // the backstop):
-  //   LOST: the engine stayed unreachable past the grace → active jobs fail
-  //   with the engine-unreachable advice instead of spinning "running".
-  //   RECOVERED: the engine came back — any active prompt the fresh instance
-  //   has never heard of died with the old process; it fails with the
-  //   restart advice. A prompt the instance still knows survives the blip.
-  // The notify callback is held through a ref: its identity changes on every
-  // host render, and a deps-change re-subscription would clear the pending
-  // grace timer the moment the loss toast re-renders the tree (found by the
-  // Wave-1 walk: the grace never fired because the toast itself cancelled it).
-  const notifyRef = useRef(notify)
-  notifyRef.current = notify
-  useEffect(() => {
-    let graceTimer = 0
-    const failJobs = (ids: Set<string>, reason: string) => {
-      if (!ids.size) return
-      dbg('queue', { verdict: 'engine-loss', failed: ids.size })
-      setJobs((current) => current.map((item) => ids.has(item.id) && !isTerminalStatus(item.status) ? { ...item, status: 'failed', error: reason } : item))
-      notifyRef.current('error', reason)
+    if (envelope.type === 'resync') {
+      void fetchServerJobs()
+        .then((loaded) => {
+          if (!loaded.length) return
+          setJobs((current) => {
+            const byId = new Map(loaded.map((job) => [job.id, job]))
+            const merged = current.map((job) => {
+              const settled = byId.get(job.id)
+              return settled && !isTerminalStatus(job.status) ? { ...job, ...settled, graph: job.graph } : job
+            })
+            const known = new Set(merged.map((job) => job.id))
+            for (const job of loaded) if (!known.has(job.id)) merged.push(hydrateLoadedJobs([job])[0] ?? job)
+            return merged
+          })
+        })
+        .catch(() => undefined)
+      return
     }
-    const activeIds = () => new Set(jobsRef.current.filter((job) => job.status === 'queued' || job.status === 'running').map((job) => job.id))
-    const unsubscribe = useSessionStore.subscribe((state, previous) => {
-      if (state.engineWatch === previous.engineWatch) return
-      window.clearTimeout(graceTimer)
-      const { lostAt, recoveredAt } = state.engineWatch
-      if (lostAt !== null) {
-        const wait = Math.max(0, lostAt + ENGINE_LOST_JOB_GRACE_MS - Date.now())
-        graceTimer = window.setTimeout(() => {
-          // Still lost at fire time (a recovery clears lostAt and re-schedules
-          // nothing) → the grace has genuinely elapsed.
-          if (useSessionStore.getState().engineWatch.lostAt === lostAt) failJobs(activeIds(), engineUnreachableFailure())
-        }, wait)
-      } else if (recoveredAt !== null) {
-        // The engine is back: reconcile active prompts against the fresh
-        // instance's history. A fetch failure here is inconclusive — skip
-        // (the grace path covers a still-dead engine).
-        const comfyUrl = state.settings?.comfyUrl
-        if (!comfyUrl) return
-        for (const job of jobsRef.current.filter((entry) => entry.status === 'queued' || entry.status === 'running')) {
-          const promptId = job.promptId
-          if (!promptId) continue
-          void window.monoka.getHistory(comfyUrl, promptId).then((history) => {
-            if (history && !history[promptId]) failJobs(new Set([job.id]), engineRestartFailure())
-          }).catch(() => undefined)
-        }
+    if (envelope.type !== 'landing') return
+    const payload = envelope.payload as { outcome?: string; jobId?: string; failureKind?: string; job?: GenerationJob } | null
+    if (!payload || typeof payload.jobId !== 'string' || !payload.job || typeof payload.job !== 'object') return
+    const settled = payload.job
+    const applySettled = () => {
+      setJobs((current) => current.map((item) => item.id === payload.jobId && !isTerminalStatus(item.status) ? { ...item, ...settled, graph: item.graph } : item))
+    }
+    if (payload.outcome === 'completed' && settings) {
+      dbg('landing', { jobId: payload.jobId, verdict: 'completed', serverOwned: true })
+      recordMovieOutput(settled.movieLink, settled.outputUrl ?? '')
+      // The character/location reference lanes stay client-owned (their
+      // extraction libs orchestrate server routes from here): a completed
+      // settlement for one of those jobs runs the same recording the retired
+      // poll loop ran, against the settled record's paths.
+      const candidate = jobsRef.current.find((item) => item.id === payload.jobId)
+      if (candidate && (candidate.characterProjectId || candidate.locationProjectId)) {
+        void (async () => {
+          const mediaType = candidate.mediaType ?? 'video'
+          const promptId = settled.promptId ?? candidate.promptId ?? ''
+          const history = promptId ? await window.monoka.getHistory(settings.comfyUrl, promptId).catch(() => ({}) as Record<string, unknown>) : {}
+          const local = settled.localOutputPath ?? candidate.localOutputPath
+          const remote = settled.outputUrl ?? ''
+          let extractionError: string | null = null
+          const imageDescriptor = mediaType === 'image' ? extractOutputFile(history, promptId, mediaType) : undefined
+          if (candidate.characterProjectId && imageDescriptor) {
+            extractionError = await recordCharacterSheetImages(candidate.characterProjectId, imageDescriptor, settings)
+          } else if (candidate.characterProjectId) {
+            recordCharacterTurntable(candidate.characterProjectId, local ?? remote)
+            if (local) extractionError = await extractAutomatedReferenceSet('character', candidate.characterProjectId, local, candidate.duration, settings)
+          } else if (candidate.locationProjectId) {
+            recordLocationWalkthrough(candidate.locationProjectId, local ?? remote)
+            if (local) extractionError = await extractAutomatedReferenceSet('location', candidate.locationProjectId, local, candidate.duration, settings)
+          }
+          if (extractionError) notify('error', `The video rendered, but its reference frames could not be extracted: ${extractionError}`)
+        })()
       }
-    })
-    return () => { unsubscribe(); window.clearTimeout(graceTimer) }
-  }, [setJobs])
-
-  // Deadline sweep, independent of ComfyUI connectivity: a job whose polls
-  // stopped resolving (server died mid-render) must still reach a terminal
-  // state instead of showing "running" forever.
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      for (const job of jobsRef.current) {
-        if (!isPastRunningDeadline(job, Date.now())) continue
-        const reduction = reduceJobPoll(job, { kind: 'pollFailed' }, Date.now())
-        if (reduction.transitionedTo) setJobs((current) => current.map((item) => item.id === job.id && !isTerminalStatus(item.status) ? reduction.job : item))
+    }
+    if (payload.outcome === 'failed') {
+      dbg('queue', { jobId: payload.jobId, verdict: 'failed', reason: (settled.error ?? '').slice(0, 160) })
+      // The r3q1o49 crash-retry, preserved where the graph lives: a failed
+      // MiniMax render gets ONE automatic engine-reset + tiled-VAE retry
+      // before the error stands — most H3 failures on 16 GB cards are VRAM
+      // fragmentation a /free soft-reset clears, and the stock-preview crash
+      // (r3q1o49's null-previewer class) specifically recovers WITHOUT
+      // previews on the resubmission. The retry is never a silent flash:
+      // the notice and the tile label name what happened, and the retry
+      // submits with NO preview request (the take lands preview-less and
+      // the record says so). Only the surface holding the in-memory submit
+      // graph can do this — a closed tab's failure stands as settled.
+      const candidate = jobsRef.current.find((item) => item.id === payload.jobId)
+      const previewCrash = isPreviewCrashSignature({ kind: 'executionError', reason: settled.error ?? '', nodeType: '' })
+      if (settings && candidate && !isTerminalStatus(candidate.status) && !candidate.retriedOnce
+        && (candidate.provider ?? 'monoka') === 'monoka' && candidate.graph && payload.failureKind === 'executionError') {
+        void (async () => {
+          try {
+            await window.monoka.freeComfyMemory(settings.comfyUrl)
+            const retryGraph = withTiledVideoDecode(candidate.graph as Record<string, { class_type: string; inputs: Record<string, unknown> }>)
+            const resubmitted = await window.monoka.submitPrompt(settings.comfyUrl, retryGraph)
+            setJobs((current) => current.map((item) => item.id === candidate.id
+              ? {
+                  ...item,
+                  promptId: resubmitted.prompt_id,
+                  status: 'queued',
+                  progress: 2,
+                  progressLabel: previewCrash ? 'Preview unavailable on this engine — retrying without previews' : 'Auto-retrying after engine reset (tiled VAE)',
+                  error: undefined,
+                  retriedOnce: true,
+                  ...(previewCrash ? { previewUnavailable: true } : {}),
+                }
+              : item))
+            notify('neutral', previewCrash
+              ? 'Preview unavailable on this engine — retrying without previews.'
+              : 'A render failed — the engine was reset and the job re-queued once with tiled VAE decoding.')
+          } catch {
+            applySettled()
+          }
+        })()
+        return
       }
-    }, 30_000)
-    return () => window.clearInterval(timer)
-  }, [setJobs])
+    }
+    applySettled()
+  }), [notify, settings, setJobs])
 
   const cancelJob = useCallback(async (job: GenerationJob) => {
     if (!settings) return

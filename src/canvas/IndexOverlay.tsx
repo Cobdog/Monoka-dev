@@ -190,15 +190,27 @@ export function IndexOverlay() {
       }
     }
     const linkedJobChains = new Map(Object.entries(chainJobs).map(([chainId, jobId]) => [jobId, chainId]))
+    // (gfv5h0g) The palette's recovery link: a job whose session link
+    // (chainJobs) is absent — a FRESH session after the originator tab
+    // closed — still knows its object through the PERSISTED manifest
+    // (manifest.canvas), so its row navigates to the chain and its
+    // server-landed take instead of reading "not on an open canvas".
+    const manifestCanvasLinkOf = (job: { manifest?: Record<string, unknown> }): { chainId: string; projectId: string | null } | null => {
+      const canvas = job.manifest && typeof job.manifest.canvas === 'object' ? job.manifest.canvas as Record<string, unknown> : null
+      if (!canvas || typeof canvas.chainId !== 'string' || !canvas.chainId) return null
+      return { chainId: canvas.chainId, projectId: typeof canvas.projectId === 'string' ? canvas.projectId : null }
+    }
     for (const job of jobs) {
       if (needle && !job.prompt.toLowerCase().includes(needle)) continue
-      const chainId = linkedJobChains.get(job.id)
+      const linked = linkedJobChains.get(job.id)
+      const manifestLink = linked ? null : manifestCanvasLinkOf(job)
+      const chainId = linked ?? manifestLink?.chainId ?? undefined
       list.push({
         key: `job:${job.id}`,
         kind: 'job',
         label: job.prompt ? `${job.prompt.slice(0, 70)}` : job.id,
         note: `job · ${job.status}${chainId ? '' : ' — not on an open canvas'}`,
-        projectId: chainId ? activeProjectId ?? undefined : undefined,
+        projectId: linked ? activeProjectId ?? undefined : manifestLink?.projectId ?? undefined,
         chainId,
         disabled: !chainId,
         cancellable: chainId ? job.status === 'queued' || job.status === 'running' : false,

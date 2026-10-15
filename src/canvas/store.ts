@@ -55,7 +55,6 @@ import {
   effectiveMode,
   emptyLibraries,
   forkInputSpec,
-  latentPathFor,
   mediaForOutput,
   modeLabelFor,
   motionContextFolder,
@@ -81,7 +80,7 @@ import {
   type PlanGapKind,
   type PlanSegment,
 } from './plan'
-import { activeLorasOf, compileLoraTimeline, loraTimelineToPlanDocument, readLoraTimelineDoc } from './loraTimeline'
+import { compileLoraTimeline, loraTimelineToPlanDocument, readLoraTimelineDoc } from './loraTimeline'
 import { DEFAULT_SETTINGS, type OpKind } from './ops'
 import type { EndpointDirection, EndpointOption, OptionAvailability } from './options'
 import { findH3PreviewOverrideNode, h3StackReady } from '../lib/h3Stack'
@@ -90,7 +89,7 @@ import { mergeModelOverrides, resolveModelOverrides, resolveModels, type ModelFa
 import { inferSelections } from '../lib/modelSelection'
 import { submitH3Render, validateH3Render } from '../lib/h3Submit'
 import { submitWorkbenchGeneration, validateWorkbenchRequest } from '../images/submit'
-import { canvasEditHandoff, canvasH3OneFrameRequest, queuedImageEngineRefusal, stashCanvasEditHandoff } from './stillIntent'
+import { canvasH3OneFrameRequest, queuedImageEngineRefusal } from './stillIntent'
 import { buildH3ImageGraph, H3IMG_RECIPE_PINS, t1BuildOptionsFromSettings } from '../lib/graph/h3image'
 import { submitMusic3, validateMusic3 } from '../lib/music3Submit'
 import { buildMusic3Workflow, inferMusic3Selection, type Music3GenerationOptions } from '../lib/music3Workflow'
@@ -98,6 +97,7 @@ import { characterReferences, loadCharacterProjects } from '../lib/characterLibr
 import { locationReferences, loadLocationProjects } from '../lib/locationLibrary'
 import { loadWardrobeProjects } from '../lib/wardrobeLibrary'
 import { useJobsStore } from '../state/jobsStore'
+import { subscribe } from '../lib/useRealtime'
 import { useSessionStore } from '../state/sessionStore'
 import { dbg } from '../lib/dbg'
 import type { GenerationJob, MediaFile, ModelOverrideSlots, ModelSelection } from '../types'
@@ -533,40 +533,20 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     }
   }
 
-  /** Completed jobs that have not landed a take on their chain yet → append
-   *  output + take (canonical auto-pointed, blob registered server-side).
-   *  Idempotent by the take's jobId (server-enforced at the write boundary);
-   *  re-entrancy-guarded so overlapping jobs notifications cannot
-   *  double-append. Cancelled jobs unlink.
-   *
-   *  Remote-only completions (B2): a job without a local file lands through
-   *  the server-side fetch of the engine's EXACT output descriptor; when
-   *  that is impossible, the failure lands VISIBLY on the object (an
-   *  errored take carrying the reason + the preserved descriptor) — never a
-   *  silent idle tile, never a lost render. Landing retries are bounded
-   *  (m6): after MAX_LANDING_ATTEMPTS the failure parks durably instead of
-   *  retrying + toasting on every tick forever. */
+  /** The WORKBENCH PACKET landing — the one client-owned lane that survives
+   *  the server-owned-jobs move (gfv5h0g). Video/audio/T=1 takes land
+   *  SERVER-side (the job watcher writes them through the document store and
+   *  the fabric `landing` subscription above reloads this document); the
+   *  scored workbench packet stays here because the first-party scorer runs
+   *  in the surface. The server backstops every packet after its grace
+   *  window (appendTake's jobId idempotence arbitrates the race — one take,
+   *  never two), so a closed tab loses nothing either way. Cancelled jobs
+   *  unlink. Bounded retries (m6): after MAX_LANDING_ATTEMPTS the failure
+   *  heartbeat keeps it visible without spamming every tick. */
   let landingInFlight = false
   const landingAttempts = new Map<string, number>()
   const MAX_LANDING_ATTEMPTS = 3
   const LANDING_HEARTBEAT = 10
-
-  /** The ComfyUI output descriptor encoded in a job's (translated) media
-   *  URL — filename/subfolder/type survive webMediaUrl's translation, so a
-   *  reloaded job still knows exactly which engine file to fetch. */
-  const engineOutputDescriptorFromUrl = (url: string | null | undefined): { filename: string; subfolder?: string; type?: string } | null => {
-    if (!url || !url.startsWith('/api/lan/media')) return null
-    try {
-      const parsed = new URL(url, 'http://monoka.local')
-      const filename = parsed.searchParams.get('filename')
-      if (!filename) return null
-      const subfolder = parsed.searchParams.get('subfolder') ?? ''
-      const type = parsed.searchParams.get('type') ?? ''
-      return { filename, ...(subfolder ? { subfolder } : {}), ...(type ? { type } : {}) }
-    } catch {
-      return null
-    }
-  }
 
   const landCompletions = async () => {
     if (landingInFlight) return
@@ -583,7 +563,9 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         set((current) => { const links = { ...current.chainJobs }; delete links[chainId]; return { chainJobs: links } })
         continue
       }
-      if (job.status === 'completed' && !landed.has(jobId) && (job.localOutputPath || job.outputUrl)) pending.push({ chainId, job })
+      // Only the SCORED packet lane lands client-side — everything else is
+      // server-owned truth arriving through the fabric.
+      if (isWorkbenchJob(job) && job.status === 'completed' && !landed.has(jobId) && (job.localOutputPath || job.outputUrl)) pending.push({ chainId, job })
     }
     if (!pending.length) return
     landingInFlight = true
@@ -591,114 +573,32 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       for (const { chainId, job } of pending) {
         const chain = doc.chains.find((entry) => entry.id === chainId)
         if (!chain) continue
-        // H3 image workbench (k9vu6t0): a workbench job lands as ONE packet
-        // take whose artifacts are the N frame outputs (all of them, scored
-        // by the first-party scorer) — the packet-aware branch, never the
-        // one-artifact video path.
-        if (isWorkbenchJob(job)) {
-          const attempt = (landingAttempts.get(job.id) ?? 0) + 1
-          landingAttempts.set(job.id, attempt)
-          try {
-            const result = await landWorkbenchTake({
-              chain,
-              job,
-              settings: useSessionStore.getState().settings,
-              comfyUrl: useSessionStore.getState().settings?.comfyUrl ?? '',
-              ensureOutput: async (targetChainId) => (await documentsApi.createOutput({ chainId: targetChainId, substrates: ['decoded'] })).id,
-            })
-            // (W7, perfect-state sweep 2026-09-27) The landing toast speaks
-            // the LANE's language: single-frame lanes (T=1 fast, refine,
-            // R2I stills) never hear packet copy — and no pool-of-one
-            // superlatives (the landing lands those unscored).
-            if (result.landed) {
-              const single = result.landing?.frames === 1
-              get().toast('success', single
-                ? (result.landing?.op === 'refine'
-                  ? 'The refine landed as a new take — provenance-linked to the frame it refined.'
-                  : 'The frame landed on the take strip.')
-                : 'The image packet landed — the take strip holds its frames; the scorer\'s pick is marked.')
-            } else if (result.error) get().toast('error', `The workbench render could not land: ${result.error}`)
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
-            if (attempt === MAX_LANDING_ATTEMPTS || attempt % LANDING_HEARTBEAT === 0) {
-              get().toast('error', `The finished workbench render could not land: ${message}`)
-            }
-          }
-          continue
-        }
-        // Phase 4: a render whose graph saved a sampler latent records its
-        // saved-clip facts (manifest.motionContext, written by the submit
-        // core) — the take becomes latent-forkable (substratesForTake).
-        const manifest = job.manifest && typeof job.manifest === 'object' ? (job.manifest as Record<string, unknown>) : null
-        const manifestMotion = manifest && manifest.motionContext && typeof manifest.motionContext === 'object' ? (manifest.motionContext as Record<string, unknown>) : null
-        const motionContext = manifestMotion && typeof manifestMotion.folder === 'string' && typeof manifestMotion.clipIndex === 'number'
-          ? { folder: manifestMotion.folder, clipIndex: manifestMotion.clipIndex }
-          : null
-        const descriptor = engineOutputDescriptorFromUrl(job.outputUrl)
-        let sourcePath: string | null = job.localOutputPath ?? null
-        let remoteFetched = false
-        let failureReason: string | null = sourcePath ? null : 'the render finished without a local output file'
-        if (!sourcePath && descriptor) {
-          try {
-            const ingested = await documentsApi.ingestEngineOutput({ ...descriptor, kind: job.mediaType ?? 'video' })
-            sourcePath = ingested.path
-            remoteFetched = true
-            failureReason = null
-          } catch (error) {
-            failureReason = `the engine output could not be fetched: ${error instanceof Error ? error.message : String(error)}`
-          }
-        }
         const attempt = (landingAttempts.get(job.id) ?? 0) + 1
         landingAttempts.set(job.id, attempt)
-        const canRetry = attempt < MAX_LANDING_ATTEMPTS
-        if (failureReason && canRetry) continue // bounded retry (m6): the next jobs tick tries again, silently
         try {
-          let outputId = chain.outputs[0]?.id ?? null
-          if (!outputId) {
-            const output = await documentsApi.createOutput({ chainId, substrates: ['decoded'] })
-            outputId = output.id
-          }
-          // Latent durability (B1): the engine-side RELATIVE latent resolves
-          // against the output directory at landing — an absolute existing
-          // file the server registers into the content-addressed blob tree
-          // (hashed, evictable, exported) instead of a raw relative string
-          // that dies with the engine's output directory.
-          const settings = useSessionStore.getState().settings
-          const latentPath = motionContext
-            ? (settings?.outputDirectory ? `${settings.outputDirectory.replace(/\/+$/, '')}/${latentPathFor(motionContext)}` : latentPathFor(motionContext))
-            : null
-          const metrics: Record<string, unknown> = {
-            kind: job.mediaType ?? 'video',
-            duration: job.duration,
-            width: job.width,
-            height: job.height,
-            sourcePath: sourcePath,
-            outputUrl: job.outputUrl ?? null,
-            ...(remoteFetched && descriptor ? { remoteProvenance: { fetched: true, filename: descriptor.filename, subfolder: descriptor.subfolder ?? null, type: descriptor.type ?? null } } : {}),
-            ...(failureReason ? { landingError: failureReason, outputFile: descriptor } : {}),
-            ...(motionContext ? { motionContext } : {}),
-            // Which LoRAs were active on this take (7twfk6o): the turbo LoRA
-            // the manifest's models record already names (at its strength) +
-            // the temporal stack recorded at submit — every take states its
-            // own LoRA truth (activeLorasOf, pure + unit-tested).
-            ...activeLorasOf(manifest),
-          }
-          await documentsApi.appendTake({
-            outputId,
-            jobId: job.id,
-            artifacts: sourcePath ? [sourcePath] : [],
-            ...(latentPath ? { latentPath } : {}),
-            metrics,
+          const result = await landWorkbenchTake({
+            chain,
+            job,
+            settings: useSessionStore.getState().settings,
+            comfyUrl: useSessionStore.getState().settings?.comfyUrl ?? '',
+            ensureOutput: async (targetChainId) => (await documentsApi.createOutput({ chainId: targetChainId, substrates: ['decoded'] })).id,
           })
-          if (failureReason) get().toast('error', `“${chainPromptOf(chain)}” finished, but ${failureReason}. The failure is recorded on the object — nothing was silently dropped.`)
-          else get().toast('success', `The render landed on “${chainPromptOf(chain)}”.`)
+          // (W7, perfect-state sweep 2026-09-27) The landing toast speaks
+          // the LANE's language: single-frame lanes (T=1 fast, refine,
+          // R2I stills) never hear packet copy — and no pool-of-one
+          // superlatives (the landing lands those unscored).
+          if (result.landed) {
+            const single = result.landing?.frames === 1
+            get().toast('success', single
+              ? (result.landing?.op === 'refine'
+                ? 'The refine landed as a new take — provenance-linked to the frame it refined.'
+                : 'The frame landed on the take strip.')
+              : 'The image packet landed — the take strip holds its frames; the scorer\'s pick is marked.')
+          } else if (result.error) get().toast('error', `The workbench render could not land: ${result.error}`)
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error)
-          // Transient landing failures (documents server unreachable) retry
-          // silently while attempts remain; beyond that a slow heartbeat
-          // toast keeps the failure visible without spamming every tick.
           if (attempt === MAX_LANDING_ATTEMPTS || attempt % LANDING_HEARTBEAT === 0) {
-            get().toast('error', `The finished render could not land on “${chainPromptOf(chain)}”: ${message}`)
+            get().toast('error', `The finished workbench render could not land: ${message}`)
           }
         }
       }
@@ -795,6 +695,42 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     }
   }
 
+  // SERVER-OWNED LANDING, the canvas reader (gfv5h0g — the R2 fix,
+  // 2026-10-15): the server's job watcher lands takes on the document store
+  // and announces each settlement on the fabric's job channel; the canvas is
+  // a READER. A completed settlement with a landed take reloads the owning
+  // document (the tile lights up with its media) and says so in the house
+  // voice; a failed one surfaces the settled reason. Deferred packets (the
+  // workbench grace) stay silent here — the workbench landing lane in
+  // landCompletions owns those toasts.
+  subscribe('job', (envelope) => {
+    if (envelope.type !== 'landing') return
+    const payload = envelope.payload as { outcome?: string; chainId?: string | null; projectId?: string | null; takeId?: string | null; deferred?: boolean; job?: { error?: string } } | null
+    if (!payload || typeof payload.chainId !== 'string') return
+    void (async () => {
+      const state = useCanvasStore.getState()
+      // The owning document: the envelope's project when it names one, else
+      // any LOADED document that holds the chain (the workbench link carries
+      // only the chain id).
+      let owner: string | null = typeof payload.projectId === 'string' && state.documents[payload.projectId] ? payload.projectId : null
+      if (!owner) {
+        for (const [projectId, document] of Object.entries(state.documents)) {
+          if (document.chains.some((chain) => chain.id === payload.chainId)) { owner = projectId; break }
+        }
+      }
+      if (owner) {
+        const refreshed = await loadDocument(owner)
+        if (refreshed && owner === useCanvasStore.getState().activeProjectId) recomputeTiles()
+      }
+      if (payload.outcome === 'completed' && payload.takeId && !payload.deferred) {
+        const document = owner ? useCanvasStore.getState().documents[owner] : null
+        const chain = document?.chains.find((entry) => entry.id === payload.chainId)
+        useCanvasStore.getState().toast('success', `The render landed on “${chain ? chainPromptOf(chain) : 'its object'}”.`)
+      } else if (payload.outcome === 'failed' && payload.job?.error) {
+        useCanvasStore.getState().toast('error', payload.job.error)
+      }
+    })()
+  })
 
   return {
     phase: 'boot',
@@ -1628,16 +1564,22 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       // renders H3-1F — the h3image Generate-T=1 family through the
       // workbench's SHARED submit core, so the still lands takes like any
       // chain (the packet-aware landing branch). A BOUND image (the old
-      // control/canny surface) is no canvas graph at all: it hands off to
-      // the workbench's Edit surface with the image anchored as Picture 1 —
-      // the dated decision that retired the dead ControlNet-Union path with
-      // Z-Image itself. Frames/reference modes remain H3 video concepts.
+      // control/canny surface) is no canvas graph at all — the workbench's
+      // Edit surface owns that lane. Frames/reference modes remain H3 video
+      // concepts.
       // (tmz8vh7, 2026-09-20): the predicate covers EVERY image chain. It
       // used to guard mode∈{text,image}, so a reference or last-frame
       // binding flipped effectiveMode and the chain fell through to the H3
       // VIDEO ladder below — a spawned-image object silently rendered a
       // 6-second video (the inverse-T=1 divergence, audit P1-2). Those
       // states now refuse honestly at this seam.
+      // (gfv5h0g, F2 — 2026-10-15): generate NEVER navigates and NEVER
+      // spawns nodes as a side effect. The old Edit handoff stashed the
+      // bound image and full-navigated to ?images=1, where the workbench's
+      // session bootstrap minted an EMPTY h3img object on this canvas — the
+      // blind UX review's stray-node spawn (two identical clicks, a dead
+      // click and a stray node). The click now refuses inline, naming where
+      // the lane lives; opening the workbench stays the user's own act.
       if (settings.mediaType === 'image') {
         const mode = effectiveMode(settings)
         if (mode === 'frames' || mode === 'reference') {
@@ -1654,13 +1596,9 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         }
         if (mode === 'image') {
           if (!firstFrame) return { ok: false, message: 'Choose a first frame for this mode.' }
-          // The Edit handoff: stash the bound image + intent, then full-nav
-          // to the workbench (the surface-switcher precedent — the handoff
-          // key carries the payload across the page load, like the poserig
-          // inbox). The receiving surface announces it; no job parks here.
-          stashCanvasEditHandoff(canvasEditHandoff(settings.prompt, firstFrame))
-          window.location.assign('/?images=1')
-          return { ok: true }
+          const refusal = `Image-with-reference renders on the workbench's Edit surface (switch to Images, Alt+3, and anchor “${firstFrame.name}” as the source from its canvas picker) — the canvas ships no control-stills path, and generate never switches surfaces for you.`
+          get().toast('error', refusal)
+          return { ok: false, message: refusal }
         }
         if (!facts.settings) return { ok: false, message: 'Studio settings are still loading.' }
         const result = await submitWorkbenchGeneration(
@@ -1752,7 +1690,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         }
         if (effectiveMode(settings) === 'image') {
           return firstFrame
-            ? 'Image-with-reference renders on the workbench\'s Edit surface — generate opens it with this image anchored as the source (Picture 1). The canvas ships no control-stills path (dated 2026-09-19, task 34afx79).'
+            ? 'Image-with-reference renders on the workbench\'s Edit surface — switch to Images (Alt+3) and anchor this image as the source from its canvas picker. The canvas ships no control-stills path (dated 2026-09-19, task 34afx79); generate refuses here rather than switching surfaces for you.'
             : 'Choose a first frame for this mode.'
         }
         if (!facts.settings) return 'Studio settings are still loading.'

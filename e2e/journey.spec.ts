@@ -354,6 +354,305 @@ async function resetSession(page: Page) {
   }
 }
 
+/** (gfv5h0g — the R2 fix of the 2026-10-15 blind UX review) SERVER-OWNED
+ *  JOBS at execution truth on the mirror: a render whose originator tab
+ *  closes MID-SAMPLING still lands its take on its chain — the review's
+ *  reproduced defect was exactly this vanish (engine history held the mp4,
+ *  jobs/canvas_output held zero rows, and the ⌘K "job · completed" row knew
+ *  better than the document). The server's job watcher owns observation and
+ *  landing now; the fresh session + the palette recover the output. */
+test('a render that outlives its tab lands anyway — the fresh session and the palette recover it (gfv5h0g)', async ({ page, request }) => {
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const holder = http.createServer(() => undefined)
+  const mirrorPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', MIRROR_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+    const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${mirrorPort}`,
+      engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
+    } } })
+    await resetSession(page)
+    // Slow the render so the tab close lands MID-SAMPLING, not after.
+    await mirrorJson(mirrorPort, '/__control', { method: 'POST', body: JSON.stringify({ stepDelayMs: 1200 }) })
+
+    // The originator surface: submit a real render through the UI.
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'true', { timeout: 20_000 })
+    await page.locator('[data-canvas-prompt]').fill('a lighthouse over a black sea, outliving its tab')
+    await page.locator('[data-canvas-submit]').click()
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 15_000 })
+
+    // The job must be SERVER-known before the tab dies (the debounced
+    // persist lands within ~1 s of submit) — then close MID-RENDER.
+    let jobId = ''
+    await expect.poll(async () => {
+      const jobs = ((await (await request.get('/api/lan/jobs')).json()) as { jobs: Array<{ id: string; promptId?: string; status: string }> }).jobs
+      jobId = jobs.find((job) => job.promptId && job.status === 'running')?.id ?? ''
+      return jobId
+    }, { timeout: 20_000 }).toBeTruthy()
+    await expect.poll(async () => {
+      const queue = (await mirrorJson(mirrorPort, '/queue')) as { queue_running: unknown[] }
+      return queue.queue_running.length
+    }, { timeout: 20_000 }).toBe(1)
+    await page.close()
+
+    // NO SURFACE EXISTS NOW. The server owns the rest: the job settles and
+    // the take lands on its chain (bounded poll for the named conditions).
+    await expect.poll(async () => {
+      const jobs = ((await (await request.get('/api/lan/jobs')).json()) as { jobs: Array<{ id: string; status: string }> }).jobs
+      return jobs.find((job) => job.id === jobId)?.status ?? null
+    }, { timeout: 60_000 }).toBe('completed')
+    await expect.poll(async () => {
+      const session = ((await (await request.get('/api/lan/documents/session')).json()) as { session: { activeProject: string | null } }).session
+      if (!session.activeProject) return null
+      const document = ((await (await request.get(`/api/lan/documents/project?id=${encodeURIComponent(session.activeProject)}`)).json()) as {
+        chains: Array<{ outputs: Array<{ takes: Array<{ jobId: string | null; artifacts: string[] }> }> }>
+      })
+      return document.chains.some((chain) => chain.outputs.some((output) => output.takes.some((take) => take.jobId === jobId && take.artifacts.length > 0)))
+    }, { timeout: 30_000 }).toBe(true)
+
+    // THE FRESH SESSION recovers: the chain's tile carries its landed media.
+    const fresh = await page.context().newPage()
+    fresh.on('pageerror', (error) => problems.push(`fresh pageerror: ${error.message}`))
+    try {
+      await fresh.goto('/?canvas=1')
+      await expect(fresh.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+      const recoveredTile = fresh.locator('[data-canvas-tile]').first()
+      await expect(recoveredTile).toBeVisible({ timeout: 15_000 })
+      await recoveredTile.click()
+      await expect(fresh.locator('[data-canvas-bottombar]')).toHaveAttribute('data-canvas-bar-context', 'media', { timeout: 15_000 })
+
+      // THE PALETTE RECOVERS: the job row names its completed state on the
+      // canvas (never "not on an open canvas"), and its click lands on the
+      // chain that owns the take. The needle filters the shared home's
+      // accumulated canvases out first — the palette's 40-row cap otherwise
+      // buries the job row under them (the testing.md accumulation class).
+      await fresh.keyboard.press('ControlOrMeta+k')
+      await expect(fresh.locator('[data-canvas-index]')).toBeVisible()
+      await fresh.locator('[data-canvas-index-input]').fill('outliving its tab')
+      // .first(): the jobs list is newest-first, and the shared home
+      // accumulates this test's own prior runs (same prompt).
+      const jobRow = fresh.locator('[data-canvas-index-row="job"]', { hasText: 'outliving its tab' }).first()
+      await expect(jobRow).toBeVisible({ timeout: 10_000 })
+      await expect(jobRow).not.toHaveAttribute('disabled')
+      await expect(jobRow).toContainText('job · completed')
+      await expect(jobRow).not.toContainText('not on an open canvas')
+      await jobRow.click()
+      await expect(fresh.locator('[data-canvas-index]')).toHaveCount(0)
+      await expect(fresh.locator('[data-canvas-properties]')).toBeVisible({ timeout: 10_000 })
+      await expect(fresh.locator('[data-canvas-bottombar]')).toHaveAttribute('data-canvas-bar-context', 'media')
+    } finally {
+      await fresh.close()
+    }
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } })
+    await resetSession(page)
+  } finally {
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+})
+
+/** (gfv5h0g, F2) THE DEAD CLICK: a generate that cannot submit refuses
+ *  INLINE naming why — the blind review's enabled-but-silent button (no
+ *  request, no error) and its stray-node twin both died here. This leg
+ *  drives the queued-engine refusal: the click produces the inline Refusal
+ *  tier with the registry's own reason, and NOTHING submits. */
+test('the generate click refuses inline — a queued engine names why and nothing submits (gfv5h0g F2)', async ({ page, request }) => {
+  test.setTimeout(180_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const holder = http.createServer(() => undefined)
+  const mirrorPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', MIRROR_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+    const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${mirrorPort}`,
+      engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
+    } } })
+    await resetSession(page)
+
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    // Spawn an IMAGE chain from the hero's lane toggle (the blank-canvas
+    // launcher owns the first spawn; the bottom bar exists only once a tile
+    // does), then point it at the QUEUED engine slot.
+    await page.locator('[data-canvas-chip="image"]').click()
+    await page.locator('[data-canvas-prompt]').fill('a crisp brass compass on chart paper')
+    await page.locator('[data-canvas-submit]').click()
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 15_000 })
+    const document = await (await page.evaluate(async () => {
+      const session = await (await fetch('/api/lan/documents/session')).json() as { session: { activeProject: string | null } }
+      const response = await fetch(`/api/lan/documents/project?id=${encodeURIComponent(session.session.activeProject!)}`)
+      return (await response.json()) as {
+        chains: Array<{ id: string; kind: string; settings: Record<string, unknown> }>
+      }
+    }))
+    const imageChain = document.chains.find((chain) => chain.kind === 'generation')!
+    await page.request.post('/api/lan/documents/chains/update', { data: { id: imageChain.id, settings: { ...imageChain.settings, imageEngine: 'krea2' } } })
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await page.locator(`[data-canvas-tile="${imageChain.id}"]`).click()
+    await expect(page.locator('[data-canvas-properties]')).toBeVisible({ timeout: 10_000 })
+
+    // THE CLICK: refused INLINE, the registry's own reason verbatim.
+    await page.locator('[data-canvas-generate]').click()
+    const refusal = page.locator('[data-refusal]')
+    await expect(refusal).toBeVisible({ timeout: 10_000 })
+    await expect(refusal.locator('[data-refusal-reason]')).toContainText('Krea 2 stills engine is queued')
+    // Nothing submitted: no stop button ever replaces generate (no job
+    // parked on the chain), and no prompt reached the engine.
+    await expect(page.locator('[data-canvas-cancel]')).toHaveCount(0)
+    await expect.poll(async () => {
+      const history = (await mirrorJson(mirrorPort, '/history')) as Record<string, unknown>
+      return Object.keys(history).length
+    }, { timeout: 5_000 }).toBe(0)
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } })
+    await resetSession(page)
+  } finally {
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+})
+
+/** (gfv5h0g, F2) THE STRAY NODE: generate NEVER spawns objects as a side
+ *  effect. The old image-with-reference handoff full-navigated to the
+ *  workbench, whose session bootstrap minted an EMPTY h3img object on this
+ *  canvas — the blind review's undeletable stray. The click now refuses
+ *  inline naming where the lane lives; no navigation, no session node. */
+test('generate never spawns workbench session nodes — the image+reference lane refuses inline (gfv5h0g F2)', async ({ page, request }) => {
+  test.setTimeout(180_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const holder = http.createServer(() => undefined)
+  const mirrorPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', MIRROR_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+    const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${mirrorPort}`,
+      engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
+    } } })
+    await resetSession(page)
+
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    // An IMAGE chain with a BOUND first frame — the mode whose old generate
+    // full-navigated to the workbench. The hero's lane toggle owns the first
+    // spawn on a blank canvas.
+    await page.locator('[data-canvas-chip="image"]').click()
+    await page.locator('[data-canvas-prompt]').fill('a winter lighthouse study, anchored')
+    await page.locator('[data-canvas-submit]').click()
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 15_000 })
+    await page.evaluate(() => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 640
+      canvas.height = 360
+      const context = canvas.getContext('2d')!
+      context.fillStyle = '#1d2b1f'
+      context.fillRect(0, 0, 640, 360)
+      context.fillStyle = '#e8d04b'
+      context.fillRect(280, 90, 80, 200)
+      const dataUrl = canvas.toDataURL('image/png')
+      const binary = atob(dataUrl.split(',')[1])
+      const bytes = new Uint8Array(binary.length)
+      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+      const transfer = new DataTransfer()
+      transfer.items.add(new File([bytes], 'anchor.png', { type: 'image/png' }))
+      document.querySelector('[data-canvas-root]')!.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true }))
+    })
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 15_000 })
+    const document = await (await page.evaluate(async () => {
+      const session = await (await fetch('/api/lan/documents/session')).json() as { session: { activeProject: string | null } }
+      const response = await fetch(`/api/lan/documents/project?id=${encodeURIComponent(session.session.activeProject!)}`)
+      return (await response.json()) as {
+        chains: Array<{ id: string; kind: string; settings: Record<string, unknown>; outputs: Array<{ id: string }> }>
+      }
+    }))
+    const imageChain = document.chains.find((chain) => chain.kind === 'generation')!
+    const mediaChain = document.chains.find((chain) => chain.kind === 'media')!
+    await page.request.post('/api/lan/documents/chains/update', { data: { id: imageChain.id, settings: { ...imageChain.settings, firstFrameOutputId: mediaChain.outputs[0]!.id } } })
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await page.locator(`[data-canvas-tile="${imageChain.id}"]`).click()
+    await expect(page.locator('[data-canvas-properties]')).toBeVisible({ timeout: 10_000 })
+
+    // THE CLICK: refused inline; the canvas stays exactly where it was.
+    await page.locator('[data-canvas-generate]').click()
+    const refusal = page.locator('[data-refusal]')
+    await expect(refusal).toBeVisible({ timeout: 10_000 })
+    await expect(refusal.locator('[data-refusal-reason]')).toContainText("workbench's Edit surface")
+    // No navigation away from the canvas…
+    expect(new URL(page.url()).searchParams.get('images')).toBe(null)
+    // …and NO workbench session object was spawned as a side effect.
+    await expect.poll(async () => {
+      const session = ((await (await page.request.get('/api/lan/documents/session')).json()) as { session: { activeProject: string | null } }).session
+      if (!session.activeProject) return null
+      const current = ((await (await page.request.get(`/api/lan/documents/project?id=${encodeURIComponent(session.activeProject)}`)).json()) as {
+        chains: Array<{ kind: string }>
+      })
+      return current.chains.some((chain) => chain.kind === 'h3img')
+    }, { timeout: 10_000 }).toBe(false)
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } })
+    await resetSession(page)
+  } finally {
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+})
+
 /** THE REFERENCE-PREP RULING (maintainer 2026-09-26, directive 1e363ec0
  *  item 5): "scaled longest side to the selected resolution. Never
  *  cropped." Proven at WIRING truth on the environment mirror: a 1:2
