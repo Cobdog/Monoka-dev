@@ -60,7 +60,7 @@ import { H3IMG_RECIPE_PINS, STOCK_SAMPLED_FRAMES, TRANSPORT_FOR_ROLE, findH3ImgF
 import type { H3ImgRefRole, H3ImgT1Settings } from '../lib/graph/h3image'
 import { mediaForOutput, buildOutputIndex } from '../canvas/generation'
 import { chainSettingsDefaults } from '../canvas/generation'
-import { CANVAS_EDIT_HANDOFF_KEY, H3_ONE_FRAME_FAMILY, handoffPreviewUrl, pinRegenerationNotice } from '../canvas/stillIntent'
+import { H3_ONE_FRAME_FAMILY, pinRegenerationNotice } from '../canvas/stillIntent'
 import { SurfaceSwitcher } from '../surfaces/SurfaceSwitcher'
 import './workbench.css'
 
@@ -549,55 +549,15 @@ function WorkbenchSurface() {
         // and the PUT landing loses the in-flight payload: the retained op
         // and this component die with the page and the key is already gone.
         // ACCEPTED: the window is one write round-trip; the payload is a
-        // convenience key re-creatable in one click (the poserig Send / the
-        // canvas Edit intent, whose key below shares this window verbatim);
-        // the durable fix is a pagehide re-stash — a third unload-latch
-        // beside the inspector panel's F02 flush, a design decision rather
-        // than a dregs scrub. F3's decline guard above already keeps the
-        // naive re-stash safe if that decision lands.
+        // convenience key re-creatable in one click (the poserig Send — the
+        // canvas Edit handoff key that shared this window was retired with
+        // its generate-path writer, gfv5h0g fix round 1); the durable fix
+        // is a pagehide re-stash — a third unload-latch beside the
+        // inspector panel's F02 flush, a design decision rather than a
+        // dregs scrub. F3's decline guard above already keeps the naive
+        // re-stash safe if that decision lands.
         if (!saved) window.localStorage.setItem('h3img-poserig-handoff', raw)
       })
-    } catch {
-      /* a malformed handoff is dropped silently — it is a convenience key */
-    }
-  }, [sessionChain, patchSettings])
-
-  // Canvas image+control handoff (34afx79, dated decision 2026-09-19): the
-  // canvas's stills intent with a BOUND image routes HERE — the Edit surface
-  // with the image anchored as the source (Picture 1). The canvas ships no
-  // control-stills graph; reference/canny-style image work is this surface's
-  // job (the ControlNet-Union-on-Z-Image path retired with Z-Image). Unlike
-  // the poserig inbox, this consumes ONLY once the session chain exists — a
-  // first-open handoff survives the session bootstrap instead of being read
-  // and dropped before it can land.
-  useEffect(() => {
-    if (!sessionChain) return
-    try {
-      const raw = window.localStorage.getItem(CANVAS_EDIT_HANDOFF_KEY)
-      if (!raw) return
-      window.localStorage.removeItem(CANVAS_EDIT_HANDOFF_KEY)
-      const parsed = JSON.parse(raw) as { path: string; name: string; intent: string }
-      if (typeof parsed.path !== 'string' || !parsed.path) return
-      setSourceFile({ path: parsed.path, name: typeof parsed.name === 'string' && parsed.name ? parsed.name : parsed.path.split('/').pop() ?? 'source.png', preview: handoffPreviewUrl(parsed.path) })
-      // (tc6n2bx AC1) The poserig restore pattern: the key is taken when the
-      // write queues and a FAILED save puts it BACK — the payload survives
-      // the failure (the next effect pass or the next visit re-lands it)
-      // instead of dying into this notice. Consumed for good only once the
-      // write is durably saved.
-      // (tc6n2bx review round) The freshness guard, F3's twin for this key:
-      // a NEWER landed intent (the fresh settings already carry the Edit
-      // family with one that is not this handoff's) means the restored key
-      // is stale — the echo re-consume declines instead of replaying the
-      // original payload over a landed user edit. Same-value re-lands (the
-      // plain failure-recovery echo) proceed and are idempotent.
-      const handoffIntent = typeof parsed.intent === 'string' ? parsed.intent : ''
-      void patchSettings((current) => {
-        if (current.family === 'h3img.edit.freeform' && current.intent !== handoffIntent) return null
-        return { family: 'h3img.edit.freeform', intent: handoffIntent }
-      }).then((saved) => {
-        if (!saved) window.localStorage.setItem(CANVAS_EDIT_HANDOFF_KEY, raw)
-      })
-      setNotice('Canvas handoff: the bound image is anchored as the Edit source (Picture 1) — name the change in the intent box, then generate.')
     } catch {
       /* a malformed handoff is dropped silently — it is a convenience key */
     }

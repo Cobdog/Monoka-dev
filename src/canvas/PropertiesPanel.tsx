@@ -923,6 +923,12 @@ export function PropertiesPanel() {
       }
       const result = await submitChain(chainId)
       if (!result.ok) setSubmitRefusal(result.message ?? 'The submission was refused.')
+    } catch (error) {
+      // (Fix round 1, minor c) The terminal catch: an unexpected THROW on
+      // the click path (a rejected fetch inside the ladder) refuses inline
+      // too — the try/finally alone would reset the busy flag and leave a
+      // silent dead click.
+      setSubmitRefusal(`The submission failed unexpectedly: ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setSubmitting(false)
     }

@@ -38,8 +38,13 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return body
 }
 
-function postJson<T>(path: string, payload: unknown): Promise<T> {
-  return apiFetch<T>(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+function postJson<T>(path: string, payload: unknown, options?: { keepalive?: boolean }): Promise<T> {
+  return apiFetch<T>(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+    ...(options?.keepalive ? { keepalive: true } : {}),
+  })
 }
 
 /** True once the one-time localStorage→SQLite copy has been verified. */
@@ -57,7 +62,23 @@ export async function fetchServerJobs(): Promise<GenerationJob[]> {
 }
 
 export function saveServerJobs(jobs: GenerationJob[]): Promise<unknown> {
-  return postJson('/api/lan/jobs', { jobs })
+  // (gfv5h0g, fix round 1) keepalive — CONDITIONALLY: the debounced persist
+  // flushes on pagehide/beforeunload, and a plain POST at that moment is
+  // exactly the request a browser may drop with the document; keepalive
+  // hands it to the browser to finish after the page is gone, so a
+  // brand-new job row (the watcher's ONLY truth about it) survives the tab
+  // close. BUT a keepalive body is HARD-CAPPED (64 KiB in Chromium) — the
+  // full jobs batch regularly exceeds it and the request would throw
+  // BEFORE sending (the silent-persist-loss class). Small batches ride
+  // keepalive; big batches take the normal path and rely on the debounce's
+  // next flush.
+  const body = JSON.stringify({ jobs })
+  return apiFetch('/api/lan/jobs', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body,
+    ...(body.length < 60_000 ? { keepalive: true } : {}),
+  })
 }
 
 export async function fetchServerWorkspace(): Promise<PersistedWorkspace | null> {
