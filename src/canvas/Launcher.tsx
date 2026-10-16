@@ -124,7 +124,7 @@ export function Launcher({ onPickFile }: { onPickFile(): void }) {
           <Chip id="launcher-image" variant="radio" className="canvas-chip" data-canvas-chip="image" title="New seeds spawn as IMAGE chains — a still per take (the workbench's families)">
             <ImagePlus size={13} /> image prompt
           </Chip>
-          <Chip id="launcher-video" variant="radio" className="canvas-chip" data-canvas-chip="video" title="New seeds spawn as VIDEO chains — the derived mode follows what you later bind (R-23)">
+          <Chip id="launcher-video" variant="radio" className="canvas-chip" data-canvas-chip="video" title="New seeds spawn as VIDEO chains — the derived mode follows what you later bind">
             <FileVideo size={13} /> video prompt
           </Chip>
         </ChipGroup>

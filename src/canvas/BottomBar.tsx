@@ -6,14 +6,14 @@
  *     selection roles + prompt entry + honest engine state);
  *   media selected   → transport + op entry (the modal, L8: modal-only v1)
  *     + properties;
- *   chain selected   → identity payload + drift readout + takes + fork
- *     history + lock (P) + per-chain rerun;
+ *   chain selected   → the human one-liner (media · duration · tier ·
+ *     takes) + fork history + lock + fork + per-chain rerun;
  *   multi-select     → batch gestures (multi-generate to queue selections,
  *     multi-lock; Phase 3 lands the ops the Phase-2 stub promised).
  */
 import { useState } from 'react'
-import { ChevronUp, CircleDot, FileVideo, GitFork, ImagePlus, Layers, Lock, LockOpen, Pause, Play, Plus } from 'lucide-react'
-import { collectOutputRefs, STATUS_LABEL } from './derive'
+import { ChevronUp, FileVideo, GitFork, ImagePlus, Layers, Lock, LockOpen, Pause, Play, Plus } from 'lucide-react'
+import { collectOutputRefs, STATUS_LABEL, takeNumberOf } from './derive'
 import { modeLabelFor, readChainSettings } from './generation'
 import { opKindsFor } from './ops'
 import { Chip, ChipGroup } from '../ui/Chip'
@@ -84,7 +84,7 @@ export function BottomBar() {
       if (result.ok) queued += 1
     }
     toast(queued ? 'success' : 'error', queued
-      ? `${queued} of ${selectedTiles.length} selection${selectedTiles.length === 1 ? '' : 's'} queued — L26: generations serialize by default.`
+      ? `${queued} of ${selectedTiles.length} selection${selectedTiles.length === 1 ? '' : 's'} queued — generations run one at a time.`
       : 'Nothing queued — the engine refused every selection (the reasons are on the objects).')
   }
 
@@ -162,15 +162,18 @@ export function BottomBar() {
         <span className="canvas-bar-title" title={primary.prompt}>{primary.title}</span>
         <span className="canvas-bar-mode" data-canvas-bar-mode>{modeLabelFor(readChainSettings(primaryChain?.settings ?? {}))}</span>
         <span className="canvas-bar-state"><span className="canvas-tile-ring" data-status={primary.status} style={tileToneVars(primary.status)} /> {STATUS_LABEL[primary.status]}</span>
-        <span className="canvas-bar-identity" data-canvas-bar-identity>
-          <CircleDot size={11} />
-          {primary.identity?.subjectText ? `identity “${primary.identity.subjectText.slice(0, 24)}” · ${primary.identity.strength.toFixed(2)}` : 'no identity payload'}
+        {/* The human one-liner (R2 F12's simple version): media · duration ·
+            tier · takes. The identity readout and the drift/hop diary live in
+            the document and the properties panel, not the bar. */}
+        {primary.duration > 0 && <span className="canvas-bar-duration" data-canvas-bar-duration>{primary.duration}s</span>}
+        <span className="canvas-bar-tier" data-canvas-bar-tier>{readChainSettings(primaryChain?.settings ?? {}).turbo === 'off' ? 'quality' : 'fast'}</span>
+        <span
+          className="canvas-bar-takes"
+          data-canvas-bar-takes
+          title={primary.canonical ? `take ${takeNumberOf(primary.takes, primary.canonical)} of ${primary.takes.length} · ${primary.canonical.id} — earlier takes stay listed in properties` : undefined}
+        >
+          {primary.canonical ? `take ${takeNumberOf(primary.takes, primary.canonical)}` : 'no takes yet'}{primary.priors ? ` +${primary.priors}` : ''}
         </span>
-        <span className="canvas-bar-drift" data-canvas-bar-drift title="Hop count + per-hop drift metrics (L28)">
-          drift · {primary.hopCount} hop{primary.hopCount === 1 ? '' : 's'}
-          {primary.driftMetrics ? ` · ${Object.entries(primary.driftMetrics).map(([key, value]) => `${key} ${String(value)}`).join(' ')}` : ''}
-        </span>
-        <span className="canvas-bar-takes" data-canvas-bar-takes>{primary.canonical ? `take ${primary.canonical.id.slice(0, 8)}` : 'no takes'}{primary.priors ? ` +${primary.priors}` : ''}</span>
         <span className="canvas-bar-fork-history" data-canvas-bar-fork-history>
           {forkHistory.parents.length ? `${forkHistory.parents.length} source${forkHistory.parents.length === 1 ? '' : 's'} ↑` : ''}
           {forkHistory.parents.length && forkHistory.forks.length ? ' · ' : ''}
@@ -178,19 +181,20 @@ export function BottomBar() {
           {!forkHistory.parents.length && !forkHistory.forks.length ? 'no forks yet' : ''}
         </span>
         {/* The lock is an INDEPENDENT toggle — a pressed button (aria-pressed
-            via Space/Enter), never aria-checked (exclusive-group territory). */}
+            via Space/Enter), never aria-checked (exclusive-group territory).
+            Hotkeys live in the tooltips, never the labels (et8hu1l). */}
         <Chip
           variant="toggle"
           selected={primary.lockState === 'locked'}
           className="canvas-chip"
           data-canvas-bar-lock={primary.lockState}
-          title={primary.lockState === 'locked' ? 'Unlock — upstream changes mark this chain stale again' : 'Lock — propagation is gated; every take stays resident'}
+          title={primary.lockState === 'locked' ? 'Unlock — upstream changes mark this chain stale again (P)' : 'Lock — freeze this chain; upstream changes stop flowing into it (P)'}
           onClick={() => void useCanvasStore.getState().setChainLock(primary.id, primary.lockState !== 'locked')}
         >
-          {primary.lockState === 'locked' ? <Lock size={11} /> : <LockOpen size={11} />} {primary.lockState === 'locked' ? 'locked' : 'unlocked'} <kbd>P</kbd>
+          {primary.lockState === 'locked' ? <Lock size={11} /> : <LockOpen size={11} />} {primary.lockState === 'locked' ? 'locked' : 'unlocked'}
         </Chip>
-        <button type="button" className="chip canvas-chip" data-canvas-bar-fork disabled={!primary.canonical} onClick={() => setForkMenu({ chainId: primary.id })}><GitFork size={11} /> fork <kbd>B</kbd></button>
-        {primary.stale && <button type="button" className="chip canvas-chip" data-canvas-bar-rerun title="Rerun this chain — one gesture (principle 5)" onClick={() => void useCanvasStore.getState().rerunChain(primary.id)}>rerun <kbd>R</kbd></button>}
+        <button type="button" className="chip canvas-chip" data-canvas-bar-fork disabled={!primary.canonical} title="Fork — start a new chain from this one's current take (B)" onClick={() => setForkMenu({ chainId: primary.id })}><GitFork size={11} /> fork</button>
+        {primary.stale && <button type="button" className="chip canvas-chip" data-canvas-bar-rerun title="Rerun this chain (R)" onClick={() => void useCanvasStore.getState().rerunChain(primary.id)}>rerun</button>}
       </>
     )}
 
@@ -209,7 +213,7 @@ export function BottomBar() {
             </div>
           )}
         </div>
-        <button type="button" className="chip canvas-chip" data-canvas-bar-opedit onClick={() => useCanvasStore.getState().setOpEditor({ chainId: primary.id })}>ops <kbd>↵</kbd></button>
+        <button type="button" className="chip canvas-chip" data-canvas-bar-opedit title="Open the op editor (↵)" onClick={() => useCanvasStore.getState().setOpEditor({ chainId: primary.id })}>ops</button>
         <button type="button" className="chip canvas-chip" data-canvas-bar-properties onClick={() => useCanvasStore.getState().setInspectorOpen(true)}>properties</button>
         <button type="button" className="chip canvas-chip" data-canvas-bar-fork onClick={() => setForkMenu({ chainId: primary.id })}><GitFork size={11} /> fork</button>
       </>

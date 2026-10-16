@@ -13,6 +13,7 @@
  * this menu had NO Escape of its own (backdrop-click only).
  */
 import { useCanvasStore } from './store'
+import { takeNumberOf } from './derive'
 import { SUBSTRATE_LABEL, substratesForTake, type ForkSubstrate } from './generation'
 import { PopoverMenu } from '../ui/PopoverMenu'
 import type { MediaFile } from '../types'
@@ -83,17 +84,17 @@ export function ForkMenu() {
     {earlier.length > 0 && (
       <div className="canvas-menu-group" data-canvas-menu-group="early-take">
         <span className="canvas-menu-group-label">fork from an earlier take — lower drift</span>
-        {earlier.slice(0, 4).map((take, index) => (
+        {earlier.slice(0, 4).map((take) => (
           <button
             type="button"
             key={take.id}
             className="canvas-menu-row"
             data-canvas-fork-take={take.id}
-            title="Fewer hops from the anchor — re-anchoring a drifting identity forks better from an early take (L28)."
+            title={`${take.id} — recorded ${new Date(take.createdAt).toLocaleTimeString()} · forking from an earlier take re-anchors an identity that has drifted`}
             onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, takeId: take.id, substrate: 'decoded' })}
           >
-            <span className="canvas-menu-row-label">take {earlier.length - index} · {take.id.slice(0, 8)}</span>
-            <span className="canvas-menu-row-note">{new Date(take.createdAt).toLocaleTimeString()} — pre-drift anchor</span>
+            <span className="canvas-menu-row-label">take {takeNumberOf(tile.takes, take)}</span>
+            <span className="canvas-menu-row-note">recorded {new Date(take.createdAt).toLocaleTimeString()}</span>
           </button>
         ))}
       </div>

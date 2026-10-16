@@ -301,7 +301,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
    degraded state classes carry no color declarations any more. */
 .canvas-bar-engine { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--engine-tone); font-size: var(--text-sm); white-space: nowrap; }
 .canvas-bar-engine .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--engine-tone); }
-.canvas-bar-mode, .canvas-bar-state, .canvas-bar-identity, .canvas-bar-drift, .canvas-bar-takes, .canvas-bar-fork-history { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: var(--text-sm); white-space: nowrap; }
+.canvas-bar-mode, .canvas-bar-state, .canvas-bar-duration, .canvas-bar-tier, .canvas-bar-takes, .canvas-bar-fork-history { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: var(--text-sm); white-space: nowrap; }
 .canvas-bar-mode { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
 .canvas-bar-chip-tile { max-width: 160px; overflow: hidden; padding: 4px 9px; border-width: 1px; border-style: solid; border-radius: 999px; font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .canvas-bar-opmenu { position: relative; }
@@ -635,7 +635,7 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-poserig-fallback { display: grid; place-content: center; gap: 8px; color: var(--muted); font-size: var(--text-sm); }
 
 /* ---- Phase 3: multi batch chips -------------------------------------------------- */
-.canvas-bar-drift { font-variant-numeric: tabular-nums; }
+.canvas-bar-duration, .canvas-bar-takes { font-variant-numeric: tabular-nums; }
 
 /* ---- Phase 4: the audio engine dock (§5.4) --------------------------------------- */
 /* display needs !important — the react-rnd inline-display class of bug (6f656ca,

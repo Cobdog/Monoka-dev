@@ -22,7 +22,7 @@ import { documentsApi, type SearchHit } from './api'
 import { useCanvasStore } from './store'
 import { useJobsStore } from '../state/jobsStore'
 import { dbg } from '../lib/dbg'
-import { chainTitle } from './derive'
+import { chainTitle, takeNumberOf } from './derive'
 import { Chip } from '../ui/Chip'
 import { useOverlayBehavior } from '../ui/useOverlayBehavior'
 import type { DocumentChain } from './derive'
@@ -183,7 +183,8 @@ export function IndexOverlay() {
           for (const take of output.takes) {
             const metrics = take.metrics ? JSON.stringify(take.metrics) : ''
             if (needle && (take.id.includes(needle) || metrics.toLowerCase().includes(needle))) {
-              list.push({ key: `take:${take.id}`, kind: 'take', label: `take ${take.id.slice(0, 8)}`, note: `${document.project.name} · ${take.supersededBy ? 'prior' : 'canonical'}`, projectId: document.project.id, chainId: chain.id })
+              const siblings = chain.outputs.flatMap((entry) => entry.takes)
+              list.push({ key: `take:${take.id}`, kind: 'take', label: `take ${takeNumberOf(siblings, take)}`, note: `${take.id} · ${document.project.name} · ${take.supersededBy ? 'prior' : 'canonical'}`, projectId: document.project.id, chainId: chain.id })
             }
           }
         }

@@ -46,7 +46,7 @@ import { composeStructuredPrompt, mergeStructuredDraft, parseFlowRows, parseStru
 import { useLlmStream } from '../lib/useLlmStream'
 import type { ModelOverrideSlots } from '../types'
 import { useSessionStore } from '../state/sessionStore'
-import { STATUS_LABEL } from './derive'
+import { STATUS_LABEL, takeNumberOf } from './derive'
 import { Chip, ChipGroup } from '../ui/Chip'
 import { tileToneVars } from '../ui/statusToken'
 import { effectiveMode, modeLabelFor, readChainSettings, type CanvasChainSettings } from './generation'
@@ -1619,7 +1619,7 @@ export function PropertiesPanel() {
         <ul className="canvas-properties-takes" data-canvas-takes>
           {tile.takes.slice(0, 5).map((take) => (
             <li key={take.id} data-canvas-take={take.id} className={take.supersededBy ? 'prior' : 'canonical'}>
-              <span>{take.id.slice(0, 8)}</span>
+              <span>take {takeNumberOf(tile.takes, take)} · {take.id.slice(0, 8)}</span>
               {take.supersededBy
                 ? <button type="button" data-canvas-take-restore={take.id} title="Make this take canonical — nothing is deleted; unlocked downstream forks go stale" onClick={() => { void useCanvasStore.getState().switchCanonical(chain.id, take.id) }}>restore</button>
                 : <span className="canvas-properties-canonical"><Star size={10} fill="currentColor" /> canonical</span>}

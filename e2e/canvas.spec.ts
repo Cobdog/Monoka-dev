@@ -216,6 +216,54 @@ test('queued state + radar aggregation through the real job link (probe scenario
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
+test('the selected-chain bar speaks human — media · tier · takes, hotkeys in tooltips (et8hu1l)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  await page.goto('/?canvas=1&probe=canvas')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  await page.locator('[data-canvas-prompt]').fill('vocabulary sweep probe shot')
+  await page.locator('[data-canvas-submit]').click()
+  const tile = page.locator('[data-canvas-tile]').first()
+  await expect(tile).toBeVisible({ timeout: 10_000 })
+  await page.evaluate(() => (window as unknown as { __canvasScenario(name: string): { ok: boolean } }).__canvasScenario('seed-mock'))
+  const bar = page.locator('[data-canvas-bottombar]')
+  await expect(bar).toHaveAttribute('data-canvas-bar-context', 'chain', { timeout: 10_000 })
+
+  // The one human line (R2 F12's simple version). Duration renders only
+  // when the chain has a take that carries one — a takeless seed shows
+  // nothing there rather than a fabricated number.
+  await expect(bar.locator('[data-canvas-bar-mode]')).toContainText('→')
+  await expect(bar.locator('[data-canvas-bar-duration]')).toHaveCount(0)
+  await expect(bar.locator('[data-canvas-bar-tier]')).toHaveText('quality')
+  await expect(bar.locator('[data-canvas-bar-takes]')).toHaveText('no takes yet')
+  // The machine diary is gone from the line: no identity payload, no
+  // drift/hop readout, no hex take id.
+  await expect(bar).not.toContainText('identity payload')
+  await expect(bar).not.toContainText('drift')
+  await expect(bar).not.toContainText('hop')
+  await expect(bar.locator('[data-canvas-bar-takes]')).not.toContainText(/take [0-9a-f]{6}/i)
+  // Hotkeys live in tooltips, never as labels.
+  const lock = bar.locator('[data-canvas-bar-lock]')
+  await expect(lock).toContainText('unlocked')
+  await expect(lock).not.toContainText('P')
+  await expect(lock).toHaveAttribute('title', /\(P\)/)
+  const fork = bar.locator('[data-canvas-bar-fork]')
+  await expect(fork).not.toContainText('B')
+  await expect(fork).toHaveAttribute('title', /\(B\)/)
+
+  // A real take lands numbered ("take 1") — the number in the label, the
+  // hex id in the details pane (the properties list).
+  await dropPng(page, 'sweep-still.png')
+  const mediaTile = page.locator('[data-canvas-tile][data-tile-kind="media"]').first()
+  await expect(mediaTile).toBeVisible({ timeout: 10_000 })
+  await mediaTile.click()
+  await expect(bar).toHaveAttribute('data-canvas-bar-context', 'media', { timeout: 10_000 })
+  await bar.locator('[data-canvas-bar-properties]').click()
+  const takeRows = page.locator('[data-canvas-takes] [data-canvas-take]')
+  await expect(takeRows.first()).toContainText(/take 1 · [0-9a-f]{6}/i)
+  await expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
 test('dropping media ingests real bytes: blob row, media chain, take, served poster', async ({ page }) => {
   const problems = await trackErrors(page)
   await resetSession(page)

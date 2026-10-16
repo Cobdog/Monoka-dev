@@ -427,7 +427,7 @@ export function TimelineOverlay() {
           </div>
         </div>
       </div>}
-      {!planRow && <footer className="canvas-timeline-footer"><span>V cycles · timeline → library → canvas</span><span>projections inherit the no-silent-failure contract</span></footer>}
+      {!planRow && <footer className="canvas-timeline-footer"><span>V cycles · timeline → library → canvas</span></footer>}
       {planRow && <footer className="canvas-timeline-footer"><span>V cycles · timeline → library → canvas</span><span>transitions are measured choices — FLF executes; the bridge renders are labeled engine work</span></footer>}
     </div>
   </div>

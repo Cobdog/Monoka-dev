@@ -246,6 +246,31 @@ function takeMediaKind(take: DocumentTake | null): 'image' | 'video' | 'audio' |
   return kind === 'image' || kind === 'video' || kind === 'audio' ? kind : null
 }
 
+/** A take's human number — its 1-based chronological position (oldest =
+ *  take 1), the ONE numbering the bar, the tiles, the fork menu, and the
+ *  properties list share (et8hu1l: the hex id rides tooltips and detail
+ *  rows, never a label). Equal createdAt ties break by id so numbering is
+ *  stable across surfaces. */
+export function takeNumberOf(takes: DocumentTake[], take: DocumentTake): number {
+  return takes.filter((entry) => entry.createdAt < take.createdAt || (entry.createdAt === take.createdAt && entry.id < take.id)).length + 1
+}
+
+/** The structured prompt's leading field labels are the engine's wire
+ *  format, never a name — titles read the human words after them (R2 F13:
+ *  `integrated_multimodal_description: [Shot 1] …` had been promoted to the
+ *  ⌘K palette verbatim). */
+const TITLE_FIELD_LABEL = /^\s*(?:integrated_multimodal_description|overall_soundscape|non_diegetic_music)\s*:\s*/i
+const TITLE_SHOT_MARKER = /^\s*\[Shot\s+\d+\]\s*/i
+
+export function titleFromPrompt(prompt: string): string {
+  let text = prompt.trim()
+  for (;;) {
+    const next = text.replace(TITLE_FIELD_LABEL, '').replace(TITLE_SHOT_MARKER, '').replace(/^\s+/, '')
+    if (next === text) return text
+    text = next
+  }
+}
+
 function titleFor(document: CanvasDocument, chain: DocumentChain, index: number): string {
   // (Journey sweep note, 2026-09-26: `settings.name` is the INGEST filename
   // convention (both ingest paths store file.name there), and the media-tile
@@ -255,7 +280,8 @@ function titleFor(document: CanvasDocument, chain: DocumentChain, index: number)
   if (mediaKind) return `${mediaKind} ${index + 1}`
   const prompt = chainPrompt(chain)
   if (prompt) {
-    const firstLine = prompt.split(/[.\n]/).map((part) => part.trim()).find(Boolean) ?? prompt
+    const body = titleFromPrompt(prompt) || prompt
+    const firstLine = body.split(/[.\n]/).map((part) => part.trim()).find(Boolean) ?? body
     return firstLine.length > 42 ? `${firstLine.slice(0, 41)}…` : firstLine
   }
   return `${chain.kind} ${index + 1}`
