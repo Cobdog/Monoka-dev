@@ -325,7 +325,12 @@ beforeAll(async () => {
     { id: 'doc-job-2', mode: 'text', status: 'completed', prompt: 'neon rain on chrome', createdAt: 2000, progress: 100, width: 1344, height: 768, duration: 5, outputUrl: `/api/lan/media?source=output&path=${encodeURIComponent(mediaFiles[1])}`, manifest: { seed: 22 } },
     { id: 'doc-job-3', mode: 'audio', status: 'completed', prompt: 'low drone under rain', createdAt: 3000, progress: 100, width: 0, height: 0, duration: 8, outputUrl: `/api/lan/media?source=output&path=${encodeURIComponent(mediaFiles[2])}`, manifest: { seed: 33 } },
     { id: 'doc-job-4', mode: 'text', status: 'failed', prompt: 'a failed shot', createdAt: 4000, progress: 10, width: 0, height: 0, duration: 5, error: 'engine reset mid-render' },
-    { id: 'doc-job-5', mode: 'text', status: 'running', prompt: 'an in-flight shot', createdAt: 5000, progress: 40, width: 0, height: 0, duration: 5 },
+    // (The running job's createdAt must be FRESH: the watcher's deadline arm
+    // owns the stale-running flip now (the settlement move lives watcher-
+    // side), and a 55-year-old createdAt would let a boot sweep race the
+    // first import's counts. The mutation itself is driven deterministically
+    // in the (e2) test below.)
+    { id: 'doc-job-5', mode: 'text', status: 'running', prompt: 'an in-flight shot', createdAt: Date.now(), progress: 40, width: 0, height: 0, duration: 5 },
   ]
   const jobsPosted = await api.post('/api/lan/jobs', { jobs: legacyJobs })
   check(jobsPosted.status === 200 && jobsPosted.body.saved === 5, 'legacy jobs seed via the old surface')
@@ -408,6 +413,31 @@ test('(e) §6 legacy import — first canvas boot', async () => {
   check(jobsUntouched === 5, 'import never touches the jobs source (copy-never-destroy)')
   check(JSON.parse(workspaceUntouched).prompt === 'legacy workspace seed', 'import never touches the workspace source')
   check(promptsUntouched >= 10, 'import never touches the prompt library source')
+})
+
+test('(e2) §6 re-run is marker-gated — a source row mutated after the import never re-seeds', async () => {
+  // The race the suite used to hit only under the full unit phase: the
+  // watcher's deadline arm (the settlement writer lives watcher-side now)
+  // flips a stale 'running' job 'failed' at boot, and a forced re-run then
+  // imported the MUTATED row as a new failure object — the snapshot grew.
+  // Deterministic ids keep a re-run clean only while the sources sit still;
+  // the marker is the once-guard. The flip is driven here through the same
+  // write the arm makes (the old-surface jobs upsert), so the repro is
+  // deterministic instead of load-shaped.
+  const runningJob = legacyJobs.find((job) => job.id === 'doc-job-5')
+  const flipPosted = await api.post('/api/lan/jobs', { jobs: [{
+    ...runningJob,
+    status: 'failed',
+    // the deadline arm's exact timeout verdict (jobReducer's RUNNING_DEADLINE write)
+    error: 'Still rendering after 60 minutes with no completion. ComfyUI may have stopped responding — check its queue before retrying.',
+  }] })
+  check(flipPosted.status === 200, 'the running job flips failed via the old surface (the deadline arm\'s write, driven deterministically)')
+  const rerun = await api.post('/api/lan/documents/import/legacy', {})
+  check(rerun.status === 200, 'the forced re-run answers')
+  check(rerun.body.import.counts.jobsSeen === 0, `the re-run never re-reads the sources for import (got jobsSeen ${rerun.body.import.counts.jobsSeen})`)
+  const legacyAfter = await api.get('/api/lan/documents/project?id=legacy:project')
+  check(legacyAfter.status === 200, 'the imported document reads back after the gated re-run')
+  check(legacyAfter.body.chains.length === 4, `exactly one seeding — the mutated source never re-imports (got ${legacyAfter.body.chains.length} chains)`)
 })
 
 test('(b)(c) CRUD + take append-only on a fresh project: supersession round-trip + trigger enforcement', async () => {

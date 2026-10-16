@@ -1288,9 +1288,11 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
    *  workspace → project settings defaults, saved prompts → prompt assets,
    *  (caller-supplied) library entries → global assets as curated reference
    *  sets (L13 recorded-open). Copy-never-destroy: sources are only ever
-   *  READ. Deterministic ids make re-runs idempotent; the marker records
-   *  completion; a failure throws with no marker → the next attempt retries
-   *  clean. */
+   *  READ. The marker — not the deterministic ids — is the once-guard: the
+   *  jobs/workspace/prompts snapshot imports ONCE (deterministic ids keep a
+   *  re-run clean only while the sources sit still); a forced re-run is the
+   *  characters arm; a failure throws with no marker → the next attempt
+   *  retries clean. */
   const importLegacy = db.transaction((options: { characters?: unknown[]; force?: boolean }): LegacyImportReport => {
     const marker = statements.getImportMarker.get('legacy') as Record<string, unknown> | undefined
     if (marker && !options.force) {
@@ -1300,6 +1302,18 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
       jobsSeen: 0, completedJobs: 0, takes: 0, failureOutputs: 0, skippedRunning: 0,
       prompts: 0, characters: 0, projectsSeeded: 0, blobHashChecks: 0, blobHashMismatches: 0,
     }
+
+    // §6 imports a SNAPSHOT, once (uxfix batch): the marker — not the
+    // deterministic ids — is the once-guard. The ids keep a re-run clean
+    // only while the sources sit still; a row that MUTATES after the first
+    // import (the watcher's deadline arm owns the stale-running flip now —
+    // the settlement move lives watcher-side) would import again as a NEW
+    // object, growing the snapshot on every forced re-run. So the jobs/
+    // workspace/prompts reads run only while no marker exists (the first
+    // import, or the clean retry after a failed attempt — a failure throws
+    // with no marker); a forced re-run is the CHARACTERS arm below
+    // (library entries that sync after boot), upsert by id.
+    const sourceGated = Boolean(marker)
 
     // workspace → ONE initial project's chain-settings defaults (§6). The old
     // surface keeps reading workspace_state untouched until Phase 5.
@@ -1312,11 +1326,11 @@ export function createDocumentStore(db: Database.Database, options: DocumentStor
     // or a saved workspace row with at least one key. Prompt/character
     // assets are projectless global assets and never justify a workspace.
     const legacyProjectId = 'legacy:project'
-    const workspace = db.prepare("SELECT data_json FROM workspace_state WHERE name = 'create'").get() as { data_json: string } | undefined
+    const workspace = sourceGated ? undefined : db.prepare("SELECT data_json FROM workspace_state WHERE name = 'create'").get() as { data_json: string } | undefined
     const defaults = workspace ? parseJson<Record<string, unknown>>(workspace.data_json, {}) : {}
     // jobs → outputs/takes (completed) / failure outputs (failed)
-    const jobs = db.prepare('SELECT * FROM jobs ORDER BY created_at ASC, rowid ASC').all() as Array<Record<string, unknown>>
-    const legacyPrompts = db.prepare('SELECT * FROM saved_prompts WHERE technique = 0').all() as Array<Record<string, unknown>>
+    const jobs = (sourceGated ? [] : db.prepare('SELECT * FROM jobs ORDER BY created_at ASC, rowid ASC').all()) as Array<Record<string, unknown>>
+    const legacyPrompts = (sourceGated ? [] : db.prepare('SELECT * FROM saved_prompts WHERE technique = 0').all()) as Array<Record<string, unknown>>
     const workspaceHasContent = Boolean(workspace) && Object.keys(defaults).length > 0
     const seedLegacyProject = jobs.length > 0 || workspaceHasContent
     if (seedLegacyProject || statements.getProject.get(legacyProjectId)) {
