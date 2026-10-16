@@ -16,7 +16,7 @@ import { Activity, AlertCircle, Check, ClipboardCopy, Download, RefreshCw, Shiel
 import { Button } from '../ui/Button'
 import type { ModelKind } from '../types'
 import { buildDiagnosticReport, runSanitizerSelfTest, type ReportFailure, type ReportFailureGraph } from '../lib/diagnosticReport'
-import { classifyFailure } from '../lib/failureTaxonomy'
+import { bucketForJob } from '../lib/failureTaxonomy'
 import { sanitizeErrorMessage } from '../lib/logSanitize'
 import type { DoctorReport } from '../lib/doctor'
 import { formatBytes } from '../lib/format'
@@ -69,10 +69,13 @@ function osPlatform(): string {
 }
 
 /** Recovers the structural node reference from a job error line produced by
- *  the failure-capture chain ("ComfyUI failed at node 84 (VAEDecodeTiled)…"). */
-function nodeFromError(error: string | undefined): string | undefined {
-  if (!error) return undefined
-  const match = /node (\S+) \(([^)]+)\)/.exec(error)
+ *  the failure-capture chain ("ComfyUI failed at node 84 (VAEDecodeTiled)…").
+ *  (ewtobuh) The structured fields from the settled record win when present
+ *  — the prose parse is the legacy-row fallback. */
+function nodeFromJob(job: { error?: string; failureNodeId?: string; failureNodeType?: string }): string | undefined {
+  if (job.failureNodeType) return `${job.failureNodeId ?? '?'} (${job.failureNodeType})`
+  if (!job.error) return undefined
+  const match = /node (\S+) \(([^)]+)\)/.exec(job.error)
   return match ? `${match[1]} (${match[2]})` : undefined
 }
 
@@ -145,10 +148,14 @@ export function DiagnosticsView() {
   }, [actionNote])
 
   const failedJobs = useMemo(() => jobs.filter((job) => job.status === 'failed'), [jobs])
+  // (ewtobuh, R1 P1-7) The failed ATTEMPT the auto-retry absorbed is a
+  // recorded failure too — it counts here so "auto-recovered" is visible,
+  // never silent.
+  const recoveredJobs = useMemo(() => jobs.filter((job) => job.recoveredFrom), [jobs])
   const histogram = useMemo(() => {
     const counts = new Map<string, number>()
     for (let index = 0; index < failedJobs.length; index += 1) {
-      const bucket = classifyFailure(`${failedJobs[index].error ?? ''} ${nodeFromError(failedJobs[index].error) ?? ''}`)
+      const bucket = bucketForJob(failedJobs[index])
       counts.set(bucket.id, (counts.get(bucket.id) ?? 0) + 1)
     }
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
@@ -164,7 +171,8 @@ export function DiagnosticsView() {
       provider: job.provider,
       mode: job.mode,
       mediaType: job.mediaType,
-      nodeType: nodeFromError(job.error),
+      nodeType: nodeFromJob(job),
+      failureKind: job.failureKind,
       reason: job.error ?? '',
       graph: graphFromManifest(job.manifest as Record<string, unknown> | undefined),
     }))
@@ -272,12 +280,13 @@ export function DiagnosticsView() {
         : <>
           <div className="doctor-report">
             {recentFailures.map((job) => {
-              const bucket = classifyFailure(`${job.error ?? ''} ${nodeFromError(job.error) ?? ''}`)
+              const bucket = bucketForJob(job)
+              const nodeRef = nodeFromJob(job)
               const graph = graphFromManifest(job.manifest as Record<string, unknown> | undefined)
               return <div className={`doctor-check ${bucket.id === 'unknown' ? 'warn' : 'fail'}`} style={doctorCheckVars(bucket.id === 'unknown' ? 'warn' : 'fail')} key={job.id}>
                 <span><AlertCircle size={14} /></span>
                 <div>
-                  <strong>{bucket.label}{nodeFromError(job.error) ? ` · node ${nodeFromError(job.error)}` : ''}</strong>
+                  <strong>{bucket.label}{nodeRef ? ` · node ${nodeRef}` : ''}</strong>
                   <small>{new Date(job.createdAt).toLocaleString()} · {job.provider ?? 'monoka'}/{job.mode}{graph?.topologyHash ? ` · ${graph.family ?? '-'}/${graph.topologyHash}${graph.steps !== undefined ? ` · ${graph.steps} steps` : ''}${graph.turbo ? ` · turbo ${graph.turbo}` : ''}` : ''}</small>
                   <p>{sanitizeErrorMessage(job.error ?? '')}</p>
                   <p>{bucket.cause}</p>
@@ -287,6 +296,22 @@ export function DiagnosticsView() {
           </div>
           <div className="settings-note">Histogram: {histogram.map(([id, count]) => `${id} ${count}`).join(' · ')}</div>
         </>}
+      {recoveredJobs.length > 0 && <div className="doctor-report">
+        {/* (ewtobuh, R1 P1-7) The failed attempt the auto-retry absorbed —
+            recorded, never erased by the recovery. */}
+        {recoveredJobs.slice(0, 5).map((job) => {
+          const attempt = job.recoveredFrom!
+          const bucket = bucketForJob({ failureKind: attempt.failureKind, error: attempt.reason })
+          return <div className="doctor-check ok" style={doctorCheckVars('ok')} key={`${job.id}-recovered`}>
+            <span><Check size={14} /></span>
+            <div>
+              <strong>{bucket.label} · auto-recovered</strong>
+              <small>{new Date(attempt.at).toLocaleString()} · the engine was reset and the job re-queued once (tiled VAE)</small>
+              <p>{sanitizeErrorMessage(attempt.reason)}</p>
+            </div>
+          </div>
+        })}
+      </div>}
     </section>
 
     <section className="settings-section" aria-label="Sanitizer self-test">

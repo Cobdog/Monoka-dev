@@ -86,6 +86,7 @@ import { compileLoraTimeline, loraTimelineToPlanDocument, readLoraTimelineDoc } 
 import { DEFAULT_SETTINGS, type OpKind } from './ops'
 import type { EndpointDirection, EndpointOption, OptionAvailability } from './options'
 import { findH3PreviewOverrideNode, h3StackReady } from '../lib/h3Stack'
+import { QUEUED_LABEL } from '../lib/jobReducer'
 import { packPresence } from '../lib/nodePackRegistry'
 import { mergeModelOverrides, resolveModelOverrides, resolveModels, type ModelFamilyId, type OverrideResolution } from '../lib/modelOverrides'
 import { inferSelections } from '../lib/modelSelection'
@@ -2384,7 +2385,9 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         const jobId = `${CANVAS_MOCK_JOB_PREFIX}${tile.id}`
         useCanvasStore.setState((current) => ({ chainJobs: { ...current.chainJobs, [tile.id]: jobId } }))
         useJobsStore.getState().setJobs((jobs) => [{
-          id: jobId, mode: 'text', prompt: tile.prompt, createdAt: Date.now(), status: 'running', progress: 4, progressLabel: 'Waiting for ComfyUI to start', promptId: 'e2e-live-1',
+          // (ewtobuh) The honest pre-execution state: queued, no fabricated
+          // percent — the sampling events overwrite the label when they land.
+          id: jobId, mode: 'text', prompt: tile.prompt, createdAt: Date.now(), status: 'queued', progress: 0, progressLabel: QUEUED_LABEL, promptId: 'e2e-live-1',
           width: 1344, height: 768, duration: 6, provider: 'monoka', mediaType: 'video', manifest: { canvasPhase2Mock: true },
         }, ...jobs.filter((job) => job.id !== jobId)])
         useCanvasStore.getState().recompute()

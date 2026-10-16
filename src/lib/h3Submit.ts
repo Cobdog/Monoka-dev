@@ -14,6 +14,7 @@
  * submission, and job bookkeeping.
  */
 import { createId } from './createId'
+import { QUEUED_LABEL } from './jobReducer'
 import { buildMonokaWorkflow, frameIndexForSeconds, guideFrameWarning } from './workflow'
 import { vdnAvailability } from './graph'
 import { turboTierRefusal } from './h3Stack'
@@ -445,7 +446,12 @@ export async function submitH3Render(
       io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'cancelled', error: undefined } : item))
       io.notify('success', 'Generation cancelled.')
     } else {
-      io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'running', progress: 4, progressLabel: 'Waiting for ComfyUI to start', manifest, graph } : item))
+      // (ewtobuh, ij878ap) The engine just accepted the prompt — the honest
+      // state is QUEUED, not "running": it starts executing when the
+      // engine's own execution_start arrives, and until then the label says
+      // queued (the queue-position wording arrives with the engine's
+      // queue-status broadcasts).
+      io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'queued', progress: 0, progressLabel: QUEUED_LABEL, manifest, graph } : item))
       io.notify('success', 'Generation added to the local ComfyUI queue.')
       dbg('submit', { verdict: 'submitted', family: 'monoka', mode: request.mode, jobId: localId, promptId: response.prompt_id, nodes: Object.keys(graph).length })
     }

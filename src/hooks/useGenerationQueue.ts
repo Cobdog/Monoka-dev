@@ -20,7 +20,8 @@
  *  persist that delivers NEW job records to the server. */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppSettings, GenerationJob } from '../types'
-import { isPreviewCrashSignature, isTerminalStatus } from '../lib/jobReducer'
+import { ENGINE_UNREACHABLE_LABEL, QUEUED_LABEL, isPreviewCrashSignature, isTerminalStatus, queuePositionLabel } from '../lib/jobReducer'
+import { liveStageLabel } from '../lib/failureTaxonomy'
 import { extractOutputFile, withTiledVideoDecode } from '../lib/workflow'
 import { extractAutomatedReferenceSet, hydrateLoadedJobs, recordCharacterSheetImages, recordCharacterTurntable, recordLocationWalkthrough, recordMovieOutput } from '../lib/jobRecords'
 import { fetchServerJobs, saveServerJobs, serverStorageMigrationDone } from '../lib/serverStorage'
@@ -37,7 +38,7 @@ export function useGenerationQueue(options: {
   connected: boolean
   notify(tone: NoticeTone, text: string): void
 }) {
-  const { settings, notify } = options
+  const { settings, notify, connected } = options
   const jobs = useJobsStore((state) => state.jobs)
   const cancellingIds = useJobsStore((state) => state.cancellingIds)
   // Stable store actions — captured once, never go stale.
@@ -73,15 +74,49 @@ export function useGenerationQueue(options: {
     // `progressLabel` — mapping explicitly (a bare spread dropped the label,
     // freezing tiles at "Waiting for ComfyUI to start" while progress ticked;
     // caught by the F6 live-progress e2e).
+    //
+    // (ewtobuh, 1v844wk) Node-stage events carry the node id: the human
+    // stage word resolves against the job's own graph ("Decoding video…",
+    // "Sampling…") instead of the machine-vague "Loading or processing
+    // workflow stage". Events without a node (start, progress ticks) keep
+    // the adapter's label.
     setJobs((current) => current.map((j) => j.promptId === id && ['running', 'queued'].includes(j.status) ? {
       ...j,
       progress: update.progress ?? j.progress,
-      progressLabel: update.label || j.progressLabel,
+      progressLabel: update.nodeId !== undefined ? liveStageLabel(update.nodeId, j.graph) : (update.label || j.progressLabel),
       currentStep: update.currentStep ?? j.currentStep,
       totalSteps: update.totalSteps ?? j.totalSteps,
       status: 'running',
     } : j))
   }, [setJobs])
+
+  // (ewtobuh, ij878ap) The queue-position reader: the engine broadcasts its
+  // queue depth on every queue change; a merely-queued job's label becomes
+  // the honest position wording ("Queued behind 1 job") during contention.
+  // Only labels already in the queued vocabulary are rewritten — the
+  // auto-retry's own note on a queued job stands until execution starts.
+  useEffect(() => subscribe('job', (envelope) => {
+    if (envelope.type !== 'queue_status') return
+    const event = envelope.payload as { queueRemaining?: number } | null
+    setJobs((current) => current.map((item) => {
+      const label = item.progressLabel
+      const inQueuedVocabulary = label === QUEUED_LABEL || (typeof label === 'string' && label.startsWith('Queued behind'))
+      return item.status === 'queued' && item.promptId && inQueuedVocabulary
+        ? { ...item, progressLabel: queuePositionLabel(event?.queueRemaining) }
+        : item
+    }))
+  }), [setJobs])
+
+  // (ewtobuh, ij878ap) The unreachable wording is RESERVED for a genuinely
+  // unreachable engine: when the probe loses it, in-flight work says what is
+  // actually wrong instead of carrying a stale queued/running label. The
+  // next engine event — or the recovery broadcast — rewrites it.
+  useEffect(() => {
+    if (connected) return
+    setJobs((current) => current.map((item) => ['queued', 'running'].includes(item.status) && item.progressLabel !== ENGINE_UNREACHABLE_LABEL
+      ? { ...item, progressLabel: ENGINE_UNREACHABLE_LABEL }
+      : item))
+  }, [connected, setJobs])
 
   // Persistence is debounced (1 s trailing): during a live render the poll
   // loop and progress events update `jobs` several times per second. The
@@ -213,6 +248,10 @@ export function useGenerationQueue(options: {
                   status: 'queued',
                   progress: 2,
                   progressLabel: previewCrash ? 'Preview unavailable on this engine — retrying without previews' : 'Auto-retrying after engine reset (tiled VAE)',
+                  // (R1 P1-7) The failed attempt LANDS in the record — the
+                  // retry arms without erasing it, so Diagnostics can count
+                  // "one failure, auto-recovered" and say why.
+                  recoveredFrom: { reason: settled.error ?? '', failureKind: settled.failureKind, at: Date.now() },
                   error: undefined,
                   retriedOnce: true,
                   ...(previewCrash ? { previewUnavailable: true } : {}),

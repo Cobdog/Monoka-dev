@@ -796,6 +796,19 @@ export type GenerationJob = {
   outputUrl?: string
   localOutputPath?: string
   error?: string
+  /** (ewtobuh, vfhcu5r) The failure taxonomy's classified cause, written by
+   *  lib/jobReducer when the job settles as failed — surfaces classify from
+   *  this field, never by re-parsing the error prose. */
+  failureKind?: string
+  /** The engine node class that failed (structured alongside failureKind). */
+  failureNodeType?: string
+  /** The engine node id that failed (Diagnostics' technical record; never
+   *  rendered on canvas). */
+  failureNodeId?: string
+  /** (R1 P1-7) The failed attempt the r3q1o49 auto-retry absorbed — the
+   *  failure lands in the record even though the job went on to re-queue,
+   *  so Diagnostics can say "one failure, auto-recovered". */
+  recoveredFrom?: { reason: string; failureKind?: string; at: number }
   width: number
   height: number
   duration: number

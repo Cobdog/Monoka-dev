@@ -6,6 +6,7 @@
  * workspace keeps its facades over this core.
  */
 import { createId } from './createId'
+import { QUEUED_LABEL } from './jobReducer'
 import { buildMusic3Workflow, MUSIC3_DAV_FILENAME, type Music3GenerationOptions, type Music3ModelSelection } from './music3Workflow'
 import { preflightOrFail } from './preflight'
 import { dbg } from './dbg'
@@ -90,7 +91,8 @@ export async function submitMusic3(
       io.notify('success', 'Music generation cancelled.')
       return { ok: false, message: 'Music generation cancelled.' }
     }
-    io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'running', progress: 4, progressLabel: 'Composing locally' } : item))
+    // (ewtobuh, ij878ap) QUEUED, not "running" — the same honest submit state as the video/image paths; execution_start flips it.
+    io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'queued', progress: 0, progressLabel: QUEUED_LABEL } : item))
     io.notify('success', 'MiniMax Music 3 song generation added to ComfyUI.')
     dbg('submit', { verdict: 'submitted', family: 'music3', jobId: localId, promptId: response.prompt_id })
     return { ok: true, jobId: localId }

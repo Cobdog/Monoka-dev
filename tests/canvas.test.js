@@ -220,9 +220,24 @@ test('(h) deriveTiles', () => {
   const jobs = [{ id: 'job-9', status: 'running', progress: 10 }]
   const linked = derive.deriveTiles(document, jobs, { 'seed-1': 'job-9' }, undefined)
   eq(linked[0].status, 'running', 'tiles: linked job status drives the ring')
+  // (ewtobuh, R3 P0-4 tail) The tile carries the HUMANIZED verdict — the
+  // taxonomy classification + the recovery path + the Diagnostics pointer —
+  // never the raw engine error text, never a [redacted] marker.
   const failed = derive.deriveTiles(document, [{ id: 'job-9', status: 'failed', progress: 10, error: 'engine exploded' }], { 'seed-1': 'job-9' }, undefined)
   eq(failed[0].status, 'failed', 'tiles: linked failure is durable on the object')
-  eq(failed[0].statusNote, 'engine exploded', 'tiles: failure reason attaches')
+  ok(!failed[0].statusNote?.includes('engine exploded'), 'tiles: the raw error never lands on the tile verbatim')
+  ok(failed[0].statusNote?.includes('Diagnostics'), 'tiles: the verdict points at the technical record')
+  ok(failed[0].statusNote?.includes('retry'), 'tiles: the verdict carries the recovery path')
+  // The reviewer's exact shape: sanitized-but-raw engine internals with a
+  // redaction marker — classified by the structured kind, quoted nowhere.
+  const rawFailed = derive.deriveTiles(document, [{
+    id: 'job-9', status: 'failed', progress: 90,
+    error: 'ComfyUI failed at node 15 (SamplerCustomAdvanced): AttributeError: CUDA out of memory. Tried to allocate 2.34 GiB [redacted]',
+    failureKind: 'out-of-memory', failureNodeType: 'SamplerCustomAdvanced',
+  }], { 'seed-1': 'job-9' }, undefined)
+  ok(rawFailed[0].statusNote?.includes('memory'), 'tiles: the classified cause reads in human words')
+  ok(!rawFailed[0].statusNote?.includes('[redacted]') && !rawFailed[0].statusNote?.includes('AttributeError'), 'tiles: no redaction marker, no raw exception on the tile')
+  ok(!/node \d/.test(rawFailed[0].statusNote ?? ''), 'tiles: no internal node id on the tile')
 
   // Orphaned ref (tombstoned source output id) falls back to the grid.
   const orphan = { ...document, chains: [document.chains[1]] }
@@ -1532,7 +1547,8 @@ test('(y) Phase 5b — plan documents + the measured gap menu + the timeline pro
 
   const failed = plan.deriveTimeline({ document: doc, plan: planRow, jobs: [{ id: 'j2', status: 'failed', progress: 0, error: 'engine exploded' }], links: { c2: 'j2' } })
   eq(failed.items[1].status, 'failed', 'timeline: a failed linked job surfaces on its segment (projections inherit the no-silent-failure contract)')
-  eq(failed.items[1].statusNote, 'engine exploded', 'timeline: the failure reason rides the item')
+  ok(!String(failed.items[1].statusNote).includes('engine exploded'), 'timeline: the raw error never rides the item verbatim (ewtobuh)')
+  ok(String(failed.items[1].statusNote).includes('Diagnostics'), 'timeline: the humanized verdict with the Diagnostics pointer rides the item')
 
   const adopted = plan.planDocumentFromChains(doc)
   eq(adopted.segments.map((segment) => segment.chainId), ['c1', 'c3'], 'adopt chronology: every chain with a canonical take becomes a segment carrying its chain_ref')
@@ -1933,7 +1949,7 @@ test('(u-run) H3-1F submission — the engine-truth gate at the submit core; the
   eq(Object.values(t1Graph).find((node) => node.class_type === 'H3TextToImagePrepare').inputs.quality_profile, 'single image | 1 frame (image VAE)', 'flip: the one-frame preset (the legal T=1 latent)')
   eq(Object.values(t1Graph).filter((node) => node.class_type === 'VAELoader').map((node) => node.inputs.vae_name), ['minimax_h3_t1_image_vae_step1597.safetensors'], 'flip: the Mamad8 VAE is the only decoder (no audio VAE on the pack path)')
   ok(t1Classes.filter((cls) => cls === 'SaveImage').length === 1, 'flip: exactly one frame published')
-  ok(jobState.length === 1 && jobState[0].status === 'running', 'flip: the T=1 job parks running after the engine accepts')
+  ok(jobState.length === 1 && jobState[0].status === 'queued' && jobState[0].progressLabel === 'Queued — waiting for the engine', 'flip: the T=1 job parks QUEUED after the engine accepts — the honest pre-execution state (ewtobuh)')
   ok(jobState[0].manifest.h3img.frames === 1, 'flip: the provenance records the single frame')
   eq(h3imageGraph.h3imgGraphAudit(t1Graph), [], 'flip: the T=1 pack-form graph audits clean')
   // The shared-core submit machinery the old T=1 leg exercised (job parking,
@@ -1946,7 +1962,7 @@ test('(u-run) H3-1F submission — the engine-truth gate at the submit core; the
   const packetRequest = { ...request, settings: { ...request.settings, family: 'h3img.generate.packet', tier: 5 } }
   const result = await stillSubmitCore.submitWorkbenchGeneration(packetRequest, facts({}), io)
   eq(result.ok, true, 'submit: the packet run submits clean through the shared core')
-  ok(jobState.length === 2 && jobState[0].status === 'running', 'submit: the packet job parks running after the engine accepts (jobs prepend)')
+  ok(jobState.length === 2 && jobState[0].status === 'queued' && jobState[0].progress === 0, 'submit: the packet job parks QUEUED after the engine accepts (jobs prepend) — no fabricated percent')
   ok(linkedJobId === jobState[0].id, 'submit: onJobCreated fires the moment the job record exists (the canvas-link discipline added with 34afx79)')
   ok(jobState[0].mediaType === 'image', 'submit: the job is an image job (the queue poll completes it with the image kind)')
   eq(t1SubmittedGraphs.length, 2, 'submit: the packet prompt is the second engine submission (the T=1 flip leg was the first)')

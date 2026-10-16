@@ -701,6 +701,10 @@ export function createStudioServer(paths: StudioServerPaths) {
       const history = await comfyFetch(loadSettingsCached().comfyUrl, `/history/${encodeURIComponent(promptId)}`)
       return (history && typeof history === 'object' ? history : {}) as Record<string, unknown>
     },
+    // (ewtobuh) The engine's whole queue — the per-prompt truth that keeps a
+    // merely-queued job reading queued in the record (never "running" just
+    // because history has no entry yet).
+    queue: async () => comfyFetch(loadSettingsCached().comfyUrl, '/queue'),
     resolveOutput: (file) => resolveEngineOutputFile(loadSettingsCached().outputDirectory, file),
     ingest: async (file, kind) => {
       const settings = loadSettingsCached()
