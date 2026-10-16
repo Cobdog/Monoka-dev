@@ -51,6 +51,14 @@ const SWEEP_INTERVAL_MS = 1500
  * Overridable for tests via MONOKA_JOBWATCH_PACKET_GRACE_MS. */
 const PACKET_GRACE_MS = Math.max(0, Number(process.env.MONOKA_JOBWATCH_PACKET_GRACE_MS ?? 8000) || 0)
 
+/** (ewtobuh round 2) How long a prompt must be absent from BOTH the
+ *  engine's history and its queue before the restart-orphan verdict lands
+ *  (two sweeps at the 1.5 s cadence — one absent read can be the torn
+ *  completion window: queue drained, history not yet written; that is a
+ *  blip, never a verdict). Overridable for tests via
+ *  MONOKA_JOBWATCH_RESTART_CONFIRM_MS. */
+const RESTART_ORPHAN_CONFIRM_MS = Math.max(0, Number(process.env.MONOKA_JOBWATCH_RESTART_CONFIRM_MS ?? 3000) || 0)
+
 /** Bounded landing retries (m6 discipline, mirrored from the retired client
  * loop): after this many attempts the failure parks VISIBLY — an errored
  * take carrying the reason, never a silent idle tile. */
@@ -137,6 +145,10 @@ export function createJobWatcher(deps: {
   let recoveredOnce = false
   /** Completion first-seen timestamps for packet jobs (the grace clock). */
   const packetSeenAt = new Map<string, number>()
+  // (ewtobuh round 2) First-absent timestamps for the restart-orphan
+  // confirmation: a prompt marked absent-both keeps its clock here until a
+  // sign of life refutes the orphan or the confirm window elapses.
+  const restartOrphanSeenAt = new Map<string, number>()
   /** Retryable landing failures: jobId -> { record, promptId, attempts }. */
   const pendingLandings = new Map<string, { record: GenerationJob; promptId: string; attempts: number }>
 
@@ -308,7 +320,26 @@ export function createJobWatcher(deps: {
             ? 'running'
             : 'absent'
         : undefined
-      observation = { kind: 'incomplete', ...(engineQueue !== undefined ? { engineQueue } : {}) }
+      // (ewtobuh round 2) THE RESTART ORPHAN: a REACHABLE engine that knows
+      // the prompt nowhere — no history entry, no queue slot — has lost the
+      // work (ComfyUI never resumes across a restart). Confirmed across
+      // sweeps before the verdict; the young window reads as a held
+      // 'absent' observation, never a phantom promote.
+      if (!entry && engineQueue === 'absent') {
+        const firstAbsent = restartOrphanSeenAt.get(promptId)
+        if (firstAbsent !== undefined && Date.now() - firstAbsent >= RESTART_ORPHAN_CONFIRM_MS) {
+          restartOrphanSeenAt.delete(promptId)
+          observation = { kind: 'restartOrphan' }
+        } else {
+          restartOrphanSeenAt.set(promptId, firstAbsent ?? Date.now())
+          observation = { kind: 'incomplete', engineQueue: 'absent' }
+        }
+      } else {
+        // Any sign of life — a history entry or a queue slot — refutes the
+        // orphan; the confirmation clock restarts.
+        restartOrphanSeenAt.delete(promptId)
+        observation = { kind: 'incomplete', ...(engineQueue !== undefined ? { engineQueue } : {}) }
+      }
     }
     const reduction = reduceJobPoll(record, observation, Date.now())
     if (reduction.job !== record) repo.upsertJobs([reduction.job as unknown as Record<string, unknown>])

@@ -459,3 +459,46 @@ test('(h) QUEUE TRUTH — a prompt the engine still holds as pending stays queue
     await post('/api/lan/jobs', { jobs: settled }).catch(() => undefined)
   }
 }, 30_000)
+
+test('(i) RESTART ORPHANS — a prompt the reachable engine knows nowhere fails with the restart advice (ewtobuh round 2)', async () => {
+  // The settlement move (gfv5h0g) retired the client's recovery-restart
+  // writer (the old poll loop failed any active prompt the fresh instance
+  // had never heard of), and the 'absent → promote' backstop left a queued
+  // orphan phantom-running to the 60-minute deadline. The watcher owns
+  // settlement now, so the verdict lives here. Ghost prompt ids the fake
+  // never received are exactly the evidence shape: both reads SUCCEED and
+  // neither knows the prompt — history answers empty, /queue lacks them.
+  const ghostQueued = 'jobwatcher-i1'
+  const ghostRunning = 'jobwatcher-i2'
+  await post('/api/lan/jobs', { jobs: [
+    jobRecord(ghostQueued, 'ghost-wave1-queued', {}, { status: 'queued', progress: 0 }),
+    jobRecord(ghostRunning, 'ghost-wave1-running', {}, { status: 'running' }),
+  ] })
+  try {
+    // Young absence: the first absent sweep only MARKS the orphan — the
+    // hold keeps the queued row queued through the confirmation window
+    // (never a phantom promote), the running row stays running (no demote).
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    const young = (await get('/api/lan/jobs')).jobs ?? []
+    assert.equal(young.find((job) => job.id === ghostQueued)?.status, 'queued', 'a freshly-absent queued row holds queued during the confirmation window')
+    // After the confirmation window the honest verdict lands on both —
+    // seconds, not the 60-minute deadline.
+    const orphans = await waitFor(async () => {
+      const listed = (await get('/api/lan/jobs')).jobs ?? []
+      const failed = listed.filter((job) => (job.id === ghostQueued || job.id === ghostRunning) && job.status === 'failed')
+      return failed.length === 2 ? failed : null
+    }, 'both restart orphans failing with the restart advice')
+    for (const row of orphans) {
+      assert.ok((row.error ?? '').includes('restarted'), `the restart advice rides the record (${row.id}: ${row.error ?? ''})`)
+      assert.equal(row.failureKind, 'engine-unreachable', `the classification is structured (${row.id})`)
+    }
+  } finally {
+    // Settle the ghosts terminal so no later sweep (or the fabric listener)
+    // observes them past this section.
+    const settled = [
+      jobRecord(ghostQueued, 'ghost-wave1-queued', {}, { status: 'cancelled' }),
+      jobRecord(ghostRunning, 'ghost-wave1-running', {}, { status: 'cancelled' }),
+    ]
+    await post('/api/lan/jobs', { jobs: settled }).catch(() => undefined)
+  }
+}, 30_000)

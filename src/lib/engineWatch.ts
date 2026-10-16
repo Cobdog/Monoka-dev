@@ -63,10 +63,14 @@ export function engineUnreachableFailure(): string {
 }
 
 /** The honest terminal message for jobs orphaned by an engine RESTART: the
- *  engine is back, but the fresh instance has no history for the prompt —
- *  the queued work died with the old process. */
+ *  engine is back, but the fresh instance knows the prompt nowhere — no
+ *  history, no queue slot — so the work died with the old process. Worded
+ *  for BOTH the never-started (queued) and the interrupted (running)
+ *  orphan, so it never claims "mid-render" of work that never began.
+ *  (ewtobuh round 2) The writer is server-side now — the job watcher emits
+ *  the restartOrphan observation and lib/jobReducer lands this message. */
 export function engineRestartFailure(): string {
-  return 'The generation engine restarted mid-render and the fresh instance no longer knows this prompt (it was unreachable when the work was lost) — the render did not complete. Re-run this chain.'
+  return 'The generation engine restarted and the fresh instance no longer knows this prompt (it was unreachable when the work was lost) — the render did not complete. Re-run this chain.'
 }
 
 /** The junction log for one probe's outcome — the triage transcript's

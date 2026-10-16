@@ -381,6 +381,12 @@ test('R-17: the remediation dock closes the loop — refusal → one install act
     registry: stockObjectInfo({ MiniMaxH3LoraFormLoader: {} }) as Record<string, unknown>,
     promptSeq: 0,
     served: new Set<string>(),
+    // (ewtobuh round 2) The LIVE instance's queue: prompts the CURRENT
+    // engine process holds. The earlier shape listed every prompt ever
+    // submitted, across restarts — impossible on a real engine (a restart
+    // wipes the queue) and it defeated the server watcher's queue-truth
+    // read, pinning the first render "running" forever.
+    live: new Set<string>(),
   }
   const listings = { ...H3_REGISTRY_LISTINGS, loras: [...H3_REGISTRY_LISTINGS.loras, 'civitai_h3_style.safetensors'] }
   const submittedGraphs: Array<Record<string, { class_type: string }>> = []
@@ -398,6 +404,7 @@ test('R-17: the remediation dock closes the loop — refusal → one install act
       req.on('data', (chunk: Buffer) => { body += chunk })
       req.on('end', () => {
         engineState.promptSeq += 1
+        engineState.live.add(`r17-${engineState.promptSeq}`)
         submittedGraphs.push((JSON.parse(body) as { prompt: Record<string, { class_type: string }> }).prompt)
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ prompt_id: `r17-${engineState.promptSeq}`, number: engineState.promptSeq, node_errors: {} }))
@@ -414,7 +421,7 @@ test('R-17: the remediation dock closes the loop — refusal → one install act
     // (the server gates the interrupt on the prompt being listed running)
     // and /interrupt itself (the A02 recording fake's shapes).
     if (url.pathname === '/queue' && req.method === 'GET') {
-      const running = engineState.promptSeq > 0 ? [['entry', `r17-${engineState.promptSeq}`]] : []
+      const running = Array.from(engineState.live, (id) => ['entry', id])
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ queue_running: running, queue_pending: [] }))
       return
@@ -435,6 +442,7 @@ test('R-17: the remediation dock closes the loop — refusal → one install act
   await new Promise<void>((resolve) => holder.close(() => resolve()))
   let engine: http.Server | null = null
   const startEngine = async () => {
+    engineState.live.clear() // a fresh instance starts with an EMPTY queue (the real restart semantics)
     engine = http.createServer(engineHandler)
     await new Promise<void>((resolve) => engine!.listen(enginePort, '127.0.0.1', () => resolve()))
   }
