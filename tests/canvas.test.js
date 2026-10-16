@@ -729,7 +729,9 @@ test('(p) the shared validation ladder (lib/h3Submit)', () => {
   // (W3, perfect-state sweep 2026-09-27) The membership rung COMPOSES from
   // the resolved rows — it names what is missing, never the blanket
   // "components are missing" that named nothing.
-  eq(h3Submit.validateH3Render(request(), { ...facts, modelReady: false }), 'The H3 stack is incomplete — the render is missing the FL2VA checkpoint (a diffusion model whose name contains "fl2va"), the 32B-class text encoder (qwen3vl_32b…), the video VAE (a VAE whose name contains "video_vae"), and the audio VAE (a VAE whose name contains "audio_vae"). Fetch them in Settings → Fetchable items (or make them visible to the engine), then rescan.', 'ladder: missing models refuses naming the missing rows')
+  // (g1girm8) The tail states the path that exists — placement + refresh —
+  // never the fetch promise the catalog cannot fulfill (no core H3 rows).
+  eq(h3Submit.validateH3Render(request(), { ...facts, modelReady: false }), 'The H3 stack is incomplete — the render is missing the FL2VA checkpoint (place a diffusion model whose name contains "fl2va" in the engine\'s diffusion_models folder), the 32B-class text encoder (place a qwen3vl_32b encoder in the engine\'s text_encoders folder), the video VAE (place a VAE whose name contains "video_vae" in the engine\'s vae folder), and the audio VAE (place a VAE whose name contains "audio_vae" in the engine\'s vae folder). Refresh the engine once the files are in place.', 'ladder: missing models refuses naming the missing rows with their placement')
   const fullSelection = { previewVae: '', fl2va: 'f.safetensors', ref2va: 'r.safetensors', textEncoder: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', videoVae: 'v.safetensors', audioVae: 'a.safetensors', fl2vLora: 'l.safetensors', ref2vLora: 'rl.safetensors' }
   eq(h3Submit.validateH3Render(request(), { ...facts, modelReady: false, selection: fullSelection }), 'One or more required MiniMax H3 model components are missing.', 'ladder: a full selection keeps the honest generic fallback')
   // (W3) The VDN environment rungs run BEFORE membership: a missing VDN
@@ -737,6 +739,20 @@ test('(p) the shared validation ladder (lib/h3Submit)', () => {
   // the stage in) — the named fetch-row guidance must win.
   const vdnStageAbsent = h3Submit.validateH3Render(request({ vdn: 'dmd-8' }), { ...facts, modelReady: false, info: { ApplyVDNH3: { input: { required: { vdn_checkpoint: [['<place a VDN stage-... directory under models/vdn>']] } } } } })
   ok(vdnStageAbsent && /vdn-stage-dmd-250/.test(vdnStageAbsent), `ladder: the missing VDN stage refusal names the fetch row, not the generic membership line (got: ${vdnStageAbsent})`)
+  // (g1girm8, R2 F3) The tier rung runs BEFORE membership and names ONE
+  // truthful path: publisher source + placement + refresh. The old behavior
+  // rode the shared membership list ("…the turbo LoRA for the selected speed
+  // tier… Fetch them in Settings → Fetchable items") — a promise the fetch
+  // catalog cannot fulfill (zero turbo rows), rendered directly above the
+  // panel's own "not fetchable" note: the audited double remediation.
+  const fastAbsent = h3Submit.validateH3Render(request({ turbo: '4', steps: 4 }), { ...facts, modelReady: false, selection: { previewVae: '' } })
+  ok(fastAbsent && fastAbsent.includes('Fast · 4-step') && fastAbsent.includes('minimax_h3_fl2v_turbo_4step_v1.2'), `ladder: an unresolvable 4-step tier refuses by name with the publisher path (got: ${fastAbsent})`)
+  ok(!fastAbsent.includes('Fetchable items'), 'ladder: the tier refusal never promises the fetch catalog')
+  ok(!fastAbsent.includes('the turbo LoRA for the selected speed tier'), 'ladder: the old shared-list phrasing is gone — one remediation, not two')
+  const fastRef = h3Submit.validateH3Render(request({ mode: 'reference', turbo: '4', steps: 4, referenceImages: [media('/r.png', 'image')] }), { ...facts, modelReady: false, selection: { previewVae: '' } })
+  ok(fastRef && fastRef.includes('ref2v_turbo_4step_v0.1'), `ladder: the reference lane's 4-step refusal names the ref2v weights (got: ${fastRef})`)
+  const fastReady = { previewVae: '', fl2va: 'f.safetensors', ref2va: 'r.safetensors', textEncoder: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', videoVae: 'v.safetensors', audioVae: 'a.safetensors', fl2vLora: 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors', ref2vLora: 'rl.safetensors' }
+  eq(h3Submit.validateH3Render(request({ turbo: '8', steps: 8 }), { ...facts, selection: fastReady }), null, 'ladder: a resolvable fast tier passes untouched')
   // (eyzcev5) The TE dimension-class rung: a wrong-class resolved TE is
   // non-empty (so modelReady stays true) — the ladder itself must refuse it
   // with the named reason; the 32B-class passes the same rung.

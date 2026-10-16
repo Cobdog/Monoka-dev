@@ -342,3 +342,32 @@ export function turboLoraPatterns(target: 'fl2v' | 'ref2v', turbo: 'off' | '4' |
     /^minimax_h3_fl2v_turbo_4step/i,
   ]
 }
+
+/** The install hint for a speed tier in a lane: derived from whichever
+ *  family's OWN canonical artifact (the exact filename its installHint
+ *  names) sits HIGHEST in that tier's ranked ladder. The ladder — not
+ *  registry order — is the resolver's preference, so the hint names the
+ *  publisher source of the very weights the app would pick first (e.g. the
+ *  ref2v 8-step ladder promotes drbaph's EMA conversion above the lightx2v
+ *  family that registry order would otherwise surface). Families whose hint
+ *  names no concrete filename cannot be ranked and yield to ones that can.
+ *  An explicit family shortcuts to that family's own hint (task g1girm8:
+ *  the tier menu and the submit refusal must point at the same truth). */
+export function turboTierInstallHint(tier: '4' | '8', lane: 'fl2v' | 'ref2v', family?: string, entries: readonly OptimizationEntry[] = TURBO_ENTRIES): string {
+  if (family) {
+    const entry = entries.find((candidate) => candidate.id === family)
+    if (entry?.ui?.installHint) return entry.ui.installHint
+  }
+  const ladder = turboLoraPatterns(lane, tier, undefined, entries)
+  let best: { rank: number; hint: string } | undefined
+  for (const entry of entries) {
+    const hint = entry.ui?.installHint
+    if (!hint) continue
+    const artifact = hint.match(/[A-Za-z0-9._-]+\.safetensors/i)?.[0]
+    if (!artifact) continue
+    const rank = ladder.findIndex((ladderPattern) => ladderPattern.test(artifact))
+    if (rank < 0) continue
+    if (!best || rank < best.rank) best = { rank, hint }
+  }
+  return best?.hint ?? ''
+}

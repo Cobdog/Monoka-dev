@@ -297,80 +297,167 @@ test('submit plans build the correct graph per selection (engine-free, L4)', asy
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
 
-test('the properties panel edits per-chain settings and the identity payload', async ({ page }) => {
+test('the properties panel edits per-chain settings and the identity payload', async ({ page, request }) => {
   const problems = await trackErrors(page)
-  await resetSession(page)
-  await page.goto('/?canvas=1')
-  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
-  await page.locator('[data-canvas-prompt]').fill('properties panel probe shot')
-  await page.locator('[data-canvas-submit]').click()
-  const tile = page.locator('[data-canvas-tile]').first()
-  await expect(tile).toBeVisible({ timeout: 10_000 })
+  const http = await import('node:http')
 
-  // The panel opens on selection with the absorption sections. (R-18) The
-  // panel is CONTEXTUAL: with no reference bound, Identity is absent from
-  // the DOM — the disclosure contract — and Guides/Takes render as folded
-  // <details> rows (visible elements, folded content).
-  const panel = page.locator('[data-canvas-properties]')
-  await expect(panel).toBeVisible()
-  for (const section of ['prompt', 'engine', 'references', 'guides', 'takes']) {
-    await expect(panel.locator(`[data-canvas-section="${section}"]`)).toBeVisible()
+  // (g1girm8) The tier chips are inventory-honest: an engine-less panel
+  // renders both fast tiers DISABLED, so the tier-8 edit this test makes
+  // needs real inventory. The fake engine's /models listing carries the
+  // ref2v 8-step ladder's top artifact (the drbaph EMA conversion, the
+  // measured fast-tier default) on top of the shared H3 listings — tier 8
+  // stays available after the reference binding flips the lane to ref2v,
+  // while tier 4 (no ref2v 4-step weights listed) does not.
+  const listings = {
+    ...H3_REGISTRY_LISTINGS,
+    loras: [...H3_REGISTRY_LISTINGS.loras, 'minimax_h3_turbo_v4_step600_ema_pruned_comfyui.safetensors'],
   }
-  await expect(panel.locator('[data-canvas-section="identity"]')).toHaveCount(0)
-  // Bind a reference (the drop + documents-API write, the misroute test's
-  // pattern): the identity section APPEARS with its payload anchored.
-  await page.keyboard.press('Escape')
-  await dropPng(page, 'panel-probe-reference.png')
-  await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 10_000 })
-  {
-    const document = await activeDocument(page)
-    const imageChain = document.chains.find((chain) => chain.kind === 'generation')!
-    const mediaChain = document.chains.find((chain) => chain.kind === 'media')!
-    const sourceOutput = mediaChain.outputs[0]!.id
-    await page.request.post('/api/lan/documents/chains/update', { data: { id: imageChain.id, settings: { ...imageChain.settings, referenceOutputIds: [sourceOutput] } } })
-    await page.reload()
-    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
-    await page.locator(`[data-canvas-tile="${imageChain.id}"]`).click()
-    await expect(panel).toBeVisible()
-  }
-  for (const section of ['identity']) {
-    await expect(panel.locator(`[data-canvas-section="${section}"]`)).toBeVisible()
-  }
-  // The universal prompt field carries the spawned prompt.
-  await expect(panel.locator('[data-canvas-section="prompt"] textarea').first()).toHaveValue('properties panel probe shot')
-
-  // Engine params: the tier chips (fast vs quality) + a duration edit.
-  await panel.locator('[data-canvas-tier="8"]').click()
-  await panel.locator('[data-canvas-duration]').fill('9')
-  // Identity payload: verbatim subject text + the stiffness↔drift dial.
-  await panel.locator('[data-canvas-identity-subject]').fill('the drummer, black coat, case in left hand')
-  await panel.locator('[data-canvas-identity-strength] input[type="range"]').evaluate((element) => {
-    // React-controlled input: the native prototype setter defeats the value
-    // tracker so the change actually propagates.
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
-    setter.call(element, '0.7')
-    element.dispatchEvent(new Event('input', { bubbles: true }))
+  const engine = http.createServer((req, res) => {
+    const url = new URL(req.url ?? '/', 'http://engine.local')
+    if (url.pathname === '/system_stats') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ system: {}, devices: [] }))
+      return
+    }
+    if (serveObjectInfo(url, stockObjectInfo({ MiniMaxH3HybridLoader: {} }), res)) return
+    if (serveModelRegistry(url, listings, res)) return
+    if (url.pathname === '/prompt' && req.method === 'POST') {
+      req.on('data', () => undefined)
+      req.on('end', () => {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ prompt_id: 'pp-e2e-1', number: 1, node_errors: {} }))
+      })
+      return
+    }
+    if (url.pathname === '/history/pp-e2e-1') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ 'pp-e2e-1': { prompt: [], outputs: {}, status: { completed: false } } }))
+      return
+    }
+    if (url.pathname === '/interrupt' && req.method === 'POST') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ cancelled: true, state: 'canceled' }))
+      return
+    }
+    if (url.pathname === '/queue' && req.method === 'GET') {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ queue_running: [['entry', 'pp-e2e-1']], queue_pending: [] }))
+      return
+    }
+    res.writeHead(404)
+    res.end()
   })
-  // (dispatch B, k2q0n9s — settle-or-poll) The named condition is the
-  // debounced settings commit persisting the edits; the poll replaces the
-  // fixed 1 s sleep (the load-shaped flake class — a slow commit outran
-  // it). The SUBJECT TEXT is the marker — the identity payload's strength
-  // default can pre-match the dial, so only the typed text is distinct
-  // before/after; every assertion below then reads the settled document,
-  // verbatim.
-  await expect.poll(async () => {
-    const document = await activeDocument(page)
-    const chain = document.chains.find((entry) => entry.kind === 'generation')
-    return chain?.identity?.subjectText ?? null
-  }, { timeout: 5_000 }).toBe('the drummer, black coat, case in left hand')
+  const enginePort = await new Promise<number>((resolve) => engine.listen(0, '127.0.0.1', () => resolve((engine.address() as { port: number }).port)))
 
-  const document = await activeDocument(page)
-  const chain = document.chains.find((entry) => entry.kind === 'generation')!
-  expect(chain.settings.turbo).toBe('8')
-  expect(chain.settings.duration).toBe(9)
-  expect(chain.identity?.subjectText).toBe('the drummer, black coat, case in left hand')
-  expect(Math.abs((chain.identity?.strength ?? 0) - 0.7)).toBeLessThan(0.06)
-  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    const listed = await (await request.get('/api/lan/jobs')).json() as { jobs?: Array<Record<string, unknown>> }
+    const stale = (listed.jobs ?? []).filter((job) => job.status === 'queued' || job.status === 'running').map((job) => ({ ...job, status: 'cancelled' }))
+    if (stale.length) await request.post('/api/lan/jobs', { data: { jobs: stale } })
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${enginePort}`,
+    } } })
+    await resetSession(page)
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    await page.locator('[data-canvas-prompt]').fill('properties panel probe shot')
+    await page.locator('[data-canvas-submit]').click()
+    const tile = page.locator('[data-canvas-tile]').first()
+    await expect(tile).toBeVisible({ timeout: 10_000 })
+
+    // The panel opens on selection with the absorption sections. (R-18) The
+    // panel is CONTEXTUAL: with no reference bound, Identity is absent from
+    // the DOM — the disclosure contract — and Guides/Takes render as folded
+    // <details> rows (visible elements, folded content).
+    const panel = page.locator('[data-canvas-properties]')
+    await expect(panel).toBeVisible()
+    for (const section of ['prompt', 'engine', 'references', 'guides', 'takes']) {
+      await expect(panel.locator(`[data-canvas-section="${section}"]`)).toBeVisible()
+    }
+    await expect(panel.locator('[data-canvas-section="identity"]')).toHaveCount(0)
+    // Bind a reference (the drop + documents-API write, the misroute test's
+    // pattern): the identity section APPEARS with its payload anchored.
+    await page.keyboard.press('Escape')
+    await dropPng(page, 'panel-probe-reference.png')
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 10_000 })
+    {
+      const document = await activeDocument(page)
+      const imageChain = document.chains.find((chain) => chain.kind === 'generation')!
+      const mediaChain = document.chains.find((chain) => chain.kind === 'media')!
+      const sourceOutput = mediaChain.outputs[0]!.id
+      await page.request.post('/api/lan/documents/chains/update', { data: { id: imageChain.id, settings: { ...imageChain.settings, referenceOutputIds: [sourceOutput] } } })
+      await page.reload()
+      await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+      await page.locator(`[data-canvas-tile="${imageChain.id}"]`).click()
+      await expect(panel).toBeVisible()
+    }
+    for (const section of ['identity']) {
+      await expect(panel.locator(`[data-canvas-section="${section}"]`)).toBeVisible()
+    }
+    // The universal prompt field carries the spawned prompt.
+    await expect(panel.locator('[data-canvas-section="prompt"] textarea').first()).toHaveValue('properties panel probe shot')
+
+    // The launcher REALLY submits when an engine answers — cancel that spawn
+    // job so the panel's edit phase runs on an idle chain (the 3846-test
+    // convention).
+    const stop = panel.locator('[data-canvas-cancel]')
+    if (await stop.isVisible({ timeout: 8_000 }).catch(() => false)) {
+      await stop.click()
+      await expect(panel.locator('[data-canvas-generate]')).toBeVisible({ timeout: 15_000 })
+    }
+
+    // (g1girm8) Tier honesty at the choice point: the reference binding put
+    // the chain in the ref2v lane, where the listing carries the 8-step EMA
+    // conversion but no 4-step weights — so tier 4 renders DISABLED with ONE
+    // truthful remediation (the official ref2v 4-step weights; never the
+    // library promise), and tier 8 stays selectable. The click below
+    // therefore persists.
+    const tier4 = panel.locator('[data-canvas-tier="4"]')
+    await expect(tier4).toBeDisabled()
+    await expect(panel.locator('[data-canvas-tier="8"]')).toBeEnabled()
+    const tierNote = panel.locator('[data-canvas-tier-note]')
+    await expect(tierNote).toBeVisible()
+    expect(await tierNote.textContent()).toContain('minimax_h3_ref2v_turbo_4step')
+    expect(await tierNote.textContent()).not.toContain('Fetchable items')
+
+    // Engine params: the tier chips (fast vs quality) + a duration edit.
+    await panel.locator('[data-canvas-tier="8"]').click()
+    await panel.locator('[data-canvas-duration]').fill('9')
+    // Identity payload: verbatim subject text + the stiffness↔drift dial.
+    await panel.locator('[data-canvas-identity-subject]').fill('the drummer, black coat, case in left hand')
+    await panel.locator('[data-canvas-identity-strength] input[type="range"]').evaluate((element) => {
+      // React-controlled input: the native prototype setter defeats the value
+      // tracker so the change actually propagates.
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
+      setter.call(element, '0.7')
+      element.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    // (dispatch B, k2q0n9s — settle-or-poll) The named condition is the
+    // debounced settings commit persisting the edits; the poll replaces the
+    // fixed 1 s sleep (the load-shaped flake class — a slow commit outran
+    // it). The SUBJECT TEXT is the marker — the identity payload's strength
+    // default can pre-match the dial, so only the typed text is distinct
+    // before/after; every assertion below then reads the settled document,
+    // verbatim.
+    await expect.poll(async () => {
+      const document = await activeDocument(page)
+      const chain = document.chains.find((entry) => entry.kind === 'generation')
+      return chain?.identity?.subjectText ?? null
+    }, { timeout: 5_000 }).toBe('the drummer, black coat, case in left hand')
+
+    const document = await activeDocument(page)
+    const chain = document.chains.find((entry) => entry.kind === 'generation')!
+    expect(chain.settings.turbo).toBe('8')
+    expect(chain.settings.duration).toBe(9)
+    expect(chain.identity?.subjectText).toBe('the drummer, black coat, case in left hand')
+    expect(Math.abs((chain.identity?.strength ?? 0) - 0.7)).toBeLessThan(0.06)
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    await resetSession(page).catch(() => undefined)
+    await new Promise<void>((resolve) => engine.close(() => resolve()))
+  }
 })
 
 // ---------------------------------------------------------------------------

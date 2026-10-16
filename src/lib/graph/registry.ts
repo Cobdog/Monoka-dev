@@ -17,7 +17,7 @@
 import type { ObjectInfo } from '../comfyInfo'
 import type { ModelFile } from '../../types'
 import type { DetectionResult, OptimizationEntry, TurboLoaderChoice, TurboPlan } from './types'
-import { GENERIC_TURBO_ENTRY, TURBO_ENTRIES, classifyTurboFamily as classifyInModule, larryvrhTurboPackPresent, resolveTurboPlan as resolveInModule, turboFetchPlan, turboLoraPatterns as patternsInModule } from './turbo'
+import { GENERIC_TURBO_ENTRY, TURBO_ENTRIES, classifyTurboFamily as classifyInModule, larryvrhTurboPackPresent, resolveTurboPlan as resolveInModule, turboFetchPlan, turboLoraPatterns as patternsInModule, turboTierInstallHint as tierHintInModule } from './turbo'
 import { UPSCALE_ENTRIES, upscaleEntryFor } from './upscale'
 import { PREVIEW_ENTRY } from './preview'
 import { VDN_ENTRY } from './vdn'
@@ -85,6 +85,10 @@ export function classifyTurboFamily(filename: string): OptimizationEntry | undef
 
 export function turboLoraPatterns(target: 'fl2v' | 'ref2v', turbo: 'off' | '4' | '8', family?: string): RegExp[] {
   return patternsInModule(target, turbo, family, entries)
+}
+
+export function turboTierInstallHint(tier: '4' | '8', lane: 'fl2v' | 'ref2v', family?: string): string {
+  return tierHintInModule(tier, lane, family, entries)
 }
 
 export function resolveTurboPlan(input: {
