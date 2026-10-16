@@ -1092,13 +1092,6 @@ test('(u) H3-1F as the image op — the two-slot seam, the T=1 request, the Edit
   }
   ok(pinThrew !== null && pinThrew.includes('exactly one frame'), 'pin: the builder refuses a T=1 request carrying the session packet tier (the core derives it — proven in (x))')
 
-  // The Edit handoff (image+control, dated 2026-09-19): the payload carries
-  // the bound image + intent; the preview is derived, never serialized.
-  const handoff = still.canvasEditHandoff('make it winter', media('/out/frame-1.png', 'image'))
-  eq(handoff, { path: '/out/frame-1.png', name: 'frame-1.png', intent: 'make it winter' }, 'handoff: the bound image + intent is the whole payload')
-  eq(still.handoffPreviewUrl('canvas-blobs/ab/cd.png'), '/api/lan/documents/blobs/file?path=canvas-blobs%2Fab%2Fcd.png', 'handoff: a blob artifact previews through the blob file route')
-  eq(still.handoffPreviewUrl('/out/frame-1.png'), '/api/lan/media?source=output&path=%2Fout%2Fframe-1.png', 'handoff: an output artifact previews through the output media route')
-
   function findFamilyProfile(mod, id) {
     const family = mod.H3IMG_FAMILIES.find((entry) => entry.id === id)
     return family ? family.profile : null

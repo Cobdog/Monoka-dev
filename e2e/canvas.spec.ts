@@ -1746,7 +1746,7 @@ test('the H3-1F stills intent: honest refusal pack-absent, the pack-form submit 
   }
 })
 
-test('image+control generates hand off to the workbench Edit surface with the image anchored (34afx79)', async ({ page, request }) => {
+test('image+control generate refuses inline on the canvas — the Edit surface is the user\'s own act (34afx79, retired gfv5h0g)', async ({ page, request }) => {
   const problems = await trackErrors(page)
   await resetSession(page)
   await page.goto('/?canvas=1')
@@ -1766,21 +1766,28 @@ test('image+control generates hand off to the workbench Edit surface with the im
   const sourceOutput = document.chains.find((chain) => chain.kind === 'media')!.outputs[0]!.id
   await request.post('/api/lan/documents/chains/update', { data: { id: imageChain.id, settings: { ...imageChain.settings, firstFrameOutputId: sourceOutput } } })
 
-  // Reload (the settings patch is external), select the chain, generate: the
-  // canvas stashes the handoff and routes to the workbench — the dated
-  // decision that replaced the ControlNet-Union control surface.
+  // Reload (the settings patch is external), select the chain, generate:
+  // the click REFUSES inline naming the Edit surface — the 34afx79 handoff
+  // (stash + full-navigate from generate) was retired in the gfv5h0g fix
+  // round: generate never switches surfaces, and the navigation's session
+  // bootstrap minted empty h3img objects as a side effect.
   await page.reload()
   await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
   await page.locator(`[data-canvas-tile="${imageChain.id}"]`).click()
   await expect(page.locator('[data-canvas-properties]')).toBeVisible()
   await expect(page.locator('[data-canvas-validation]')).toContainText('Edit surface')
   await page.locator('[data-canvas-generate]').click()
-  await expect(page.locator('[data-iw-root]')).toBeVisible({ timeout: 15_000 })
-  await expect(page.locator('[data-iw-root]')).toHaveAttribute('data-iw-family', 'h3img.edit.freeform')
-  const sourceName = await page.locator('[data-iw-source-name]').textContent()
-  expect(sourceName).toContain('edit-handoff-source.png')
-  await expect(page.locator('[data-iw-intent]')).toHaveValue('make it winter, keep the lighthouse')
-  // The handoff key is consumed exactly once.
+  const refusal = page.locator('[data-refusal]')
+  await expect(refusal).toBeVisible({ timeout: 10_000 })
+  await expect(refusal.locator('[data-refusal-reason]')).toContainText("workbench's Edit surface")
+  // No navigation, no workbench session object, no handoff key: the canvas
+  // stays exactly where it was, and the lane is reached by the user's own
+  // act (switch to Images and anchor the source from its canvas picker).
+  expect(new URL(page.url()).searchParams.get('images')).toBe(null)
+  await expect.poll(async () => {
+    const document = await activeDocument(page)
+    return document.chains.some((chain) => chain.kind === 'h3img')
+  }, { timeout: 10_000 }).toBe(false)
   expect(await page.evaluate(() => window.localStorage.getItem('h3img-canvas-handoff'))).toBeNull()
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })

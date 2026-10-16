@@ -35,6 +35,7 @@ const __dirname = require('node:path').dirname(fileURLToPath(import.meta.url))
 const REPO = require('node:path').resolve(__dirname, '..')
 
 const { spawn } = require('node:child_process')
+const net = require('node:net')
 const os = require('node:os')
 const path = require('node:path')
 const assert = require('node:assert/strict')
@@ -105,6 +106,8 @@ let chainA = null // (a)+(d): the video chain
 let chainB = null // (b)
 let chainC = null // (c)
 let chainE = null // (e)
+let chainF = null // (f): the recovered chain
+let chainG = null // (f): the tombstoned chain (must STAY unlanded)
 const landedJobIds = new Set()
 
 function apiBase() { return `http://127.0.0.1:${server.port}` }
@@ -177,6 +180,8 @@ beforeAll(async () => {
   chainB = await createChain(project.id, 'a second lighthouse, envelope leg')
   chainC = await createChain(project.id, 'a third lighthouse, error leg')
   chainE = await createChain(project.id, 'a workbench packet, backstop leg')
+  chainF = await createChain(project.id, 'a recovered lighthouse, restart leg')
+  chainG = await createChain(project.id, 'a tombstoned lighthouse, restart leg')
   // A fabric listener subscribed to the job channel (a live surface's
   // transport — passive here; section (a) asserts landing WITHOUT it by
   // construction, since nothing about the landing depends on it).
@@ -313,3 +318,87 @@ test('(e) a workbench packet whose surface never lands it is backstopped server-
   assert.equal(take.metrics?.h3img?.scorer, null, 'the backstop lands unscored — pick-by-eye, never a fabricated verdict')
   landedJobIds.add(jobId)
 }, 60_000)
+
+test('(f) THE BOOT RECOVERY PASS — a settled-but-unlanded job lands after a restart (fix round 1, finding 2)', async () => {
+  // The narrow cousin of the R2 repro: a job the watcher SETTLED (status
+  // completed, persisted) whose landing never completed before the process
+  // died. The observation loop ignores terminal rows and the retry maps are
+  // in-memory — without a boot pass this job lands no take, ever.
+  const promptIdF = await enginePrompt({ save: { class_type: 'SaveVideo', inputs: {} } })
+  const promptIdG = await enginePrompt({ save: { class_type: 'SaveVideo', inputs: {} } })
+  await waitFor(async () => {
+    const history = await (await fetch(`http://127.0.0.1:${engine.port}/history/${promptIdF}`)).json()
+    return history[promptIdF]?.status?.completed ? true : null
+  }, 'the engine to complete both renders', 30_000)
+  // The tombstoned chain: completed job against a chain the user deleted.
+  await post('/api/lan/documents/chains/delete', { id: chainG.id })
+
+  // SETTLED rows, persisted exactly as a mid-retry crash would leave them.
+  const jobF = jobRecord('jobwatcher-f', promptIdF, { canvas: { chainId: chainF.id, projectId: client.projectId } })
+  jobF.status = 'completed'
+  jobF.progress = 100
+  const jobG = jobRecord('jobwatcher-g', promptIdG, { canvas: { chainId: chainG.id, projectId: client.projectId } })
+  jobG.status = 'completed'
+  jobG.progress = 100
+  await post('/api/lan/jobs', { jobs: [jobF, jobG] })
+
+  // The live sweep does NOT touch terminal rows: a settle window proves
+  // nothing lands while the process that settled them keeps running.
+  await new Promise((resolve) => setTimeout(resolve, 4000))
+  let document = await documentFor(client.projectId)
+  assert.equal((document.chains.find((entry) => entry.id === chainF.id)?.outputs ?? []).length, 0, 'no output row lands without a driver')
+
+  // THE CRASH + REBOOT: same home (settings + the settled rows persist),
+  // same engine. The FIRST sweep's recovery pass finds both completed rows.
+  server.child.kill('SIGINT')
+  await new Promise((resolve) => { const timer = setTimeout(() => { server.child.kill('SIGKILL'); resolve() }, 5000); server.child.once('exit', () => { clearTimeout(timer); resolve() }) })
+  server = await bootServer(home)
+
+  // The live chain's job lands; the TOMBSTONED chain's job stays unlanded.
+  const take = await waitFor(async () => {
+    const refreshed = await documentFor(client.projectId)
+    return refreshed.chains.find((entry) => entry.id === chainF.id)?.outputs?.[0]?.takes?.find((row) => row.jobId === 'jobwatcher-f') ?? null
+  }, 'the recovered take to land after the restart', 30_000)
+  assert.ok(/^canvas-blobs\//.test(take.artifacts[0] ?? ''), `the recovered artifact is blob-registered (got: ${JSON.stringify(take.artifacts)})`)
+  await new Promise((resolve) => setTimeout(resolve, 4000))
+  document = await documentFor(client.projectId)
+  const tombstoned = document.chains.find((entry) => entry.id === chainG.id)
+  assert.equal((tombstoned?.outputs ?? []).length, 0, 'a job against a tombstoned chain stays unlanded — the user deleted it')
+  const listed = (await get('/api/lan/jobs')).jobs ?? []
+  assert.equal(listed.find((job) => job.id === 'jobwatcher-f')?.status, 'completed', 'the recovered row stays settled')
+}, 120_000)
+
+test('(g) the ingest fetch is bounded — a stalled engine /view aborts at the deadline, never hanging the sweep (fix round 1, finding 1)', async () => {
+  const { ingestEngineOutputFile, ENGINE_INGEST_TIMEOUT_MS } = require(path.join(REPO, 'dist-server', 'server', 'engineOutputs.js'))
+  // The default matches the history fetch's bound (comfyFetch's 60 s): every
+  // await inside the serialized sweep is bounded the same way.
+  assert.equal(ENGINE_INGEST_TIMEOUT_MS, 60_000)
+  // A half-open server: accepts the connection, never answers — the engine
+  // dying mid-response, the exact class that must not stall the sweep.
+  const sockets = new Set()
+  const stall = net.createServer((socket) => { sockets.add(socket) })
+  const stallPort = await new Promise((resolve) => stall.listen(0, '127.0.0.1', () => resolve(stall.address().port)))
+  try {
+    const started = Date.now()
+    await assert.rejects(
+      ingestEngineOutputFile({
+        viewBase: `http://127.0.0.1:${stallPort}`,
+        outputDirectory: home,
+        registerBlobFile: () => ({ relPath: '', hash: null, size: null, present: false }),
+        file: { filename: 'stalled.mp4' },
+        kind: 'video',
+        timeoutMs: 400,
+      }),
+      (error) => /timed out/.test(error instanceof Error ? error.message : String(error)),
+      'the stalled /view aborts at its deadline with the named reason',
+    )
+    const elapsed = Date.now() - started
+    assert.ok(elapsed < 5000, `the fetch aborts at the bound, not the socket's mercy (took ${elapsed} ms)`)
+    assert.ok(elapsed >= 350, `the bound is honored (waited ${elapsed} ms)`)
+  } finally {
+    // The aborted fetch leaves its half-open socket in the pool — destroy
+    // the accepted connections before closing (close() alone waits on them).
+    for (const socket of sockets) socket.destroy()
+    await new Promise((resolve) => stall.close(() => resolve()))
+  }
+}, 30_000)

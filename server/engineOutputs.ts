@@ -40,6 +40,12 @@ export type IngestedEngineOutput = {
   blob: { relPath: string; hash: string | null; size: number | null; present: boolean }
 }
 
+/** The /view fetch bound (fix round 1, finding 1) — mirrors the history
+ *  fetch's COMFY_FETCH_TIMEOUT_MS (server/core.ts) so every await inside
+ *  the watcher's serialized sweep is bounded. Exported for the wiring
+ *  test. */
+export const ENGINE_INGEST_TIMEOUT_MS = 60_000
+
 /** Remote-engine output ingest (the B2 contract as a shared function): a
  *  completed render whose output never resolved to a LOCAL file (external
  *  ComfyUI, or a subfolder/output-dir mismatch) is fetched from the engine's
@@ -52,13 +58,33 @@ export async function ingestEngineOutputFile(input: {
   registerBlobFile: (kind: 'image' | 'video' | 'audio', path: string) => IngestedEngineOutput['blob']
   file: EngineOutputDescriptor
   kind: 'image' | 'video' | 'audio'
+  /** (Fix round 1, finding 1) A hard bound on the /view fetch — the SAME
+   *  discipline the history fetch already has (comfyFetch's 60 s). The
+   *  ingest runs inside the watcher's SERIALIZED sweep: a half-open engine
+   *  socket (the engine dying mid-response — the exact engine-death class
+   *  this card exists for) must abort at the bound and free the sweep, not
+   *  stall every later tick forever. Overridable so tests can prove the
+   *  wiring without waiting a minute. */
+  timeoutMs?: number
 }): Promise<IngestedEngineOutput> {
   const { filename, subfolder } = input.file
   if (!filename || filename.includes('/') || filename.includes('\\')) throw new Error('Invalid output filename.')
   if (subfolder && (isAbsolute(subfolder) || subfolder.split(/[\\/]/).includes('..'))) throw new Error('Invalid output subfolder.')
   const fileType = input.file.type === 'input' ? 'input' : 'output'
   const query = new URLSearchParams({ filename, subfolder: subfolder ?? '', type: fileType })
-  const upstream = await fetch(`${input.viewBase}/view?${query}`)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), Math.max(1, input.timeoutMs ?? ENGINE_INGEST_TIMEOUT_MS))
+  let upstream: Response
+  try {
+    upstream = await fetch(`${input.viewBase}/view?${query}`, { signal: controller.signal })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`The engine output fetch to /view timed out after ${Math.round((input.timeoutMs ?? ENGINE_INGEST_TIMEOUT_MS) / 1000)} s — the engine connection stalled mid-response.`)
+    }
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
   if (!upstream.ok || !upstream.body) throw new Error('The engine output could not be fetched — the engine may be unreachable or the output rotated away.')
   const bytes = Buffer.from(await upstream.arrayBuffer())
   if (!bytes.length) throw new Error('The engine output carried no bytes.')

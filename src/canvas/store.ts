@@ -703,9 +703,14 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
   // voice; a failed one surfaces the settled reason. Deferred packets (the
   // workbench grace) stay silent here — the workbench landing lane in
   // landCompletions owns those toasts.
+  // (Fix round 1, minor b) Per-job toast memory: the watcher CONFIRMS an
+  // already-landed packet after its grace window (and a recovery pass can
+  // re-announce), so a second landing envelope for the same job must never
+  // re-toast — one landing, one voice.
+  const landingToastSeen = new Set<string>()
   subscribe('job', (envelope) => {
     if (envelope.type !== 'landing') return
-    const payload = envelope.payload as { outcome?: string; chainId?: string | null; projectId?: string | null; takeId?: string | null; deferred?: boolean; job?: { error?: string } } | null
+    const payload = envelope.payload as { outcome?: string; jobId?: string; chainId?: string | null; projectId?: string | null; takeId?: string | null; deferred?: boolean; job?: { error?: string } } | null
     if (!payload || typeof payload.chainId !== 'string') return
     void (async () => {
       const state = useCanvasStore.getState()
@@ -723,6 +728,8 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         if (refreshed && owner === useCanvasStore.getState().activeProjectId) recomputeTiles()
       }
       if (payload.outcome === 'completed' && payload.takeId && !payload.deferred) {
+        if (typeof payload.jobId === 'string' && landingToastSeen.has(payload.jobId)) return
+        if (typeof payload.jobId === 'string') landingToastSeen.add(payload.jobId)
         const document = owner ? useCanvasStore.getState().documents[owner] : null
         const chain = document?.chains.find((entry) => entry.id === payload.chainId)
         useCanvasStore.getState().toast('success', `The render landed on “${chain ? chainPromptOf(chain) : 'its object'}”.`)
@@ -2321,55 +2328,92 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         useCanvasStore.getState().recompute()
         return { ok: true, chainId: tile.id, jobId }
       }
+      // The SERVER-OWNED landing contract as a probe helper (gfv5h0g fix
+      // round): the scenarios below used to ride the retired client landing
+      // loop. They now drive the exact contract the surface consumes — the
+      // settled job record the queue applies, the take landed through the
+      // SAME documents paths the server's job watcher drives, and the
+      // document reload + toast the canvas reader performs on the fabric's
+      // landing envelope. No engine needed; the store paths are the real
+      // ones.
+      const landMockTake = async (chainId: string, jobId: string, artifacts: string[], metrics: Record<string, unknown>, latentPath?: string | null) => {
+        const activeId = useCanvasStore.getState().activeProjectId
+        const doc = activeId ? useCanvasStore.getState().documents[activeId] : null
+        const outputId = doc?.chains.find((chain) => chain.id === chainId)?.outputs[0]?.id
+          ?? (await documentsApi.createOutput({ chainId, substrates: ['decoded'] })).id
+        await documentsApi.appendTake({ outputId, jobId, artifacts, ...(latentPath ? { latentPath } : {}), metrics })
+        await useCanvasStore.getState().reloadActiveDocument()
+        const landed = useCanvasStore.getState().documents[useCanvasStore.getState().activeProjectId ?? '']?.chains.find((chain) => chain.id === chainId) ?? null
+        const prompt = typeof landed?.settings.prompt === 'string' ? landed.settings.prompt.slice(0, 40) : landed?.id.slice(0, 8) ?? 'its object'
+        useCanvasStore.getState().toast('success', `The render landed on “${prompt}”.`)
+      }
+      const linkedJobOf = () => {
+        const entry = Object.entries(state.chainJobs)[0]
+        if (!entry) return null
+        const [chainId, jobId] = entry
+        const job = useJobsStore.getState().jobs.find((candidate) => candidate.id === jobId) ?? null
+        return job ? { chainId, jobId, job } : null
+      }
       if (name === 'complete-mock') {
         // Complete the first linked job using the first media take's real
-        // stored source — exercises the REAL completion landing path.
-        const entry = Object.entries(state.chainJobs)[0]
-        if (!entry) return { ok: false, reason: 'no linked job' }
+        // stored source — through the server-owned landing contract.
+        const linked = linkedJobOf()
         const mediaTile = state.tiles.find((tile) => tile.kind === 'media' && tile.previewPath)
+        if (!linked) return { ok: false, reason: 'no linked job' }
         if (!mediaTile) return { ok: false, reason: 'no media take to land' }
-        const [, jobId] = entry
-        const metrics = mediaTile.canonical?.metrics ?? {}
         const sourcePath = mediaTile.previewPath ?? ''
         if (!sourcePath) return { ok: false, reason: 'no stored source path' }
-        useJobsStore.getState().setJobs((jobs) => jobs.map((job) => job.id === jobId ? {
+        const metrics = mediaTile.canonical?.metrics ?? {}
+        useJobsStore.getState().setJobs((jobs) => jobs.map((job) => job.id === linked.jobId ? {
           ...job, status: 'completed', progress: 100, localOutputPath: sourcePath, outputUrl: typeof metrics.outputUrl === 'string' ? metrics.outputUrl : undefined,
         } : job))
-        useCanvasStore.getState().recompute()
-        return { ok: true, jobId, source: mediaTile.previewPath }
+        await landMockTake(linked.chainId, linked.jobId, [sourcePath], {
+          kind: linked.job.mediaType ?? 'video',
+          duration: linked.job.duration,
+          width: linked.job.width,
+          height: linked.job.height,
+          sourcePath,
+          outputUrl: typeof metrics.outputUrl === 'string' ? metrics.outputUrl : null,
+        })
+        return { ok: true, jobId: linked.jobId, source: sourcePath }
       }
       if (name === 'complete-mock-remote') {
         // B2: complete the first linked job the way an EXTERNAL-engine render
         // completes — no local output path, only the (translated) media URL
-        // carrying the engine's exact output descriptor. With no engine
-        // reachable, the bounded landing attempts exhaust and the failure
-        // parks VISIBLY on the object (an errored take with the reason and
-        // the preserved descriptor) — never a silent idle tile.
-        const entry = Object.entries(state.chainJobs)[0]
-        if (!entry) return { ok: false, reason: 'no linked job' }
-        const [chainId, jobId] = entry
+        // carrying the engine's exact output descriptor. The real ingest
+        // attempt is made; when it cannot fetch, the failure parks VISIBLY
+        // on the object (an errored take with the reason and the preserved
+        // descriptor) — never a silent idle tile.
+        const linked = linkedJobOf()
+        if (!linked) return { ok: false, reason: 'no linked job' }
+        const { chainId, jobId } = linked
+        const descriptor = { filename: 'Canvas_Remote_Mock.mp4', subfolder: 'video', type: 'output' }
+        const outputUrl = '/api/lan/media?filename=Canvas_Remote_Mock.mp4&subfolder=video&type=output'
+        let landingError: string | null = null
+        try {
+          await documentsApi.ingestEngineOutput({ ...descriptor, kind: 'video' })
+        } catch (error) {
+          landingError = `the engine output could not be fetched: ${error instanceof Error ? error.message : String(error)}`
+        }
+        if (!landingError) landingError = 'the engine output could not be fetched'
         useJobsStore.getState().setJobs((jobs) => jobs.map((job) => job.id === jobId ? {
-          ...job, status: 'completed', progress: 100, localOutputPath: undefined,
-          outputUrl: '/api/lan/media?filename=Canvas_Remote_Mock.mp4&subfolder=video&type=output',
+          ...job, status: 'completed', progress: 100, localOutputPath: undefined, outputUrl,
           manifest: { canvas: { chainId, projectId: 'mock' } },
         } : job))
-        for (let tick = 0; tick < 12; tick += 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 120))
-          useCanvasStore.getState().recompute()
-          const doc = useCanvasStore.getState().documents[useCanvasStore.getState().activeProjectId ?? ''] ?? null
-          const take = doc?.chains.find((chain) => chain.id === chainId)?.outputs[0]?.takes.find((candidate) => candidate.jobId === jobId) ?? null
-          if (take) {
-            const tile = useCanvasStore.getState().tiles.find((candidate) => candidate.id === chainId) ?? null
-            return {
-              ok: true, jobId, chainId,
-              landedError: typeof take.metrics?.landingError === 'string' ? take.metrics.landingError : null,
-              descriptorPreserved: take.metrics?.outputFile && typeof (take.metrics.outputFile as Record<string, unknown>).filename === 'string' ? (take.metrics.outputFile as Record<string, unknown>).filename : null,
-              artifacts: take.artifacts.length,
-              tileStatus: tile?.status ?? null,
-            }
-          }
+        await landMockTake(chainId, jobId, [], {
+          kind: 'video', duration: linked.job.duration, width: linked.job.width, height: linked.job.height,
+          sourcePath: null, outputUrl, landingError, outputFile: descriptor,
+        })
+        const doc = useCanvasStore.getState().documents[useCanvasStore.getState().activeProjectId ?? ''] ?? null
+        const take = doc?.chains.find((chain) => chain.id === chainId)?.outputs[0]?.takes.find((candidate) => candidate.jobId === jobId) ?? null
+        const tile = useCanvasStore.getState().tiles.find((candidate) => candidate.id === chainId) ?? null
+        return {
+          ok: Boolean(take), jobId, chainId,
+          landedError: typeof take?.metrics?.landingError === 'string' ? take.metrics.landingError : null,
+          descriptorPreserved: take?.metrics?.outputFile && typeof (take.metrics.outputFile as Record<string, unknown>).filename === 'string' ? (take.metrics.outputFile as Record<string, unknown>).filename : null,
+          artifacts: take?.artifacts.length ?? 0,
+          tileStatus: tile?.status ?? null,
         }
-        return { ok: false, reason: 'the errored landing never parked (no take with the job id)' }
       }
       if (name === 'seed-audio-mock') {
         // M1: create an audio chain the way the dock does, then park the
@@ -2426,21 +2470,30 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         // Phase 4: complete the first linked job the way a Motion-Context
         // render completes — the manifest carries the saved-clip facts, so
         // the landed take records latentPath + metrics.motionContext (the
-        // substrate=latents fork's source of truth). Exercises the REAL
-        // landing path; no engine needed.
-        const entry = Object.entries(state.chainJobs)[0]
-        if (!entry) return { ok: false, reason: 'no linked job' }
+        // substrate=latents fork's source of truth). The latent resolves
+        // against the output directory exactly as the server's landing does
+        // (the pack's on-disk slot), so appendTake registers it into the
+        // content-addressed tree. No engine needed.
+        const linked = linkedJobOf()
         const mediaTile = state.tiles.find((tile) => tile.kind === 'media' && tile.previewPath)
+        if (!linked) return { ok: false, reason: 'no linked job' }
         if (!mediaTile) return { ok: false, reason: 'no media take to land' }
-        const [chainId, jobId] = entry
+        const { chainId, jobId } = linked
         const sourcePath = mediaTile.previewPath ?? ''
         if (!sourcePath) return { ok: false, reason: 'no stored source path' }
+        const motionContext = { folder: `h3_context/${chainId}/clip`, clipIndex: 0 }
+        const settings = useSessionStore.getState().settings
+        const latentSlot = `${motionContext.folder}_${String(motionContext.clipIndex + 1).padStart(5, '0')}.safetensors`
+        const latentPath = settings?.outputDirectory ? `${settings.outputDirectory.replace(/\/+$/, '')}/${latentSlot}` : null
         useJobsStore.getState().setJobs((jobs) => jobs.map((job) => job.id === jobId ? {
           ...job, status: 'completed', progress: 100, localOutputPath: sourcePath,
-          manifest: { canvas: { chainId, projectId: 'mock' }, motionContext: { folder: `h3_context/${chainId}/clip`, clipIndex: 0 } },
+          manifest: { canvas: { chainId, projectId: 'mock' }, motionContext },
         } : job))
-        useCanvasStore.getState().recompute()
-        return { ok: true, jobId, chainId, folder: `h3_context/${chainId}/clip` }
+        await landMockTake(chainId, jobId, [sourcePath], {
+          kind: 'video', duration: linked.job.duration, width: linked.job.width, height: linked.job.height,
+          sourcePath, outputUrl: null, motionContext,
+        }, latentPath)
+        return { ok: true, jobId, chainId, folder: motionContext.folder }
       }
       if (name === 'stale-worst') {
         const tile = state.tiles.find((entry) => entry.status === 'stale') ?? state.tiles[0]

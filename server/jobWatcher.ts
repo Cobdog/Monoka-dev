@@ -112,10 +112,11 @@ export function createJobWatcher(deps: {
   let timer: ReturnType<typeof setInterval> | null = null
   let sweeping = false
   let soon: ReturnType<typeof setTimeout> | null = null
+  let recoveredOnce = false
   /** Completion first-seen timestamps for packet jobs (the grace clock). */
   const packetSeenAt = new Map<string, number>()
   /** Retryable landing failures: jobId -> { record, promptId, attempts }. */
-  const pendingLandings = new Map<string, { record: GenerationJob; promptId: string; attempts: number }>()
+  const pendingLandings = new Map<string, { record: GenerationJob; promptId: string; attempts: number }>
 
   const activeCount = () => pendingLandings.size + packetSeenAt.size
 
@@ -133,9 +134,67 @@ export function createJobWatcher(deps: {
     })()
   }
 
+  /** The shared post-landing handling for every landing attempt (the
+   *  observation path and the boot recovery): a landed/structural outcome
+   *  emits; a retryable or deferred one enters the bounded retry map. */
+  function settleLanding(record: GenerationJob, promptId: string, landing: JobWatcherLandingResult, envelopeExtra: Record<string, unknown> = {}) {
+    if (landing.takeId) packetSeenAt.delete(record.id)
+    if ((landing.error || landing.deferred) && !landing.takeId && !landing.note) {
+      pendingLandings.set(record.id, { record, promptId, attempts: landing.deferred ? 0 : 1 })
+    }
+    deps.emit('landing', {
+      outcome: 'completed',
+      jobId: record.id,
+      promptId,
+      chainId: landing.chainId ?? null,
+      projectId: landing.projectId ?? null,
+      takeId: landing.takeId ?? null,
+      deferred: landing.deferred === true,
+      job: record,
+      ...envelopeExtra,
+    })
+  }
+
+  /** (Fix round 1, finding 2) One pass over SETTLED-but-unlanded jobs: a
+   *  completed row with a canvas link whose take never landed (the process
+   *  died mid-retry — pendingLandings is in-memory) gets its landing now.
+   *  Tombstoned/absent chains stay unlanded (landJob's own guard), and a
+   *  take that DOES exist (the live surface won the packet race) is
+   *  skipped without a single engine fetch. */
+  async function recoverUnlandedJobs(repo: StudioRepository) {
+    const records = repo.listJobs(100) as Array<Record<string, unknown>>
+    for (const raw of records) {
+      if (!isRecord(raw)) continue
+      const record = raw as unknown as GenerationJob
+      const promptId = typeof record.promptId === 'string' ? record.promptId : ''
+      if (record.status !== 'completed' || !promptId) continue
+      const manifest = isRecord(record.manifest) ? record.manifest : null
+      const canvas = manifest && isRecord(manifest.canvas) ? manifest.canvas : null
+      if (!canvas || typeof canvas.chainId !== 'string' || !canvas.chainId) continue
+      if (repo.documents.takeByJob(record.id)) continue
+      const history = await (async () => {
+        try { return await deps.history(promptId) } catch { return {} as Record<string, unknown> }
+      })()
+      const landing = await landJob(record, history)
+      if (landing.takeId) deps.logEvent({ kind: 'jobwatch.recovered', jobId: record.id, promptId })
+      settleLanding(record, promptId, landing, { recovered: true })
+    }
+  }
+
   async function sweep() {
     const repo = deps.repo()
     if (!repo) return
+    // The boot recovery pass (fix round 1, finding 2) rides the FIRST
+    // serialized sweep: a job this watcher (or its predecessor process)
+    // settled whose landing never completed — the landing was retrying
+    // when the process died, and the retry maps are in-memory — would
+    // otherwise be skipped forever, because the observation loop below
+    // ignores terminal rows. A narrow cousin of the R2 repro; the pass
+    // closes it.
+    if (!recoveredOnce) {
+      recoveredOnce = true
+      await recoverUnlandedJobs(repo)
+    }
     const records = repo.listJobs(100) as Array<Record<string, unknown>>
     for (const raw of records) {
       if (!isRecord(raw)) continue
@@ -214,24 +273,10 @@ export function createJobWatcher(deps: {
     if (reduction.job !== record) repo.upsertJobs([reduction.job as unknown as Record<string, unknown>])
     if (reduction.transitionedTo === 'completed') {
       const landing = await landJob(reduction.job, history ?? {})
-      if (landing.takeId) packetSeenAt.delete(reduction.job.id)
       // A retryable landing (engine output fetch failed, output row
-      // unreachable, or the packet grace still open): bounded retries on
-      // later ticks, parked visibly at the cap — the m6 discipline,
-      // server-side.
-      if ((landing.error || landing.deferred) && !landing.takeId && !landing.note) {
-        pendingLandings.set(reduction.job.id, { record: reduction.job, promptId, attempts: landing.deferred ? 0 : 1 })
-      }
-      deps.emit('landing', {
-        outcome: 'completed',
-        jobId: reduction.job.id,
-        promptId,
-        chainId: landing.chainId ?? null,
-        projectId: landing.projectId ?? null,
-        takeId: landing.takeId ?? null,
-        deferred: landing.deferred === true,
-        job: reduction.job,
-      })
+      // unreachable, or the packet grace still open) enters the bounded
+      // retry map — parked visibly at the cap, the m6 discipline.
+      settleLanding(reduction.job, promptId, landing)
     } else if (reduction.transitionedTo === 'failed') {
       deps.logEvent({ kind: 'jobwatch.failed', jobId: reduction.job.id, promptId, reason: (reduction.job.error ?? '').slice(0, 160) })
       // `failureKind` rides the envelope so a live surface can tell an

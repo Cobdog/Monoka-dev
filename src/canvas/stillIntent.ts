@@ -15,13 +15,16 @@
  *     the Krea 2 stills engine (mf3wfq6, queued) — it docks into
  *     submitChain's switch without another rewire. Until it lands the hole
  *     refuses HONESTLY (never silently falls back).
- *  2. THE EDIT HANDOFF — image-with-reference work (the old control/canny
- *     surface, 2026-09-19) is the workbench Edit surface's job, not a
- *     canvas graph: the canvas stashes the bound image + intent and routes
- *     to ?images=1 where it lands anchored as the Edit source (Picture 1).
- *     The dead ControlNet-Union-on-Z-Image path is gone with Z-Image.
+ *  2. THE EDIT HANDOFF (2026-09-19 → retired in the gfv5h0g fix round,
+ *     2026-10-15) — image-with-reference work is the workbench Edit
+ *     surface's job, not a canvas graph. The old handoff (stash the bound
+ *     image + intent, then full-navigate to ?images=1 FROM GENERATE) died
+ *     in the blind-review fix: generate never switches surfaces, and the
+ *     navigation's session bootstrap minted empty h3img objects as a side
+ *     effect. The lane is reached by opening the workbench and anchoring
+ *     the source from its canvas picker — an explicit act, never a
+ *     generate side effect.
  */
-import type { MediaFile } from '../types'
 import { engineFamilyForChain } from '../lib/graph/engineFamilies'
 import type { CanvasChainSettings } from './generation'
 import type { WorkbenchGenerationRequest } from '../images/submit'
@@ -29,20 +32,6 @@ import type { WorkbenchGenerationRequest } from '../images/submit'
 /** The h3image family the H3-1F engine renders (the Generate-T=1 Fast
  * profile — H3IMG_RECIPE_PINS.t1 is the pinned recipe). */
 export const H3_ONE_FRAME_FAMILY = 'h3img.generate.t1'
-
-/** The localStorage key carrying the canvas→workbench Edit handoff (the
- * poserig inbox precedent — a convenience key, full-navigation handoff). */
-export const CANVAS_EDIT_HANDOFF_KEY = 'h3img-canvas-handoff'
-
-/** What the canvas hands to the workbench's Edit surface. */
-export type CanvasEditHandoff = {
-  /** The bound image's servable path (an output-contained artifact or a
-   *  canvas-blobs/ relative — the same shapes mediaForOutput yields). */
-  path: string
-  name: string
-  /** The chain's prompt becomes the Edit intent. */
-  intent: string
-}
 
 /** The honest refusal for a queued engine slot (the typed hole's other half
  *  — the switch case exists, the engine does not yet). Registry-driven
@@ -79,13 +68,6 @@ export function canvasH3OneFrameRequest(chainId: string, settings: Pick<CanvasCh
   }
 }
 
-/** The handoff payload for the image+control intent (a bound image on an
- *  image chain). The preview is NOT serialized — a data-URL preview would
- *  blow the localStorage budget; the workbench derives a servable URL. */
-export function canvasEditHandoff(intent: string, source: MediaFile): CanvasEditHandoff {
-  return { path: source.path, name: source.name, intent }
-}
-
 /** The pin-time honesty text (journey sweep #4b, reality audit 2026-09-25
  *  F8/M5): pinning a workbench frame lands a PLAIN MEDIA OBJECT (usable as
  *  a reference anywhere) — but its only regeneration lane is the T=1 Fast
@@ -100,22 +82,4 @@ export function pinRegenerationNotice(available: boolean, missing: string[]): st
   if (available) return 'The picked frame is pinned on the canvas as a media object — reference it anywhere, or generate on it (the T=1 Fast lane is ready).'
   const gate = missing.length ? ` It needs: ${missing.join('; ')}.` : ''
   return `The picked frame is pinned on the canvas as a media object — reference it anywhere. Regenerating it as a still needs the T=1 Fast lane, which this engine does not serve yet.${gate}`
-}
-
-/** Stashes the handoff (full-navigation payload — the surface-switcher
- *  precedent carries it across the page load). */
-export function stashCanvasEditHandoff(handoff: CanvasEditHandoff): void {
-  try {
-    window.localStorage.setItem(CANVAS_EDIT_HANDOFF_KEY, JSON.stringify(handoff))
-  } catch {
-    /* a full localStorage is the user's bigger problem; the handoff is a
-     * convenience key and the Edit surface remains reachable by hand */
-  }
-}
-
-/** The servable URL of a handoff path (the landing loop's frameUrl rule:
- *  blob route for content-addressed artifacts, output media route else). */
-export function handoffPreviewUrl(path: string): string {
-  if (path.startsWith('canvas-blobs/')) return `/api/lan/documents/blobs/file?path=${encodeURIComponent(path)}`
-  return `/api/lan/media?source=output&path=${encodeURIComponent(path)}`
 }
