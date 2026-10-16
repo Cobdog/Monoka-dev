@@ -1280,6 +1280,33 @@ test('job records carry the classified failure kind, queue truth stays queued, a
   assert.equal(taxonomy.liveStageLabel(undefined, graph), 'Rendering…', 'no node id falls back')
 })
 
+// (ewtobuh round 2) THE RESTART ORPHAN: the settlement move (gfv5h0g)
+// retired the client's recovery-restart writer, and the 'absent → promote'
+// backstop left a queued orphan phantom-running to the 60-minute deadline.
+// The watcher owns settlement now, so the verdict lives there: a record
+// whose prompt the REACHABLE engine knows NOWHERE (history + queue both
+// lack it — ComfyUI never resumes across a restart) fails with the restart
+// advice, queued or running. YOUNG absence holds — the watcher confirms
+// across sweeps before the verdict, so a torn completion window (queue
+// drained, history not yet written) never fails a landing job.
+test('job poll reduction (ewtobuh round 2): the restart orphan fails honestly; young absence holds', () => {
+  const { reduceJobPoll } = load('src/lib/jobReducer.ts')
+  const baseJob = { id: 'j2', promptId: 'ghost-1', mode: 'text', prompt: 'test', createdAt: Date.now() - 1000, status: 'queued', progress: 0, width: 608, height: 352, duration: 5 }
+
+  const queuedOrphan = reduceJobPoll(baseJob, { kind: 'restartOrphan' }, Date.now())
+  assert.equal(queuedOrphan.transitionedTo, 'failed')
+  assert.ok(queuedOrphan.job.error.includes('restarted'), 'the restart advice rides the record')
+  assert.equal(queuedOrphan.job.failureKind, 'engine-unreachable', 'the classification is structured, not re-parsed')
+
+  const runningOrphan = reduceJobPoll({ ...baseJob, status: 'running' }, { kind: 'restartOrphan' }, Date.now())
+  assert.equal(runningOrphan.transitionedTo, 'failed', 'a running orphan dies with the same verdict — the fresh instance will never run it')
+
+  const heldQueued = reduceJobPoll(baseJob, { kind: 'incomplete', engineQueue: 'absent' }, Date.now())
+  assert.equal(heldQueued.job.status, 'queued', 'young absence keeps the queued row queued (no phantom promote)')
+  const heldRunning = reduceJobPoll({ ...baseJob, status: 'running' }, { kind: 'incomplete', engineQueue: 'absent' }, Date.now())
+  assert.equal(heldRunning.job.status, 'running', 'young absence never demotes a running row')
+})
+
 // R-26 (Wave 4, audit B P2-2): dead-engine jobs must fail honestly in
 // seconds-to-minutes, not at the 60-minute deadline. A CONSECUTIVE
 // poll-failure streak accumulates on the job; at the limit the job fails

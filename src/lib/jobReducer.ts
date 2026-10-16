@@ -1,12 +1,14 @@
 import type { GenerationJob } from '../types'
 import { sanitizeErrorMessage } from './logSanitize'
 import { classifyFailure } from './failureTaxonomy'
+import { engineRestartFailure } from './engineWatch'
 
 export type PollObservation =
   | { kind: 'executionError'; node?: string; nodeType?: string; reason: string }
   | { kind: 'completed'; outputUrl: string; localOutputPath?: string }
   | { kind: 'completedNoLocalOutput' }
   | { kind: 'incomplete'; /** (ewtobuh) The engine's own /queue truth for this prompt, when the observer read it: a prompt still held as pending is QUEUED, never promoted to running without execution evidence. Callers without a queue read omit it and keep the promoted behavior. */ engineQueue?: 'pending' | 'running' | 'absent' }
+  | { kind: 'restartOrphan' }
   | { kind: 'pollFailed' }
 
 export type PollReduction = {
@@ -170,9 +172,28 @@ export function reduceJobPoll(job: GenerationJob, observation: PollObservation, 
       // prompt still held as queue_pending is QUEUED — promoting it to
       // running here is the server-side half of the review's queue lie.
       // Execution evidence (the prompt is executing) or NO queue evidence
-      // at all (legacy callers, engine-restart races) keeps the promotion.
+      // at all (legacy callers) keeps the promotion.
       if (job.status === 'queued' && observation.engineQueue === 'pending') return { job }
+      // (ewtobuh round 2) ABSENT is also a hold while it is young: the
+      // watcher confirms an orphan across sweeps before emitting the
+      // restartOrphan verdict, and those in-between sweeps must not
+      // phantom-promote a queued row (the round-1 backstop did exactly
+      // that). A running row is never demoted.
+      if (job.status === 'queued' && observation.engineQueue === 'absent') return { job }
       return { job: { ...job, status: 'running', pollFailureStreak: undefined } }
+    }
+    case 'restartOrphan': {
+      // (ewtobuh round 2) The restored restart-failure writer (the client
+      // recovery arc died with the gfv5h0g settlement move): the engine is
+      // REACHABLE and answered both reads, and it knows this prompt
+      // nowhere — no history entry, no queue slot. ComfyUI never resumes
+      // work across a restart, so queued or running, the work is dead; the
+      // honest verdict lands in seconds instead of a phantom run to the
+      // 60-minute deadline.
+      return {
+        job: { ...job, status: 'failed', failureKind: 'engine-unreachable', error: engineRestartFailure(), pollFailureStreak: undefined },
+        transitionedTo: 'failed',
+      }
     }
     case 'pollFailed': {
       // (R-26) A poll that cannot even reach the engine is an observation:
