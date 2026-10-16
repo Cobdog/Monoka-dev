@@ -242,13 +242,15 @@ test('the selected-chain bar speaks human — media · tier · takes, hotkeys in
   await expect(bar).not.toContainText('drift')
   await expect(bar).not.toContainText('hop')
   await expect(bar.locator('[data-canvas-bar-takes]')).not.toContainText(/take [0-9a-f]{6}/i)
-  // Hotkeys live in tooltips, never as labels.
+  // Hotkeys live in tooltips, never as labels — the invariant is structural
+  // (no <kbd> label inside the chip); a text check would break on any future
+  // word that merely contains the letter.
   const lock = bar.locator('[data-canvas-bar-lock]')
   await expect(lock).toContainText('unlocked')
-  await expect(lock).not.toContainText('P')
+  await expect(lock.locator('kbd')).toHaveCount(0)
   await expect(lock).toHaveAttribute('title', /\(P\)/)
   const fork = bar.locator('[data-canvas-bar-fork]')
-  await expect(fork).not.toContainText('B')
+  await expect(fork.locator('kbd')).toHaveCount(0)
   await expect(fork).toHaveAttribute('title', /\(B\)/)
 
   // A real take lands numbered ("take 1") — the number in the label, the
@@ -3099,7 +3101,7 @@ test('engines-as-ops complete: the audio docks (probe seams + honest gating)', a
   const music3Row = page.locator('[data-canvas-menu-row="produce:music3"]')
   await expect(music3Row).toBeVisible()
   await expect(music3Row).toBeDisabled()
-  await expect(music3Row).toContainText('paused pending the YuE2 decision')
+  await expect(music3Row).toContainText('paused for now — Music 3 authoring returns in a later update')
   await music3Row.click({ force: true }).catch(() => undefined)
   await page.waitForTimeout(300)
   await expect(page.locator('[data-canvas-audio-dock]')).toHaveCount(0)
