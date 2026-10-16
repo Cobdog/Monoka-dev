@@ -274,6 +274,9 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-toast.error { border-color: color-mix(in srgb, var(--danger) 48%, transparent); color: var(--danger); }
 .canvas-toast.success { border-color: color-mix(in srgb, var(--accent) 44%, transparent); color: var(--accent); }
 .canvas-toast button { display: grid; place-items: center; width: 20px; height: 20px; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; }
+/* The undo tier's action button (wzt73ob R2 F10) — a labeled control, not
+ * the 20px dismiss square the generic rule above shapes. */
+.canvas-toast .canvas-toast-action { width: auto; height: auto; padding: 3px 10px; border: 1px solid color-mix(in srgb, var(--line-strong) 80%, transparent); border-radius: 6px; background: var(--surface-raised, transparent); font-size: var(--text-sm); font-weight: 700; white-space: nowrap; }
 
 /* ---- L33 bench harness -------------------------------------------------------- */
 .canvas-bench-root { grid-template-rows: minmax(0, 1fr); }

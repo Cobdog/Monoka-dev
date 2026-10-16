@@ -680,6 +680,26 @@ test('(n) typed-hole option menus (§3 filtering + hints)', () => {
   ok(options.endpointOptions('consume', ['image'], ready, 'video').some((row) => row.id === 'consume:reference'), 'consume(image→video chain): reference still offered for video chains')
 })
 
+// (n3, wzt73ob R2 F7) The extracted-frame fork's DEFAULT anchor. A fork made
+// from a clip's TAIL endpoint (the "produce into — extensions" menu — the
+// continuation gesture) anchored frame 0, so every "fork and continue" silently
+// restarted from the opening frame. The contract now: the tail endpoint's
+// default is the LAST frame (−1, the negative-counts-from-the-end convention
+// the menu hint already documents); every other entry point (the B gesture,
+// the bar's fork chip) keeps the opening frame. The frame PICKER itself is a
+// separate design item (foelihc) — the default is all this fixes.
+test('(n3) extracted-frame fork default — the tail endpoint anchors the LAST frame (wzt73ob R2 F7)', () => {
+  eq(generation.forkFrameDefault(true), -1, 'fork(tail endpoint): the default frame is the LAST one (−1 — counts from the end)')
+  eq(generation.forkFrameDefault(false), 0, 'fork(other entries — the B gesture, the bar chip): the opening frame stays the default')
+  ok(generation.forkFrameIsEndSeek(-1), 'fork(−1): the extraction is the END seek (ffmpeg -sseof), never a raw negative seek')
+  ok(!generation.forkFrameIsEndSeek(0), 'fork(0): an absolute seek (the non-tail path unchanged)')
+  const spec = generation.forkInputSpec({ outputId: 'out-1', takeId: null, substrate: 'extracted-frame', extractedPath: '/out/frame.png', frameIndex: -1 })
+  eq(spec.outputRef.frameIndex, -1, 'fork: the fork chain records the last-frame anchor (−1) in its outputRef provenance')
+  const ready = { connected: true, h3Ready: true, motionContextReady: true, music3: { available: true, missing: [] } }
+  const row = options.endpointOptions('produce', ['video'], ready).find((entry) => entry.id === 'produce:fork-frame')
+  ok(row.hint.includes('negative counts from the end'), 'fork: the menu hint still documents the counts-from-the-end convention')
+})
+
 // (n2) the fetch deep-link mapping test was removed with LTX (Phase 0,
 // 2026-09-20): fetchDeepLink.ts existed to map LTX-2.3 model slots to
 // catalog entries. The Motion-Context row's honest manual wording is

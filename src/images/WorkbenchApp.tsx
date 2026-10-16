@@ -256,30 +256,44 @@ function WorkbenchSurface() {
   const resumableProject = activeProjectId !== null && projects.some((project) => project.id === activeProjectId)
   const sessionChain = useMemo(() => doc?.chains.find((chain) => isWorkbenchChain(chain)) ?? null, [doc])
 
-  // Session bootstrap: the workbench session is a chain of kind 'h3img' in
-  // the active project — created on first open (the user's explicit act of
-  // opening the workbench in this project).
-  const ensureSession = useCallback(async () => {
+  // The LAZY session (wzt73ob R3 P1-6): the workbench session is a chain of
+  // kind 'h3img' in the active project — and a bare VISIT creates NOTHING.
+  // The old bootstrap effect persisted the chain on open, so an untouched
+  // visit mutated the canvas (a machine-named 'h3img 2' node appearing
+  // uninvited). The chain now materializes only when a real user action
+  // needs persistence — a settings write (patchSettings), a generation, or
+  // a delivered poserig handoff (each a deliberate act, unlike the visit).
+  // The in-flight promise closes the write-latency window: two actions
+  // landing before the first creation round-trips must not double-create.
+  // The chain is read FRESH from the store (not the render closure) so a
+  // caller arriving right after the reload cannot re-create either.
+  const ensureSessionRef = useRef<Promise<DocumentChain | null> | null>(null)
+  const ensureSession = useCallback(async (): Promise<DocumentChain | null> => {
     if (!doc) return null
-    const existing = doc.chains.find((chain) => isWorkbenchChain(chain))
+    const state = useCanvasStore.getState()
+    const projectId = state.activeProjectId
+    const existing = (projectId ? state.documents[projectId] ?? null : null)?.chains.find((chain) => isWorkbenchChain(chain))
     if (existing) return existing
-    try {
-      const chain = await documentsApi.createChain({
-        projectId: doc.project.id,
-        kind: 'h3img',
-        settings: { family: 'h3img.generate.packet', intent: '', tier: 5, keepDial: 0.55, seed: Math.floor(Math.random() * 1_000_000_000), resolution: '1344x768', loras: [], refs: [], semanticOverflow: false, framePicks: {}, refineEngine: '', poserigInbox: null } as unknown as Record<string, unknown>,
-      })
-      await useCanvasStore.getState().reloadActiveDocument()
-      return chain
-    } catch (error) {
-      setNotice(`The workbench session could not be created: ${error instanceof Error ? error.message : String(error)}`)
-      return null
-    }
+    if (ensureSessionRef.current) return ensureSessionRef.current
+    const creating = (async () => {
+      try {
+        const chain = await documentsApi.createChain({
+          projectId: state.activeProjectId!,
+          kind: 'h3img',
+          settings: { family: 'h3img.generate.packet', intent: '', tier: 5, keepDial: 0.55, seed: Math.floor(Math.random() * 1_000_000_000), resolution: '1344x768', loras: [], refs: [], semanticOverflow: false, framePicks: {}, refineEngine: '', poserigInbox: null } as unknown as Record<string, unknown>,
+        })
+        await state.reloadActiveDocument()
+        return chain
+      } catch (error) {
+        setNotice(`The workbench session could not be created: ${error instanceof Error ? error.message : String(error)}`)
+        return null
+      } finally {
+        ensureSessionRef.current = null
+      }
+    })()
+    ensureSessionRef.current = creating
+    return creating
   }, [doc])
-
-  useEffect(() => {
-    if (phase === 'ready' && doc && !sessionChain) void ensureSession()
-  }, [phase, doc, sessionChain, ensureSession])
 
   // No open canvas: opening the workbench IS the consent to create its home
   // canvas (the seedChain precedent — a surface that needs a project makes
@@ -402,12 +416,16 @@ function WorkbenchSurface() {
       return false
     }
   }, [])
-  const patchSettings = useCallback((patch: SessionSettingsPatch): Promise<boolean> => {
+  const patchSettings = useCallback(async (patch: SessionSettingsPatch): Promise<boolean> => {
+    // (wzt73ob R3 P1-6) The lazy session: a settings write IS the earliest
+    // real user act — the chain exists by the time the op joins the queue.
+    const ensured = await ensureSession()
+    if (!ensured) return false
     pendingPatchesRef.current = [...pendingPatchesRef.current, patch]
     const write = writeQueueRef.current.then(flushSessionWrites)
     writeQueueRef.current = write.catch(() => false)
     return write
-  }, [flushSessionWrites])
+  }, [ensureSession, flushSessionWrites])
   // The SaveStatus retry: the SAME queue, the SAME flush — the retained ops
   // are still held, so the click re-attempts exactly the unlanded edits.
   const retrySessionSave = useCallback((): void => {
@@ -520,7 +538,9 @@ function WorkbenchSurface() {
   // put BACK if the save fails — consumed for good only once the reference
   // is durably saved.
   useEffect(() => {
-    if (!sessionChain) return
+    // (wzt73ob R3 P1-6) No sessionChain gate: a DELIVERED handoff is a real
+    // user act (the rig's Send) — it earns the session chain through
+    // patchSettings' own ensure; a bare visit (no key) still writes nothing.
     try {
       const raw = window.localStorage.getItem('h3img-poserig-handoff')
       if (!raw) return
@@ -561,7 +581,7 @@ function WorkbenchSurface() {
     } catch {
       /* a malformed handoff is dropped silently — it is a convenience key */
     }
-  }, [sessionChain, patchSettings])
+  }, [patchSettings])
 
   // The resolved refs for submission (canvas slots resolve through the
   // document's output index; file/poserig slots carry their paths).
@@ -582,16 +602,23 @@ function WorkbenchSurface() {
 
   // Generation ----------------------------------------------------------------
   const generate = useCallback(async () => {
-    if (!sessionChain || !sessionState.settings) {
-      if (!sessionState.settings) setNotice('Studio settings are still loading.')
+    if (!sessionState.settings) {
+      setNotice('Studio settings are still loading.')
       return
     }
+    // (wzt73ob R3 P1-6) The lazy session: a generation is a real act — the
+    // chain exists before the submit needs its id. On the ensure path the
+    // submitted settings are the chain's OWN (the just-created defaults),
+    // not the pre-create render snapshot.
+    const chain = sessionChain ?? await ensureSession()
+    if (!chain) return
+    const effectiveSettings = sessionChain ? settings : readSessionSettings(chain.settings)
     setBusy(true)
     try {
       await submitWorkbenchGeneration(
         {
-          chainId: sessionChain.id,
-          settings,
+          chainId: chain.id,
+          settings: effectiveSettings,
           refs: resolveRefs(),
           source: sourceFile ? { path: sourceFile.path, name: sourceFile.name, kind: 'image', ...(sourceFile.preview ? { preview: sourceFile.preview } : {}) } : null,
           // The inpaint lane's masked source (the 1F full image stack): the
@@ -616,7 +643,7 @@ function WorkbenchSurface() {
     } finally {
       setBusy(false)
     }
-  }, [sessionChain, settings, resolveRefs, sourceFile, sessionState])
+  }, [sessionChain, ensureSession, settings, resolveRefs, sourceFile, sessionState])
 
   // Refine (always opt-in) ----------------------------------------------------
   const refine = useCallback(async (engine: 'klein' | 'krea2') => {
@@ -1034,9 +1061,12 @@ function WorkbenchSurface() {
     const loadFailed = phase === 'ready' && resumableProject
     return <div className="iw-root iw-boot" data-iw-root data-iw-load-failed={loadFailed ? 'true' : undefined}><LoaderCircle className="spin" /><span>{loadFailed ? 'This canvas could not be opened — reload retries it; nothing was replaced.' : 'Opening the workbench…'}</span></div>
   }
-  if (!sessionChain) {
-    return <div className="iw-root iw-boot" data-iw-root><LoaderCircle className="spin" /><span>Creating the workbench session…</span></div>
-  }
+  // (wzt73ob R3 P1-6) No session-gate arm: a visit with no session chain yet
+  // renders the FULL workbench from the defaults — the controls work, and
+  // the first real action (a write, a generate, a handoff) creates the
+  // chain through ensureSession. The old 'Creating the workbench session…'
+  // spinner fired on every fresh visit while the bootstrapping wrote a node
+  // onto the canvas uninvited.
 
   const token = new URLSearchParams(window.location.search).get('token')
   const t1Take = selectedProvenance?.profile === 't1'
@@ -1593,7 +1623,7 @@ function WorkbenchSurface() {
             // The full-strip fast path keeps the picker open (the flush
             // re-checks the budget against fresh state — the structural
             // guard lives there, not here).
-            if (readSessionSettings(sessionChain.settings).refs.length >= 9) {
+            if (readSessionSettings(sessionChain?.settings).refs.length >= 9) {
               setNotice(BEYOND_NINE_GUIDANCE)
               return
             }
@@ -1731,7 +1761,14 @@ function WorkbenchSurface() {
 }
 
 /** Adds the tone-lock op to the session chain's stack (the app-side op). */
-async function addToneLockOp(chain: DocumentChain): Promise<void> {
+async function addToneLockOp(chain: DocumentChain | null): Promise<void> {
+  // Unreachable-with-null in practice (the button renders only with a
+  // selected take, which implies the session) — the honest toast instead of
+  // a silent no-op if that invariant ever drifts.
+  if (!chain) {
+    useCanvasStore.getState().toast('error', 'The workbench session is not on the canvas yet — it appears with your first action here.')
+    return
+  }
   try {
     await documentsApi.addOp(chain.id, H3IMG_OP_TONE_LOCK)
     useCanvasStore.getState().toast('success', 'tone-lock op added to the session stack — it applies at export/handoff.')

@@ -54,6 +54,8 @@ import {
   chainSettingsDefaults,
   effectiveMode,
   emptyLibraries,
+  forkFrameDefault,
+  forkFrameIsEndSeek,
   forkInputSpec,
   mediaForOutput,
   modeLabelFor,
@@ -214,7 +216,10 @@ export type CameraCommand =
   | { kind: 'jump'; camera: CameraState }
   | { kind: 'fit' }
 
-export type CanvasToast = { id: number; tone: 'error' | 'success' | 'neutral'; text: string }
+/** A toast entry. `action` (wzt73ob R2 F10) is the UNDO tier: an actionable
+ *  toast renders its one button and lives on the must-act clock (the error
+ *  tier's 15 s) — the delete flow's first-line recovery sits here. */
+export type CanvasToast = { id: number; tone: 'error' | 'success' | 'neutral'; text: string; action?: { label: string; run: () => void } }
 
 /** The outcome of a chain-settings save (A02): the store toasts the failure
  *  itself, and returns the verdict so callers that submit from the persisted
@@ -248,6 +253,10 @@ type CanvasState = {
   indexOpen: boolean
   endpointMenu: { chainId: string; direction: EndpointDirection } | null
   forkMenu: { chainId: string } | null
+  /** The tile context menu (wzt73ob R2 F10): the object-level actions at the
+   *  pointer (viewport coordinates). Mutually exclusive with the endpoint
+   *  and fork menus — one dismissal idiom, one open menu. */
+  tileMenu: { chainId: string; x: number; y: number } | null
   /** Phase 3 (§5.1): the op modal's target chain — L8 DECIDED: modal-only
    *  v1 (no inline chip controls). */
   opEditor: { chainId: string } | null
@@ -403,10 +412,19 @@ type CanvasActions = {
   setChainIdentity(chainId: string, patch: { subjectText?: string; strength?: number }, options?: { identityRevision?: number }): Promise<{ ok: boolean; error?: string }>
   /** One typed-hole menu choice (§3 option menus). */
   runEndpointAction(chainId: string, direction: EndpointDirection, option: EndpointOption, sourceChainId?: string): Promise<void>
-  /** Fork a chain's output on a substrate (§2 outputRef). */
-  fork(source: { chainId: string; outputId: string; takeId?: string | null; substrate: ForkSubstrate; withUpscale?: boolean }): Promise<void>
+  /** Fork a chain's output on a substrate (§2 outputRef). A fork made from
+   *  the TAIL endpoint (`fromTailEndpoint` — wzt73ob R2 F7) defaults its
+   *  extracted frame to the clip's LAST frame; other entries keep frame 0. */
+  fork(source: { chainId: string; outputId: string; takeId?: string | null; substrate: ForkSubstrate; withUpscale?: boolean; fromTailEndpoint?: boolean }): Promise<void>
   setEndpointMenu(menu: { chainId: string; direction: EndpointDirection } | null): void
   setForkMenu(menu: { chainId: string } | null): void
+  setTileMenu(menu: { chainId: string; x: number; y: number } | null): void
+  /** The tile delete (wzt73ob R2 F10): trash the given chains through the
+   *  EXISTING tombstone machinery (deleteScene — NEVER a hard delete) and
+   *  toast with an Undo action that restores the batch (restoreScene with
+   *  the project id captured BEFORE the delete). Returns the tombstoned
+   *  count (the honest-count contract — already-gone chains are skipped). */
+  deleteTiles(chainIds: string[]): Promise<number>
   rerunStale(): Promise<void>
   /** One chain's consented re-execution: submit + clear the stale flag. */
   rerunChain(chainId: string): Promise<void>
@@ -431,7 +449,7 @@ type CanvasActions = {
    *  keep ALL takes resident (tier 1). */
   setChainLock(chainId: string, locked: boolean): Promise<void>
   setEngineFacts(facts: { connected: boolean; modelReady: boolean }): void
-  toast(tone: CanvasToast['tone'], text: string): void
+  toast(tone: CanvasToast['tone'], text: string, action?: CanvasToast['action']): void
   dismissToast(id: number): void
   requestCamera(command: CameraCommand): void
   clearCameraCommands(): void
@@ -760,6 +778,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     indexOpen: false,
     endpointMenu: null,
     forkMenu: null,
+    tileMenu: null,
     opEditor: null,
     poseRig: null,
     libraryOpen: false,
@@ -1401,6 +1420,42 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       }
     },
 
+    deleteTiles: async (chainIds) => {
+      // (wzt73ob R2 F10) The tile delete: the SAME tombstone path the ⌘K
+      // index uses (deleteScene), NEVER a hard delete — emptying the trash
+      // stays the one explicit destructive act. The owning project id is
+      // captured BEFORE the tombstone: restoreScene needs it to refresh the
+      // owner document on undo.
+      const owners = new Map<string, string | null>()
+      for (const chainId of chainIds) {
+        const holder = Object.values(get().documents).find((document) => document.chains.some((chain) => chain.id === chainId))
+        owners.set(chainId, holder?.project.id ?? null)
+      }
+      let deleted = 0
+      for (const chainId of chainIds) {
+        // deleteScene toasts its own errors and skips already-gone chains (0) —
+        // the batch counts positives only.
+        if (await get().deleteScene(chainId)) deleted += 1
+      }
+      if (!deleted) return 0
+      const label = deleted === 1 ? '1 object' : `${deleted} objects`
+      get().toast('neutral', `${label} moved to the trash — restorable until the trash is emptied (⌘K).`, {
+        label: 'Undo',
+        run: () => {
+          void (async () => {
+            // Reverse order: the undo un-does the batch.
+            let restored = 0
+            for (const chainId of [...chainIds].reverse()) {
+              const projectId = owners.get(chainId)
+              if (projectId && (await get().restoreScene(chainId, projectId))) restored += 1
+            }
+            if (restored) get().toast('success', 'Restored — back on the canvas whole.')
+          })()
+        },
+      })
+      return deleted
+    },
+
     closeProject: async (id) => {
       const state = get()
       const openProjects = state.openProjects.filter((openId) => openId !== id)
@@ -1463,7 +1518,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         }))
         const refreshed = await loadDocument(projectId)
         if (refreshed) recomputeTiles()
-        set({ selection: { tileIds: [chainId] }, inspectorOpen: true, endpointMenu: null, forkMenu: null })
+        set({ selection: { tileIds: [chainId] }, inspectorOpen: true, endpointMenu: null, forkMenu: null, tileMenu: null })
         get().requestCamera({ kind: 'fly', tileId: chainId })
         get().persistView()
         return chainId
@@ -1511,7 +1566,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         }))
         const refreshed = await loadDocument(projectId)
         if (refreshed) recomputeTiles()
-        set({ selection: { tileIds: [chainId] }, inspectorOpen: true, endpointMenu: null, forkMenu: null })
+        set({ selection: { tileIds: [chainId] }, inspectorOpen: true, endpointMenu: null, forkMenu: null, tileMenu: null })
         get().requestCamera({ kind: 'fly', tileId: chainId })
         get().persistView()
         // Phase 2: the REAL submission — validation-refused states stay honest
@@ -1849,7 +1904,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     runEndpointAction: async (chainId, direction, option, sourceChainId) => {
       const doc = activeDocument()
       if (!doc) return
-      set({ endpointMenu: null })
+      set({ endpointMenu: null, forkMenu: null, tileMenu: null })
       const action = option.action
       // (R-20) The audio engines' produce rows dock the engine panel — the
       // chain context rides along when the dock supports it.
@@ -1927,7 +1982,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
           get().toast('error', 'That object has no output to fork yet.')
           return
         }
-        await get().fork({ chainId, outputId, substrate: action.substrate })
+        await get().fork({ chainId, outputId, substrate: action.substrate, fromTailEndpoint: direction === 'produce' })
         return
       }
       if (action.kind === 'pose-rig') {
@@ -1958,8 +2013,12 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
           const media = mediaForOutput(entry, source.takeId)
           const session = useSessionStore.getState()
           if (!media || !session.settings) throw new Error('The source media is not extractable.')
-          const frameIndex = 0
-          const extractedFile = await window.monoka.extractVideoFrame(media.media.path, frameIndex, session.settings.outputDirectory, session.settings.ffmpegPath)
+          // (wzt73ob R2 F7) The tail endpoint's default is the clip's LAST
+          // frame — the continuation gesture. The −1 travels as the
+          // extraction API's 'last' position (the end seek): raw negative
+          // seconds clamp to 0 server-side, which would re-extract frame 0.
+          const frameIndex = forkFrameDefault(source.fromTailEndpoint)
+          const extractedFile = await window.monoka.extractVideoFrame(media.media.path, forkFrameIsEndSeek(frameIndex) ? 'last' : frameIndex, session.settings.outputDirectory, session.settings.ffmpegPath)
           const frameChain = await documentsApi.createChain({
             projectId: doc.project.id,
             kind: 'media',
@@ -2017,8 +2076,9 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       }
     },
 
-    setEndpointMenu: (menu) => set({ endpointMenu: menu, forkMenu: null }),
-    setForkMenu: (menu) => set({ forkMenu: menu, endpointMenu: null }),
+    setEndpointMenu: (menu) => set({ endpointMenu: menu, forkMenu: null, tileMenu: null }),
+    setForkMenu: (menu) => set({ forkMenu: menu, endpointMenu: null, tileMenu: null }),
+    setTileMenu: (menu) => set({ tileMenu: menu, endpointMenu: null, forkMenu: null }),
 
     rerunStale: async () => {
       const state = get()
@@ -2221,18 +2281,20 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
 
     setInspectorOpen: (open) => set({ inspectorOpen: open }),
     setIndexOpen: (open) => set({ indexOpen: open }),
-    setOpEditor: (editor) => set({ opEditor: editor, endpointMenu: null, forkMenu: null }),
-    setPoseRig: (panel) => set({ poseRig: panel, endpointMenu: null }),
+    setOpEditor: (editor) => set({ opEditor: editor, endpointMenu: null, forkMenu: null, tileMenu: null }),
+    setPoseRig: (panel) => set({ poseRig: panel, endpointMenu: null, forkMenu: null, tileMenu: null }),
     setEngineFacts: (facts) => set({ engine: facts }),
 
-    toast: (tone, text) => {
+    toast: (tone, text, action) => {
       const id = toastSeq++
-      set((state) => ({ toasts: [...state.toasts.slice(-3), { id, tone, text }] }))
+      set((state) => ({ toasts: [...state.toasts.slice(-3), ...(action ? [{ id, tone, text, action }] : [{ id, tone, text }])] }))
       // (W14, perfect-state sweep 2026-09-27) Duration scales by severity: a
       // failure the user must ACT on (graph validation, landing failures)
       // outlives a success toast — 6.5 s was gone before the reason could be
-      // read. The dismiss button stays on every toast either way.
-      window.setTimeout(() => get().dismissToast(id), tone === 'error' ? 15000 : 4200)
+      // read. The dismiss button stays on every toast either way. An
+      // ACTIONABLE toast (the undo tier, wzt73ob R2 F10) rides the must-act
+      // clock too: the user has a decision to make, not just a line to read.
+      window.setTimeout(() => get().dismissToast(id), tone === 'error' || action ? 15000 : 4200)
     },
     dismissToast: (id) => set((state) => ({ toasts: state.toasts.filter((toast) => toast.id !== id) })),
 

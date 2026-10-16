@@ -43,8 +43,11 @@ export type ToastPlacement = 'bottom-left' | 'bottom-right'
 export type ToastTone = 'error' | 'success' | 'neutral'
 
 /** One toast entry as ToastHost receives it (the store's CanvasToast,
- *  structurally identical — the adapter passes the entries through). */
-export type ToastEntry = { id: number; tone: ToastTone; text: string }
+ *  structurally identical — the adapter passes the entries through).
+ *  `action` (wzt73ob R2 F10) is the undo tier: an actionable toast renders
+ *  its one button (running it dismisses the toast) and lives on the
+ *  must-act clock the store owns. */
+export type ToastEntry = { id: number; tone: ToastTone; text: string; action?: { label: string; run: () => void } }
 
 /** The notice tones: the two migrated banner dialects (accent = the
  *  informational note, danger = the error banner). */
