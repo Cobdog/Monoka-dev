@@ -147,7 +147,7 @@ function TileLiveProgress({ jobId }: { jobId: string }) {
   </div>
 }
 
-function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure, onEndpoint, onFork, onOpenOps, onSwitchTake }: {
+function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure, onEndpoint, onFork, onOpenOps, onSwitchTake, onTileMenu }: {
   tile: Tile
   band: ZoomBand
   selected: boolean
@@ -158,6 +158,7 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
   onFork(chainId: string): void
   onOpenOps(chainId: string): void
   onSwitchTake(chainId: string, takeId: string): void
+  onTileMenu(chainId: string, x: number, y: number): void
 }) {
   const priorTakes = tile.takes.filter((take) => take.supersededBy !== null)
   const [askSendDatasets, setAskSendDatasets] = useState(false)
@@ -172,6 +173,15 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
     onClick={(event) => {
       event.stopPropagation()
       onSelect(tile.id, { toggle: event.shiftKey || event.metaKey || event.ctrlKey })
+    }}
+    onContextMenu={(event) => {
+      // (wzt73ob R2 F10) The object menu at the pointer — the desktop
+      // convention. The right-clicked tile joins the selection when it is
+      // not part of it, so the menu's actions act on the WHOLE selection.
+      event.preventDefault()
+      event.stopPropagation()
+      if (!useCanvasStore.getState().selection.tileIds.includes(tile.id)) onSelect(tile.id)
+      onTileMenu(tile.id, event.clientX, event.clientY)
     }}
   >
     {/* head/tail endpoint affordances — the typed holes (§3): click opens the

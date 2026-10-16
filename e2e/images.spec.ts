@@ -1688,3 +1688,56 @@ test('the workbench row selects fill their labels (StudioSelect wrap geometry, t
   await fillPin('[data-iw-resolution-locked]', 'the resolution-locked select')
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
+
+// ---------------------------------------------------------------------------
+// THE SILENT h3img WELD (R3 P1-6, wzt73ob): VISITING the workbench used to
+// persist its session chain immediately — a machine-named node ('h3img 2')
+// appeared on the user's canvas uninvited, and an untouched visit still
+// mutated the document. The reviewers' repro is the contract now: open
+// ?images=1 over an EMPTY home, look at the canvas — ZERO chains. The
+// session chain materializes only when a real user action needs persistence
+// (here: naming the intent — a settings write). The auto-created HOME canvas
+// itself is the workbench's T23-gated behavior, deliberately untouched.
+// ---------------------------------------------------------------------------
+test('visiting the workbench creates ZERO canvas chains; the first real action earns the session (wzt73ob R3 P1-6)', async ({ page, request }) => {
+  const problems = await trackErrors(page)
+  // Clean slate (the canvas suite's scene-deletion pattern): no projects at
+  // all, no session — the visit has nothing to attach a chain to unless the
+  // weld creates one.
+  {
+    const listed = await (await request.get('/api/lan/documents/projects')).json() as { projects?: Array<{ id: string }> }
+    for (const project of listed.projects ?? []) {
+      await request.post('/api/lan/documents/projects/delete', { data: { id: project.id } }).catch(() => undefined)
+    }
+  }
+  await request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } }).catch(() => undefined)
+
+  await page.goto('/?images=1')
+  await expect(page.locator('[data-iw-root]')).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('[data-iw-intent]')).toBeVisible({ timeout: 15_000 })
+
+  // THE ABSENCE WINDOW (testing.md: the window IS the assertion): the old
+  // bootstrap persisted the chain within ~a second of phase-ready (the T23
+  // auto-write timing). A settled read after the UI is interactive catches it.
+  await page.waitForTimeout(1500)
+  const sessionNow = ((await (await request.get('/api/lan/documents/session')).json()) as { session: { activeProject: string | null } }).session
+  expect(sessionNow.activeProject).toBeTruthy()
+  const docOnVisit = (await (await request.get(`/api/lan/documents/project?id=${encodeURIComponent(sessionNow.activeProject!)}`)).json()) as { chains: Array<{ id: string; kind: string }> }
+  expect(docOnVisit.chains, 'a bare VISIT leaves the canvas untouched — zero chains').toEqual([])
+
+  // THE FIRST REAL ACTION: naming the intent is a settings write — it earns
+  // the session chain (created exactly once, carrying the intent). The poll
+  // waits for the WRITE (the intent round-tripped), not merely the chain —
+  // the chain appears at ensure time, the PUT lands a beat later.
+  await page.locator('[data-iw-intent]').fill('a ceramic bowl of lemons, wzt73ob probe')
+  await expect.poll(async () => {
+    const doc = (await (await request.get(`/api/lan/documents/project?id=${encodeURIComponent(sessionNow.activeProject!)}`)).json()) as { chains: Array<{ id: string; kind: string; settings: Record<string, unknown> }> }
+    return doc.chains.filter((chain) => chain.kind === 'h3img' && chain.settings.intent === 'a ceramic bowl of lemons, wzt73ob probe').length
+  }, { timeout: 10_000 }).toBe(1)
+  const docAfter = (await (await request.get(`/api/lan/documents/project?id=${encodeURIComponent(sessionNow.activeProject!)}`)).json()) as { chains: Array<{ id: string; kind: string; settings: Record<string, unknown> }> }
+  expect(docAfter.chains[0].settings.intent).toBe('a ceramic bowl of lemons, wzt73ob probe')
+
+  // Tidy this run's auto-created home (tombstone through the app's own API).
+  await request.post('/api/lan/documents/projects/delete', { data: { id: sessionNow.activeProject } }).catch(() => undefined)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})

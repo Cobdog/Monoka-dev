@@ -589,6 +589,26 @@ export function substratesForTake(take: DocumentTake | null, mediaKind: MediaFil
 }
 
 /**
+ * The extracted-frame fork's DEFAULT anchor (wzt73ob R2 F7). A fork made from
+ * a clip's TAIL endpoint (the produce menu — the continuation gesture) means
+ * "keep going from where the clip ended", so its default is the LAST frame;
+ * every other entry (the B gesture, the bar's fork chip) keeps the opening
+ * frame. The −1 is the counts-from-the-end convention the menu hint documents;
+ * `forkFrameIsEndSeek` maps it onto the extraction API's 'last' position (the
+ * server clamps raw negative seconds to 0 — a raw −1 would extract frame 0
+ * again, the exact bug). The frame PICKER itself is foelihc, not this.
+ */
+export function forkFrameDefault(fromTailEndpoint: boolean | null | undefined): number {
+  return fromTailEndpoint ? -1 : 0
+}
+
+/** True when the frame anchor must travel as the extraction API's 'last'
+ *  position (the ffmpeg end seek) rather than a raw numeric seek. */
+export function forkFrameIsEndSeek(frameIndex: number): boolean {
+  return frameIndex < 0
+}
+
+/**
  * The fork chain's input spec (§2.1): an outputRef naming the source output,
  * the pinned take (fork-from-early-take), and the chosen substrate. The
  * outputId inside is what deriveEdges resolves — the derived edge appears for

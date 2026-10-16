@@ -22,6 +22,7 @@ import { CanvasEngineHost } from './EngineHost'
 import { DiagnosticsDock } from './DiagnosticsDock'
 import { EndpointMenu } from './EndpointMenu'
 import { ForkMenu } from './ForkMenu'
+import { TileMenu } from './TileMenu'
 import { IndexOverlay } from './IndexOverlay'
 import { LibraryOverlay } from './LibraryOverlay'
 import { TimelineOverlay } from './TimelineOverlay'
@@ -118,6 +119,15 @@ export function CanvasApp() {
       // handled before this gate on purpose — summoning the palette over a
       // dialog is the supported stack (task 14 retired the interim hazard).
       if (state.opEditor || state.poseRig || anyModalLayer()) return
+      // §7 (wzt73ob R2 F10): Delete/Backspace trash the selection — the
+      // tombstone path (deleteTiles → deleteScene → the trash browser owns
+      // recovery; the toast's Undo is the first-line one). Never a hard
+      // delete: emptying the trash stays the one explicit act.
+      if ((event.key === 'Delete' || event.key === 'Backspace') && state.selection.tileIds.length) {
+        event.preventDefault()
+        void state.deleteTiles([...state.selection.tileIds])
+        return
+      }
       // §7 V — the projection flip through the family: ∅ → timeline →
       // library → ∅ (Phase 5b; Phase 4's V toggled the library alone).
       if (event.key === 'v') {
@@ -228,6 +238,7 @@ export function CanvasApp() {
       <BottomBar />
       <EndpointMenu />
       <ForkMenu />
+      <TileMenu />
       <OpEditor />
       <PoseRigDock />
       <AudioDock />

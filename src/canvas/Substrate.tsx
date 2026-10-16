@@ -234,6 +234,7 @@ function SubstrateBase() {
             onFork={(chainId) => useCanvasStore.getState().setForkMenu({ chainId })}
             onOpenOps={(chainId) => useCanvasStore.getState().setOpEditor({ chainId })}
             onSwitchTake={(chainId, takeId) => void useCanvasStore.getState().switchCanonical(chainId, takeId)}
+            onTileMenu={(chainId, x, y) => useCanvasStore.getState().setTileMenu({ chainId, x, y })}
           />
         ))}
       </div>

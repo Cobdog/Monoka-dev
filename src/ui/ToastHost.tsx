@@ -43,6 +43,21 @@ export function ToastHost({ toasts, onDismiss, placement = 'bottom-left', classN
       {toasts.map((toast) => (
         <div key={toast.id} className={toastItemClasses(toast.tone)} data-canvas-toast={toast.tone} {...toastAriaFor(toast.tone)}>
           <span>{toast.text}</span>
+          {/* The undo tier (wzt73ob R2 F10): one action button; running it
+              dismisses its own toast (the store's action already fired). */}
+          {toast.action && (
+            <button
+              type="button"
+              className="canvas-toast-action"
+              data-canvas-toast-action
+              onClick={() => {
+                toast.action!.run()
+                onDismiss(toast.id)
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
           <button type="button" aria-label="Dismiss" onClick={() => onDismiss(toast.id)}>×</button>
         </div>
       ))}

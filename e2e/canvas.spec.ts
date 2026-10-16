@@ -7175,3 +7175,146 @@ test('smart-insert menu: registered Escape closes the menu alone — the canvas 
   expect(await prompt.inputValue(), 'Enter inserted the walked preset').not.toBe(before)
   expect(problems.filter((entry) => !environmental(entry))).toEqual([])
 })
+
+// ---------------------------------------------------------------------------
+// THE TILE DELETE AFFORDANCE (R2 F10, wzt73ob): no delete existed on the
+// canvas itself — the tile had no context menu (right-click was the browser
+// default), Delete/Backspace were no-ops, and the only trash front door was
+// the ⌘K index (seven tiles accumulated in a 90-minute session). The fix:
+// the tile's context menu + the Delete key trash the WHOLE selection through
+// the EXISTING tombstone machinery (deleteTiles → deleteScene → the same
+// trash the index browser reads; NEVER a hard delete — emptying the trash
+// stays the one explicit act), and the toast carries an Undo action that
+// restores the batch via restoreScene.
+// ---------------------------------------------------------------------------
+test('tile delete reaches the UI: context menu, Delete key, and the undo toast (wzt73ob R2 F10)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  // (testing.md's shared-home discipline, the scene-deletion pattern) exact
+  // tile/trash counts — start from a clean project slate through the store's
+  // own tombstone API, never a hand deletion.
+  {
+    const listed = await page.request.get('/api/lan/documents/projects')
+    const body = await listed.json() as { projects?: Array<{ id: string }> }
+    for (const project of body.projects ?? []) {
+      await page.request.post('/api/lan/documents/projects/delete', { data: { id: project.id } })
+    }
+  }
+  await resetSession(page)
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  // Three scenes accumulate (the lived friction, one past the old ⌘K walk).
+  await page.locator('[data-canvas-prompt]').fill('delete probe scene one')
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 10_000 })
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-canvas-bar-prompt]')).toBeVisible({ timeout: 10_000 })
+  await page.locator('[data-canvas-bar-prompt]').fill('delete probe scene two')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 10_000 })
+  await page.keyboard.press('Escape')
+  await page.locator('[data-canvas-bar-prompt]').fill('delete probe scene three')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(3, { timeout: 10_000 })
+  await page.keyboard.press('Escape')
+  const document0 = await activeDocument(page)
+  expect(document0.chains.length).toBe(3)
+  const victim = document0.chains.find((chain) => chain.settings.prompt === 'delete probe scene three')!
+
+  // CONTEXT MENU: right-click was the browser default before; now the tile
+  // menu opens and its one row names the tombstone destination.
+  const tile = page.locator('[data-canvas-tile]').nth(2)
+  await tile.click({ button: 'right' })
+  const tileMenu = page.locator('[data-canvas-tile-menu]')
+  await expect(tileMenu).toBeVisible()
+  await expect(tileMenu.locator('[data-canvas-tile-menu-delete]')).toBeEnabled()
+  await tileMenu.locator('[data-canvas-tile-menu-delete]').click()
+  await expect(tileMenu).toHaveCount(0)
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 10_000 })
+
+  // Tombstoned, not hard-deleted — the same trash the ⌘K browser reads.
+  const document1 = await activeDocument(page)
+  expect(document1.chains.map((chain) => chain.id)).not.toContain(victim.id)
+  const trashedListed = await (await page.request.get('/api/lan/documents/chains?trash=1')).json() as { chains: Array<{ id: string }> }
+  expect(trashedListed.chains.map((chain) => chain.id)).toContain(victim.id)
+
+  // THE UNDO TIER: the toast carries an action; running it restores the
+  // batch whole (restoreScene through the captured project id).
+  const undo = page.locator('[data-canvas-toast-action]')
+  await expect(undo).toBeVisible()
+  await expect(page.locator('[data-canvas-toast]').last()).toContainText('moved to the trash')
+  await undo.click()
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(3, { timeout: 10_000 })
+  const document2 = await activeDocument(page)
+  expect(document2.chains.map((chain) => chain.id)).toContain(victim.id)
+  const trashedAfterUndo = await (await page.request.get('/api/lan/documents/chains?trash=1')).json() as { chains: Array<{ id: string }> }
+  expect(trashedAfterUndo.chains.map((chain) => chain.id)).not.toContain(victim.id)
+
+  // THE KEYBOARD PATH: Delete on a selected tile trashes it; recovery goes
+  // through the EXISTING trash browser (⌘K → trash → restore) to prove the
+  // tile path never bypassed the tombstone machinery. The target is scene
+  // three's tile — fully on-screen (the same tile the context menu opened
+  // on); scene ONE spawns at the canvas origin where the boot camera leaves
+  // part of the tile off-viewport and a point click lands on <html>.
+  const second = page.locator('[data-canvas-tile]').nth(2)
+  await second.click()
+  await expect(second).toHaveClass(/selected/)
+  await page.keyboard.press('Delete')
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 10_000 })
+  await page.keyboard.press('ControlOrMeta+k')
+  await page.locator('[data-canvas-index-trash]').click()
+  await expect(page.locator('[data-canvas-index-trash-view]')).toBeVisible()
+  await expect(page.locator('[data-canvas-index-trash-row]').first()).toBeVisible({ timeout: 10_000 })
+  await page.locator('[data-canvas-index-restore]').click()
+  await expect(page.locator('[data-canvas-index-trash-row]')).toHaveCount(0, { timeout: 10_000 })
+  await page.keyboard.press('Escape')
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(3, { timeout: 10_000 })
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
+
+// ---------------------------------------------------------------------------
+// THE TAIL-ENDPOINT FORK'S DEFAULT FRAME (R2 F7, wzt73ob): "Fork — extracted
+// frame" anchored frame 0, so every fork-and-continue from a clip's tail
+// restarted from the OPENING frame. The contract: a fork made from the TAIL
+// endpoint defaults to the clip's LAST frame — sent over the wire as the
+// position 'last' (the server's end-seek; raw negative seconds clamp to 0)
+// with the −1 anchor recorded in the fork chain's provenance. The extraction
+// route is INTERCEPTED here (wiring truth — the pure default itself is the
+// unit suite's (n3)); the video source never has to decode.
+// ---------------------------------------------------------------------------
+test('the tail endpoint fork extracts the LAST frame — the continuation default (wzt73ob R2 F7)', async ({ page }) => {
+  const problems = await trackErrors(page)
+  await resetSession(page)
+  // One VIDEO media chain through the documents API (the drop-anything shape
+  // with a video take; the fake source path never decodes — intercepted).
+  const project = await (await page.request.post('/api/lan/documents/projects', { data: { name: 'fork-frame e2e' } })).json() as { project: { id: string } }
+  const chain = await (await page.request.post('/api/lan/documents/chains', { data: { projectId: project.project.id, kind: 'media', settings: { mediaType: 'video' } } })).json() as { chain: { id: string } }
+  const output = await (await page.request.post('/api/lan/documents/outputs', { data: { chainId: chain.chain.id, substrates: ['decoded'] } })).json() as { output: { id: string } }
+  await page.request.post('/api/lan/documents/takes', { data: { outputId: output.output.id, jobId: null, artifacts: [], metrics: { kind: 'video', duration: 2, sourcePath: '/tmp/fork-e2e-source.mp4' } } })
+  await page.request.post('/api/lan/documents/session', { data: { openProjects: [project.project.id], activeProject: project.project.id } })
+
+  const positions: unknown[] = []
+  await page.route('**/api/lan/video/frame', async (route) => {
+    positions.push((route.request().postDataJSON() as { position?: unknown }).position ?? null)
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: '/tmp/fork-e2e-frame.png', name: 'frame_last.png' }) })
+  })
+
+  await page.goto('/?canvas=1')
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+  const mediaTile = page.locator('[data-canvas-tile]').first()
+  await expect(mediaTile).toBeVisible({ timeout: 10_000 })
+  await page.waitForTimeout(900) // fly-to settle (d3 transition) before clicking
+  await mediaTile.locator('[data-canvas-endpoint="tail"]').click()
+  const menu = page.locator('[data-canvas-endpoint-menu="produce"]')
+  await expect(menu).toBeVisible()
+  await expect(menu.locator('[data-canvas-menu-row="produce:fork-frame"]')).toBeEnabled()
+  await menu.locator('[data-canvas-menu-row="produce:fork-frame"]').click()
+  // The fork lands the extracted-frame chain AND the fork chain (three tiles
+  // total with the source).
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(3, { timeout: 10_000 })
+  expect(positions).toEqual(['last'])
+  const document = await activeDocument(page)
+  const fork = document.chains.find((entry) => entry.inputSpec && (entry.inputSpec as Record<string, unknown>).outputRef)
+  expect(fork).toBeTruthy()
+  expect((fork!.inputSpec as { outputRef: { frameIndex?: number } }).outputRef.frameIndex).toBe(-1)
+  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+})
