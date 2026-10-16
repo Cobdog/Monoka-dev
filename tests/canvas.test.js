@@ -1926,6 +1926,7 @@ test('(v) vocabulary sweep — take numbers, human titles, the grep-pins (et8hu1
   eq(derive.chainTitle(doc, chain('overall_soundscape: rain on tin')), 'rain on tin', 'title: a soundscape-only prompt titles from its words')
   eq(derive.chainTitle(doc, chain('a plain freeform prompt stays whole')), 'a plain freeform prompt stays whole', 'title: freeform prompts pass through untouched')
   eq(derive.chainTitle(doc, chain('integrated_multimodal_description: [Shot 2] She turns at the window')), 'She turns at the window', 'title: the shot marker strips; the spoken words stay')
+  eq(derive.chainTitle(doc, chain('integrated_multimodal_description:')), 'media 0', 'title: a label-only prompt falls back to the kind default — the machine text never comes back')
 
   // (3) The grep-pins — each needle is the VERBATIM user-facing string that
   // existed before the sweep; the internal comments keep their ids under

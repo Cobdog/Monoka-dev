@@ -280,9 +280,14 @@ function titleFor(document: CanvasDocument, chain: DocumentChain, index: number)
   if (mediaKind) return `${mediaKind} ${index + 1}`
   const prompt = chainPrompt(chain)
   if (prompt) {
-    const body = titleFromPrompt(prompt) || prompt
-    const firstLine = body.split(/[.\n]/).map((part) => part.trim()).find(Boolean) ?? body
-    return firstLine.length > 42 ? `${firstLine.slice(0, 41)}…` : firstLine
+    const body = titleFromPrompt(prompt)
+    if (body) {
+      const firstLine = body.split(/[.\n]/).map((part) => part.trim()).find(Boolean) ?? body
+      return firstLine.length > 42 ? `${firstLine.slice(0, 41)}…` : firstLine
+    }
+    // Degenerate: the prompt was only wire-format labels/markers — nothing
+    // human survives the strip, so the kind default stands in rather than
+    // promoting the machine text back (F13's degenerate case).
   }
   return `${chain.kind} ${index + 1}`
 }
