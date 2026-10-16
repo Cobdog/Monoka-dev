@@ -25,7 +25,7 @@ import type { ObjectInfo } from './comfyInfo'
 import { dbg } from './dbg'
 import { basenameOf, inferSelections, teDimClassRefusal } from './modelSelection'
 import { resolveModels, type ModelOverrideSlotName } from './modelOverrides'
-import { vdnAvailability } from './graph'
+import { turboTierInstallHint, vdnAvailability } from './graph'
 import { missingCoreNodeClasses, type MissingNodeClass } from './preflight'
 
 export const diagnosticPrompt = 'A woman standing beside a window in soft daylight, natural skin texture, subtle head movement, realistic cinematic photography.'
@@ -148,6 +148,51 @@ export function h3StackReady(query: H3StackReadinessQuery): boolean {
     if (vdn === 'stage-b-50' && !availability.stageB) return false
   }
   return missingCoreNodeClasses(query.info, 'h3-video').length === 0
+}
+
+/** Speed-tier availability, derived from the app's OWN inventory through the
+ *  exact seam the submit path uses (inferSelections ladder → resolveModels →
+ *  the lane LoRA that h3StackReady checks membership on) — never a parallel
+ *  table (the module-head doctrine). Per fast tier in the given mode's lane:
+ *  whether the tier can actually run, the LoRA the graph would load, and —
+ *  when unavailable — ONE truthful remediation (publisher source + placement
+ *  + refresh), deliberately worded to never promise the fetch catalog, which
+ *  carries no turbo LoRA rows (R2 F3, task g1girm8). */
+export type TurboTierState = {
+  tier: '4' | '8'
+  available: boolean
+  /** The lane LoRA the graph would load at this tier ('' when none resolves). */
+  loraName: string
+  /** ONE truthful remediation; '' when available. */
+  remediation: string
+}
+
+export function turboTierStates(models: ModelFile[], mode: GenerationMode, family?: string): Record<'4' | '8', TurboTierState> {
+  const lane: 'fl2v' | 'ref2v' = mode === 'reference' ? 'ref2v' : 'fl2v'
+  const states = {} as Record<'4' | '8', TurboTierState>
+  for (const tier of ['4', '8'] as const) {
+    const selection = resolveModels('monoka', inferSelections(models, tier, family), models).selection
+    const loraName = lane === 'ref2v' ? selection.ref2vLora : selection.fl2vLora
+    const hint = turboTierInstallHint(tier, lane, family)
+    states[tier] = {
+      tier,
+      available: Boolean(loraName),
+      loraName: loraName ?? '',
+      remediation: loraName ? '' : `no ${tier}-step turbo LoRA is installed — place one from its publisher in the engine's loras folder and refresh the engine${hint ? `: ${hint}` : ''}`,
+    }
+  }
+  return states
+}
+
+/** The submit-ladder refusal for a selected-but-unresolvable speed tier:
+ *  the tier by name, the ONE truthful fix (publisher source, placement,
+ *  refresh), and the working alternative (the Quality tier) — never a fetch
+ *  promise (R2 F3, task g1girm8). */
+export function turboTierRefusal(tier: '4' | '8', mode: GenerationMode): string {
+  const lane: 'fl2v' | 'ref2v' = mode === 'reference' ? 'ref2v' : 'fl2v'
+  const hint = turboTierInstallHint(tier, lane)
+  const tierLabel = tier === '4' ? 'Fast · 4-step' : 'Fast · 8-step'
+  return `${tierLabel} needs a ${tier}-step turbo LoRA and none is installed in the engine's loras folder. Install one from its publisher and refresh the engine${hint ? `: ${hint}` : ''} — or switch the speed tier to Quality, which runs without it.`
 }
 
 export function h3StackReport(models: ModelFile[], overrides?: ModelOverrideSlots, info?: ObjectInfo | Record<string, unknown>) {

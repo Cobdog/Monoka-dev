@@ -330,3 +330,42 @@ test('(g) profile wiring — the vdn launch profile and the LongCache consent ga
   ok(patch, 'the patch record exists under the id the profile asks for')
   ok(/VDN still works/i.test(patch.degradesTo ?? ''), 'the patch degrades to working VDN without consent (VDN-proper does not need it — the composition contract)')
 })
+
+// ---------------------------------------------------------------------------
+test('(h) tier honesty — the speed tiers derive availability from the app\'s own inventory (g1girm8)', () => {
+  const turbo = loadTs('src/lib/graph/turbo.ts')
+  // The mirror instance's real shape (e2e/mirror profiles): ONLY the official
+  // fl2v 8-step turbo LoRA is installed — no 4-step file, nothing ref2v-capable.
+  const mirrorLoras = [
+    { name: 'loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors', kind: 'loras', bytes: 1 },
+  ]
+  const with4Step = [...mirrorLoras, { name: 'loras/minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors', kind: 'loras', bytes: 1 }]
+
+  const text = h3Stack.turboTierStates(mirrorLoras, 'text')
+  eq(text['8'].available, true, 'tier 8 is available when the fl2v 8-step ladder resolves')
+  eq(text['8'].loraName, 'loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors', 'the resolved LoRA is the submit path\'s own pick')
+  eq(text['4'].available, false, 'tier 4 is unavailable with no 4-step file (the audited lie)')
+  ok(text['4'].remediation.includes('lightx2v') && text['4'].remediation.includes('loras'), `tier 4's ONE remediation names the publisher and the placement (got: ${text['4'].remediation})`)
+  ok(!text['4'].remediation.includes('Fetchable'), 'the remediation never promises the library (the catalog carries no turbo rows)')
+
+  const reference = h3Stack.turboTierStates(mirrorLoras, 'reference')
+  eq(reference['8'].available, false, 'reference mode: the fl2v-only install leaves tier 8 unavailable in the ref2v lane')
+  ok(reference['8'].remediation.includes('drbaph'), 'the ref2v lane\'s remediation names the measured bake-off default first')
+
+  const both = h3Stack.turboTierStates(with4Step, 'text')
+  eq(both['4'].available, true, 'dropping the 4-step weights in flips tier 4 available — the app\'s own knowledge drives it')
+
+  const pdd = h3Stack.turboTierStates(mirrorLoras, 'text', 'turbo.pdd-fl2va-8')
+  eq(pdd['8'].available, false, 'an explicit family resolves only its own patterns')
+  ok(pdd['8'].remediation.includes('alibaba-pai'), 'the family remediation names THAT family\'s publisher')
+
+  ok(turbo.turboTierInstallHint('4', 'fl2v').includes('minimax_h3_fl2v_turbo_4step_v1.2'), 'the fl2v 4-step hint is the ladder\'s top pick')
+  ok(turbo.turboTierInstallHint('8', 'fl2v').includes('ComfyUI Model Zoo'), 'the fl2v 8-step hint is the official conversion')
+  ok(turbo.turboTierInstallHint('8', 'ref2v').includes('drbaph'), 'the ref2v 8-step hint is the bake-off default')
+  ok(turbo.turboTierInstallHint('4', 'ref2v').includes('ref2v_turbo_4step_v0.1'), 'the ref2v 4-step hint is the official weights')
+  ok(turbo.turboTierInstallHint('8', 'fl2v', 'turbo.pdd-fl2va-8').includes('alibaba-pai'), 'an explicit family hints its own source')
+
+  const refusal = h3Stack.turboTierRefusal('4', 'text')
+  ok(refusal.includes('Fast · 4-step') && refusal.includes('minimax_h3_fl2v_turbo_4step_v1.2') && refusal.includes('refresh the engine'), `the submit refusal names the tier, the ONE truthful fix, and no second path (got: ${refusal})`)
+  ok(!refusal.includes('Fetchable'), 'the refusal never promises the library')
+})

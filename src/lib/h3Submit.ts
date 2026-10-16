@@ -16,6 +16,7 @@
 import { createId } from './createId'
 import { buildMonokaWorkflow, frameIndexForSeconds, guideFrameWarning } from './workflow'
 import { vdnAvailability } from './graph'
+import { turboTierRefusal } from './h3Stack'
 import { teDimClassRefusal } from './modelSelection'
 import { prepareImage, prepareReferenceImage } from './imageCrop'
 import { buildRenderManifest } from './manifest'
@@ -214,24 +215,40 @@ export function validateH3Render(request: H3RenderRequest, facts: Pick<H3SubmitF
       }
     }
   }
+  // The tier-honesty rung (task g1girm8, R2 F3): a selected fast tier whose
+  // lane LoRA the inference ladder cannot resolve refuses BY NAME, with ONE
+  // truthful path — publisher source, placement, refresh — plus the working
+  // Quality alternative. Runs BEFORE the membership rung (same W3 ordering
+  // as the VDN rungs: a named cause must not be buried in the generic
+  // list), and replaces the old behavior where the turbo line rode the
+  // shared membership list and its tail promised "Settings → Fetchable
+  // items" — a destination with zero turbo LoRA rows, rendered on the same
+  // screen as the panel's own "not fetchable" note. The trigger is the
+  // tier EXPLICITLY selected ('4'/'8' — an absent turbo field is not a
+  // selected tier; the old `!== 'off'` check fired on undefined). The
+  // facts.selection is resolved at the SUBMITTED tier (store.ts
+  // selectionFor), so an empty lane LoRA here is exactly the ladder's
+  // verdict for this tier.
+  if ((request.turbo === '4' || request.turbo === '8') && !(request.mode === 'reference' ? facts.selection?.ref2vLora : facts.selection?.fl2vLora)) {
+    return turboTierRefusal(request.turbo, request.mode)
+  }
   if (!facts.modelReady) {
     // (W3, same sweep) The membership refusal COMPOSES from the resolved
     // rows — the same membership h3StackReady gates on, narrated per row —
     // instead of the old blanket "components are missing" that named
-    // nothing. Weights rows name what to make visible; the engine-side
-    // check names the node classes weights cannot fix.
+    // nothing. Weights rows name what to make visible AND where; the
+    // engine-side check names the node classes weights cannot fix.
     const missing: string[] = []
     const lane = request.mode === 'reference' ? facts.selection?.ref2va : facts.selection?.fl2va
-    if (!lane) missing.push(request.mode === 'reference' ? 'the Ref2VA checkpoint (the reference lane)' : 'the FL2VA checkpoint (a diffusion model whose name contains "fl2va")')
-    if (!facts.selection?.textEncoder) missing.push('the 32B-class text encoder (qwen3vl_32b…)')
-    if (!facts.selection?.videoVae) missing.push('the video VAE (a VAE whose name contains "video_vae")')
-    if (!facts.selection?.audioVae) missing.push('the audio VAE (a VAE whose name contains "audio_vae")')
-    if (request.turbo !== 'off' && !(request.mode === 'reference' ? facts.selection?.ref2vLora : facts.selection?.fl2vLora)) missing.push('the turbo LoRA for the selected speed tier')
+    if (!lane) missing.push(request.mode === 'reference' ? 'the Ref2VA checkpoint (place the reference-lane diffusion model in the engine\'s diffusion_models folder)' : 'the FL2VA checkpoint (place a diffusion model whose name contains "fl2va" in the engine\'s diffusion_models folder)')
+    if (!facts.selection?.textEncoder) missing.push('the 32B-class text encoder (place a qwen3vl_32b encoder in the engine\'s text_encoders folder)')
+    if (!facts.selection?.videoVae) missing.push('the video VAE (place a VAE whose name contains "video_vae" in the engine\'s vae folder)')
+    if (!facts.selection?.audioVae) missing.push('the audio VAE (place a VAE whose name contains "audio_vae" in the engine\'s vae folder)')
     const missingNodes = missingCoreNodeClasses(facts.info, 'h3-video')
     if (missingNodes.length) missing.push(`the engine's H3 node classes (${missingNodes.map((entry) => entry.className).join(', ')}) — weights cannot fix this; update ComfyUI or install the missing packs`)
     if (missing.length) {
       const list = missing.length === 1 ? missing[0]! : `${missing.slice(0, -1).join(', ')}, and ${missing[missing.length - 1]!}`
-      return `The H3 stack is incomplete — the render is missing ${list}. Fetch them in Settings → Fetchable items (or make them visible to the engine), then rescan.`
+      return `The H3 stack is incomplete — the render is missing ${list}. Refresh the engine once the files are in place.`
     }
     return 'One or more required MiniMax H3 model components are missing.'
   }

@@ -36,6 +36,7 @@ import { detectOptimizations, engineFamilyForChain, vdnAvailability } from '../l
 // graph/index.ts wedges index↔turbo into mutual chunk dependencies (the
 // Rollup circular-chunk warning's own suggested fix).
 import { turboFetchPlan } from '../lib/graph/turbo'
+import { turboTierStates } from '../lib/h3Stack'
 import { effectiveSlotSetting, inferredOverrideSlotFile, mergeModelOverrides, migrateLegacyModelOverrideSlots, modelClassHint, modelFamilyInfo, overrideLayerCounts, overrideLayerSummary, resolveModelOverrides, SLOT_LABELS, type ModelFamilyId, type ModelOverrideSlotName } from '../lib/modelOverrides'
 import { guideFrameWarning } from '../lib/workflow'
 import { ASPECT_RATIOS, optimalResolutionFor, parseResolution, ratioKeyOf, resolutionsForRatio, snapResolutionDim, tieredResolutionGroups } from '../lib/aspectResolutions'
@@ -859,6 +860,15 @@ export function PropertiesPanel() {
   // of growing a ternary per engine. The fallback covers a malformed settings
   // object (readChainSettings always sets mediaType; belt-and-braces).
   const engineFamily = engineFamilyForChain(draft) ?? engineFamilyForChain({ mediaType: draft.mediaType })!
+  // (g1girm8, R2 F3 — tier honesty) The speed tiers derive availability from
+  // the app's OWN inventory through the SAME seam the submit ladder runs
+  // (inferSelections at the tier → the lane LoRA). A tier whose LoRA is
+  // absent renders disabled with ONE truthful remediation — it can no longer
+  // present itself as live. Plain per-render derivation (cheap walk), like
+  // the override refusal below; no engine snapshot keeps the chips disabled
+  // (the connection rung owns that first step, so the note stays gated).
+  const tierStates = engineFamily.panel.tier ? turboTierStates(models, mode, draft.turboFamily || undefined) : null
+  const unavailableTiers = tierStates ? (['4', '8'] as const).filter((tier) => !tierStates[tier].available) : []
   // ---- Chain-level model overrides (task euxwdva) ----
   // Picks are registry-anchored and ride chain.settings (settings-vs-results
   // separation: the RESOLVED files ride the take's manifest). Resolution
@@ -1192,22 +1202,40 @@ export function PropertiesPanel() {
           <div className="canvas-properties-row">
             <span>tier</span>
             <ChipGroup exclusive className="canvas-properties-tiers" aria-label="Speed tier" value={draft.turbo} onChange={(next) => patch({ turbo: next as typeof draft.turbo, ...(next !== 'off' ? { vdn: 'off' as const } : {}) })}>
-              {TIERS.map((tier) => (
-                <Chip
-                  key={tier.value}
-                  id={tier.value}
-                  variant="radio"
-                  className="canvas-chip"
-                  data-canvas-tier={tier.value}
-                  /* (V1, perfect-state sweep 2026-09-27) The note rides the
-                     tooltip: on the chip it made the third tier wrap alone
-                     under the row and read as a stray duplicate. */
-                  title={tier.note}
-                >
-                  {tier.label}
-                </Chip>
-              ))}
+              {TIERS.map((tier) => {
+                const state = tier.value !== 'off' && tierStates ? tierStates[tier.value as '4' | '8'] : undefined
+                const unavailable = state ? !state.available : false
+                return (
+                  <Chip
+                    key={tier.value}
+                    id={tier.value}
+                    variant="radio"
+                    className="canvas-chip"
+                    data-canvas-tier={tier.value}
+                    disabled={unavailable || undefined}
+                    /* (V1, perfect-state sweep 2026-09-27) The note rides the
+                       tooltip: on the chip it made the third tier wrap alone
+                       under the row and read as a stray duplicate. (g1girm8)
+                       For an unavailable tier the tooltip carries the ONE
+                       remediation instead of the marketing note. */
+                    title={unavailable && state ? `${tier.label} unavailable — ${state.remediation}` : tier.note}
+                  >
+                    {tier.label}
+                  </Chip>
+                )
+              })}
             </ChipGroup>
+            {/* (g1girm8) Presence truth at the choice point, VDN-note style:
+                an unavailable tier names its publisher source and placement —
+                never a fetch promise (the catalog carries no turbo rows, the
+                same truth the turbo-family note below states). Gated on the
+                engine snapshot: with no engine at all, the connection rung is
+                the first truthful step, not the LoRA placement. */}
+            {info && unavailableTiers.length > 0 && tierStates && (
+              <p className="canvas-properties-note" data-canvas-tier-note role="note">
+                {unavailableTiers.map((tier) => `${tier === '4' ? 'Fast · 4-step' : 'Fast · 8-step'}: ${tierStates[tier].remediation}`).join(' ')} The Quality tier runs the native {draft.steps}-step path meanwhile.
+              </p>
+            )}
           </div>
         )}
         {engineFamily.panel.tier && (
