@@ -995,9 +995,12 @@ test('radar zooms to attention on failure (contract a: durable on the object)', 
   const scenario = await page.evaluate(() => (window as unknown as { __canvasScenario(name: string): { ok: boolean } }).__canvasScenario('fail-worst'))
   expect(scenario.ok).toBe(true)
 
-  // Durable on the object: failed ring + reason + dismiss, radar pings.
+  // Durable on the object: failed ring + the humanized verdict + dismiss,
+  // radar pings. (ewtobuh) The tile speaks the taxonomy's words — the raw
+  // scenario reason stays in the record (Diagnostics), never on the surface.
   await expect(tile).toHaveAttribute('data-tile-status', 'failed')
-  await expect(tile.locator('.canvas-tile-failure')).toContainText('engine exploded (scenario)')
+  await expect(tile.locator('.canvas-tile-failure')).toContainText('This render failed — the engine reported an error the studio could not classify')
+  expect(await tile.locator('.canvas-tile-failure').textContent()).not.toContain('engine exploded (scenario)')
   await expect(page.locator('[data-canvas-radar]')).toHaveAttribute('data-attention', '1')
   await expect(page.locator('[data-canvas-radar]')).toHaveClass(/attention/)
 
@@ -2821,97 +2824,129 @@ test('a job seeded onto a >100-job home persists across the reload — the windo
 // single bridge with the four states below.
 test('statusToken: the ring, live readout, bar engine, and timeline dot paint their mapped tokens', async ({ page }) => {
   const problems = await trackErrors(page)
-  await resetSession(page)
-  await page.goto('/?canvas=1&probe=canvas')
-  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
-  // Two seed chains (the scenario seams need unlinked seed tiles): the
-  // first from the launcher's prompt (the empty-canvas surface), the second
-  // from the bar's prompt (the with-objects surface).
-  await page.locator('[data-canvas-prompt]').fill('tone ladder probe a')
-  await page.locator('[data-canvas-submit]').click()
-  await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 10_000 })
-  // Deselect: the bar's prompt renders only in the empty-selection context.
-  await page.keyboard.press('Escape')
-  await expect(page.locator('.canvas-tile.selected')).toHaveCount(0)
-  await page.locator('[data-canvas-bar-prompt]').fill('tone ladder probe b')
-  await page.locator('[data-canvas-bar-prompt]').press('Enter')
-  await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 10_000 })
-
-  const probeColor = (cssColor: string) => page.evaluate((formula) => {
-    const probe = document.createElement('span')
-    probe.style.color = formula
-    document.body.appendChild(probe)
-    const computed = getComputedStyle(probe).color
-    probe.remove()
-    return computed
-  }, cssColor)
-  const ringBorder = (chainId: string) => page.evaluate((id) => {
-    const ring = document.querySelector(`[data-canvas-tile="${id}"] .canvas-tile-ring`)
-    return ring ? getComputedStyle(ring).borderColor : 'MISSING-RING'
-  }, chainId)
-  const scenario = async <T extends { ok: boolean; reason?: string; chainId?: string }>(name: string): Promise<T> =>
-    page.evaluate((scenarioName) => (window as unknown as { __canvasScenario(scenarioName: string): T }).__canvasScenario(scenarioName), name)
-
-  // IDLE — a fresh seed tile: the ring's hairline is the map's --text at
-  // the ring's calm 14% recipe.
-  const tiles = page.locator('[data-canvas-tile]')
-  const idleId = await tiles.nth(0).getAttribute('data-canvas-tile')
-  await expect(tiles.nth(0).locator('.canvas-tile-ring')).toHaveAttribute('data-status', 'idle')
-  expect(await ringBorder(idleId!)).toBe(await probeColor('color-mix(in srgb, var(--text) 14%, transparent)'))
-
-  // The bar's engine chip (nothing selected → the bar's empty context):
-  // offline is the calm muted-2 absence on BOTH dot and text.
-  await page.keyboard.press('Escape')
-  await expect(page.locator('.canvas-tile.selected')).toHaveCount(0)
-  const barEngine = page.locator('[data-canvas-bar-engine]')
-  await expect(barEngine).toBeVisible()
-  const barTone = await page.evaluate(() => {
-    const chip = document.querySelector('[data-canvas-bar-engine]')
-    const dot = chip?.querySelector('.status-dot') ?? null
-    return chip && dot ? { text: getComputedStyle(chip).color, dot: getComputedStyle(dot).backgroundColor } : null
+  // (ewtobuh) The RUNNING token needs execution evidence — a job promoted by
+  // the engine's own events, never a parked claim. A minimal WS engine (F6's
+  // shape; HTTP-silent so the engine-chip leg still reads offline) supplies
+  // them for the live-progress scenario's promptId.
+  const engine = http.createServer((req, res) => { res.writeHead(404); res.end() })
+  const wss = new WebSocketServer({ noServer: true })
+  engine.on('upgrade', (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      ws.send(JSON.stringify({ type: 'execution_start', data: { prompt_id: 'e2e-live-1' } }))
+      const timer = setInterval(() => {
+        if (ws.readyState !== ws.OPEN) return
+        ws.send(JSON.stringify({ type: 'progress', data: { value: 11, max: 30, prompt_id: 'e2e-live-1' } }))
+      }, 400)
+      ws.on('close', () => clearInterval(timer))
+    })
   })
-  expect(barTone).not.toBeNull()
-  expect(barTone!.dot).toBe(await probeColor('var(--muted-2)'))
-  expect(barTone!.text).toBe(await probeColor('var(--muted-2)'))
+  const enginePort = await new Promise<number>((resolve) => engine.listen(0, '127.0.0.1', () => resolve(engine.address().port)))
+  const originalSettings = ((await (await page.request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+  try {
+    await page.request.post('/api/lan/settings', { data: { settings: { ...originalSettings, comfyUrl: `http://127.0.0.1:${enginePort}` } } })
+    await resetSession(page)
+    await page.goto('/?canvas=1&probe=canvas')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    // Two seed chains (the scenario seams need unlinked seed tiles): the
+    // first from the launcher's prompt (the empty-canvas surface), the second
+    // from the bar's prompt (the with-objects surface).
+    await page.locator('[data-canvas-prompt]').fill('tone ladder probe a')
+    await page.locator('[data-canvas-submit]').click()
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 10_000 })
+    // Deselect: the bar's prompt renders only in the empty-selection context.
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.canvas-tile.selected')).toHaveCount(0)
+    await page.locator('[data-canvas-bar-prompt]').fill('tone ladder probe b')
+    await page.locator('[data-canvas-bar-prompt]').press('Enter')
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(2, { timeout: 10_000 })
 
-  // QUEUED-GPU — the mock job parks the pre-GPU wait: muted-2 at 70%.
-  const queued = await scenario('seed-mock')
-  expect(queued.ok, queued.reason ?? 'seed-mock parks a queued job').toBe(true)
-  await expect(page.locator(`[data-canvas-tile="${queued.chainId}"] .canvas-tile-ring`)).toHaveAttribute('data-status', 'queued-gpu')
-  expect(await ringBorder(queued.chainId!)).toBe(await probeColor('color-mix(in srgb, var(--muted-2) 70%, transparent)'))
+    const probeColor = (cssColor: string) => page.evaluate((formula) => {
+      const probe = document.createElement('span')
+      probe.style.color = formula
+      document.body.appendChild(probe)
+      const computed = getComputedStyle(probe).color
+      probe.remove()
+      return computed
+    }, cssColor)
+    const ringBorder = (chainId: string) => page.evaluate((id) => {
+      const ring = document.querySelector(`[data-canvas-tile="${id}"] .canvas-tile-ring`)
+      return ring ? getComputedStyle(ring).borderColor : 'MISSING-RING'
+    }, chainId)
+    const scenario = async <T extends { ok: boolean; reason?: string; chainId?: string }>(name: string): Promise<T> =>
+      page.evaluate((scenarioName) => (window as unknown as { __canvasScenario(scenarioName: string): T }).__canvasScenario(scenarioName), name)
 
-  // RUNNING — the second seed tile carries the live window: the ring
-  // paints info, and the live READOUT keeps info too (the documented
-  // whole-active-window divergence — queued would read muted-2 on the ring).
-  const running = await scenario('live-progress')
-  expect(running.ok, running.reason ?? 'live-progress parks a running job').toBe(true)
-  await expect(page.locator(`[data-canvas-tile="${running.chainId}"] .canvas-tile-ring`)).toHaveAttribute('data-status', 'running')
-  expect(await ringBorder(running.chainId!)).toBe(await probeColor('var(--color-info)'))
-  const readoutTone = await page.evaluate((id) => {
-    const readout = document.querySelector(`[data-canvas-tile="${id}"] .canvas-tile-live-readout`)
-    return readout ? getComputedStyle(readout).borderColor : 'MISSING-READOUT'
-  }, running.chainId!)
-  expect(readoutTone).toBe(await probeColor('color-mix(in srgb, var(--color-info) 38%, transparent)'))
+    // IDLE — a fresh seed tile: the ring's hairline is the map's --text at
+    // the ring's calm 14% recipe.
+    const tiles = page.locator('[data-canvas-tile]')
+    const idleId = await tiles.nth(0).getAttribute('data-canvas-tile')
+    await expect(tiles.nth(0).locator('.canvas-tile-ring')).toHaveAttribute('data-status', 'idle')
+    expect(await ringBorder(idleId!)).toBe(await probeColor('color-mix(in srgb, var(--text) 14%, transparent)'))
 
-  // FAILED — the durable failure lands on the first linked chain: danger.
-  const failed = await scenario('fail-worst')
-  expect(failed.ok, failed.reason ?? 'fail-worst flips the first linked job').toBe(true)
-  await expect(page.locator(`[data-canvas-tile="${failed.chainId}"] .canvas-tile-ring`)).toHaveAttribute('data-status', 'failed')
-  expect(await ringBorder(failed.chainId!)).toBe(await probeColor('var(--danger)'))
+    // The bar's engine chip (nothing selected → the bar's empty context):
+    // offline is the calm muted-2 absence on BOTH dot and text.
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.canvas-tile.selected')).toHaveCount(0)
+    const barEngine = page.locator('[data-canvas-bar-engine]')
+    await expect(barEngine).toBeVisible()
+    const barTone = await page.evaluate(() => {
+      const chip = document.querySelector('[data-canvas-bar-engine]')
+      const dot = chip?.querySelector('.status-dot') ?? null
+      return chip && dot ? { text: getComputedStyle(chip).color, dot: getComputedStyle(dot).backgroundColor } : null
+    })
+    expect(barTone).not.toBeNull()
+    expect(barTone!.dot).toBe(await probeColor('var(--muted-2)'))
+    expect(barTone!.text).toBe(await probeColor('var(--muted-2)'))
 
-  // TIMELINE — the strip's own adapter: an unseeded segment paints the
-  // calm muted-2 placeholder (the adapter's extension word).
-  await page.keyboard.press('v')
-  const overlay = page.locator('[data-canvas-timeline]')
-  await expect(overlay).toBeVisible()
-  await overlay.locator('[data-canvas-timeline-new-plan]').click()
-  await overlay.locator('[data-canvas-plan-add-segment]').click()
-  const unseededDot = overlay.locator('[data-canvas-timeline-item-status="unseeded"]')
-  await expect(unseededDot).toHaveCount(1, { timeout: 10_000 })
-  const dotTone = await unseededDot.evaluate((element) => getComputedStyle(element).backgroundColor)
-  expect(dotTone).toBe(await probeColor('var(--muted-2)'))
+    // QUEUED-GPU — the mock job parks the pre-GPU wait: muted-2 at 70%.
+    const queued = await scenario('seed-mock')
+    expect(queued.ok, queued.reason ?? 'seed-mock parks a queued job').toBe(true)
+    await expect(page.locator(`[data-canvas-tile="${queued.chainId}"] .canvas-tile-ring`)).toHaveAttribute('data-status', 'queued-gpu')
+    expect(await ringBorder(queued.chainId!)).toBe(await probeColor('color-mix(in srgb, var(--muted-2) 70%, transparent)'))
 
-  expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+    // RUNNING — the second seed tile carries the live window: the ring
+    // paints info, and the live READOUT keeps info too (the documented
+    // whole-active-window divergence — queued would read muted-2 on the ring).
+    // (ewtobuh) Named condition for the wait: the scenario parks the job
+    // honestly QUEUED, and the engine's own execution_start/progress promote
+    // it — but the fabric's shared upstream reconnects on a settings change
+    // with exponential backoff capped at 15 s (server/realtime.ts
+    // UPSTREAM_BACKOFF_CAP_MS), so the first events can land ~16 s after the
+    // POST. The state itself must still be REACHED — a promotion that never
+    // happens fails the timeout.
+    const running = await scenario('live-progress')
+    expect(running.ok, running.reason ?? 'live-progress parks the live job').toBe(true)
+    await expect(page.locator(`[data-canvas-tile="${running.chainId}"] .canvas-tile-ring`)).toHaveAttribute('data-status', 'running', { timeout: 30_000 })
+    expect(await ringBorder(running.chainId!)).toBe(await probeColor('var(--color-info)'))
+    const readoutTone = await page.evaluate((id) => {
+      const readout = document.querySelector(`[data-canvas-tile="${id}"] .canvas-tile-live-readout`)
+      return readout ? getComputedStyle(readout).borderColor : 'MISSING-READOUT'
+    }, running.chainId!)
+    expect(readoutTone).toBe(await probeColor('color-mix(in srgb, var(--color-info) 38%, transparent)'))
+
+    // FAILED — the durable failure lands on the first linked chain: danger.
+    const failed = await scenario('fail-worst')
+    expect(failed.ok, failed.reason ?? 'fail-worst flips the first linked job').toBe(true)
+    await expect(page.locator(`[data-canvas-tile="${failed.chainId}"] .canvas-tile-ring`)).toHaveAttribute('data-status', 'failed')
+    expect(await ringBorder(failed.chainId!)).toBe(await probeColor('var(--danger)'))
+
+    // TIMELINE — the strip's own adapter: an unseeded segment paints the
+    // calm muted-2 placeholder (the adapter's extension word).
+    await page.keyboard.press('v')
+    const overlay = page.locator('[data-canvas-timeline]')
+    await expect(overlay).toBeVisible()
+    await overlay.locator('[data-canvas-timeline-new-plan]').click()
+    await overlay.locator('[data-canvas-plan-add-segment]').click()
+    const unseededDot = overlay.locator('[data-canvas-timeline-item-status="unseeded"]')
+    await expect(unseededDot).toHaveCount(1, { timeout: 10_000 })
+    const dotTone = await unseededDot.evaluate((element) => getComputedStyle(element).backgroundColor)
+    expect(dotTone).toBe(await probeColor('var(--muted-2)'))
+
+    expect(problems.filter((entry) => !environmental(entry))).toEqual([])
+  } finally {
+    await page.request.post('/api/lan/settings', { data: { settings: originalSettings } }).catch(() => undefined)
+    await new Promise<void>((resolve) => wss.close(() => resolve()))
+    await new Promise<void>((resolve) => engine.close(() => resolve()))
+  }
 })
 
 // The chip system's selection contract (component vocabulary task 6,
@@ -3740,11 +3775,18 @@ test('F6 live progress: targeted engine events + preview frames surface on the g
     await page.locator('[data-canvas-submit]').click()
     const tile = page.locator('[data-canvas-tile]').first()
     await expect(tile).toBeVisible({ timeout: 10_000 })
-    // Park a RUNNING job linked to the seed chain — the fabric's events for
-    // its promptId then drive the tile exactly as a real submission would.
+    // Park a QUEUED job linked to the seed chain — the fabric's events for
+    // its promptId then promote and drive the tile exactly as a real
+    // submission would. (ewtobuh) Named condition for the wait: the job sits
+    // honestly QUEUED until the engine's own execution_start/progress events
+    // promote it, and the shared upstream reconnects on a settings change
+    // with exponential backoff capped at 15 s (server/realtime.ts
+    // UPSTREAM_BACKOFF_CAP_MS), so mid-lane the first events can land ~16 s
+    // after the POST. The promotion must still HAPPEN — events that never
+    // arrive fail on the timeout.
     const scenario = await page.evaluate(() => (window as unknown as { __canvasScenario(name: string): { ok: boolean; reason?: string } }).__canvasScenario('live-progress'))
     expect(scenario.ok, scenario.reason).toBe(true)
-    await expect(tile).toHaveAttribute('data-tile-status', 'running')
+    await expect(tile).toHaveAttribute('data-tile-status', 'running', { timeout: 30_000 })
 
     // Progress reaches the tile: percent + label from the targeted events
     // (11/30 → 34.8 → the readout rounds to 35%).
@@ -3986,7 +4028,7 @@ test('the retired timeline tool fills the Flow box (LLM stubbed, provider route)
 // generation ladder through a fake engine speaking the real contract (the
 // images.spec precedent) — the graph the engine receives carries the exact
 // composed bytes. The fake engine's /models listing resolves availability;
-// it accepts the submission and the job parks running on the chain.
+// it accepts the submission and the job parks queued on the chain.
 test('a structured submit lands a real job whose engine prompt is the composed bytes (fake engine)', async ({ page, request }) => {
   const problems = await trackErrors(page)
   const http = await import('node:http')
@@ -4014,7 +4056,9 @@ test('a structured submit lands a real job whose engine prompt is the composed b
       return
     }
     if (url.pathname === '/history/sp-e2e-1') {
-      // Still running — the job parks running on the chain (the honest state).
+      // History says still running — but with no engine events the tile
+      // honestly stays queued on the chain (the record and the surface each
+      // speak their own truth).
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ 'sp-e2e-1': { prompt: [], outputs: {}, status: { completed: false } } }))
       return
@@ -4091,8 +4135,11 @@ test('a structured submit lands a real job whose engine prompt is the composed b
     }, { timeout: 5_000 }).toBe(true)
 
     await panel.locator('[data-canvas-generate]').click()
-    // The real ladder passes: the submission lands a running job on the chain.
-    await expect(tile).toHaveAttribute('data-tile-status', 'running', { timeout: 20_000 })
+    // The real ladder passes: the engine answered /prompt, so the job parks
+    // QUEUED on the chain — the honest pre-GPU wait (ewtobuh) — and the
+    // readout speaks the queued vocabulary, never a running claim.
+    await expect(tile).toHaveAttribute('data-tile-status', 'queued-gpu', { timeout: 20_000 })
+    await expect(tile.locator('[data-canvas-live-readout]')).toContainText('Queued — waiting for the engine')
     const document = await activeDocument(page)
     const chain = document.chains.find((entry) => entry.kind === 'generation')!
     expect(chain.settings.promptMode).toBe('structured')
@@ -4209,7 +4256,7 @@ test('a model override reaches the engine graph and the job manifest (fake engin
     await page.locator('[data-canvas-submit]').click()
     const tile = page.locator('[data-canvas-tile]').first()
     await expect(tile).toBeVisible({ timeout: 10_000 })
-    await expect(tile).toHaveAttribute('data-tile-status', 'running', { timeout: 20_000 })
+    await expect(tile).toHaveAttribute('data-tile-status', 'queued-gpu', { timeout: 20_000 })
 
     // THE GRAPH (per-lane routing, rq0lsax): the community merge (no pattern
     // matches it) is the resolved checkpoint the FL2VA lane feeds the engine
@@ -4708,7 +4755,7 @@ test('an instance-listed subpathed checkpoint pick applies and the graph carries
     await page.locator('[data-canvas-submit]').click()
     const tile = page.locator('[data-canvas-tile]').first()
     await expect(tile).toBeVisible({ timeout: 10_000 })
-    await expect(tile).toHaveAttribute('data-tile-status', 'running', { timeout: 20_000 })
+    await expect(tile).toHaveAttribute('data-tile-status', 'queued-gpu', { timeout: 20_000 })
     expect(submittedGraphs.length).toBeGreaterThan(0)
     const graph = JSON.parse(submittedGraphs[submittedGraphs.length - 1]) as { prompt: Record<string, { class_type: string; inputs: Record<string, unknown> }> }
     expect(graph.prompt['1'].class_type).toBe('UNETLoader')
@@ -4965,7 +5012,7 @@ test('the camera path editor compiles a path into the Camera box; the composed b
       return ((chain?.settings.structured as { camera?: string } | undefined)?.camera ?? '').includes('the camera pushes in')
     }, { timeout: 5_000 }).toBe(true)
     await panel.locator('[data-canvas-generate]').click()
-    await expect(tile).toHaveAttribute('data-tile-status', 'running', { timeout: 20_000 })
+    await expect(tile).toHaveAttribute('data-tile-status', 'queued-gpu', { timeout: 20_000 })
     document = await activeDocument(page)
     chain = document.chains.find((entry) => entry.kind === 'generation')!
     const finalCamera = (chain.settings.structured as { camera: string }).camera
@@ -5149,7 +5196,8 @@ test('the LoRA timeline compiles painted ranges into per-LoRA segment chains (fa
       return
     }
     if (url.pathname.startsWith('/history/')) {
-      // Still running — the job parks running on its chain (the honest state).
+      // History says still running — with no engine events the tile honestly
+      // stays queued on its chain.
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ nothing: { prompt: [], outputs: {}, status: { completed: false } } }))
       return
@@ -5188,7 +5236,7 @@ test('the LoRA timeline compiles painted ranges into per-LoRA segment chains (fa
     await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'true', { timeout: 15_000 })
     const panel = page.locator('[data-canvas-properties]')
     await expect(panel).toBeVisible()
-    // The launcher's auto-submit parks running on the chain — harmless here:
+    // The launcher's auto-submit parks queued on the chain — harmless here:
     // the segment graphs are counted from a snapshot taken now, and the
     // launcher's job carries no loraStack so the manifest poll ignores it.
     await expect.poll(() => submittedGraphs.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(1)
@@ -5297,7 +5345,7 @@ test('the LoRA timeline compiles painted ranges into per-LoRA segment chains (fa
 // (modelOverrides.ts migration) never lands a marked name on a slot its class
 // refuses. Failing-without-it: on the unmigrated seam the exact maintainer
 // sequence below submits NOTHING (validateH3Render refuses with the T=1
-// message) and the tile never parks running.
+// message) and the tile never parks queued.
 test('a legacy pre-split vae pick of the T=1 decoder never refuses the video path (tmz8vh7)', async ({ page, request }) => {
   const problems = await trackErrors(page)
   const http = await import('node:http')
@@ -5333,7 +5381,8 @@ test('a legacy pre-split vae pick of the T=1 decoder never refuses the video pat
       return
     }
     if (url.pathname === `/history/${PROMPT_ID}`) {
-      // Still running — the job parks running on the chain (the honest state).
+      // History says still running — with no engine events the tile honestly
+      // stays queued on the chain.
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ [PROMPT_ID]: { prompt: [], outputs: {}, status: { completed: false } } }))
       return
@@ -5367,9 +5416,9 @@ test('a legacy pre-split vae pick of the T=1 decoder never refuses the video pat
     const tile = page.locator('[data-canvas-tile]').first()
     await expect(tile).toBeVisible({ timeout: 10_000 })
     // The video submission goes THROUGH: the real ladder accepts it and the
-    // job parks running (pre-fix this is where the T=1 refusal surfaced and
+    // job parks queued (pre-fix this is where the T=1 refusal surfaced and
     // nothing was ever submitted).
-    await expect(tile).toHaveAttribute('data-tile-status', 'running', { timeout: 20_000 })
+    await expect(tile).toHaveAttribute('data-tile-status', 'queued-gpu', { timeout: 20_000 })
     await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'true')
     await expect.poll(() => submitted.length, { timeout: 10_000 }).toBeGreaterThanOrEqual(1)
 
@@ -5527,7 +5576,7 @@ test('an image-intent chain with a reference binding refuses honestly — never 
 
     // Generate: the refusal surfaces and NO video graph is ever submitted —
     // the stills graph from the spawn is all the engine ever received. The
-    // spawn's stills job parks running (the fake engine never completes):
+    // spawn's stills job parks queued (the fake engine never completes):
     // stop it first so the generate control returns.
     await page.locator(`[data-canvas-tile="${imageChain.id}"]`).click()
     await expect(page.locator('[data-canvas-properties]')).toBeVisible()

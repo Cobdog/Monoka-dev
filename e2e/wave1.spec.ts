@@ -188,8 +188,9 @@ test('Wave 1 acceptance walk — the maintainer\'s first session, end to end on 
     // Multi-frame by construction: 6 s → the 17n+5 grid, never length 1.
     const conditioning = Object.values(firstGraph).find((node) => node.class_type === 'MiniMaxH3ImageToVideo')!
     expect(Number(conditioning!.inputs.length)).toBeGreaterThanOrEqual(100)
-    // The job parks running (the fake engine reports incomplete).
-    await expect(tile).toHaveAttribute('data-tile-status', 'running', { timeout: 20_000 })
+    // The job parks QUEUED (the fake engine reports incomplete, and with no
+    // engine events the honest pre-GPU wait is where it stays — ewtobuh).
+    await expect(tile).toHaveAttribute('data-tile-status', 'queued-gpu', { timeout: 20_000 })
 
     // ---- STEP 4a: a missing class refuses BEFORE the engine (R-02) -------
     // The instance "loses" a stock class the built graph needs — across a
@@ -197,7 +198,7 @@ test('Wave 1 acceptance walk — the maintainer\'s first session, end to end on 
     // refreshes the app's object_info, and the NEXT submit refuses at the
     // preflight with the readable, action-mapped list while the engine
     // receives nothing further. (The fake's history deliberately SURVIVES
-    // this restart so the running lighthouse job rides the blip — a harness
+    // this restart so the parked lighthouse job rides the blip — a harness
     // fiction noted here; step 5A exercises the honest history-loss path.)
     await stopEngine()
     await expect(chip).toHaveAttribute('data-engine-connected', 'false', { timeout: 30_000 }) // the loop must SEE the loss, or the restart never registers as a recovery
