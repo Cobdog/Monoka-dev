@@ -4,7 +4,7 @@ import { createId } from './createId'
 import { webMediaUrl } from './mediaUrls'
 import { onPreviewFrame, onRealtimeStatus, subscribe } from './useRealtime'
 
-export type LiveProgress = { progress?: number; label: string; currentStep?: number; totalSteps?: number }
+export type LiveProgress = { progress?: number; label: string; currentStep?: number; totalSteps?: number; nodeId?: string | null }
 export type LivePreview = {
   promptId: string
   url: string
@@ -91,9 +91,21 @@ export function useLivePreview(url: string | undefined, enabled: boolean, onProg
       // start following that prompt's frames without resetting state.
       if (promptId !== active) { active = promptId; followFrames(active) }
       if (event.type === 'execution_cached') onProgress(promptId, { label: 'Reusing cached model data' })
-      if (event.type === 'executing' && event.node) onProgress(promptId, { label: 'Loading or processing workflow stage' })
+      // (ewtobuh, 1v844wk) The node-stage event carries its id; the queue
+      // hook resolves the HUMAN stage word against the job's graph
+      // ("Decoding video…") — never the internal node status verbatim.
+      if (event.type === 'executing' && event.node) onProgress(promptId, { label: 'Rendering', nodeId: event.node })
       if (event.type === 'progress') {
-        onProgress(promptId, { progress: Math.min(95, (event.value / event.max) * 95), label: `Sampling · step ${event.value} of ${event.max}`, currentStep: event.value, totalSteps: event.max })
+        // (ewtobuh, 1v844wk) The 95% plateau is honest: at the last step the
+        // sampling is DONE — the park is decode/landing, and the label says
+        // so instead of repeating "step N of N" for minutes.
+        const sampling = event.value < event.max
+        onProgress(promptId, {
+          progress: Math.min(95, (event.value / event.max) * 95),
+          label: sampling ? `Sampling · step ${event.value} of ${event.max}` : 'Finishing the render — sampling done, saving the output',
+          currentStep: event.value,
+          totalSteps: event.max,
+        })
       }
       if (event.type === 'preview_meta') {
         const animated = event.mime === 'image/webp' || event.mime === 'video/mp4'

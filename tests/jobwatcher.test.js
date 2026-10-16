@@ -263,20 +263,36 @@ test('(b) the fabric announces the settled job on the job channel', async () => 
 
 test('(c) an engine-side execution error fails the job honestly and lands no take', async () => {
   await fetch(`http://127.0.0.1:${engine.port}/__control`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ failMode: 'error' }) })
-  const promptId = await enginePrompt({ save: { class_type: 'SaveVideo', inputs: {} } })
-  const jobId = 'jobwatcher-c'
-  await post('/api/lan/jobs', { jobs: [jobRecord(jobId, promptId, { canvas: { chainId: chainC.id, projectId: client.projectId } })] })
-  const failed = await waitFor(async () => {
-    const listed = (await get('/api/lan/jobs')).jobs ?? []
-    return listed.find((job) => job.id === jobId && job.status === 'failed') ?? null
-  }, `the job row ${jobId} to read failed`, 30_000)
-  assert.ok(failed.error && failed.error.length > 0, 'the failure carries its sanitized reason')
-  const envelope = await waitFor(() => fabric.envelopes.find((entry) => entry.ch === 'job' && entry.type === 'landing' && entry.payload?.jobId === jobId) ?? null, 'the failed landing envelope', 5000)
-  assert.equal(envelope.payload.outcome, 'failed')
-  const document = await documentFor(client.projectId)
-  const chain = document.chains.find((entry) => entry.id === chainC.id)
-  assert.equal((chain?.outputs ?? []).length, 0, 'a failed render lands no output row')
-  await fetch(`http://127.0.0.1:${engine.port}/__control`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ failMode: null }) })
+  // The disarm rides `finally` — a failing assertion here must never leave
+  // the failMode armed to poison the sections after this one.
+  try {
+    const promptId = await enginePrompt({ save: { class_type: 'SaveVideo', inputs: {} } })
+    const jobId = 'jobwatcher-c'
+    await post('/api/lan/jobs', { jobs: [jobRecord(jobId, promptId, { canvas: { chainId: chainC.id, projectId: client.projectId } })] })
+    const failed = await waitFor(async () => {
+      const listed = (await get('/api/lan/jobs')).jobs ?? []
+      return listed.find((job) => job.id === jobId && job.status === 'failed') ?? null
+    }, `the job row ${jobId} to read failed`, 30_000)
+    assert.ok(failed.error && failed.error.length > 0, 'the failure carries its sanitized reason')
+    // (ewtobuh, R1 P1-7 / vfhcu5r) The settled record carries the STRUCTURED
+    // classification — the taxonomy bucket + the failing node's class/id — so
+    // Diagnostics counts causes from fields, never by re-parsing prose.
+    assert.equal(failed.failureKind, 'out-of-memory', `the record classifies the OOM cause (got: ${failed.failureKind})`)
+    assert.equal(failed.failureNodeType, 'MiniMaxH3ImageToVideo', 'the record names the failing node class')
+    assert.equal(failed.failureNodeId, 'sampler', 'the record names the failing node id')
+    const envelope = await waitFor(() => fabric.envelopes.find((entry) => entry.ch === 'job' && entry.type === 'landing' && entry.payload?.jobId === jobId) ?? null, 'the failed landing envelope', 5000)
+    assert.equal(envelope.payload.outcome, 'failed')
+    // The envelope's failureKind stays the OBSERVATION kind — the r3q1o49
+    // retry gate reads it ('executionError' = the crash class the one retry
+    // absorbs); the record's failureKind is the taxonomy bucket.
+    assert.equal(envelope.payload.failureKind, 'executionError', 'the envelope keeps the observation kind for the retry gate')
+    assert.equal(envelope.payload.job?.failureKind, 'out-of-memory', 'the settled record on the envelope carries the taxonomy bucket')
+    const document = await documentFor(client.projectId)
+    const chain = document.chains.find((entry) => entry.id === chainC.id)
+    assert.equal((chain?.outputs ?? []).length, 0, 'a failed render lands no output row')
+  } finally {
+    await fetch(`http://127.0.0.1:${engine.port}/__control`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ failMode: null }) })
+  }
 }, 60_000)
 
 test('(d) a stale client POST cannot resurrect a settled job (the terminal guard, server-side)', async () => {
@@ -400,5 +416,46 @@ test('(g) the ingest fetch is bounded — a stalled engine /view aborts at the d
     // the accepted connections before closing (close() alone waits on them).
     for (const socket of sockets) socket.destroy()
     await new Promise((resolve) => stall.close(() => resolve()))
+  }
+}, 30_000)
+
+test('(h) QUEUE TRUTH — a prompt the engine still holds as pending stays queued in the record (ewtobuh)', async () => {
+  // One render hangs (occupies the engine's single execution slot); the
+  // second prompt queues behind it — the real engine's queue_pending, the
+  // fake models it (POST /prompt while another renders → pending).
+  await fetch(`http://127.0.0.1:${engine.port}/__control`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ failMode: 'hang' }) })
+  const hungId = await enginePrompt({ save: { class_type: 'SaveVideo', inputs: {} } })
+  const pendingId = await enginePrompt({ save: { class_type: 'SaveVideo', inputs: {} } })
+  const hungJob = 'jobwatcher-h1'
+  const queuedJob = 'jobwatcher-h2'
+  await post('/api/lan/jobs', { jobs: [
+    jobRecord(hungJob, hungId, {}, { status: 'running' }),
+    jobRecord(queuedJob, pendingId, {}, { status: 'queued', progress: 0 }),
+  ] })
+  try {
+    // /queue is the engine's own per-prompt truth (the watcher reads it in
+    // the sweep when a queued row exists). Give the sweep several ticks —
+    // the defect under test is a row that flips to "running" purely because
+    // history has no entry yet.
+    await new Promise((resolve) => setTimeout(resolve, 4000))
+    const listed = (await get('/api/lan/jobs')).jobs ?? []
+    const queuedRow = listed.find((job) => job.id === queuedJob)
+    assert.ok(queuedRow, 'the queued row exists')
+    assert.equal(queuedRow.status, 'queued', `a merely-queued job stays queued across sweeps (got: ${queuedRow.status})`)
+    // The hung one keeps its running row — no false terminal, no lie.
+    const hungRow = listed.find((job) => job.id === hungJob)
+    assert.equal(hungRow?.status, 'running', 'the actually-executing job still reads running')
+  } finally {
+    // Tear the leg down honestly: stop the hang, drain the engine queue,
+    // and settle both rows terminal so no later section (or the sweep after
+    // teardown) observes them.
+    await fetch(`http://127.0.0.1:${engine.port}/__control`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ failMode: null }) })
+    await fetch(`http://127.0.0.1:${engine.port}/queue`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clear: true }) })
+    await fetch(`http://127.0.0.1:${engine.port}/interrupt`, { method: 'POST' })
+    const settled = [
+      jobRecord(hungJob, hungId, {}, { status: 'cancelled' }),
+      jobRecord(queuedJob, pendingId, {}, { status: 'cancelled' }),
+    ]
+    await post('/api/lan/jobs', { jobs: settled }).catch(() => undefined)
   }
 }, 30_000)

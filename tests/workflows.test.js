@@ -1189,6 +1189,97 @@ test('job poll reduction (P1 family): completion, stale polls, tolerance, struct
   }
 })
 
+// (ewtobuh, 2026-10-15) HONEST FAILURE/QUEUE STATES — the record carries the
+// taxonomy's classified kind (structured, not prose-derived), the queue
+// truth keeps a merely-queued job queued, and the human vocabulary (queue
+// labels, the canvas verdict, the stage words) never quotes engine text.
+test('job records carry the classified failure kind, queue truth stays queued, and the human vocabulary never leaks engine text', () => {
+  const { reduceJobPoll, QUEUED_LABEL, ENGINE_UNREACHABLE_LABEL, queuePositionLabel } = load('src/lib/jobReducer.ts')
+  const taxonomy = load('src/lib/failureTaxonomy.ts')
+  const baseJob = { id: 'j1', promptId: 'p1', mode: 'text', prompt: 'test', createdAt: Date.now() - 1000, status: 'queued', progress: 0, width: 608, height: 352, duration: 5 }
+
+  // (R1 P1-7 / vfhcu5r) A settled execution error carries the STRUCTURED
+  // classification: the taxonomy bucket, the failing node's class and id —
+  // so surfaces classify from fields, never by re-parsing prose.
+  const oomReason = 'torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 2.34 GiB'
+  const settled = reduceJobPoll({ ...baseJob, status: 'running' }, { kind: 'executionError', node: '15', nodeType: 'SamplerCustomAdvanced', reason: oomReason }, Date.now())
+  assert.equal(settled.transitionedTo, 'failed')
+  assert.equal(settled.job.failureKind, 'out-of-memory', 'the record carries the taxonomy bucket')
+  assert.equal(settled.job.failureNodeType, 'SamplerCustomAdvanced', 'the record carries the failing node class')
+  assert.equal(settled.job.failureNodeId, '15', 'the record carries the failing node id')
+  const unclassifiedSettle = reduceJobPoll({ ...baseJob, status: 'running' }, { kind: 'executionError', node: '7', nodeType: 'SomethingBespoke', reason: 'a very specific engine complaint 12' }, Date.now())
+  assert.equal(unclassifiedSettle.job.failureKind, 'unknown', 'unclassifiable failures say unknown, not nothing')
+  // The other failure arms classify too.
+  const deadline = reduceJobPoll({ ...baseJob, createdAt: Date.now() - 61 * 60 * 1000 }, { kind: 'incomplete' }, Date.now())
+  assert.equal(deadline.job.failureKind, 'timeout', 'the deadline arm classifies as timeout')
+  let streak = { ...baseJob, status: 'running' }
+  for (let i = 0; i < 15; i += 1) streak = reduceJobPoll(streak, { kind: 'pollFailed' }, Date.now()).job
+  assert.equal(streak.status, 'failed')
+  assert.equal(streak.failureKind, 'engine-unreachable', 'the poll-failure arm classifies as engine-unreachable')
+
+  // (R3 P0-4 / ij878ap) QUEUE TRUTH: a queued prompt the engine still holds
+  // as pending is QUEUED — the incomplete history observation alone must not
+  // promote it to running (that lie read "running" for the whole contention
+  // window). Execution evidence (engineQueue 'running', or no /queue signal
+  // at all — the legacy callers) still promotes.
+  const stillQueued = reduceJobPoll(baseJob, { kind: 'incomplete', engineQueue: 'pending' }, Date.now())
+  assert.equal(stillQueued.job.status, 'queued', 'queue-pending evidence keeps the job queued')
+  const executing = reduceJobPoll(baseJob, { kind: 'incomplete', engineQueue: 'running' }, Date.now())
+  assert.equal(executing.job.status, 'running', 'queue-running evidence promotes to running')
+  const legacy = reduceJobPoll(baseJob, { kind: 'incomplete' }, Date.now())
+  assert.equal(legacy.job.status, 'running', 'callers without queue truth keep the promoted behavior')
+  const runningIdle = reduceJobPoll({ ...baseJob, status: 'running' }, { kind: 'incomplete', engineQueue: 'pending' }, Date.now())
+  assert.equal(runningIdle.job.status, 'running', 'a running job is never demoted by queue evidence')
+
+  // (ij878ap) The queue label vocabulary is honest: no engine name on a
+  // merely-queued job, position wording during contention, reachable-engine
+  // wording reserved for genuine unreachability.
+  assert.ok(!/comfyui/i.test(QUEUED_LABEL), 'the queued label never says ComfyUI')
+  assert.ok(!/comfyui/i.test(ENGINE_UNREACHABLE_LABEL), 'the unreachable label never says ComfyUI')
+  assert.ok(/unreachable/i.test(ENGINE_UNREACHABLE_LABEL), 'the unreachable label says what is actually wrong')
+  assert.equal(queuePositionLabel(2), 'Queued behind 1 job', 'one job ahead reads exactly')
+  assert.equal(queuePositionLabel(5), 'Queued behind 4 jobs', 'several jobs ahead pluralize')
+  assert.equal(queuePositionLabel(1), QUEUED_LABEL, 'an empty-behind queue falls back to the honest queued label')
+  assert.equal(queuePositionLabel(undefined), QUEUED_LABEL, 'no queue reading falls back too')
+  assert.equal(queuePositionLabel(Number.NaN), QUEUED_LABEL, 'a garbage reading falls back too')
+
+  // (R3 P0-4 tail / vfhcu5r) THE CANVAS VERDICT: classification + recovery
+  // path + the Diagnostics pointer — and never the raw engine text, never a
+  // [redacted] marker, never the internal node id on a tile.
+  const rawShaped = "ComfyUI failed at node 15 (SamplerCustomAdvanced): AttributeError: 'NoneType' object has no attribute 'show_progress_bar' [redacted]"
+  const verdict = taxonomy.failureVerdict({ error: rawShaped, failureKind: 'out-of-memory', failureNodeType: 'SamplerCustomAdvanced' })
+  assert.ok(verdict.includes('memory'), `the verdict carries the classification (got: ${verdict})`)
+  assert.ok(verdict.includes('Diagnostics'), 'the verdict points at the technical record')
+  assert.ok(verdict.includes('retry'), 'the verdict carries the recovery path')
+  assert.ok(!verdict.includes('[redacted]'), 'the verdict never carries a redaction marker')
+  assert.ok(!verdict.includes('AttributeError') && !verdict.includes('NoneType'), 'the verdict never quotes the exception')
+  assert.ok(!/node \d/.test(verdict), 'the verdict never carries the internal node id')
+  // Legacy rows (no structured fields) still classify from the record's
+  // sanitized error text.
+  const legacyVerdict = taxonomy.failureVerdict({ error: oomReason })
+  assert.ok(legacyVerdict.includes('memory'), 'legacy prose still classifies')
+  // A record with nothing classifiable stays honest — no raw text rescue.
+  const unknownVerdict = taxonomy.failureVerdict({ error: rawShaped })
+  assert.ok(unknownVerdict.includes('could not classify'), 'an unknown cause says so')
+  assert.ok(!unknownVerdict.includes('AttributeError') && !unknownVerdict.includes('[redacted]'), 'the unknown verdict leaks nothing either')
+
+  // (vfhcu5r) Diagnostics classification prefers the structured kind when it
+  // exists and falls back to prose classification for legacy rows.
+  assert.equal(taxonomy.bucketForJob({ failureKind: 'out-of-memory', error: rawShaped }).id, 'out-of-memory', 'structured kind wins')
+  assert.equal(taxonomy.bucketForJob({ error: oomReason }).id, 'out-of-memory', 'legacy prose classifies')
+  assert.equal(taxonomy.bucketForJob({}).id, 'unknown', 'nothing to read → unknown')
+
+  // (1v844wk) STAGE VOCABULARY: the human words for the engine's node
+  // classes — never the internal node status verbatim.
+  assert.equal(taxonomy.humanStageLabel('VAEDecode'), 'Decoding video…', 'the decode stage says what it is')
+  assert.equal(taxonomy.humanStageLabel('KSampler'), 'Sampling…', 'the sampler stage says sampling')
+  assert.equal(taxonomy.humanStageLabel(undefined), 'Rendering…', 'an unreadable stage falls back to honest rendering')
+  const graph = { 15: { class_type: 'VAEDecode' }, 3: { class_type: 'KSampler' } }
+  assert.equal(taxonomy.liveStageLabel('15', graph), 'Decoding video…', 'the stage resolves from the graph')
+  assert.equal(taxonomy.liveStageLabel('99', graph), 'Rendering…', 'a node the graph lacks falls back')
+  assert.equal(taxonomy.liveStageLabel(undefined, graph), 'Rendering…', 'no node id falls back')
+})
+
 // R-26 (Wave 4, audit B P2-2): dead-engine jobs must fail honestly in
 // seconds-to-minutes, not at the 60-minute deadline. A CONSECUTIVE
 // poll-failure streak accumulates on the job; at the limit the job fails

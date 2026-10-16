@@ -8,6 +8,7 @@
  * h3img record the packet-aware landing reads.
  */
 import { createId } from '../lib/createId'
+import { QUEUED_LABEL } from '../lib/jobReducer'
 import { buildH3ImageGraph, detectH3ImgFamilies, findH3ImgFamily, inferH3ImgSelection, H3IMG_RECIPE_PINS, t1BuildOptionsFromSettings } from '../lib/graph/h3image'
 import type { H3ImgT1Settings } from '../lib/graph/h3image'
 import { resolveModelOverrides, resolveModels } from '../lib/modelOverrides'
@@ -274,7 +275,9 @@ export async function submitWorkbenchGeneration(
       io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'cancelled', error: undefined } : item))
       io.notify('success', 'Generation cancelled.')
     } else {
-      io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'running', progress: 4, progressLabel: 'Waiting for ComfyUI to start', manifest, graph } : item))
+      // (ewtobuh, ij878ap) QUEUED, not "running" — same honest submit state
+      // as the video path (see h3Submit).
+      io.setJobs((current) => current.map((item) => item.id === localId ? { ...item, promptId: response.prompt_id, status: 'queued', progress: 0, progressLabel: QUEUED_LABEL, manifest, graph } : item))
       io.notify('success', `${family.label} added to the local ComfyUI queue.`)
       dbg('submit', { verdict: 'submitted', family: request.settings.family, jobId: localId, promptId: response.prompt_id, nodes: Object.keys(graph).length })
     }

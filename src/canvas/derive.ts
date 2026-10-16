@@ -12,6 +12,7 @@
  * drops a mock job there); Phase 2 replaces the mock with the real submit.
  */
 import { rectsIntersect, type CameraState, type ViewBlob } from './camera'
+import { failureVerdict } from '../lib/failureTaxonomy'
 
 // ---- document shapes (mirror server/documents.ts hydration) -----------------
 
@@ -90,7 +91,10 @@ export type DocumentPlan = {
 
 /** The job facts the status ring needs — GenerationJob is structural here so
  *  the canvas never imports the old surface's full type (Phase 4 kills it). */
-export type JobFact = { id: string; status: string; progress: number; error?: string; prompt?: string }
+/** The job facts a projection reads (a narrow pick from GenerationJob — the
+ *  structured failure fields ride so the humanized verdict classifies from
+ *  the settlement, not the prose). */
+export type JobFact = { id: string; status: string; progress: number; error?: string; prompt?: string; failureKind?: string; failureNodeType?: string }
 
 // ---- status ring (§3, §4 contract) ------------------------------------------
 
@@ -407,7 +411,10 @@ export function deriveTiles(
       w: width,
       h: kind === 'media' ? TILE_H_MEDIA : TILE_H_SEED,
       status: erroredLanding ? 'failed' : jobStatus,
-      statusNote: erroredLanding ? landingError : job && job.status === 'failed' ? job.error ?? 'generation failed' : null,
+      // (ewtobuh, R3 P0-4 tail) The tile carries the HUMANIZED verdict — the
+      // taxonomy classification + recovery path, never the raw engine error
+      // (which lives on, sanitized, in Diagnostics' record).
+      statusNote: erroredLanding ? landingError : job && job.status === 'failed' ? failureVerdict(job) : null,
       jobId,
       refOutputs: refs,
       ops: chain.ops.map((op) => ({ id: op.id, kind: op.kind, settings: op.settings ?? null, bakedAt: op.bakedAt ?? null })),

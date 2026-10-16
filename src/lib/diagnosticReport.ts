@@ -19,7 +19,7 @@
  * The sanitizer import is the only dependency (itself dependency-free).
  */
 import { sanitizeErrorMessage } from './logSanitize'
-import { classifyFailure } from './failureTaxonomy'
+import { bucketForJob } from './failureTaxonomy'
 
 /** Hard cap on failure rows and log-tail lines in the report — a burst of
  *  failures must not turn the paste into a wall. */
@@ -53,6 +53,9 @@ export type ReportFailure = {
   mode?: string
   mediaType?: string
   nodeType?: string
+  /** (ewtobuh) The structured taxonomy bucket from the settled record —
+   *  classification reads the field first, prose second. */
+  failureKind?: string
   reason: string
   graph?: ReportFailureGraph
 }
@@ -233,7 +236,7 @@ export function buildDiagnosticReport(input: DiagnosticReportInput): string {
     const histogram = new Map<string, number>()
     for (let index = 0; index < input.failures.length; index += 1) {
       const failure = input.failures[index]
-      const bucket = classifyFailure(`${failure.reason} ${failure.nodeType ?? ''}`)
+      const bucket = bucketForJob({ failureKind: failure.failureKind, error: failure.reason })
       histogram.set(bucket.id, (histogram.get(bucket.id) ?? 0) + 1)
     }
     const order = Array.from(histogram.keys()).sort()
@@ -245,7 +248,7 @@ export function buildDiagnosticReport(input: DiagnosticReportInput): string {
     push(`Recent (${rows.length} shown, most recent first):`)
     for (let index = 0; index < rows.length; index += 1) {
       const failure = rows[index]
-      const bucket = classifyFailure(`${failure.reason} ${failure.nodeType ?? ''}`)
+      const bucket = bucketForJob({ failureKind: failure.failureKind, error: failure.reason })
       const graph = failure.graph
       const graphText = graph
         ? ` graph=${codeToken(graph.family, '-')}/${codeToken(graph.topologyHash, '-')}${typeof graph.seed === 'number' ? ` seed=${graph.seed}` : ''}${typeof graph.steps === 'number' ? ` steps=${graph.steps}` : ''}${graph.turbo ? ` turbo=${codeToken(graph.turbo)}` : ''}${graph.sampler ? ` sampler=${codeToken(graph.sampler)}` : ''}${graph.scheduler ? ` scheduler=${codeToken(graph.scheduler)}` : ''}${graph.resolution ? ` res=${codeToken(graph.resolution)}` : ''}${typeof graph.frameCount === 'number' ? ` frames=${graph.frameCount}` : ''}${graph.references ? ` refs=${codeToken(graph.references)}` : ''}`

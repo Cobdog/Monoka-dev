@@ -18,6 +18,7 @@
  */
 import type { CanvasDocument, DocumentChain, JobFact, TileStatus } from './derive'
 import { tileStatus } from './derive'
+import { failureVerdict } from '../lib/failureTaxonomy'
 
 // ---- the gap menu (measured) ----------------------------------------------------
 
@@ -286,7 +287,9 @@ function chainFacts(chain: DocumentChain, jobs: ReadonlyArray<JobFact>, links: R
   return {
     chain,
     status: tileStatus(chain, job, dismissed.has(chain.id)),
-    statusNote: job && job.status === 'failed' ? job.error ?? 'generation failed' : null,
+    // (ewtobuh) Same humanized verdict contract as the canvas tiles — the
+    // F7 projection inheritance keeps the failure copy identical.
+    statusNote: job && job.status === 'failed' ? failureVerdict(job) : null,
     previewPath,
     artifactPath,
     mediaKind: kind,

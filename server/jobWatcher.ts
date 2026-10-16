@@ -69,6 +69,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+/** The engine's per-prompt queue membership, parsed from GET /queue's real
+ *  shape: both lists carry item tuples with the prompt_id at index 1
+ *  (docs/devdocs/comfyui-api §2). A null answer — no dep wired, fetch
+ *  failed, malformed body — means "no queue evidence", never a guess. */
+function parseQueueMembership(raw: unknown): { running: Set<string>; pending: Set<string> } | null {
+  if (!isRecord(raw)) return null
+  const ids = (value: unknown): Set<string> => {
+    const out = new Set<string>()
+    if (!Array.isArray(value)) return out
+    for (const item of value) {
+      if (Array.isArray(item) && typeof item[1] === 'string') out.add(item[1])
+      else if (isRecord(item) && typeof item.promptId === 'string') out.add(item.promptId)
+    }
+    return out
+  }
+  return { running: ids(raw.queue_running), pending: ids(raw.queue_pending) }
+}
+
 /** The playable URL for a landed local output — the same media-route form
  *  the client landing recorded on its takes and job rows. */
 function localMediaUrl(path: string): string {
@@ -100,6 +118,10 @@ export function createJobWatcher(deps: {
   settings: () => { comfyUrl: string; outputDirectory: string } | null
   /** One prompt's engine history (the same /history/<id> the client polled). */
   history(promptId: string): Promise<Record<string, unknown>>
+  /** (ewtobuh) The engine's whole queue (GET /queue) — the per-prompt truth
+   *  that separates merely-queued from executing. Optional: without it the
+   *  sweep keeps the promoted behavior for queued rows. */
+  queue?(): Promise<unknown>
   resolveOutput(file: EngineOutputDescriptor): string | null
   ingest(file: EngineOutputDescriptor, kind: 'image' | 'video' | 'audio'): Promise<{ path: string }>
   emit(type: string, payload: unknown): void
@@ -196,6 +218,15 @@ export function createJobWatcher(deps: {
       await recoverUnlandedJobs(repo)
     }
     const records = repo.listJobs(100) as Array<Record<string, unknown>>
+    // (ewtobuh) The queue read happens at most ONCE per sweep and only when
+    // a queued row actually needs the truth — idle and all-running sweeps
+    // never touch the endpoint.
+    const needsQueueTruth = records.some((raw) => isRecord(raw)
+      && !isTerminalStatus((raw as unknown as GenerationJob).status)
+      && (raw as unknown as GenerationJob).status === 'queued')
+    const queueMembership = needsQueueTruth && deps.queue
+      ? parseQueueMembership(await deps.queue().catch(() => null))
+      : null
     for (const raw of records) {
       if (!isRecord(raw)) continue
       const record = raw as unknown as GenerationJob
@@ -211,11 +242,11 @@ export function createJobWatcher(deps: {
         }
         continue
       }
-      await observe(repo, record, promptId)
+      await observe(repo, record, promptId, queueMembership)
     }
   }
 
-  async function observe(repo: StudioRepository, record: GenerationJob, promptId: string) {
+  async function observe(repo: StudioRepository, record: GenerationJob, promptId: string, queueMembership: ReturnType<typeof parseQueueMembership> = null) {
     let history: Record<string, unknown> | null = null
     try {
       history = await deps.history(promptId)
@@ -267,7 +298,17 @@ export function createJobWatcher(deps: {
         observation = { kind: 'completedNoLocalOutput' }
       }
     } else {
-      observation = { kind: 'incomplete' }
+      // (ewtobuh) History is silent for a queued prompt — the engine's
+      // /queue answer is what says whether it is pending (stay queued) or
+      // executing (promote); no queue evidence keeps the promoted behavior.
+      const engineQueue = queueMembership
+        ? queueMembership.pending.has(promptId)
+          ? 'pending'
+          : queueMembership.running.has(promptId)
+            ? 'running'
+            : 'absent'
+        : undefined
+      observation = { kind: 'incomplete', ...(engineQueue !== undefined ? { engineQueue } : {}) }
     }
     const reduction = reduceJobPoll(record, observation, Date.now())
     if (reduction.job !== record) repo.upsertJobs([reduction.job as unknown as Record<string, unknown>])
