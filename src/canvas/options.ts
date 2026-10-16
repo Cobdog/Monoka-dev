@@ -22,7 +22,7 @@ export type SourceKind = 'image' | 'video' | 'audio'
  *  the authoring surface itself is gated with the honest reason, never a
  *  silent disappearance. H3's native video audio is untouched. */
 export const AUDIO_LANE_PAUSED = true
-export const AUDIO_LANE_PAUSED_REASON = 'The audio lane is paused pending the YuE2 decision — Music 3 authoring returns with it.'
+export const AUDIO_LANE_PAUSED_REASON = 'The audio lane is paused for now — Music 3 authoring returns in a later update.'
 
 /** Availability facts — computed by the canvas store from the shared
  *  registries and passed in as data so this module stays engine-free. */

@@ -1895,6 +1895,66 @@ test('(aa) LoRA timeline — the compiler, the grid, the measured windows', () =
 })
 
 // ---------------------------------------------------------------------------
+// (v) The vocabulary sweep (et8hu1l — R3 P1-7 / R2 F12-F13). Three classes
+// leave the user-facing surfaces: (1) internal tracker ids + design-decision
+// notes, (2) the machine status bar (hex take ids, hotkeys as labels, the
+// drift diary), (3) doctrine copy in footers/tooltips. The behavioral parts
+// (take numbers, human titles) run against the pure derive helpers; the
+// string classes are pinned by verbatim absence in the swept files (the
+// internal comments that legitimately keep the ids are NOT pinned — the
+// needles are string-exact so comments never trip them).
+// ---------------------------------------------------------------------------
+test('(v) vocabulary sweep — take numbers, human titles, the grep-pins (et8hu1l)', () => {
+  const takes = [
+    { id: 'cccc-3', createdAt: 300 },
+    { id: 'bbbb-2', createdAt: 200 },
+    { id: 'aaaa-1', createdAt: 100 },
+  ]
+  eq(derive.takeNumberOf(takes, takes[2]), 1, 'takeNumber: the oldest take is take 1')
+  eq(derive.takeNumberOf(takes, takes[1]), 2, 'takeNumber: chronological position counts up')
+  eq(derive.takeNumberOf(takes, takes[0]), 3, 'takeNumber: the newest take carries the highest number')
+  const tied = [{ id: 'b', createdAt: 100 }, { id: 'a', createdAt: 100 }]
+  eq(derive.takeNumberOf(tied, tied[1]), 1, 'takeNumber: an equal createdAt ties break by id (stable numbering)')
+  eq(derive.takeNumberOf([], takes[0]), 1, 'takeNumber: an empty sibling list still numbers the take')
+
+  // (2) A structured prompt's field label is the engine's wire format, never
+  // a title — the palette and tiles read the human words after it (R2 F13).
+  const doc = { chains: [] }
+  const chain = (prompt) => ({ id: 'c1', kind: 'media', settings: { prompt }, inputSpec: {}, outputs: [] })
+  ok(derive.chainTitle(doc, chain('integrated_multimodal_description: [Shot 1] A lone drummer on a night train. Slow dolly.')).startsWith('A lone drummer'), 'title: the description field label never titles an object')
+  ok(!derive.chainTitle(doc, chain('integrated_multimodal_description:\n[Shot 1] A lone drummer on a night train.')).includes('integrated_multimodal_description'), 'title: a label on its own line strips too')
+  eq(derive.chainTitle(doc, chain('overall_soundscape: rain on tin')), 'rain on tin', 'title: a soundscape-only prompt titles from its words')
+  eq(derive.chainTitle(doc, chain('a plain freeform prompt stays whole')), 'a plain freeform prompt stays whole', 'title: freeform prompts pass through untouched')
+  eq(derive.chainTitle(doc, chain('integrated_multimodal_description: [Shot 2] She turns at the window')), 'She turns at the window', 'title: the shot marker strips; the spoken words stay')
+
+  // (3) The grep-pins — each needle is the VERBATIM user-facing string that
+  // existed before the sweep; the internal comments keep their ids under
+  // different phrasing, so whole-file absence is the honest pin.
+  const fs = require('node:fs')
+  const path = require('node:path')
+  const repo = path.resolve(__dirname, '..')
+  const pins = [
+    ['src/canvas/Launcher.tsx', ['(R-23)']],
+    ['src/datasets/DatasetsApp.tsx', ['R-21: opening', '(A1 final)']],
+    ['src/images/WorkbenchApp.tsx', ['R-21: opening', 'demoted per decision 4']],
+    ['src/views/SettingsView.tsx', ['the settings exit, R-15']],
+    ['src/canvas/options.ts', ['pending the YuE2 decision']],
+    ['src/canvas/TimelineOverlay.tsx', ['no-silent-failure contract']],
+    ['src/canvas/LibraryOverlay.tsx', ['no-silent-failure contract']],
+    ['src/canvas/BottomBar.tsx', ['L26: generations', 'principle 5', '(L28)', 'no identity payload', 'drift · ', '.id.slice(0, 8)', ' <kbd>P</kbd>', 'fork <kbd>B</kbd>', 'rerun <kbd>R</kbd>', 'ops <kbd>']],
+    ['src/canvas/ForkMenu.tsx', ['(L28)', '.id.slice(0, 8)']],
+    ['src/canvas/Tile.tsx', ['zoom-gated, L9', '.id.slice(0, 8)']],
+    ['src/canvas/IndexOverlay.tsx', ['`take ${take.id.slice(0, 8)}`']],
+  ]
+  for (const [file, needles] of pins) {
+    const source = fs.readFileSync(path.join(repo, file), 'utf8')
+    for (const needle of needles) {
+      ok(!source.includes(needle), `pin: ${file} no longer carries ${JSON.stringify(needle)}`)
+    }
+  }
+})
+
+// ---------------------------------------------------------------------------
 // (u-run) The canvas H3-1F submission through the SHARED core (34afx79).
 // Async (the submission is an async function), like the (x) core above. This
 // is the failing-without-it leg for the core's T=1 tier pin: before the pin,

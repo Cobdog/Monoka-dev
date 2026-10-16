@@ -440,9 +440,9 @@ function DatasetsSurface() {
         {/* (R-21, Wave 3) Settings reachability: this surface mounts its own
             session host now, so the docked panel opens HERE — no navigation,
             the dataset view is never replaced (audit M7's fix). */}
-        <Button variant="ghost" className="ds-btn" data-ds-settings-button aria-label="Settings" onClick={() => useCanvasStore.getState().setSettingsDock(true)} title="Settings — docked right here (R-21: opening it never leaves this surface)"><Settings size={13} /></Button>
+        <Button variant="ghost" className="ds-btn" data-ds-settings-button aria-label="Settings" onClick={() => useCanvasStore.getState().setSettingsDock(true)} title="Settings — docked right here; opening it never leaves this surface"><Settings size={13} /></Button>
         {settings && <span className="ds-trigger" title="Dataset trigger token">trigger: <code>{settings.triggerToken || '(unset)'}</code></span>}
-        <span className={`ds-rife ${rifeAvailable ? 'ok' : ''}`} title={rifeAvailable ? 'rife-ncnn-vulkan detected — preferred interpolator' : 'rife-ncnn-vulkan absent — minterpolate fallback (A1 final)'}>{rifeAvailable ? 'RIFE' : 'minterpolate'}</span>
+        <span className={`ds-rife ${rifeAvailable ? 'ok' : ''}`} title={rifeAvailable ? 'rife-ncnn-vulkan detected — preferred interpolator' : 'rife-ncnn-vulkan absent — minterpolate fallback'}>{rifeAvailable ? 'RIFE' : 'minterpolate'}</span>
         <Button variant="ghost" className="ds-btn" aria-label="Refresh" title="Refresh — also clears the error banner (a user-initiated refresh)" onClick={() => void refresh({ clearError: true })}><RefreshCw size={13} /></Button>
       </div>
     </header>

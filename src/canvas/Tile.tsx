@@ -26,7 +26,7 @@ import { useJobsStore } from '../state/jobsStore'
 import { documentsApi } from './api'
 import { opPreviewStyle } from './ops'
 import type { ZoomBand } from './camera'
-import { STATUS_LABEL, type Tile } from './derive'
+import { STATUS_LABEL, takeNumberOf, type Tile } from './derive'
 import { liveReadoutVars, tileToneVars } from '../ui/statusToken'
 import { ProgressBar } from '../ui/ProgressBar'
 import { useCanvasStore } from './store'
@@ -257,13 +257,13 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
 
     {band === 'near' && (
       <>
-        <div className="canvas-tile-latent" data-canvas-latent aria-label="Latent blocks (zoom-gated, L9)">
+        <div className="canvas-tile-latent" data-canvas-latent aria-label="Latent blocks (visible when zoomed in)">
           <span>latents</span>
           <small>{tile.canonical?.latentPath ? 'resident' : 'not retained'}</small>
         </div>
         <div className="canvas-tile-takes" aria-label="Takes">
           {tile.canonical
-            ? <span className="chip chip--accent canvas-take-chip canonical" title="Canonical take — click a prior to switch the pointer"><Star size={10} fill="currentColor" /> {tile.canonical.id.slice(0, 8)}</span>
+            ? <span className="chip chip--accent canvas-take-chip canonical" title={`${tile.canonical.id} — the canonical take; click a prior to switch the pointer`}><Star size={10} fill="currentColor" /> take {takeNumberOf(tile.takes, tile.canonical)}</span>
             : <span className="chip chip--accent canvas-take-chip canvas-take-chip-empty">no take yet</span>}
           {(() => {
             // The workbench packet take (k9vu6t0): its artifacts are the N
@@ -291,10 +291,10 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
               type="button"
               className="chip chip--muted canvas-take-chip prior"
               data-canvas-take-switch={take.id}
-              title="Make this take canonical — nothing is deleted; downstream forks go stale"
+              title={`${take.id} — make this take canonical; nothing is deleted; downstream forks go stale`}
               onClick={(event) => { event.stopPropagation(); onSwitchTake(tile.id, take.id) }}
             >
-              {take.id.slice(0, 8)}
+              take {takeNumberOf(tile.takes, take)}
             </button>
           ))}
           {tile.priors > 3 && <span className="chip chip--muted canvas-take-chip prior" title={`${tile.priors - 3} more earlier takes — the properties panel lists them`}>+{tile.priors - 3}</span>}

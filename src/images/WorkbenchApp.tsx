@@ -1107,7 +1107,7 @@ function WorkbenchSurface() {
             session host but no docked settings panel; one click opens the
             dock on the canvas). */}
         <SurfaceSwitcher />
-        <button type="button" className="iw-back" data-iw-settings-button onClick={() => useCanvasStore.getState().setSettingsDock(true)} title="Settings — docked right here (R-21: opening it never leaves this surface)"><Settings size={14} /> settings</button>
+        <button type="button" className="iw-back" data-iw-settings-button onClick={() => useCanvasStore.getState().setSettingsDock(true)} title="Settings — docked right here; opening it never leaves this surface"><Settings size={14} /> settings</button>
         <strong>H3 Image Workbench</strong>
         <span className={`iw-engine ${sessionState.status.connected ? 'ok' : 'warn'}`} data-iw-engine={sessionState.status.connected ? 'on' : 'off'}>
           {sessionState.status.connected ? 'engine online' : 'engine offline'}
@@ -1497,7 +1497,7 @@ function WorkbenchSurface() {
             </div>
           )}
 
-          <label className="iw-overflow" data-iw-overflow title="Semantic-only overflow beyond 9 — expert-experimental, off by default (demoted per decision 4)">
+          <label className="iw-overflow" data-iw-overflow title="Semantic-only overflow beyond 9 — expert-experimental, off by default">
             <input type="checkbox" checked={settings.semanticOverflow} onChange={(event) => void patchSettings({ semanticOverflow: event.target.checked })} />
             <span>semantic overflow <em>experimental</em></span>
           </label>
