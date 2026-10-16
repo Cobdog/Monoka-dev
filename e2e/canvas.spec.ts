@@ -5176,6 +5176,9 @@ test('the LoRA timeline compiles painted ranges into per-LoRA segment chains (fa
   const timelineListings = { ...H3_REGISTRY_LISTINGS, loras: ['e2e-style-rain.safetensors', 'e2e-style-neon.safetensors'] }
 
   const submittedGraphs: string[] = []
+  // (ewtobuh round 2) The prompts this fake accepted and never completed —
+  // the per-instance queue truth its /queue serves (the wave1 fake's shape).
+  const enginePrompts = new Set<string>()
   const engine = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://engine.local')
     if (url.pathname === '/system_stats') {
@@ -5190,14 +5193,16 @@ test('the LoRA timeline compiles painted ranges into per-LoRA segment chains (fa
       req.on('data', (chunk) => { body += chunk })
       req.on('end', () => {
         submittedGraphs.push(body)
+        const promptId = `lt-e2e-${submittedGraphs.length}`
+        enginePrompts.add(promptId)
         res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ prompt_id: `lt-e2e-${submittedGraphs.length}`, number: submittedGraphs.length, node_errors: {} }))
+        res.end(JSON.stringify({ prompt_id: promptId, number: submittedGraphs.length, node_errors: {} }))
       })
       return
     }
     if (url.pathname.startsWith('/history/')) {
-      // History says still running — with no engine events the tile honestly
-      // stays queued on its chain.
+      // History never completes — the segment renders stay in flight and
+      // their jobs hold 'running' on the chain.
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(JSON.stringify({ nothing: { prompt: [], outputs: {}, status: { completed: false } } }))
       return
@@ -5208,8 +5213,12 @@ test('the LoRA timeline compiles painted ranges into per-LoRA segment chains (fa
       return
     }
     if (url.pathname === '/queue' && req.method === 'GET') {
+      // (ewtobuh round 2) The watcher reads /queue as the queued-vs-running
+      // truth: an empty queue beside a silent history is the restart-orphan
+      // verdict (the engine "lost the work"), so this fake lists every
+      // submitted prompt as executing — never the empty-list lie.
       res.writeHead(200, { 'content-type': 'application/json' })
-      res.end(JSON.stringify({ queue_running: [], queue_pending: [] }))
+      res.end(JSON.stringify({ queue_running: Array.from(enginePrompts, (promptId) => ['entry', promptId]), queue_pending: [] }))
       return
     }
     res.writeHead(404)
