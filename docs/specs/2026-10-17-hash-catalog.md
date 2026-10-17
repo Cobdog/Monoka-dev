@@ -1,6 +1,8 @@
 # The primed hash catalog — sha256 identity for every supported model variant/quant (design spec)
 
-> **Status: DRAFTED** (2026-10-17) — awaiting the maintainer's blessing.
+> **STATUS: DRAFTED (r2 — the 2026-10-17 audit's findings applied; see
+> [docs/audit/spec-audit-2026-10-17.md](../audit/spec-audit-2026-10-17.md))**
+> (2026-10-17) — awaiting the maintainer's blessing.
 > **Task:** The primed hash catalog (to7xpa7) · **Project:** Monoka-dev (r2lnrfw) ·
 > Feeds Theme 3.1 of the 2026-10-15 UX review (one verdict computed once,
 > hash-confirmed identities named) and the wizard rework (3p14abm), which
@@ -14,7 +16,9 @@
 > `src/lib/modelSelection.ts`, `src/lib/modelOverrides.ts`,
 > `server/instanceInventory.ts`, `server/animation/models.ts`; the licenses
 > policy; the devdocs no-hash-surface addendum (2026-10-09); the central
-> home's hash registry (`/home/agent/models/MANIFEST.md`).
+> home's hash registry (`/home/agent/models/MANIFEST.md`); the
+> pre-blessing audit (2026-10-17) — this r2 applies its findings
+> (H-I1…I4, H-M1…M3, CT-2/CT-4).
 
 ## 1. The problem, and the ruling
 
@@ -76,6 +80,18 @@ A **generated, versioned, append-only JSON file shipped in the repo**:
   through the stack/inventory payloads, never the raw catalog).
 - `server/hashCatalog.ts` — the typed loader: rows plus the two indexes
   (sha256 → row; basename alias → row ids).
+- **The transport is pinned here — `ModelFile.identity?`** (audit H-I2,
+  the wizard-facing interface, in the blessed text): `ModelFile` gains an
+  optional `identity: { verdict: 'hash-confirmed' | 'name-suspected' |
+  'unknown'; family?, artifact?, variant?, quant?, … }`, populated
+  server-side through `identifyModel` wherever a verdict is computable
+  and ABSENT where it isn't (remote engine, unconfigured root, hash in
+  flight). The field rides the payloads that already carry
+  `ModelFile[]` — the inventory scan response and the session bootstrap —
+  so the client's `h3StackReport` (computed over the session store) reads
+  verdicts with no second fetch and no new route; a hash upgrade
+  re-publishes the file through the same field (the inventory settle,
+  §6). No payload ever carries the raw catalog rows.
 
 **Row shape** (one row per distinct sha):
 
@@ -191,13 +207,31 @@ mtime+size, never a hash — so reading the files is the only honest digest
 source, verified at v0.39.0). Remote engines and unconfigured roots cap at
 `name-suspected`, honestly labeled. The app never downloads bytes to hash.
 
-**Where the verdict upgrades existing seams** ([SPEC], each a consume-only
-change):
+**Who designates the roots (audit H-I3).** Hash-confirmed's read-reach is
+exactly as wide as the configured per-kind model roots — and on a fresh
+clone `modelRoot` defaults to the studio home, a directory the engine
+does not read: hashing there proves nothing about the engine's real
+weights, and the engine's real dirs are unconfigured. The designation
+moment is the wizard rework's Models step (its destination designations,
+D7 there — audit W-C1; this set's CT-1): "where should fetched weights
+land so your engine sees them" IS the roots designation, and it is what
+turns this spec's headline value on for the product-bar journey. Until
+it lands, everything renders name-suspected, honestly labeled — AC-4's
+cap is the product-bar journey's default state, not an edge case.
+
+**Where the verdict lands** ([SPEC] — each consumes the one seam; and the
+first is a behavior change in resolution, honestly named, not a
+consume-only shuffle: the ladder gains a top rung — audit H-M1):
 
 - **Resolution (the false-missing killer):** a registry file whose hash
   confirms an artifact becomes a resolution candidate for that artifact's
   slot EVEN WHEN ITS NAME MATCHES NOTHING — identity is a new top rung
-  above the name ladder. A renamed official Ref2VA resolves the reference
+  above the name ladder. (Duplicate-bytes tie-break, audit H-M2: when two
+  registry files hash-confirm to the same artifact — the alias soup
+  guarantees it — the slot resolves to the best basename match against
+  the row's aliases, ties breaking in stable registry order; the rest
+  render as the *other candidates* of the picked/ambiguous presentation.)
+  A renamed official Ref2VA resolves the reference
   lane; the stack verdict never says "incomplete — download Ref2VA" about
   bytes it is serving. The merged slot stays the one deliberate exception:
   it never auto-infers today ("name-invisible BY DESIGN") and v1 keeps that
@@ -224,10 +258,13 @@ change):
 The ruling's own words are the contract: "This would not gate new models
 being added." As invariants:
 
-- **N1 — no new blocks (monotone improvement).** For any inventory, the set
-  of accepted submissions / legal picks / offered fetches with the primed
-  catalog is a SUPERSET of the set with a null catalog. Nothing legal today
-  becomes illegal; no file, pick, or fetch gains a new refusal. For engine
+- **N1 — no new blocks (monotone improvement), split per audit H-I1.** For
+  any inventory, the set of accepted submissions and legal picks with the
+  primed catalog is a SUPERSET of the set with a null catalog — nothing
+  legal today becomes illegal; no file or pick gains a new refusal. Fetch
+  *suggestions* are the deliberate exception, and one-directional: they
+  may only be REMOVED (and only when the artifact is hash-confirmed
+  present under some name — §4), never added, never mandated. For engine
   files ABSENT from the catalog, behavior is bit-identical to today — the
   unrecognized model is never blocked, never flagged, never second-class.
 - **N2 — no forced downloads.** No code path triggers, mandates, or nags a
@@ -257,6 +294,17 @@ second digest path. [SPEC]
   — stack-verdict computation, an override pick's class check, an explicit
   identify action. No boot-time sweep; no inventory-wide walk; hashing is
   lazy and memoized.
+- **Progressive reveal — the vocabulary is defined HERE** (audit H-I4,
+  with the wizard's W-I4; the catalog owns it, the surfaces render it):
+  hashing is lazy with no background pass (B5), so the first stack
+  verdict on a big stack renders MINUTES before the digests exist. The
+  interim state is part of the verdict vocabulary every consuming surface
+  uses: a file whose hash is in flight renders **"verifying bytes —
+  identified by name for now"** (name-suspected, verifying marker); when
+  the digest lands, the verdict upgrades in place — `hash-confirmed`,
+  identity named — through the same `ModelFile.identity` field (§2; the
+  inventory settle re-publishes the file). No surface invents its own
+  interim word; the wizard's Models step (3p14abm §2.2) renders this one.
 - **Size pre-filter (the cheap gate):** stat first; if `sizeBytes` matches
   no catalog row, a hash cannot hit — skip and report unknown (unless the
   user explicitly asked to identify that file). This is discriminating
@@ -264,7 +312,10 @@ second digest path. [SPEC]
   musubi video VAE fp16 (5,207,808,496) differ by 304 bytes — size alone
   separates them before any bytes are read [DOC] MANIFEST. The 34 GB DiT
   hashes once, streaming, minutes-class; the alias-VAE soup is sub-second
-  per file after the first.
+  per file after the first — and a cold-cache first hash is still one
+  read per file, so ~30 aliases on a cold NAS collapse over
+  seconds-to-minutes, not instantly (the walkthrough prose promises no
+  instant soup collapse — audit H-M3).
 - **Off the main loop:** digesting gigabytes is exactly A-7's
   no-long-synchronous-work class — hashing runs worker-threaded/queued, the
   animation seam's pattern generalized. [DOC] remediation-plan §6 A-7.
@@ -282,7 +333,7 @@ second digest path. [SPEC]
 | AC-3 | **Non-gating holds.** The N1/N2 suite passes (null vs primed catalog over the same inventory); an uncataloged engine file flows through wizard → submit bit-identically to today. |
 | AC-4 | **Remote honesty.** Against an engine whose files the app cannot read: every identity verdict is `name-suspected`, labeled unconfirmed; nothing anywhere claims `hash-confirmed` without bytes read. |
 | AC-5 | **The crawl round-trips.** Regenerating with an unchanged manifest yields a byte-identical file; append-only holds across MAIN merges; the envelope carries per-repo revisions + dates; the licenses registry row landed in the same commit. |
-| AC-6 | **One derivation.** h3Stack, the override guards, and the wizard payload all consume `identifyModel` — no surface re-encodes a sha→name table (grep-able invariant, the module-head doctrine). |
+| AC-6 | **One derivation.** h3Stack, the override guards, and the wizard payload all consume `identifyModel` — no surface re-encodes a sha→name table (grep-able invariant, the module-head doctrine); and the only client transport is `ModelFile.identity` (§2) — no payload ships raw catalog rows (audit H-I2's wire-shape clause). |
 
 ## 8. Blessing decision points
 
@@ -300,9 +351,11 @@ second digest path. [SPEC]
 Not a gate (§5 is the whole point). Not tamper-evidence — sha256 here is
 identity, not an integrity police. Not engine-side — no ComfyUI changes.
 Not the pickers' filtering fix (r3 P1-9 — other families' checkpoints in
-the FL2VA picker — is the wizard round's). Not licensing enforcement — the
-obligations-not-policing stance governs. Not a second truth table — §4's
-one-seam rule, on the module-head doctrine's own evidence.
+the FL2VA picker) — **owner: jxb34l0** (standing IA; stated once there —
+audit CT-4 resolved this spec's old "is the wizard round's" claim). Not
+licensing enforcement — the obligations-not-policing stance governs. Not a
+second truth table — §4's one-seam rule, on the module-head doctrine's own
+evidence.
 
 ## 10. Evidence table
 
@@ -319,3 +372,11 @@ one-seam rule, on the module-head doctrine's own evidence.
 | The parallel-table failure mode this design must avoid | [DOC] h3Stack.ts module head |
 | The verdict vocabulary, crawl design, invariants, seams | [SPEC] — this document, for blessing |
 | Official-release HF repo ids for the H3 checkpoints | [UNK] — the crawl manifest's first verification act (§3) |
+
+---
+
+*r2, 2026-10-17: the pre-blessing audit's findings applied — H-I1's N1
+split (§5), the `ModelFile.identity` transport pin (§2, AC-6), the roots
+dependency + the wizard's designation moment (§4), the
+progressive-reveal vocabulary owned here (§6), H-M1/M2/M3 wording, and
+CT-4's ownership contradiction resolved (§9).*
