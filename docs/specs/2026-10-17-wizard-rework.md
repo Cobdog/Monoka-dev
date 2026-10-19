@@ -1,6 +1,11 @@
 # The first-run wizard rework — the designate · test · verify onboarding (spec)
 
 > **STATUS: DRAFTED (r2 — the 2026-10-17 audit's findings applied; see
+> **STATUS: BLESSED (2026-10-19) — the maintainer's rulings: all decision
+> points as recommended, in one round (the 19 structural points accepted en
+> masse; D8 keep-open-then-surface; D9 bless the lightx2v fetch rows; build
+> order wizard → catalog → viewer). Supersedes the DRAFTED r2 line below.
+> D8 = keep open by default, the LAN step surfaces the choice; D9 = the lightx2v turbo LoRA rows are blessed fetch rows (license-clean, sha-pinned, consent-gated — the fast tier becomes one-click).
 > [docs/audit/spec-audit-2026-10-17.md](../audit/spec-audit-2026-10-17.md))**
 > — decision-ready draft for the maintainer (First-run wizard rework
 > (3p14abm), 2026-10-17). The judgment calls this draft made are collected

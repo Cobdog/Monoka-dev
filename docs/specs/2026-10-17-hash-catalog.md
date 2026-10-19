@@ -1,6 +1,11 @@
 # The primed hash catalog — sha256 identity for every supported model variant/quant (design spec)
 
 > **STATUS: DRAFTED (r2 — the 2026-10-17 audit's findings applied; see
+> **STATUS: BLESSED (2026-10-19) — the maintainer's rulings: all decision
+> points as recommended, in one round (the 19 structural points accepted en
+> masse; D8 keep-open-then-surface; D9 bless the lightx2v fetch rows; build
+> order wizard → catalog → viewer). Supersedes the DRAFTED r2 line below.
+> B1–B6 as recommended; the catalog builds SECOND (after the wizard round) per the ruled order.
 > [docs/audit/spec-audit-2026-10-17.md](../audit/spec-audit-2026-10-17.md))**
 > (2026-10-17) — awaiting the maintainer's blessing.
 > **Task:** The primed hash catalog (to7xpa7) · **Project:** Monoka-dev (r2lnrfw) ·
