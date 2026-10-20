@@ -1691,6 +1691,583 @@ test('the first prompt is deliberate: Enter never submits, the exit writes befor
   expect(mirrorLog2).not.toContain('EADDRINUSE')
 })
 
+/** (task 10, spec §8 — the wave's acceptance walk) THE CONSOLIDATED
+ *  FIVE-STEP WALK, WIZARD-ONLY, FROM A FRESH HOME: a standalone studio on a
+ *  scratch `MONOKA_HOME` + the packs mirror (fresh-external minus the pack
+ *  classes — the install arm's premise), zero settings-API shortcuts
+ *  (a8pxd9q's method). The whole page life produces EXACTLY ONE settings
+ *  POST — the exit's one-motion write; every other step rides candidates and
+ *  read-only seams (the ledger's before→after, rows 1/2/5/6/7/10):
+ *    row 1  every component named + ONE verdict in one voice; pills quiet.
+ *    row 2  can-generate yes/no + curated rows; D7 designation verified.
+ *    row 5  Enter never submits; Just-create exits without a job.
+ *    row 6  the fetch flip makes the fast tier REAL — minutes-class preview.
+ *    row 7  the LAN URL printed, the D8 token default riding the choice,
+ *           the bind probe earned before acceptance; the designation lands
+ *           in the LAUNCHER config (the scratch `MONOKA_START_CONFIG` file —
+ *           the second store — foreign keys preserved verbatim).
+ *    row 10 both destinations designated + existence-verified; the virgin
+ *           home's packs install is honestly refused (no configured target
+ *           yet — the exit is what creates it), and the RE-ENTRY pass
+ *           (Settings → reopen — the in-app affordance, still zero API
+ *           writes) completes install + restart-verify against the target
+ *           the exit wrote.
+ *  The real HuggingFace download never starts: only /api/lan/fetch/start is
+ *  route-sabotaged; the consent POST passes through (the §3-sanctioned
+ *  mid-walk ledger write, wiped with the scratch home). The mirror restart
+ *  for the packs flip re-boots on the SAME port with the runtime-augmented
+ *  profile (the T6 pattern — the adapter class from the captured fixture,
+ *  never a hand-written shape). */
+test('the reworked walkthrough: the five-step walk, wizard-only, from a fresh home (3p14abm task 10)', async ({ page }) => {
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  // The fresh home + the scratch launcher config (the walk's SECOND store).
+  // The file PRE-EXISTS with launcher-owned keys: a wizard write must RMW —
+  // never seed, never clobber (lanConfig.ts's contract).
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-e2e-walkthrough-'))
+  const modelsRoot = path.join(home, 'models')
+  const customNodesDir = path.join(home, 'custom_nodes')
+  const launcherConfigPath = path.join(home, '.start-config.json')
+  const launcherForeign = { dataDir: path.join(home, 'launcher-data'), engineUrl: 'http://192.168.1.50:8188', logLevel: 'info' }
+  fs.writeFileSync(launcherConfigPath, JSON.stringify(launcherForeign, null, 2) + '\n')
+  fs.mkdirSync(modelsRoot, { recursive: true })
+  fs.mkdirSync(customNodesDir, { recursive: true })
+
+  const reservePort = async () => {
+    const holder = http.createServer(() => undefined)
+    const port = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+    await new Promise<void>((resolve) => holder.close(() => resolve()))
+    return port
+  }
+  const studioPort = await reservePort()
+  const freeLanPort = await reservePort()
+
+  const mirrorPort = await reservePort()
+  let mirrorLog = ''
+  const spawnMirror = (profilePath: string) => {
+    const child = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', profilePath], { stdio: ['ignore', 'pipe', 'pipe'] })
+    child.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+    child.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+    return child
+  }
+  let mirror = spawnMirror('e2e/mirror/profiles/wizard-packs.json')
+  // THE RESTART LEG's profile (the T6 pattern): the packs engine PLUS the
+  // captured form-adapter schema (the omit list drops the class; extras win)
+  // AND the turbo listing — the engine's re-scan seeing the planted file.
+  const packsProfile = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'e2e/mirror/profiles/wizard-packs.json'), 'utf8')) as { objectInfoOmit?: string[] }
+  const fixture = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'scripts/fixtures/engine-object-info.json'), 'utf8')) as { nodes: Record<string, unknown> }
+  const augmentedProfilePath = path.join(customNodesDir, 'augmented-wizard-packs.json')
+  fs.writeFileSync(augmentedProfilePath, JSON.stringify({
+    ...packsProfile,
+    objectInfoExtras: { MiniMaxH3LoraFormLoader: fixture.nodes.MiniMaxH3LoraFormLoader },
+    objectInfoOmit: (packsProfile.objectInfoOmit ?? []).filter((className) => className !== 'MiniMaxH3LoraFormLoader'),
+    modelListings: { ...(packsProfile as { modelListings?: Record<string, string[]> }).modelListings, loras: ['minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'] },
+  }))
+
+  // The standalone studio: scratch home, plain HTTP, the launcher config
+  // pointed at the scratch file.
+  const studio = spawn('node', ['dist-server/server/index.js'], {
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(studioPort), MONOKA_NO_HTTPS: '1', MONOKA_START_CONFIG: launcherConfigPath },
+    stdio: ['ignore', 'ignore', 'ignore'],
+  })
+  const stopStudio = async () => {
+    if (studio.exitCode !== null || studio.signalCode !== null) return
+    studio.kill('SIGTERM') // the recorded PID only
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { studio.kill('SIGKILL'); resolve() }, 5_000)
+      studio.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+
+  const turboFile = 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'
+  const mirrorUrl = `http://127.0.0.1:${mirrorPort}`
+  // The network shapes the walk's contract governs, counted across the WHOLE
+  // page life (both passes): settings POSTs must total exactly ONE — the
+  // exit's write.
+  let settingsSaves = 0
+  let launcherWrites = 0
+  let chainsCreated = 0
+  let promptPosts = 0
+  let fetchConsents = 0
+  const order: string[] = []
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+    await expect.poll(async () => {
+      try { return (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).ok } catch { return false }
+    }, { timeout: 30_000 }).toBe(true)
+
+    // The virgin home's harness baseline, laid BEFORE any page exists (the
+    // counters attach after): the engine url stands in for the address the
+    // walk's Engine step designates (every journey leg's baseline — the
+    // walk's OWN work, the two destinations + the LAN posture + the fetch
+    // consent, is never seeded), the W16 pre-seed keeps the one-time
+    // connect save out of the counting window, engine.mode is the shipped
+    // default pinned. A TRULY virgin url (a dead port, the strict reading)
+    // is NOT harnessable today: the engineWatch loop probes the SAVED url
+    // every 5s and a lost probe CLEARS the candidate-verified object_info —
+    // the walk's verified state would flap until the exit saves the url.
+    // That finding is recorded in the task ledger; the walkthrough legs
+    // hold the deterministic baseline.
+    const seeded = (await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).json()) as { settings: Record<string, unknown> }
+    await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ settings: { ...seeded.settings, comfyUrl: mirrorUrl, testedComfyVersion: 'mirror-profile', engine: { ...(seeded.settings.engine as Record<string, unknown>), mode: 'external' } } }),
+    })
+
+    await page.route('**/api/lan/settings', async (route) => {
+      if (route.request().method() === 'POST') { settingsSaves += 1; order.push('settings') }
+      await route.continue()
+    })
+    await page.route('**/api/lan/launcher-config', async (route) => {
+      if (route.request().method() === 'POST') { launcherWrites += 1; order.push('launcher') }
+      await route.continue()
+    })
+    await page.route('**/api/lan/documents/chains', async (route) => {
+      if (route.request().method() === 'POST') { chainsCreated += 1; order.push('chains') }
+      await route.continue()
+    })
+    await page.route('**/api/lan/prompt', async (route) => {
+      if (route.request().method() === 'POST') { promptPosts += 1; order.push('prompt') }
+      await route.continue()
+    })
+    await page.route('**/api/lan/fetch/consent', async (route) => {
+      if (route.request().method() === 'POST') fetchConsents += 1
+      await route.continue()
+    })
+    await page.route('**/api/lan/fetch/start', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ started: true, id: 'lightx2v-fl2v-turbo-8' }) })
+    })
+
+    await page.goto(`http://127.0.0.1:${studioPort}/?canvas=1`)
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    const wizard = page.locator('[data-canvas-wizard]')
+    await expect(wizard).toBeVisible({ timeout: 30_000 })
+    // Row 1: the pills are QUIET while the walk presents (the wizard owns
+    // the verdict voice).
+    await expect(page.locator('[data-canvas-engine]')).toHaveCount(0, { timeout: 20_000 })
+    await expect(page.locator('[data-canvas-bar-engine]')).toHaveCount(0)
+
+    // ---- STEP 1 — Engine: born agreeing with the saved url (W-I5), then
+    // the walk's OWN gesture retypes it; typing produces ZERO settings
+    // POSTs (the candidate holds; §3). Test verifies the candidate.
+    const urlField = page.locator('[data-wizard-comfy-url]')
+    await expect(urlField).toHaveValue(mirrorUrl)
+    await urlField.click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await urlField.pressSequentially(mirrorUrl, { delay: 10 })
+    await expect(urlField).toHaveValue(mirrorUrl)
+    expect(settingsSaves, 'typing wrote nothing (the candidate model, walk-level)').toBe(0)
+    await page.locator('[data-wizard-test]').click()
+    await expect(page.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator('[data-wizard-connected]')).toContainText('NVIDIA GeForce RTX 4090')
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '1')
+
+    // ---- STEP 2 — Models (row 1): five NAMED rows, all missing with the
+    // one artifact each; the ONE blocked verdict in one voice; the turbo
+    // row's one-click fetch gated on D7.
+    const componentRows = page.locator('[data-wizard-components] [data-wizard-model-row]')
+    await expect(componentRows).toHaveCount(5, { timeout: 20_000 })
+    await expect(page.locator('[data-wizard-model-row="FL2VA"]')).toHaveAttribute('data-row-present', 'false')
+    await expect(page.locator('[data-wizard-model-row="FL2VA"] [data-wizard-row-guide]')).toContainText('fl2va')
+    await expect(page.locator('[data-wizard-verdict="blocked"]')).toContainText('FL2VA', { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-verdict]')).toHaveCount(1)
+    await expect(page.locator('[data-wizard-row-direct]')).toHaveCount(4)
+    const turboFetch = page.locator('[data-wizard-fetch="lightx2v-fl2v-turbo-8"]')
+    await expect(turboFetch).toHaveAttribute('data-fetch-gated', 'true')
+    await expect(page.locator('[data-wizard-fetch-gated-copy]')).toBeVisible()
+    // D7, models root: the virgin home prefills EMPTY (the studio-home
+    // default never poses as engine-visible — W-C1's dead end), the
+    // designation is existence-verified, and the gate opens.
+    await expect(page.locator('[data-wizard-designation-input="wizard-models-root"]')).toHaveValue('')
+    await page.locator('[data-wizard-designation-input="wizard-models-root"]').fill(modelsRoot)
+    await page.locator('[data-wizard-designation-verify="wizard-models-root"]').click()
+    await expect(page.locator('[data-wizard-designation-verdict="wizard-models-root"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 10_000 })
+    await expect(turboFetch).toHaveAttribute('data-fetch-gated', 'false')
+    // W-I6: the click IS the consent — the ledger write passes through (its
+    // own route, never a settings POST), the start is sabotaged.
+    await page.locator('[data-wizard-fetch-start]').click()
+    await expect.poll(() => fetchConsents, { timeout: 10_000 }).toBe(1)
+    await expect(page.locator('[data-wizard-fetch-settling]')).toBeVisible()
+    // The engine "sees" the weight: the file planted in the DESIGNATED
+    // root's loras folder, the mirror's listing swapped (the real engine's
+    // folder re-scan), the step's own refresh re-reads the engine.
+    fs.mkdirSync(path.join(modelsRoot, 'loras'), { recursive: true })
+    fs.writeFileSync(path.join(modelsRoot, 'loras', turboFile), 'journey placeholder — never a real download\n')
+    await mirrorJson(mirrorPort, '/__control', { method: 'POST', body: JSON.stringify({ modelListings: { loras: [turboFile] } }) })
+    await page.locator('[data-wizard-refresh]').click()
+    const turboRow = page.locator('[data-wizard-model-row="Turbo 8"]')
+    await expect(turboRow).toHaveAttribute('data-row-present', 'true', { timeout: 20_000 })
+    await expect(turboRow.locator('[data-wizard-row-name]')).toHaveText(turboFile)
+    await expect(turboRow.locator('[data-wizard-row-identity]')).toContainText('name-suspected')
+    // The verdict re-names what STILL blocks (FL2VA is publisher-direct) —
+    // still exactly one, still one voice.
+    await expect(page.locator('[data-wizard-verdict="blocked"]')).toContainText('FL2VA', { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-verdict]')).toHaveCount(1)
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '2')
+
+    // ---- STEP 3 — Packs (rows 2/10): can-generate No points at Models; the
+    // curated rows; the virgin home's install honestly refused EVEN AFTER
+    // the designation — no configured target exists until the exit (the
+    // refusal names the way out: the designation becomes the exit write).
+    await expect(page.locator('[data-wizard-can-generate="no"]')).toContainText('Models step', { timeout: 10_000 })
+    const adapterRow = page.locator('[data-wizard-pack-row="lora-form-adapter"]')
+    await expect(page.locator('[data-wizard-pack-rows] [data-wizard-pack-row]')).toHaveCount(3, { timeout: 20_000 })
+    await expect(adapterRow).toHaveAttribute('data-pack-state', 'missing')
+    const adapterInstall = page.locator('[data-wizard-pack-install="lora-form-adapter"]')
+    await expect(page.locator('[data-wizard-designation-input="wizard-custom-nodes"]')).toHaveValue('')
+    // The virgin home's install is withheld TWICE over, both honest: the
+    // walk's gate names the designation, and the SERVER has no install
+    // target at all (no configured custom-nodes dir → no one-click route
+    // resolved) — so no click exists yet, and the manual way is what the
+    // row offers.
+    await expect(page.locator('[data-wizard-pack-gated]').first()).toBeVisible()
+    await expect(adapterInstall).toHaveCount(0)
+    await expect(page.locator('[data-wizard-pack-manual]').first()).toBeVisible()
+    await page.locator('[data-wizard-designation-input="wizard-custom-nodes"]').fill(customNodesDir)
+    await page.locator('[data-wizard-designation-verify="wizard-custom-nodes"]').click()
+    await expect(page.locator('[data-wizard-designation-verdict="wizard-custom-nodes"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 10_000 })
+    // THE HONEST VIRGIN-HOME BETWEEN-STATE (row 10's limit, stated): the
+    // gated refusal is gone, but still no click — the target is configured
+    // only by the exit. Never a dead end: the copy names it (the exit
+    // write), and the row keeps the manual way beside it.
+    await expect(page.locator('[data-wizard-pack-gated]')).toHaveCount(0)
+    await expect(adapterInstall).toHaveCount(0)
+    await expect(page.locator('[data-wizard-pack-no-target]').first()).toContainText('exit write')
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '3')
+
+    // ---- STEP 4 — LAN prep (row 7): the live posture read + the printed
+    // URL + the env-override honesty (MONOKA_LAN_PORT is OUR boot key — a
+    // user-set key without the launcher marker); keep-current is the
+    // DEFAULT; the designation flips the D8 token default ON, prefills the
+    // live port, and earns the bind probe before acceptance.
+    await expect(page.locator('[data-wizard-lan]')).toBeVisible()
+    await expect(page.locator('[data-wizard-lan-live]')).toBeVisible()
+    await expect(page.locator('[data-wizard-lan-url]')).toContainText(String(studioPort))
+    await expect(page.locator('[data-wizard-lan-overrides]')).toContainText('MONOKA_LAN_PORT')
+    await expect(page.locator('[data-wizard-lan-keep][data-chosen="true"]')).toBeVisible()
+    await page.locator('[data-wizard-lan-host="0.0.0.0"] button').click()
+    await expect(page.locator('[data-wizard-lan-token-toggle]')).toHaveAttribute('data-chosen', 'true')
+    await expect(page.locator('[data-wizard-lan-token-toggle]')).toContainText('on at next start')
+    await page.locator('[data-wizard-lan-port]').fill(String(freeLanPort))
+    await page.locator('[data-wizard-lan-probe]').click()
+    await expect(page.locator('[data-wizard-lan-probe-ok]')).toBeVisible({ timeout: 10_000 })
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '4')
+
+    // ---- STEP 5 — First prompt (rows 5/6): the fetch flip made the tier
+    // REAL — the cost preview reads minutes-class; the exit summary speaks
+    // exactly what the one-motion write will carry.
+    const preview = page.locator('[data-wizard-cost-preview]')
+    await expect(preview).toContainText('Fast · 8-step')
+    await expect(preview).toContainText('8 steps')
+    await expect(preview).toContainText('minutes-class')
+    await expect(page.locator('[data-wizard-exit-item="comfyUrl"]')).toHaveAttribute('data-carried', 'true')
+    await expect(page.locator('[data-wizard-exit-item="comfyUrl"]')).toContainText(mirrorUrl)
+    await expect(page.locator('[data-wizard-exit-item="modelRoot"]')).toHaveAttribute('data-carried', 'true')
+    await expect(page.locator('[data-wizard-exit-item="customNodesDir"]')).toHaveAttribute('data-carried', 'true')
+    await expect(page.locator('[data-wizard-exit-item="lanKeys"]')).toHaveAttribute('data-carried', 'true')
+    await expect(page.locator('[data-wizard-exit-item="lanKeys"]')).toContainText(String(freeLanPort))
+    await expect(page.locator('[data-wizard-exit-item="tier"]')).toHaveAttribute('data-carried', 'true')
+    // Enter NEVER submits (row 5) — the newline lands, nothing fires.
+    const input = page.locator('[data-wizard-prompt-input]')
+    await input.fill('a lighthouse over a black sea, the walkthrough chain')
+    await input.click()
+    await page.keyboard.press('Enter')
+    await expect(input).toHaveValue(/\n/)
+    await page.waitForTimeout(1_500)
+    expect(settingsSaves, 'Enter fired no settings write').toBe(0)
+    expect(chainsCreated, 'Enter spawned no chain').toBe(0)
+    expect(promptPosts, 'Enter started no job').toBe(0)
+
+    // THE JUST-CREATE EXIT — the one-motion write, in order: settings,
+    // launcher config (the second store), chain; NO prompt POST ever.
+    order.length = 0
+    await page.locator('[data-wizard-just-chain]').click()
+    await expect.poll(() => chainsCreated, { timeout: 30_000 }).toBe(1)
+    expect(settingsSaves, 'the walk produced EXACTLY ONE settings POST — the exit write').toBe(1)
+    expect(launcherWrites, 'the LAN designation wrote the launcher config once').toBe(1)
+    expect(promptPosts, 'Just-create starts no job').toBe(0)
+    expect(order.indexOf('settings'), 'settings before launcher').toBeGreaterThanOrEqual(0)
+    expect(order.indexOf('settings')).toBeLessThan(order.indexOf('launcher'))
+    expect(order.indexOf('launcher')).toBeLessThan(order.indexOf('chains'))
+    await expect(page.locator('[data-canvas-wizard]')).toHaveCount(0, { timeout: 15_000 })
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 15_000 })
+
+    // THE SECOND STORE, on disk: the posture keys landed in the scratch
+    // launcher config; the launcher-owned keys survived verbatim (RMW).
+    const written = JSON.parse(fs.readFileSync(launcherConfigPath, 'utf8')) as Record<string, unknown>
+    expect(written.port).toBe(freeLanPort)
+    expect(written.host).toBe('0.0.0.0')
+    expect(written.token).toBe(true)
+    expect(written.dataDir).toBe(launcherForeign.dataDir)
+    expect(written.engineUrl).toBe(launcherForeign.engineUrl)
+    expect(written.logLevel).toBe(launcherForeign.logLevel)
+
+    // RELOAD PERSISTENCE: the done latch holds, the placed chain survives
+    // (the server-owned document).
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    await expect(page.locator('[data-canvas-wizard]')).toHaveCount(0, { timeout: 15_000 })
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(1)
+
+    // ---- PASS 2 — the RE-ENTRY (rows 2/10's after-column). The walk is
+    // mounted by the LAUNCHER, which lives only on an empty canvas — pass 1
+    // filled this one — so the journey closes the tab (the × beside the
+    // canvas's name; the chain stays in its project server-side) and the
+    // launcher returns. Then Settings → reopen (the in-app affordance; zero
+    // API writes): the walk presents prefilled from the exit's writes, the
+    // install gate is OPEN (the target now exists), and install +
+    // restart-verify complete.
+    await page.locator('[data-canvas-tab] .canvas-tab-close').click()
+    await expect(page.locator('[data-canvas-launcher]')).toBeVisible({ timeout: 15_000 })
+    // A reload here is not ceremony: the wizard's scan-witness guard is
+    // per-mount (the remounted launcher has seen no scan yet), and the boot
+    // scan is what arms it. The session is server-owned, so the closed tab
+    // survives the reload — the launcher is still the surface.
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    await expect(page.locator('[data-canvas-launcher]')).toBeVisible({ timeout: 15_000 })
+    await page.locator('[data-canvas-settings-button]').click()
+    await expect(page.locator('[data-canvas-settings-dock]')).toBeVisible({ timeout: 10_000 })
+    await page.locator('[data-settings-reopen-wizard]').click()
+    await expect(wizard).toBeVisible({ timeout: 10_000 })
+    await expect(wizard).toContainText('1 of 5 — Engine')
+    await expect(urlField).toHaveValue(mirrorUrl)
+    await page.locator('[data-wizard-test]').click()
+    await expect(page.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '1')
+    // The models-root designation is prefilled from the exit's write and
+    // re-verifies (verification is re-earned, never presumed).
+    await expect(page.locator('[data-wizard-designation-input="wizard-models-root"]')).toHaveValue(modelsRoot, { timeout: 15_000 })
+    await page.locator('[data-wizard-designation-verify="wizard-models-root"]').click()
+    await expect(page.locator('[data-wizard-designation-verdict="wizard-models-root"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-verdict="blocked"]')).toContainText('FL2VA', { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-verdict]')).toHaveCount(1)
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '2')
+    // The install gate is OPEN: designated + the exit-configured target.
+    await expect(page.locator('[data-wizard-designation-input="wizard-custom-nodes"]')).toHaveValue(customNodesDir, { timeout: 15_000 })
+    await page.locator('[data-wizard-designation-verify="wizard-custom-nodes"]').click()
+    await expect(page.locator('[data-wizard-designation-verdict="wizard-custom-nodes"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-pack-gated]')).toHaveCount(0)
+    await expect(page.locator('[data-wizard-pack-no-target]')).toHaveCount(0)
+    await expect(adapterInstall).toBeEnabled()
+    await adapterInstall.click()
+    // THE INSTALL: placed in the DESIGNATED folder (which the exit made the
+    // configured target), the via stated, the honest awaiting-restart.
+    await expect.poll(() => fs.existsSync(path.join(customNodesDir, 'minimax-lora-form-adapter', '__init__.py')), { timeout: 20_000 }).toBe(true)
+    await expect(page.locator('[data-wizard-pack-via="lora-form-adapter"]')).toContainText('installed through the studio', { timeout: 10_000 })
+    await expect(adapterRow).toHaveAttribute('data-pack-state', 'awaiting-restart', { timeout: 20_000 })
+    await expect(page.locator('[data-wizard-pack-awaiting="lora-form-adapter"]')).toContainText('restart the engine')
+    // THE RESTART the user performs, simulated at the engine stand-in: the
+    // mirror re-boots on the SAME port serving the pack's class. The walk's
+    // poll re-verifies while it is open.
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+    mirror = spawnMirror(augmentedProfilePath)
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+    await expect(adapterRow).toHaveAttribute('data-pack-state', 'active', { timeout: 30_000 })
+    await expect(page.locator('[data-wizard-pack-active]')).toContainText('Active on the engine')
+    // SKIP closes the re-entry (D3: nothing persists — assert below).
+    await page.locator('[data-wizard-skip]').click()
+    await expect(wizard).toHaveCount(0, { timeout: 15_000 })
+    // The skip persisted NOTHING: the exit's writes stand untouched, and the
+    // counters show the whole page life never made a second settings POST.
+    const afterSkip = (await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).json()) as { settings: Record<string, unknown> }
+    expect(afterSkip.settings.comfyUrl).toBe(mirrorUrl)
+    expect(afterSkip.settings.modelRoot).toBe(modelsRoot)
+    expect((afterSkip.settings.engine as Record<string, unknown>).externalCustomNodesDir).toBe(customNodesDir)
+    expect(settingsSaves, 'the whole two-pass walk: still exactly ONE settings POST').toBe(1)
+    expect(launcherWrites, 'the whole two-pass walk: still exactly ONE launcher write').toBe(1)
+    // And the skip latch holds across reload — the walk never nags. (The
+    // session restores with the tab closed — the launcher state pass 2
+    // opened from — so the launcher is what shows; the chain's persistence
+    // across reload was pass 1's proof.)
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    await expect(page.locator('[data-canvas-wizard]')).toHaveCount(0, { timeout: 15_000 })
+    await expect(page.locator('[data-canvas-launcher]')).toBeVisible({ timeout: 15_000 })
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+  } finally {
+    await stopStudio()
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+    removeAllScratchDirs()
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+})
+
+/** (task 10, spec §8.2 row 9) THE TIMING CAPTURE, on the mirror: the
+ *  full-stack walk (the maintainer-instance profile — a runnable engine)
+ *  measured launch → submit, then the deliberate submit through the mirror's
+ *  completion. THE LEDGER'S CAVEATS, stated where the number lands: this is
+ *  CI-script timing (a machine driving the walk), NOT the ≤2-min INTERACTIVE
+ *  bar — that measurement belongs to the maintainer-authorized validation
+ *  window; and the submit→clip half records the APP's shape (the mirror
+ *  renders in ~4 s — render time is engine-bound; the real rig's number is
+ *  the validation window's class truth). The walk stays wizard-only: the
+ *  harness baseline + the W16 pre-seed land before any page opens, and
+ *  keep-current's one-click writes NOTHING (zero launcher-config POSTs —
+ *  asserted). */
+test('the walkthrough timing on the mirror: launch → submit → the landed clip (3p14abm task 10)', async ({ page }) => {
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-e2e-walkthrough-timing-'))
+  const reservePort = async () => {
+    const holder = http.createServer(() => undefined)
+    const port = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+    await new Promise<void>((resolve) => holder.close(() => resolve()))
+    return port
+  }
+  const studioPort = await reservePort()
+  const mirrorPort = await reservePort()
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', MIRROR_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  const studio = spawn('node', ['dist-server/server/index.js'], {
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(studioPort), MONOKA_NO_HTTPS: '1' },
+    stdio: ['ignore', 'ignore', 'ignore'],
+  })
+  const stopStudio = async () => {
+    if (studio.exitCode !== null || studio.signalCode !== null) return
+    studio.kill('SIGTERM')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { studio.kill('SIGKILL'); resolve() }, 5_000)
+      studio.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  const mirrorUrl = `http://127.0.0.1:${mirrorPort}`
+  let settingsSaves = 0
+  let launcherWrites = 0
+  let promptPosts = 0
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+    await expect.poll(async () => {
+      try { return (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).ok } catch { return false }
+    }, { timeout: 30_000 }).toBe(true)
+    const seeded = (await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).json()) as { settings: Record<string, unknown> }
+    await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ settings: { ...seeded.settings, comfyUrl: mirrorUrl, testedComfyVersion: 'mirror-profile', engine: { ...(seeded.settings.engine as Record<string, unknown>), mode: 'external' } } }),
+    })
+    await page.route('**/api/lan/settings', async (route) => {
+      if (route.request().method() === 'POST') settingsSaves += 1
+      await route.continue()
+    })
+    await page.route('**/api/lan/launcher-config', async (route) => {
+      if (route.request().method() === 'POST') launcherWrites += 1
+      await route.continue()
+    })
+    await page.route('**/api/lan/prompt', async (route) => {
+      if (route.request().method() === 'POST') promptPosts += 1
+      await route.continue()
+    })
+
+    // ---- LAUNCH: the clock starts at the page open. (The engine url rides
+    // the harness baseline — see the walkthrough leg's comment for the
+    // truly-virgin-url caveat; the walk's gesture retypes it regardless.)
+    const t0 = Date.now()
+    await page.goto(`http://127.0.0.1:${studioPort}/?canvas=1`)
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    const wizard = page.locator('[data-canvas-wizard]')
+    await expect(wizard).toBeVisible({ timeout: 30_000 })
+
+    // The walk, wizard-only, full stack: Engine test…
+    const urlField = page.locator('[data-wizard-comfy-url]')
+    await expect(urlField).toHaveValue(mirrorUrl)
+    await urlField.click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await urlField.pressSequentially(mirrorUrl, { delay: 10 })
+    await page.locator('[data-wizard-test]').click()
+    await expect(page.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
+    // …Models: the full stack names everything and ONE ready verdict (row 1's
+    // after-state).
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '1')
+    await expect(page.locator('[data-wizard-model-row="FL2VA"]')).toHaveAttribute('data-row-present', 'true', { timeout: 20_000 })
+    await expect(page.locator('[data-wizard-verdict="ready"]')).toContainText('Ready to render', { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-verdict]')).toHaveCount(1)
+    // …Packs: can-generate YES — nothing to do here.
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '2')
+    await expect(page.locator('[data-wizard-can-generate="yes"]')).toContainText('nothing to do here', { timeout: 10_000 })
+    // …LAN prep: keep-current is the one click — and it WRITES NOTHING.
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '3')
+    await expect(page.locator('[data-wizard-lan-keep][data-chosen="true"]')).toBeVisible()
+    await page.locator('[data-wizard-lan-keep-click]').click()
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '4')
+    // …First prompt: the fast tier is verified on this stack (row 6), the
+    // deliberate submit runs the exit write first.
+    await expect(page.locator('[data-wizard-cost-preview]')).toContainText('Fast · 8-step')
+    await page.locator('[data-wizard-prompt-input]').fill('a lighthouse over a black sea, timed first clip')
+    const t1 = Date.now()
+    await page.locator('[data-wizard-generate]').click()
+    await expect.poll(() => promptPosts, { timeout: 30_000 }).toBe(1)
+    expect(settingsSaves, 'the exit write is the only settings POST').toBe(1)
+    expect(launcherWrites, 'keep-current wrote no launcher config').toBe(0)
+
+    // ---- SUBMIT → CLIP: the mirror completes the render; the take lands on
+    // the chain the exit placed. (CI-script number; render time is
+    // engine-bound — the app's shape is what this records. The scratch home
+    // has no prior jobs, so the FIRST completed job is the walk's.)
+    await expect.poll(async () => {
+      const jobs = ((await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/jobs`)).json()) as { jobs: Array<{ status: string }> }).jobs
+      return jobs.some((job) => job.status === 'completed')
+    }, { timeout: 90_000 }).toBe(true)
+    const t2 = Date.now()
+    await expect(page.locator('[data-canvas-tile]').first()).toHaveAttribute('data-tile-status', 'idle', { timeout: 30_000 })
+    const launchToSubmitMs = t1 - t0
+    const submitToClipMs = t2 - t1
+    console.info(`[task-10 timing, CI-script not interactive] launch→submit: ${launchToSubmitMs}ms; submit→clip (mirror ~4s render): ${submitToClipMs}ms`)
+
+    // The wizard stays closed; the clip is the canvas's first object.
+    await expect(page.locator('[data-canvas-wizard]')).toHaveCount(0, { timeout: 15_000 })
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    await expect(page.locator('[data-canvas-wizard]')).toHaveCount(0, { timeout: 15_000 })
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(1)
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+  } finally {
+    await stopStudio()
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+    removeAllScratchDirs()
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+})
+
 /** (task 9, spec §4 — the D4 ruling) THE --setup RESET FROM ANY TERMINAL:
  *  a shell flag re-opens the walk server-owned — any terminal, any browser,
  *  any profile. Two standalone studio boots on ONE scratch home: boot A
