@@ -193,6 +193,11 @@ export function FirstRunWizard() {
       writeWizard(next)
       setState(next)
       setWalk(null)
+      // (7kyhdin) An explicit reopen is a settled-app act: the per-mount
+      // scan witness exists so a fresh boot never presents before the first
+      // scan answers — a reopen click is past that moment by definition
+      // (a walk mounted after the boot scan would otherwise never arm).
+      setSawScan(true)
     }
     window.addEventListener(WIZARD_REOPEN_EVENT, reopen)
     return () => window.removeEventListener(WIZARD_REOPEN_EVENT, reopen)

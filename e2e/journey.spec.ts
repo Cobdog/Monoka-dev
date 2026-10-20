@@ -163,6 +163,21 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
     await expect(firstTile).toBeVisible({ timeout: 15_000 })
     await expect(firstTile).toHaveAttribute('data-tile-status', 'idle', { timeout: 60_000 })
 
+    // ---- STEP 4b (7kyhdin): the dock's reopen works FROM a non-empty canvas
+    // (the walk used to mount only inside the empty-canvas Launcher — the
+    // button closed the dock and did nothing the moment the first prompt
+    // landed; the same silent dispatch the card names).
+    await page.locator('[data-canvas-settings-button]').click()
+    await expect(page.locator('[data-canvas-settings-dock]')).toBeVisible({ timeout: 10_000 })
+    await page.locator('[data-settings-reopen-wizard]').click()
+    await expect(wizard).toBeVisible({ timeout: 10_000 })
+    await expect(wizard).toContainText('1 of 5 — Engine')
+    // …and the dock closed behind the reopened wizard (one journey at a
+    // time, the R-16 presenting rule — the same shape STEP 3 asserts).
+    await expect(page.locator('[data-canvas-settings-dock]')).toHaveCount(0)
+    await page.locator('[data-wizard-skip]').click()
+    await expect(wizard).toHaveCount(0)
+
     // ---- STEP 5 (#3): the PreviewOverride pack owns this render's preview -
     // (M6/C7: PR #48 claims the pack routes when present; the audit's walk
     // found no override node in the graph the engine received. The mirror

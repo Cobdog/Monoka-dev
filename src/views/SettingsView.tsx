@@ -299,7 +299,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
         engine was already connected (the shape the audit walked: the old
         registry-emptiness guard meant steps 2-4 never ran). */}
     {onReopenWizard && <div className="settings-note" data-settings-wizard-row>
-      <span>The four-step setup walk (engine → models → packs → first prompt) is one click away.</span>
+      <span>The five-step setup walk (engine → models → packs → LAN prep → first prompt) is one click away.</span>
       <button type="button" className="secondary-button" data-settings-reopen-wizard onClick={onReopenWizard}>Reopen the setup wizard</button>
     </div>}</section>
     <section className="settings-section managed-engine-section" aria-label="Managed engine">

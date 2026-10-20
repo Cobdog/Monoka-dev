@@ -65,8 +65,10 @@ export function Launcher({ onPickFile }: { onPickFile(): void }) {
   return <div className="canvas-launcher" data-canvas-launcher>
     <div className="canvas-launcher-inner">
       {/* (R-16, Wave 3) The first-run wizard owns the fresh-home journey
-          (four thin steps, skippable/resumable); the notice below stays as
-          the fallback surface for every path that skips or outruns it. */}
+          (five thin steps, skippable/resumable); the notice below stays as
+          the fallback surface for every path that skips or outruns it. Over
+          a canvas WITH work the walk presents from CanvasApp instead
+          (7kyhdin) — this mount is the empty-canvas half of the pair. */}
       <FirstRunWizard />
       {/* QOL wave (rrxlw2r): model-roots-empty onboarding — the app is never
           silently dead on a fresh install; dismissible once per browser. */}

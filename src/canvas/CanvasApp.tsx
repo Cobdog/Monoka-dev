@@ -30,6 +30,7 @@ import { OpEditor } from './OpEditor'
 import { PoseRigDock } from './PoseRigDock'
 import { PropertiesPanel } from './PropertiesPanel'
 import { Launcher } from './Launcher'
+import { FirstRunWizard } from './FirstRunWizard'
 import { Radar } from './Radar'
 import { SettingsDock } from './SettingsDock'
 import { LibraryDock } from '../components/LibraryDock'
@@ -246,6 +247,18 @@ export function CanvasApp() {
       <LibraryDock />
       <RemediationDock />
       <DiagnosticsDock />
+      {/* (7kyhdin) The walk over a WORKING canvas: the Settings dock's
+          reopen dispatch (and any walk still pending) presents here — the
+          Launcher's mount owns the empty canvas, this one owns every canvas
+          with work. Mutually exclusive by emptyCanvas, so exactly one walk
+          is ever mounted and the reopen signal always finds a listener.
+          The walk's own render guard (shouldPresent + the scan witness)
+          decides whether it shows; this surface only hosts it. */}
+      {phase === 'ready' && !emptyCanvas && (
+        <div className="canvas-wizard-over" data-canvas-wizard-over>
+          <FirstRunWizard />
+        </div>
+      )}
       <IndexOverlay />
       <LibraryOverlay />
       <TimelineOverlay />
