@@ -222,11 +222,15 @@ export function emptyWalkCandidate(comfyUrl: string): WalkCandidate {
 }
 
 /** A candidate URL edit — the exact seam the old wizard's per-keystroke
- *  `setSettings` rode (this task kills those saves): it returns a NEW
- *  candidate and touches nothing else. This module deliberately offers NO
- *  settings-writing function — the walk state is the only thing an edit
- *  touches (the journey spec's counting window proves the network half:
- *  zero POST /api/lan/settings across the keystrokes). */
+ *  `setSettings` store writes rode (those were pure store writes, no
+ *  network — but each one re-armed EngineHost's probe loop against the
+ *  half-typed url; the kill here is structural: the wizard carries no
+ *  settings subscription at all, and the candidate-purity unit test pins
+ *  the pure update). It returns a NEW candidate and touches nothing else.
+ *  This module deliberately offers NO settings-writing function — the walk
+ *  state is the only thing an edit touches. The journey spec's counting
+ *  window PINS the network half of the new behavior: zero settings POSTs
+ *  and zero engine probes aimed at the typed host across the keystrokes. */
 export function setCandidateUrl(candidate: WalkCandidate, url: string): WalkCandidate {
   if (url === candidate.comfyUrl) return candidate
   return { ...candidate, comfyUrl: url }

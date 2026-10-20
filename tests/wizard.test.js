@@ -158,11 +158,13 @@ test('typing in the address field never writes configuration — the candidate u
   ok(fresh.verifiedUrl === null, 'a fresh candidate is unverified (nothing has answered yet)')
 
   // THE ANTI-REGRESSION: a URL edit is a pure candidate-state change. The
-  // old wizard rode setSettings on every keystroke (one config save per
-  // character — the journey spec's counting window measured it); the walk
-  // holds the candidate in memory instead, and this module deliberately
-  // offers no settings-writing seam at all (the e2e journey proves the
-  // network half: zero POST /api/lan/settings across the keystrokes).
+  // old wizard rode setSettings on every keystroke — a pure STORE write
+  // (no network), but one that re-armed EngineHost's probe loop against
+  // each half-typed url; the walk holds the candidate in memory instead,
+  // and this module deliberately offers no settings-writing seam at all
+  // (the kill is structural: no setSettings subscription exists; the e2e
+  // journey window pins the NETWORK half: zero settings POSTs and zero
+  // engine probes aimed at the typed host across the keystrokes).
   stubCheckPath({ exists: true, directory: true })
   const typed = walk.setCandidateUrl(fresh, 'http://127.0.0.1:8190')
   ok(typed !== fresh, 'the edit returns a NEW candidate (never mutates the walk state)')

@@ -268,7 +268,7 @@ function EngineStep(props: {
   // The Test readout: kept step-local (not the store's status — the boot
   // probe and the watch loop write that), gated to the URL it was earned
   // against (a later edit hides it, honestly).
-  const [tested, setTested] = useState<{ url: string; connected: boolean; device?: string; error?: string } | null>(null)
+  const [tested, setTested] = useState<{ url: string; connected: boolean; device?: string; latencyMs?: number; error?: string } | null>(null)
 
   // Test → checkConnection(candidate) — the candidate-scoped status +
   // object-info pull (task 2's seams) — then the walk records the verdict
@@ -278,7 +278,7 @@ function EngineStep(props: {
     setTesting(true)
     try {
       const status = await checkConnection(url)
-      setTested({ url, connected: status.connected === true, device: status.stats?.devices?.[0]?.name, error: status.error })
+      setTested({ url, connected: status.connected === true, device: status.stats?.devices?.[0]?.name, latencyMs: status.latencyMs, error: status.error })
       onCandidate((current) => markEngineVerified(current, url, status.connected === true))
     } finally {
       setTesting(false)
@@ -333,7 +333,7 @@ function EngineStep(props: {
       </Button>
     </div>
     {tested && tested.url === candidate.comfyUrl && (tested.connected
-      ? <p className="canvas-wizard-ok" data-wizard-connected><Check size={13} /> Engine reachable{tested.device ? ` — ${tested.device}` : ''}.</p>
+      ? <p className="canvas-wizard-ok" data-wizard-connected><Check size={13} /> Engine reachable{tested.device ? ` — ${tested.device}` : ''}{typeof tested.latencyMs === 'number' ? ` · ${tested.latencyMs} ms` : ''}.</p>
       : <p className="canvas-wizard-warn" data-wizard-unreachable>Not reachable at {tested.url}{tested.error ? ` — ${tested.error}` : ''}. Start the engine and test again, or continue and connect later.</p>)}
     <div className="canvas-wizard-row">
       <span className="canvas-wizard-hint">Not sure of the port? The probe asks each common port for a heartbeat — you click, it asks; nothing probes on its own.</span>

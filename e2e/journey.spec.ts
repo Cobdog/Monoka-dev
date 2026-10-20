@@ -1019,15 +1019,19 @@ test('the preview-crash retry surfaces as a first-class named event, never a sil
 
 /** (3p14abm task 4) THE REWORKED WALK'S ENGINE STEP — the anti-regression
  *  pin for the candidate model (spec §2.1/§3): typing into the engine
- *  address NEVER writes configuration (pre-fix the address input saved
- *  settings on EVERY keystroke — the walk holds the candidate in memory
- *  now), Test verifies the CANDIDATE through the honest candidate-scoped
- *  path (task 2's `?url=` seams) with the device readout, and the footer is
- *  the five-step spine (Engine → Models → Node packs → LAN prep → First
- *  prompt). The negative observation is a legitimate sleep window per
- *  testing.md item 5: the typing window IS the assertion — a counting route
- *  handler must read ZERO across the keystrokes plus a poll-cycle beat
- *  (a poll would pass vacuously on an absence). */
+ *  address NEVER reaches the network as configuration — no settings POST,
+ *  no engine probe chasing the half-typed url (the old wizard wrote every
+ *  keystroke into the shared session STORE — pure state, no POST — and
+ *  EngineHost's probe loop then chased the half-typed urls; the walk holds
+ *  the candidate in memory now, and the wizard carries no settings
+ *  subscription at all). Test verifies the CANDIDATE through the honest
+ *  candidate-scoped path (task 2's `?url=` seams) with the device +
+ *  latency readout, and the footer is the five-step spine (Engine →
+ *  Models → Node packs → LAN prep → First prompt). The negative
+ *  observation is a legitimate sleep window per testing.md item 5: the
+ *  typing window IS the assertion — counting route handlers must read
+ *  ZERO across the keystrokes plus a poll-cycle beat (a poll would pass
+ *  vacuously on an absence). */
 test('the reworked walk: typing never saves, the candidate Test verifies, the footer is five steps (3p14abm task 4)', async ({ page, request }) => {
   test.setTimeout(240_000)
   const problems: string[] = []
@@ -1040,12 +1044,16 @@ test('the reworked walk: typing never saves, the candidate Test verifies, the fo
   let mirrorLog = ''
   mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
   mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  // The settings snapshot lives OUTSIDE the try so the finally can restore
+  // it even when an assertion dies mid-test — a skipped restore would leak
+  // the dead-mirror comfyUrl into this worker's later tests.
+  let originalSettings: Record<string, unknown> | null = null
   try {
     await expect.poll(async () => {
       try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
     }, { timeout: 15_000 }).toBe(true)
 
-    const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
     await request.post('/api/lan/settings', { data: { settings: {
       ...originalSettings,
       comfyUrl: `http://127.0.0.1:${mirrorPort}`,
@@ -1080,14 +1088,26 @@ test('the reworked walk: typing never saves, the candidate Test verifies, the fo
     const mirrorUrl = `http://127.0.0.1:${mirrorPort}`
     await expect(urlField).toHaveValue(mirrorUrl)
 
-    // THE NEGATIVE WINDOW: count settings saves while the candidate is
-    // edited keystroke-by-keystroke — first AWAY from the saved url (a real
-    // edit), then back. Pre-fix this walk fired one POST /api/lan/settings
-    // per character.
+    // THE NEGATIVE WINDOW: while the candidate is edited
+    // keystroke-by-keystroke — first AWAY from the saved url (a real edit),
+    // then back — count BOTH network shapes the old bug could produce: a
+    // settings POST (the exit's save leaking into typing) and an ENGINE
+    // PROBE aimed at the typed host (a reintroduced store-write per
+    // keystroke would re-arm EngineHost's watch loop against the
+    // half-typed urls — the actual old failure mode; nothing else in this
+    // test ever targets that host, so any hit is a regression signal).
     let settingsSaves = 0
+    let typedHostProbes = 0
     await page.route('**/api/lan/settings', async (route) => {
       if (route.request().method() === 'POST') settingsSaves += 1
       await route.continue()
+    })
+    // The predicate is bound once and handed to unroute by the SAME
+    // reference — unroute matches function selectors by identity.
+    const isTypedHost = (url: URL) => url.hostname === '10.255.255.1'
+    await page.route(isTypedHost, async (route) => {
+      typedHostProbes += 1
+      await route.abort()
     })
     await urlField.click()
     await page.keyboard.press('ControlOrMeta+a')
@@ -1101,8 +1121,10 @@ test('the reworked walk: typing never saves, the candidate Test verifies, the fo
     await urlField.pressSequentially(mirrorUrl, { delay: 15 })
     await expect(urlField).toHaveValue(mirrorUrl)
     await page.waitForTimeout(1_000)
-    expect(settingsSaves, 'zero settings saves across the whole typing session (the per-keystroke saves are dead)').toBe(0)
+    expect(settingsSaves, 'zero settings POSTs across the whole typing session (the network half)').toBe(0)
+    expect(typedHostProbes, 'zero engine probes aimed at the typed host (the probe loop never chases the candidate)').toBe(0)
     await page.unroute('**/api/lan/settings')
+    await page.unroute(isTypedHost)
 
     // Test verifies the CANDIDATE (task 2's candidate-scoped object-info
     // path): the connected readout names the mirror's device.
@@ -1111,11 +1133,13 @@ test('the reworked walk: typing never saves, the candidate Test verifies, the fo
     await expect(page.locator('[data-wizard-connected]')).toContainText('NVIDIA GeForce RTX 4090')
 
     expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
-
-    // ---- teardown ----------------------------------------------------------
-    await request.post('/api/lan/settings', { data: { settings: originalSettings } })
-    await resetSession(page)
   } finally {
+    // ---- teardown (runs on EVERY exit path — a failed assertion must not
+    // leak the dead-mirror comfyUrl to this worker's later tests) ----------
+    if (originalSettings !== null) {
+      await request.post('/api/lan/settings', { data: { settings: originalSettings } })
+      await resetSession(page)
+    }
     mirror.kill('SIGINT')
     await new Promise<void>((resolve) => {
       const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
