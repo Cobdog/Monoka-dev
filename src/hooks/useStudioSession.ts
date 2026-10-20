@@ -107,7 +107,10 @@ export function useStudioSession() {
   const engineMode = useSessionStore((state) => state.settings?.engine.mode)
   const { setSettings, setModelRootIsDefault, setSetupRequested, setModels, setScanning, setChecking, setGpu, setOllamaModels, setLlm, setEngineRuntime, setExternalEngine } = useSessionStore.getState()
 
-  const scanModels = useCallback(async (nextSettings: AppSettings, options?: { refresh?: boolean }) => {
+  // (§5.2) options.url scopes the read to a CANDIDATE engine (the walk's
+  // refresh rides the candidate it is working on — 3je6o48); absent:
+  // byte-parity (the saved settings' url, as every pre-walk caller reads).
+  const scanModels = useCallback(async (nextSettings: AppSettings, options?: { refresh?: boolean; url?: string }) => {
     setScanning(true)
     if (options?.refresh) dbg('inventory.refresh', { source: 'user' })
     try {

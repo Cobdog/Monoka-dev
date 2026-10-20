@@ -261,7 +261,11 @@ export function FirstRunWizard() {
       modelsRoot={walk.modelsRoot}
       onModelsRoot={(next) => updateWalk((current) => ({ ...current, modelsRoot: next }))}
       onOverridePick={pickOverride}
-      onRefresh={() => void scanModels(settings, { refresh: true })}
+      // (§5.2, 3je6o48) The in-walk refresh rides the CANDIDATE — the same
+      // rule the walk's Test and engineRecovery's resyncInventory follow:
+      // the read describes the engine the walk is working on, never the
+      // stale saved default (the fetch-settled auto-rescan rides this too).
+      onRefresh={() => void scanModels(settings, { refresh: true, url: walk.comfyUrl })}
     />
     if (step === 2) return <PacksStep
       gate={packsGate(walk)}

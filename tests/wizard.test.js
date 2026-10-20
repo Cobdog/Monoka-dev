@@ -1170,6 +1170,27 @@ test('the cost preview speaks the seam the submit runs — tier, steps, the wait
   ok(!/minutes-class/.test(fallback), 'the fallback does not claim the fast class')
 })
 
+// (3je6o48, the bridge half) The scanModels bridge the walk's Refresh rides:
+// the §5.2 candidate url lands ON THE QUERY — refresh semantics AND the url
+// together — and a call without a candidate stays byte-parity (no url param).
+// The server half (bootstrap?url= reads the candidate engine) is the resync
+// suite's (d3); this pins the renderer's bridge so the wiring cannot drop
+// the param silently — and it runs without a dist build (resync (d3) needs
+// one).
+test('the scanModels bridge carries refresh + the candidate url on the bootstrap query', async () => {
+  console.log('wizard: the refresh bridge — the candidate url on the query')
+  const calls = []
+  const client = loadTs('src/lib/apiClient.ts', {
+    window: { location: { search: '' } },
+    fetch: async (path) => { calls.push(String(path)); return { ok: true, json: async () => ({ models: [] }) } },
+    Headers: globalThis.Headers,
+  }).createWebApiClient()
+  await client.scanModels({ comfyUrl: 'http://saved.local' }, { refresh: true, url: 'http://127.0.0.1:8189' })
+  ok(calls[calls.length - 1] === '/api/lan/bootstrap?refresh=1&url=' + encodeURIComponent('http://127.0.0.1:8189'), 'the refresh rides refresh semantics + the candidate url')
+  await client.scanModels({ comfyUrl: 'http://saved.local' }, { refresh: true })
+  ok(calls[calls.length - 1] === '/api/lan/bootstrap?refresh=1', 'no candidate → byte-parity (no url param)')
+})
+
 test('suite summary', () => {
   console.log(`  wizard: ${passed} assertions passed`)
 })
