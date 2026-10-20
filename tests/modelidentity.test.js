@@ -27,15 +27,19 @@
 //      guard hoisted from the animation lane, asserted at its new home);
 //   8. B3's animation arm: digests hitting a row stamp catalogRowId, and
 //      the identity parser round-trips it;
-//   9. the request bound (≤64 per call) and the degraded-catalog cap
-//      (empty catalog → identity absent, today's behavior).
+//   9. the request bound (1..64 per call) and the degraded-catalog cap
+//      (empty catalog → identity absent, today's behavior);
+//   10. the digest stream's death policy: a worker death settles its
+//      in-flight hash null (the FIFO never wedges), a productive death
+//      recovers on the next hash, a death-before-first-completion goes
+//      dead forever (immediate nulls — never a re-spawn loop).
 
 import { test, afterAll } from 'vitest'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import { loadHashCatalog } from '../server/hashCatalog'
-import { createModelIdentityEngine, ModelIdentityRequestError, weightFilePath } from '../server/modelIdentity'
+import { createDefaultWorker, createModelIdentityEngine, ModelIdentityRequestError, weightFilePath } from '../server/modelIdentity'
 import { parseModelContentIdentity, parseModelContentIdentities } from '../shared/animation/types'
 
 const require = createRequire(import.meta.url)
@@ -253,7 +257,7 @@ test('(3) the size pre-filter skips impossible hashes without enqueueing', async
   const world = buildStandardWorld()
   const calls = []
   const engine = newEngine(world.catalog, { createWorker: makeCountingWorker(calls, { shaByPath: new Map([[world.pairSmall.abs, world.pairSmall.sha], [world.pairBig.abs, world.pairBig.sha]]) }) })
-  const settings = settingsFor({ loras: scratch.root })
+  const settings = settingsFor({ loras: scratch.root, diffusion_models: scratch.root })
 
   // A size matching no knownSizes row: a hash cannot hit — answered
   // unknown WITHOUT touching the queue (the 304-byte pair is exactly why:
@@ -263,6 +267,18 @@ test('(3) the size pre-filter skips impossible hashes without enqueueing', async
   eq(skipped.results[0].identity?.verifying, undefined, 'no verifying marker on a skipped hash')
   await engine.drain()
   eq(calls.length, 0, 'the queue stayed empty — no bytes were read')
+
+  // The size-excluded arm does NOT consult the name index (the review's
+  // Important): the stat is POSITIVE evidence the bytes are no row's, so
+  // an aliased basename attaches NOTHING — unknown, never a suspicion the
+  // seam's own stat disproves.
+  writeFixtureFile('alpha-renamed.safetensors', Buffer.alloc(2048, 9)) // alpha's alias; 2048 is no row's size
+  const aliased = engine.requestIdentification([{ kind: 'diffusion_models', name: 'alpha-renamed.safetensors' }], settings)
+  eq(aliased.results[0].identity?.verdict, 'unknown', 'a size-excluded file answers unknown even on an aliased name')
+  eq(aliased.results[0].identity?.family, undefined, 'no identity attaches against the size evidence')
+  eq(aliased.results[0].identity?.verifying, undefined, 'no verifying marker — the read was skipped')
+  await engine.drain()
+  eq(calls.length, 0, 'still zero reads — the aliased size was skipped too')
 
   // A size-matching file enqueues and answers verifying (the pair's small
   // leg; the big leg differs by exactly 304 bytes — both are known sizes).
@@ -456,6 +472,7 @@ test('(9) the request bound refuses abuse-shaped bodies; a degraded catalog leav
   // >64 files is the route's 400 shape — the seam throws the named error.
   const abuse = Array.from({ length: 65 }, (_, i) => ({ kind: 'diffusion_models', name: `f${i}.safetensors` }))
   assert.throws(() => engine.requestIdentification(abuse, settings), (err) => err instanceof ModelIdentityRequestError, '65 files refuse with the named error')
+  assert.throws(() => engine.requestIdentification([], settings), (err) => err instanceof ModelIdentityRequestError, 'an empty body refuses too (the 1..64 bound is honest)')
   assert.throws(() => engine.requestIdentification([{ kind: 'diffusion_models', name: 42 }], settings), (err) => err instanceof ModelIdentityRequestError, 'a malformed entry refuses')
 
   // Degraded mode (the EMPTY catalog): the attach leaves identity ABSENT —
@@ -468,4 +485,65 @@ test('(9) the request bound refuses abuse-shaped bodies; a degraded catalog leav
   const untouched = await degraded.attachIdentities(files, settings)
   eq(untouched[0].identity, undefined, 'the degraded attach attaches nothing')
   eq(untouched[0].name, 'alpha-weights.safetensors', 'the file itself rides unchanged')
+})
+
+// ---------------------------------------------------------------------------
+// (10) the digest stream's death policy — a dying worker SETTLES (never a
+// wedge), a productive death recovers, a birth death goes dead forever
+// ---------------------------------------------------------------------------
+
+// A worker that hashes normally EXCEPT a path carrying '/die-' — it exits
+// mid-flight without answering (the real-world death shape: the thread is
+// gone while a job is outstanding).
+const DIE_ON_DEMAND_SOURCE = `
+'use strict'
+const { createHash } = require('node:crypto')
+const { createReadStream } = require('node:fs')
+const { pipeline } = require('node:stream/promises')
+const { parentPort } = require('node:worker_threads')
+parentPort.on('message', (job) => {
+  if (String(job.absPath).includes('/die-')) process.exit(1)
+  const hash = createHash('sha256')
+  pipeline(createReadStream(job.absPath), hash).then(
+    () => parentPort.postMessage({ id: job.id, sha256: hash.digest('hex') }),
+    () => parentPort.postMessage({ id: job.id, error: 'unreadable' }),
+  )
+})
+`
+
+// A worker that dies at LOAD, before ever completing a job (the
+// deterministic-breakage shape: re-spawning cannot help).
+const DIE_ON_LOAD_SOURCE = `
+'use strict'
+require('node:worker_threads').parentPort.on('message', () => {})
+process.exit(1)
+`
+
+test('(10) a dying digest worker settles in-flight hashes null and never wedges the stream', async () => {
+  scratch = { dir: makeScratchDir(path.join(os.tmpdir(), 'monoka-modelidentity-10-')), root: makeScratchDir(path.join(os.tmpdir(), 'monoka-modelidentity-root-')) }
+  const world = buildStandardWorld()
+
+  // A PRODUCTIVE death (the worker had completed jobs): the mid-flight
+  // hash settles null — missing evidence, the callers' named refusals,
+  // never a hang, never a half-answer — and the NEXT hash lazily
+  // re-creates the stream (a transient death must not cost hash-confirmed
+  // for the process's remaining life).
+  const stream = createDefaultWorker(DIE_ON_DEMAND_SOURCE)
+  const first = await stream.hash(world.alpha.abs)
+  eq(first, world.alpha.sha, 'the live stream hashes normally')
+  const dying = await stream.hash(path.join(scratch.root, 'die-now.bin'))
+  eq(dying, null, 'the mid-flight death settles null (the FIFO keeps pumping — no wedge)')
+  const recovered = await stream.hash(world.beta.abs)
+  eq(recovered, world.beta.sha, 'the next hash re-created the stream and answers again')
+  stream.close()
+
+  // A BIRTH death (zero completions): the stream is dead for good —
+  // re-spawning on every job would only loop — and every hash answers
+  // null immediately (the non-gating degrade: verdicts fall back to
+  // name-suspected until the process restarts; the sidecar keeps every
+  // settled digest safe across it).
+  const doomed = createDefaultWorker(DIE_ON_LOAD_SOURCE)
+  eq(await doomed.hash(world.alpha.abs), null, 'the first hash settles null after a load death')
+  eq(await doomed.hash(world.beta.abs), null, 'the stream stays dead — no re-create loop, no hang')
+  doomed.close()
 })

@@ -142,7 +142,10 @@ export function weightFilePath(folder: string, name: string): string | null {
 
 /** What a digest stream must do: hash ONE file's bytes, answer its sha256
  *  (or null when the bytes are unreadable — missing evidence, never a hash
- *  of nothing). Injectable so tests can count and serialize reads. */
+ *  of nothing). Injectable so tests can count and serialize reads. THE
+ *  CONTRACT hash() must honor: it SETTLES — every call resolves, null when
+ *  the bytes cannot be read. A never-settling hash wedges the single FIFO
+ *  stream forever (pump waits on one job at a time by design). */
 export type DigestWorker = { hash(absPath: string): Promise<string | null>; close(): void }
 
 /** The real stream: one eval'd worker thread (self-contained source — no
@@ -170,29 +173,84 @@ parentPort.on('message', (job) => {
 })
 `
 
-function createDefaultWorker(): DigestWorker {
-  const worker = new Worker(WORKER_SOURCE, { eval: true })
+/** The real stream: one eval'd worker thread (self-contained source — no
+ *  sibling asset to compile or ship; tsc emits only JS and the worker must
+ *  exist identically under vitest's TS source AND the built dist-server).
+ *  Streaming sha256 — the file can be gigabytes, so it is never buffered
+ *  whole (the fetcher's sha256File precedent). Unref'd: an idle worker
+ *  never holds a process open. The `source` parameter is the test seam
+ *  (the death legs substitute a worker that exits on demand). */
+export function createDefaultWorker(source: string = WORKER_SOURCE): DigestWorker {
+  // DEATH POLICY (the review's Critical: a dead worker used to leave its
+  // waiters unsettled and the FIFO pumped-on-true forever — every later
+  // hash posting into the void). Now: a worker death (error/exit) settles
+  // every in-flight waiter null — missing evidence, never a hang, never a
+  // half-answer — logs once, and the NEXT hash lazily re-creates the
+  // stream (a transient death must not cost hash-confirmed for the
+  // process's remaining life). A replacement that dies WITHOUT ever
+  // completing a job marks the stream dead for good: that shape is
+  // deterministic breakage (the source failing to load), and re-spawning
+  // on every job would only loop. From there digests answer null
+  // immediately until the process restarts — the non-gating degrade (the
+  // verdicts fall back to name-suspected; the sidecar keeps every settled
+  // digest safe across the restart).
+  let worker = new Worker(source, { eval: true })
   worker.unref()
   const pending = new Map<number, (sha: string | null) => void>()
   let nextId = 1
+  let completions = 0 // the CURRENT worker's settled jobs (the deadForever rule)
+  let dead = false // the current worker is gone; the next hash re-creates
+  let deadForever = false // a fresh spawn died before its first completion
   const settle = (id: number, sha: string | null) => {
     const waiting = pending.get(id)
     if (waiting === undefined) return
     pending.delete(id)
     waiting(sha)
   }
-  worker.on('message', (message: { id: number; sha256?: string }) => settle(message.id, typeof message.sha256 === 'string' ? message.sha256 : null))
-  // A dead worker answers nothing more: fail its waiters null (missing
-  // evidence — the callers' named refusals), so the next hash never hangs.
-  worker.on('error', () => {
+  const onMessage = (message: { id: number; sha256?: string }) => {
+    completions += 1
+    settle(message.id, typeof message.sha256 === 'string' ? message.sha256 : null)
+  }
+  const onDeath = (why: 'error' | 'exit') => {
+    if (dead) return // error followed by exit (or a terminated worker) — one death, one log
+    dead = true
+    if (completions === 0) deadForever = true
     for (const id of [...pending.keys()]) settle(id, null)
-  })
-  worker.on('exit', () => {
-    for (const id of [...pending.keys()]) settle(id, null)
-  })
+    logger.warn(
+      { scope: 'modelIdentity', why, restartable: !deadForever, dropped: pending.size },
+      deadForever
+        ? 'the digest worker stream is dead and will not restart — digests answer null (missing evidence) until the process restarts; verdicts degrade to name-suspected'
+        : 'the digest worker died — in-flight digests answer null; the next hash re-creates the stream',
+    )
+  }
+  const attach = (w: Worker): void => {
+    let closed = false // this instance's own death guard (error→exit fires twice)
+    w.on('message', onMessage)
+    w.on('error', () => {
+      closed = true
+      onDeath('error')
+    })
+    w.on('exit', () => {
+      if (closed) return
+      closed = true
+      onDeath('exit')
+    })
+  }
+  attach(worker)
   return {
     hash: (absPath) =>
       new Promise((resolveJob) => {
+        if (deadForever) {
+          resolveJob(null) // gone for good — missing evidence, immediately (never a hang)
+          return
+        }
+        if (dead) {
+          completions = 0
+          dead = false
+          worker = new Worker(source, { eval: true })
+          worker.unref()
+          attach(worker)
+        }
         const id = nextId
         nextId += 1
         pending.set(id, resolveJob)
@@ -458,7 +516,20 @@ export function createModelIdentityEngine(options: ModelIdentityEngineOptions = 
 
   /** The §4 derivation, over this engine's indexes alone — no model-file
    *  I/O. The sha arm first (the only confirming evidence); the basename
-   *  alias arm second; unknown otherwise. */
+   *  alias arm second; unknown otherwise.
+   *
+   *  The caller's `kind` is DELIBERATELY not consulted here (the review's
+   *  kind-tolerance note, decided 2026-10-20: documented, not filtered):
+   *  the two kind vocabularies do not even align — catalog rows carry the
+   *  crawl's wider set (embeddings, model_patches, pack-ckpt, vdn, …),
+   *  ModelFile.kind is the six scanner kinds — so a kind filter would make
+   *  whole row classes unreachable from the folders that can legally hold
+   *  them. Content outranks folder metadata: a sha match IS the artifact
+   *  whatever folder it was enumerated in, and an aliased match across
+   *  kinds stays honest suspicion (the multi-row ambiguity guard attaches
+   *  nothing when a basename collides, and hash-confirmation corrects a
+   *  mis-suspicion the moment the bytes are read). CT4 may consult kind
+   *  for wire-level presentation; the lookup itself stays kind-blind. */
   function identifyInCatalog(current: HashCatalog, name: string, sha256?: string): ModelIdentityVerdict {
     if (typeof sha256 === 'string' && sha256.length > 0) {
       const row = current.bySha.get(sha256.toLowerCase())
@@ -525,7 +596,7 @@ export function createModelIdentityEngine(options: ModelIdentityEngineOptions = 
 
     requestIdentification(files, settings) {
       const current = ensureCatalog()
-      if (!Array.isArray(files) || files.length > 64) {
+      if (!Array.isArray(files) || files.length === 0 || files.length > 64) {
         throw new ModelIdentityRequestError(`models/identify takes 1..64 files (got ${Array.isArray(files) ? files.length : 'not-an-array'}).`)
       }
       for (const file of files) {
@@ -550,8 +621,16 @@ export function createModelIdentityEngine(options: ModelIdentityEngineOptions = 
             entry.identity = verdictToBlock(identifyInCatalog(current, file.name, settled))
           } else if (!current.knownSizes.has(sizeBytes)) {
             // The size pre-filter (spec §6): a size matching no row cannot
-            // hash-confirm — skip and answer unknown WITHOUT enqueueing.
-            entry.identity = verdictToBlock(identifyInCatalog(current, file.name))
+            // hash-confirm — skip the read and answer unknown WITHOUT
+            // enqueueing. The NAME index is deliberately NOT consulted on
+            // this arm: the stat is POSITIVE evidence the bytes are no
+            // catalog row's, so an aliased basename must not attach that
+            // row's identity — the size and the name would contradict, and
+            // the seam never ships a claim its own evidence disproves
+            // (unknown is the honest verdict; hash-confirmation stays
+            // reachable the day the file's bytes ARE a row's, because then
+            // the size matches and this arm never runs).
+            entry.identity = { verdict: 'unknown' }
           } else {
             void enqueueDigest(absPath as string, statKey)
             entry.identity = verdictToBlock(identifyInCatalog(current, file.name))
