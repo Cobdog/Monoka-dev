@@ -40,6 +40,7 @@
     "test:wizard": "vitest run wizard",
     "test:lanprep": "vitest run lanprep",
     "test:resync": "vitest run resync",
+    "test:identitywire": "vitest run identitywire",
     "test:ci-map": "vitest run ci-map",
     "smoke:server": "node scripts/smoke-server.cjs",
     "test:e2e": "pnpm build && playwright test --project=e2e",

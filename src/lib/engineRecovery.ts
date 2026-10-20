@@ -65,6 +65,10 @@ export type EngineRecoveryStore = {
   infoUrl(): string | null
   bumpInfoEpoch(): void
   setModels(models: ModelFile[]): void
+  /** (to7xpa7) The settle re-publish: merges identity blocks into the stored
+   *  models by (kind, name). Optional — a store without it (the older test
+   *  fakes) simply never absorbs; the drift path is unaffected. */
+  mergeModelIdentities?(models: ModelFile[]): void
   markEngineLost(at: number): void
   markEngineRecovered(at: number): void
   markInventoryResync(record: InventoryResyncRecord): void
@@ -131,6 +135,13 @@ export async function runEngineCheck(deps: EngineRecoveryDeps, url: string, sour
       const light = bridge.lightInventory ? await bridge.lightInventory(settings).catch(() => null) : null
       if (inventoryDrifted(store.models(), light)) {
         await resyncInventory(deps, 'drift', settings, url)
+      } else if (light) {
+        // (to7xpa7) The settle re-publish on the standing cadence: no drift,
+        // but the listing carries identity blocks the store may not have yet
+        // (a lazy digest settled server-side between ticks). The merge is
+        // keyed on (kind, name) and no-ops on identical blocks — an
+        // agreeing tick stays cheap and silent.
+        store.mergeModelIdentities?.(light.models)
       }
     }
   } else {

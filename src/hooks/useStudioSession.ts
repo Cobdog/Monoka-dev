@@ -40,6 +40,7 @@ const engineRecoveryDeps: EngineRecoveryDeps = {
     infoUrl: () => useSessionStore.getState().infoUrl,
     bumpInfoEpoch: () => useSessionStore.getState().bumpInfoEpoch(),
     setModels: (models) => useSessionStore.getState().setModels(models),
+    mergeModelIdentities: (models) => useSessionStore.getState().mergeModelIdentities(models),
     markEngineLost: (at) => useSessionStore.getState().markEngineLost(at),
     markEngineRecovered: (at) => useSessionStore.getState().markEngineRecovered(at),
     markInventoryResync: (record) => useSessionStore.getState().markInventoryResync(record),

@@ -552,6 +552,37 @@ export type MovieProject = {
   chatMessages: MovieChatMessage[]
 }
 
+/** Identity evidence for one model file (to7xpa7): the verdict vocabulary is
+ *  CLOSED — hash-confirmed (bytes read, sha matched a catalog row),
+ *  name-suspected (name/alias matched, no byte evidence — the honest
+ *  fallback, including remote engines and unconfigured roots), unknown.
+ *  Populated server-side through identifyModel; ABSENT only when the catalog
+ *  itself is absent (degraded = today's name-shape behavior). `verifying`
+ *  rides name-suspected while a digest is in flight (the interim vocabulary).
+ *  `aliases` rides hash-confirmed only (publisher basenames — the
+ *  duplicate-bytes tie-break's data; never a sha, never repo data). */
+export type ModelFileIdentity = {
+  verdict: 'hash-confirmed' | 'name-suspected' | 'unknown'
+  verifying?: boolean
+  family?: string
+  artifact?: string
+  variant?: string
+  quant?: string
+  dtype?: string
+  aliases?: string[]
+}
+
+/** One row of the identify route's answer (or the settle-merge's input): the
+ *  asked (kind, name) plus whatever identity the server can attach. The
+ *  store's mergeModelIdentities consumes both this shape and plain ModelFile
+ *  rows (the light listing rides the same merge). */
+export type ModelIdentityResult = {
+  kind: ModelKind
+  name: string
+  bytes?: number
+  identity?: ModelFileIdentity
+}
+
 export type ModelFile = {
   name: string
   /** Server-side only; not sent to the renderer (the API strips it). */
@@ -565,6 +596,10 @@ export type ModelFile = {
    *  reports no sizes). There are no local rows, no source tags, and no
    *  header-derived form tags: the registry lists filenames only, and the
    *  engine is the final arbiter of what a file contains. */
+  /** Identity evidence (to7xpa7) — see ModelFileIdentity. Settled-cache-only
+   *  on the inventory payloads (never a blocking wait); absent in degraded
+   *  mode only. */
+  identity?: ModelFileIdentity
 }
 
 export type MediaFile = {
@@ -923,6 +958,11 @@ export type DesktopApi = {
    *  absent, shape unexpected) — the caller treats null as "not judgeable",
    *  never as an empty inventory. */
   lightInventory(settings: AppSettings): Promise<{ models: ModelFile[]; servedKinds: string[] } | null>
+  /** (to7xpa7) The lazy-hash trigger: asks the server to start digests for
+   *  the named files (1–64 per call) and answer the interim vocabulary now.
+   *  The POLL is the standing inventory read — the bootstrap/light payloads
+   *  carry settled verdicts — never a second polling loop. Idempotent. */
+  identifyModelFiles(files: Array<{ kind: ModelKind; name: string }>): Promise<{ results: ModelIdentityResult[] }>
   getComfyStatus(url: string): Promise<ComfyStatus>
   /** clientId is accepted for interface compatibility but ignored by the
    *  server: submissions carry the server's own stable engine-session id

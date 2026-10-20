@@ -87,6 +87,7 @@ const SUITES = {
   'handoff-classes': { build: null, windows: false, python: false, ffmpeg: false },
   hashcatalog: { build: 'server', windows: false, python: false, ffmpeg: false },
   instance: { build: 'full', windows: true, python: false, ffmpeg: false },
+  identitywire: { build: 'server', windows: false, python: false, ffmpeg: false },
   lanprep: { build: 'full', windows: false, python: false, ffmpeg: false },
   layerRegistry: { build: null, windows: false, python: false, ffmpeg: false },
   launcher: { build: 'full', windows: false, python: false, ffmpeg: false },
@@ -116,16 +117,16 @@ const SUITES = {
 
 /** Every suite that boots dist-server/server/index.js directly (route-level
  *  integration): the honest fan-out for the server seams. */
-const BOOTING = ['animation-export', 'animation-routes', 'datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'jobwatcher', 'lanprep', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const BOOTING = ['animation-export', 'animation-routes', 'datasets', 'documents', 'fetcher', 'filmstrip', 'identitywire', 'instance', 'jobwatcher', 'lanprep', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 
 /** Every suite drawing scratch ports through tests/lib/ports.cjs. */
-const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'jobwatcher', 'lanprep', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'identitywire', 'instance', 'jobwatcher', 'lanprep', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 /** Every kit suite reading src/styles.css through the shared sheet reader
  *  (tests/lib/styleSheet.cjs — the near-term-A parser consolidation). */
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
 
 /** The suites that load client TS through the VM harness (scripts/lib/ts-vm.cjs). */
-const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'vdn', 'wizard', 'workflows']
+const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'identitywire', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'vdn', 'wizard', 'workflows']
 
 /** Every vitest suite — the FULL fallback set. */
 const ALL_SUITES = Object.keys(SUITES).sort()
@@ -351,9 +352,14 @@ const RULES = [
     reason: 'a suite file always runs itself.',
   },
   {
+    match: ['tests/lib/hashfixture.cjs'],
+    suites: ['identitywire', 'fetcher'],
+    reason: 'the identity fixtures builder (to7xpa7): writes real bytes, computes real shas, emits fixture catalogs — the identitywire suite builds its engine listings + catalog from it, and the fetcher suite\'s catalog-stamp leg (f5) builds its row from it; a helper diff runs both consumers.',
+  },
+  {
     match: ['tests/**'],
     suites: [],
-    reason: 'test helpers/fixtures — the load-bearing ones (ports.cjs, styleSheet.cjs, ci-map) have their own rules above.',
+    reason: 'test helpers/fixtures — the load-bearing ones (ports.cjs, styleSheet.cjs, ci-map, hashfixture) have their own rules above.',
   },
 
   // ---------- src client (VM-harness module map) ------------------------
@@ -408,8 +414,13 @@ const RULES = [
   },
   {
     match: ['src/types.ts'],
-    suites: ['animation-routes'],
-    reason: 'the shared type surface: the RealtimeJsonChannel union gained the animation channel (animation module task 5) — the wire behavior (channel subscribe + envelope delivery) is what a suite can pin, and animation-routes drives it through the real fabric.',
+    suites: ['animation-routes', 'identitywire'],
+    reason: 'the shared type surface: the RealtimeJsonChannel union gained the animation channel (animation module task 5) — the wire behavior (channel subscribe + envelope delivery) is what a suite can pin, and animation-routes drives it through the real fabric. ModelFile.identity (to7xpa7) is pinned END TO END by the identitywire suite\'s payload legs, so the type\'s identity surface rides that suite\'s diff too.',
+  },
+  {
+    match: ['src/state/sessionStore.ts'],
+    suites: ['identitywire'],
+    reason: 'the session store (to7xpa7): mergeModelIdentities — the settle upgrade that re-publishes identity blocks in place — executes directly in the identitywire suite through the VM harness (leg 7, the wizard\'s D6 contract). Before that the store rode the src/state no-unit-coverage catch-all; it now has direct execution, so its diffs must run the suite that drives it.',
   },
   {
     match: ['src/lib/engineRecovery.ts'],

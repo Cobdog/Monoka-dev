@@ -48,6 +48,7 @@ import { ENGINE_PATCH_IDS, revertEnginePatch, ENGINE_PATCHES } from './enginePat
 import { mergeEngineProfiles } from './engineProfiles'
 import { checkAllNodePacks, checkNodePack, ENGINE_NODE_PACKS, findNodePack, installNodePack, isUsableCheckout, nodePackFolderPresence, resolveNodePackTarget, resolveVendorRoot, uninstallNodePack } from './engineNodes'
 import { INVENTORY_MODEL_KINDS, instanceNamesForKind, inventoryFromObjectInfo, parseModelsEndpointList, registryInventoryFiles } from './instanceInventory'
+import { attachIdentities, ModelIdentityRequestError, requestIdentification, type IdentificationRequest } from './modelIdentity'
 import { createObjectInfoProbe, probeClassPresence } from './objectInfoProbe'
 import { createManagerClient, managerInstallParams, managerUninstallParams, waitForManagerTask } from './managerClient'
 import { FETCH_ENTRY_IDS, fetchModelRootPath, findFetchEntry, networkFetchPackIds } from './fetchCatalog'
@@ -1732,7 +1733,14 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
             const info = await comfyFetch(candidate, '/object_info').catch((error: unknown) => { logFailure('bootstrap/object-info', error, undefined, 'debug'); return {} }) as Record<string, unknown>
             const upscalers = comfyChoices(info, 'UpscaleModelLoader', 'model_name')
             const inventory = await instanceInventoryFor({ ...settings, comfyUrl: candidate }, info)
-            const models = registryInventoryFiles(inventory)
+            // (to7xpa7) The identity populate: settled-cache lookups only —
+            // never a blocking wait, never a hash on a route. The roots are
+            // the SAVED SETTINGS' designation (a place the evidence can be
+            // read from) and deliberately NOT the ?url= candidate: an engine
+            // url says nothing about where bytes live. An empty catalog
+            // returns the listing unchanged — degraded mode is today's
+            // behavior, byte for byte.
+            const models = await attachIdentities(registryInventoryFiles(inventory), settings)
             logEvent({ kind: 'inventory.registry', connected: true, refresh: userRefresh, files: models.length })
             const ollama = await comfyFetch(settings.ollamaUrl, '/api/tags').catch((error: unknown) => { logFailure('bootstrap/ollama', error, undefined, 'debug'); return { models: [] } }) as { models?: Array<{ name?: string; size?: number; remote_model?: string }> }
             const ollamaModels = (ollama.models ?? []).filter((item) => item.name && !item.remote_model && item.size !== 342).map((item) => item.name as string)
@@ -1762,11 +1770,35 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           try {
             await comfyFetch(settings.comfyUrl, '/system_stats')
             const light = await lightInventoryFor(settings)
-            logEvent({ kind: 'inventory.registry', connected: true, light: true, files: light.models.length })
-            return sendJson(response, 200, { connected: true, models: light.models, servedKinds: light.servedKinds })
+            // (to7xpa7) The settle re-publish (spec §2's own words): the
+            // connected tick's light read carries the settled verdicts, so a
+            // digest that landed between ticks re-publishes through the
+            // standing cadence. Settled-cache lookups only; degraded mode
+            // returns the listing untouched.
+            const models = await attachIdentities(light.models, settings)
+            logEvent({ kind: 'inventory.registry', connected: true, light: true, files: models.length })
+            return sendJson(response, 200, { connected: true, models, servedKinds: light.servedKinds })
           } catch (error) {
             logEvent({ kind: 'inventory.registry', connected: false, light: true })
             return sendJson(response, 200, { connected: false, error: error instanceof Error ? error.message : String(error) })
+          }
+        }
+        // ---- (to7xpa7) The lazy-hash trigger: POST /api/lan/models/identify
+        // Starts digests for the named files and answers the INTERIM
+        // vocabulary immediately (verifying rides name-suspected) — the poll
+        // is the standing inventory read above, never a second polling loop.
+        // Synchronous by contract: the caller never waits on bytes. 1–64
+        // entries, shape-validated like every sibling route; the seam's named
+        // refusal maps to the route's 400.
+        if (url.pathname === '/api/lan/models/identify' && request.method === 'POST') {
+          const body = await readJson(request, 64_000)
+          const files = Array.isArray(body.files) ? body.files as IdentificationRequest[] : []
+          if (files.length < 1 || files.length > 64) return sendJson(response, 400, { error: 'Provide between 1 and 64 files per identify request.' })
+          try {
+            return sendJson(response, 200, requestIdentification(files, settings))
+          } catch (error) {
+            if (error instanceof ModelIdentityRequestError) return sendJson(response, 400, { error: error.message })
+            throw error
           }
         }
         if (url.pathname === '/api/lan/jobs' && request.method === 'POST') {

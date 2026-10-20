@@ -46,6 +46,7 @@ import { isAbsolute, join, resolve } from 'node:path'
 import type { AppSettings, FetchCatalogEntry, FetchEntryStatus, FetchPin, FetchProgress } from '../src/types'
 import { findNodePack, installNodePack, isUsableCheckout, linkNeverCopy, nodePackCustomNodesRoot, nodePackInstalledRevision, nodePackInstallDir, resolveNodePackTarget, uninstallNodePack, type NodePackTarget } from './engineNodes'
 import { FETCH_CATALOG, fetchModelRootPath, findFetchEntry, globToRegExp, modelRootTargetPath } from './fetchCatalog'
+import { loadHashCatalog } from './hashCatalog'
 
 // ---------------------------------------------------------------------------
 // Transport
@@ -425,7 +426,17 @@ export async function extractTarGz(archivePath: string, destDir: string, onProgr
 // Install records
 // ---------------------------------------------------------------------------
 
-export type FetchFileRecord = { path: string; sizeBytes: number; sha256: string; upstreamEtag?: string }
+export type FetchFileRecord = {
+  path: string
+  sizeBytes: number
+  sha256: string
+  upstreamEtag?: string
+  /** (B3, to7xpa7) The post-fetch self-verification: the sha256 was already
+   *  computed for pin verification — a lookup against the hash catalog
+   *  stamps the matching row's id here. Absence is honest (a sha matching
+   *  no row is not a failure; the record just carries no id). */
+  catalogRowId?: string
+}
 export type FetchInstallRecord = {
   at: number
   revision: string
@@ -700,6 +711,10 @@ export class FetchManager {
         // file carries one, size when every file carries a size.
         const allSha = entry.files.every((file) => typeof file.sha256 === 'string')
         const allSize = entry.files.every((file) => typeof file.sizeBytes === 'number')
+        // (B3, to7xpa7) The stamp's lookup table, loaded fresh per fetch (the
+        // loader reads env each call — a MONOKA_HASH_CATALOG change between
+        // fetches is observed; the file is small, the cost trivial).
+        const catalog = loadHashCatalog()
         let done = 0
         for (const file of entry.files) {
           // Dataset repos live under /datasets/<repo>; model repos at the
@@ -710,7 +725,13 @@ export class FetchManager {
           this.emit({ id: entry.id, phase: 'downloading', file: file.path, bytes: done, totalBytes })
           const result = await this.transport.download({ url, destPath: cached, expectedSizeBytes: file.sizeBytes, expectedSha256: file.sha256, onProgress: (bytes) => this.emit({ id: entry.id, phase: 'downloading', file: file.path, bytes: done + bytes, totalBytes }) })
           done += result.sizeBytes
-          record.files.push({ path: file.path, sizeBytes: result.sizeBytes, sha256: result.sha256, ...(result.upstreamEtag ? { upstreamEtag: result.upstreamEtag } : {}) })
+          record.files.push({
+            path: file.path,
+            sizeBytes: result.sizeBytes,
+            sha256: result.sha256,
+            ...(catalog.bySha.has(result.sha256) ? { catalogRowId: result.sha256 } : {}),
+            ...(result.upstreamEtag ? { upstreamEtag: result.upstreamEtag } : {}),
+          })
         }
         record.verified = allSha ? 'sha256' : allSize ? 'size' : 'none'
         this.emit({ id: entry.id, phase: 'placing', message: entry.destination.kind === 'pack-ckpt' ? 'linking into the pack ckpt tree' : 'linking into the model root' })

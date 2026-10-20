@@ -1,4 +1,4 @@
-import type { AppSettings, DesktopApi, SettingsRead, ExternalEngineStatus, FetchEntryStatus, LanProbeAnswer, LanStatusRead, LanTokenRead, LauncherConfigPatch, LauncherConfigWriteResult, LlmModelsResult, ManagedEngineStatus, ManagerAvailability, MediaKind, ModelFile, NodePackActionResult, NodePackStatus, PromptLibraryItem } from '../types'
+import type { AppSettings, DesktopApi, SettingsRead, ExternalEngineStatus, FetchEntryStatus, LanProbeAnswer, LanStatusRead, LanTokenRead, LauncherConfigPatch, LauncherConfigWriteResult, LlmModelsResult, ManagedEngineStatus, ManagerAvailability, MediaKind, ModelFile, ModelIdentityResult, NodePackActionResult, NodePackStatus, PromptLibraryItem } from '../types'
 
 /**
  * HTTP implementation of the DesktopApi bridge, used when the renderer runs in
@@ -159,6 +159,12 @@ export function createWebApiClient(): DesktopApi {
       } catch {
         return null
       }
+    },
+    async identifyModelFiles(files) {
+      // (to7xpa7) The lazy-hash trigger — the poll is the standing inventory
+      // read, so this is fire-and-read: the answer names what is verifying
+      // NOW, and the next bootstrap/light GET carries whatever settled.
+      return postJson<{ results: ModelIdentityResult[] }>('/api/lan/models/identify', { files })
     },
     async getComfyStatus(url: string) {
       const query = url ? `?url=${encodeURIComponent(url)}` : ''

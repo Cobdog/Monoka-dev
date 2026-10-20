@@ -3,7 +3,7 @@
  *  state `useStudioSession` held as React state. The hook keeps its boot-load
  *  and telemetry effects; only where the values live changed. */
 import { create } from 'zustand'
-import type { AppSettings, ComfyStatus, ExternalEngineFacts, GpuTelemetry, LlmModelsResult, ManagedEngineStatus, ModelFile, OllamaModel } from '../types'
+import type { AppSettings, ComfyStatus, ExternalEngineFacts, GpuTelemetry, LlmModelsResult, ManagedEngineStatus, ModelFile, ModelFileIdentity, ModelIdentityResult, OllamaModel } from '../types'
 import type { ObjectInfo } from '../lib/comfyInfo'
 import type { InventoryResyncRecord } from '../lib/engineWatch'
 
@@ -53,6 +53,13 @@ export type SessionState = {
   setModelRootIsDefault(modelRootIsDefault: boolean): void
   setSetupRequested(setupRequested: boolean): void
   setModels(models: ModelFile[]): void
+  /** (to7xpa7) The settle upgrade (the wizard's D6 contract): merges
+   *  identity blocks into the stored models by (kind, name) so
+   *  h3StackReport re-renders verdicts with no second fetch. Only REAL
+   *  changes publish a fresh array — the standing cadence re-delivering the
+   *  same settled blocks is a no-op, and identity-absent results (the
+   *  degraded light listing's shape) touch nothing. */
+  mergeModelIdentities(results: ModelIdentityResult[]): void
   setScanning(scanning: boolean): void
   setStatus(status: ComfyStatus): void
   setChecking(checking: boolean): void
@@ -66,6 +73,18 @@ export type SessionState = {
   markEngineRecovered(at: number): void
   bumpInfoEpoch(): void
   markInventoryResync(record: InventoryResyncRecord): void
+}
+
+/** Field-identity compare for two identity blocks (explicit, dependency-free
+ *  — aliases flatten to a join so array identity never reads as change). An
+ *  undefined old block is always a change. */
+function sameIdentity(a: ModelFileIdentity | undefined, b: ModelFileIdentity): boolean {
+  if (!a) return false
+  if (a.verdict !== b.verdict || a.verifying !== b.verifying) return false
+  if (a.family !== b.family || a.artifact !== b.artifact || a.variant !== b.variant || a.quant !== b.quant || a.dtype !== b.dtype) return false
+  const aAliases = a.aliases ? a.aliases.join('|') : undefined
+  const bAliases = b.aliases ? b.aliases.join('|') : undefined
+  return aAliases === bAliases
 }
 
 export const useSessionStore = create<SessionState>()((set) => ({
@@ -88,6 +107,23 @@ export const useSessionStore = create<SessionState>()((set) => ({
   setModelRootIsDefault: (modelRootIsDefault) => set({ modelRootIsDefault }),
   setSetupRequested: (setupRequested) => set({ setupRequested }),
   setModels: (models) => set({ models }),
+  mergeModelIdentities: (results) => set((state) => {
+    if (!Array.isArray(results) || results.length === 0) return state
+    const byKey: Record<string, ModelIdentityResult> = {}
+    for (const result of results) {
+      if (!result || typeof result.name !== 'string' || !result.identity) continue
+      byKey[`${result.kind}\u0000${result.name}`] = result
+    }
+    let changed = false
+    const models = state.models.map((model) => {
+      const next = byKey[`${model.kind}\u0000${model.name}`]
+      if (!next || !next.identity) return model
+      if (sameIdentity(model.identity, next.identity)) return model
+      changed = true
+      return { ...model, identity: next.identity }
+    })
+    return changed ? { models } : state
+  }),
   setScanning: (scanning) => set({ scanning }),
   setStatus: (status) => set({ status }),
   setChecking: (checking) => set({ checking }),

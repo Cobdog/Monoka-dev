@@ -21,6 +21,9 @@
 //       fasth3-live VAE row)
 //   (f4) the lightx2v turbo rows (D9, task 3p14abm): sha-pinned FL2V
 //       fast-tier LoRAs whose files the turbo ladder will actually pick
+//   (f5) B3's fetch arm (to7xpa7): a landed sha matching a catalog row
+//       stamps the install record's catalogRowId; matching nothing stays
+//       absent (the post-fetch self-verification is a lookup, never a gate)
 //   (g) engine-checkout: codeload tarball fetch → extract → main.py gate;
 //       a non-empty destination is refused
 //   (h) production HTTP transport against a local origin: redirect
@@ -59,6 +62,9 @@ const zlib = require('node:zlib')
 const crypto = require('node:crypto')
 const assert = require('node:assert/strict')
 const { makePortAllocator } = require('./lib/ports.cjs')
+// (f5) the catalog-stamp fixture: real bytes, real shas, a fixture catalog
+// through the loader's documented seam (tests/lib/hashfixture.cjs, to7xpa7).
+const { writeCatalogFile, catalogRow, fixtureBytes, sha256Of } = require('./lib/hashfixture.cjs')
 // (f4) trap-guard seam: the turbo ladder's family classifier, loaded from
 // source — the graph area loads through ts-vm everywhere (its turbo ↔
 // modelSelection ↔ index cycle needs the cache warmed index-first, the
@@ -630,6 +636,62 @@ maybe('(f4) the lightx2v turbo rows (D9, task 3p14abm): sha-pinned FL2V fast-tie
     // never pack ids.
     ok(FETCH_ENTRY_IDS.has('lightx2v-fl2v-turbo-8') && FETCH_ENTRY_IDS.has('lightx2v-fl2v-turbo-4'), 'both ids are registered fetch entries')
     ok(!networkFetchPackIds().has('lightx2v-fl2v-turbo-8') && !networkFetchPackIds().has('lightx2v-fl2v-turbo-4'), 'they are weights rows, never pack ids')
+  }
+})
+
+maybe('(f5) B3\'s fetch arm: a landed sha matching a catalog row stamps the record\'s catalogRowId; a sha matching nothing stays absent', async () => {
+  console.log('fetcher: the catalog-row stamp on install records')
+  {
+    // The stamp is a LOOKUP at fetch-complete, keyed on the sha the
+    // verification already computed — so the transport writes FIXED fixture
+    // bytes (real digest) and the fixture catalog carries a row for exactly
+    // those bytes. MONOKA_HASH_CATALOG rides process.env here because the
+    // manager runs IN this process; the env is restored in the finally.
+    const bytes = fixtureBytes('da3-fixture', 4096)
+    const sha = sha256Of(bytes)
+    const scratch = makeScratchDir(path.join(os.tmpdir(), 'monoka-fetch-catalog-'))
+    const row = catalogRow({ sha256: sha, sizeBytes: bytes.length, kind: 'geometry_estimation', identity: { family: 'depth-anything', artifact: 'da3', variant: 'base', quant: 'none', dtype: 'fp32' }, aliases: ['depth_anything_3_base.safetensors'] })
+    const rowedCatalog = writeCatalogFile(scratch, [row])
+    const emptyCatalog = writeCatalogFile(scratch, [])
+    const previous = process.env.MONOKA_HASH_CATALOG
+    try {
+      // -- the rowed catalog: the landed file stamps its row id ------------
+      process.env.MONOKA_HASH_CATALOG = rowedCatalog
+      const home = makeHome()
+      const settings = makeSettings(home)
+      const transport = makeClaimingTransport({ download: async (options) => {
+        fs.mkdirSync(path.dirname(options.destPath), { recursive: true })
+        fs.writeFileSync(options.destPath, bytes)
+        return { sizeBytes: bytes.length, sha256: sha, resumedBytes: 0 }
+      } })
+      const { manager, events } = makeManager(home, settings, transport)
+      settings.fetch.consents['da3-base'] = { consented: true, licenseSpdx: 'Apache-2.0' }
+      const result = await fetchAndAwait(manager, events, 'da3-base')
+      ok(!result.failure, `the fetch lands cleanly (${result.failure?.message ?? 'ok'})`)
+      const record = JSON.parse(fs.readFileSync(path.join(home, 'fetcher', 'fetch-state.json'), 'utf8')).installs['da3-base']
+      ok(record.files.length === 1, 'the record carries the landed file')
+      ok(record.files[0].sha256 === sha, 'the record\'s sha is the fixture bytes\' real digest')
+      ok(record.files[0].catalogRowId === sha, 'the record stamps the catalog row id (B3\'s post-fetch self-verification)')
+
+      // -- the EMPTY catalog: the same sha matches nothing — absence honest -
+      process.env.MONOKA_HASH_CATALOG = emptyCatalog
+      const home2 = makeHome()
+      const settings2 = makeSettings(home2)
+      const transport2 = makeClaimingTransport({ download: async (options) => {
+        fs.mkdirSync(path.dirname(options.destPath), { recursive: true })
+        fs.writeFileSync(options.destPath, bytes)
+        return { sizeBytes: bytes.length, sha256: sha, resumedBytes: 0 }
+      } })
+      const second = makeManager(home2, settings2, transport2)
+      settings2.fetch.consents['da3-base'] = { consented: true, licenseSpdx: 'Apache-2.0' }
+      const secondResult = await fetchAndAwait(second.manager, second.events, 'da3-base')
+      ok(!secondResult.failure, `the degraded fetch lands cleanly too (${secondResult.failure?.message ?? 'ok'})`)
+      const record2 = JSON.parse(fs.readFileSync(path.join(home2, 'fetcher', 'fetch-state.json'), 'utf8')).installs['da3-base']
+      ok(!('catalogRowId' in record2.files[0]), 'a sha matching no row carries NO catalogRowId key (absence is honest, never a null)')
+    } finally {
+      if (previous === undefined) delete process.env.MONOKA_HASH_CATALOG
+      else process.env.MONOKA_HASH_CATALOG = previous
+    }
   }
 })
 
