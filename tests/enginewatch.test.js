@@ -489,7 +489,7 @@ test('(a4) engineRecovery — the probe flow: recovery resync, drift resync, hon
   function makeHarness(models) {
     const calls = { getComfyStatus: [], getObjectInfo: [], scanModels: [], lightInventory: [] }
     const writes = { setModels: [], markEngineLost: [], markEngineRecovered: [], markInventoryResync: [], setInfo: [], bumpInfoEpoch: [] }
-    const state = { connected: false, models, settings: { comfyUrl: 'http://engine.local' } }
+    const state = { connected: false, models, settings: { comfyUrl: 'http://engine.local' }, infoUrl: null }
     let scanResult = null
     let scanError = null
     let lightAnswer = null
@@ -510,7 +510,8 @@ test('(a4) engineRecovery — the probe flow: recovery resync, drift resync, hon
           settings: () => state.settings,
           models: () => state.models,
           setStatus: (next) => { state.connected = next.connected },
-          setInfo: (info) => { writes.setInfo.push(info) },
+          infoUrl: () => state.infoUrl,
+          setInfo: (info, url) => { writes.setInfo.push(info); state.infoUrl = url ?? null },
           bumpInfoEpoch: () => { writes.bumpInfoEpoch.push(1) },
           setModels: (next) => { state.models = next; writes.setModels.push(next) },
           markEngineLost: (at) => { writes.markEngineLost.push(at) },
@@ -630,6 +631,86 @@ test('(a4) engineRecovery — the probe flow: recovery resync, drift resync, hon
     await recovery.runEngineCheck(h.deps, url, 'loop')
     eq(JSON.stringify(h.writes.setInfo[h.writes.setInfo.length - 1]), '{}', 'loss clears object_info (the last setInfo write empties it)')
     eq(h.writes.markEngineLost.length, 1, 'loss is marked')
+  }
+})
+
+// (a5) The §5 scoping residual (task zo22z6o, the wizard wave's final review,
+// 2026-10-20): the down-cadence loop probes the SAVED url while the walk
+// presents a candidate, and the old lost arm called setInfo({}) without
+// condition — on a virgin home (the saved default is dead) the walk's
+// Test-verified candidate object_info was wiped inside one RECHECK_DOWN_MS
+// window. The rule: an info clear belongs to the url that EARNED the store's
+// current info — a probe of url X may only degrade info pulled from X.
+test('(a5) engineRecovery — a lost saved-url probe never clobbers a fresher candidate-pulled info (§5 residual)', async () => {
+  const recovery = loadTs('src/lib/engineRecovery.ts')
+  const savedUrl = 'http://engine.local'
+  const candidateUrl = 'http://127.0.0.1:8188'
+
+  // Per-url liveness: the SAVED engine is down (the virgin home), the
+  // candidate the walk typed is up. The store records the url each info
+  // write was earned against — the same surface the session store carries.
+  function makeHarness() {
+    const calls = { getComfyStatus: [], getObjectInfo: [] }
+    const writes = { setInfo: [], bumpInfoEpoch: [] }
+    const state = { connected: false, info: {}, infoUrl: null }
+    const up = { [savedUrl]: false, [candidateUrl]: true }
+    return {
+      calls, writes, up,
+      deps: {
+        bridge: {
+          getComfyStatus: async (url) => { calls.getComfyStatus.push(url); return { connected: up[url] === true, latencyMs: 1 } },
+          getObjectInfo: async (url) => { calls.getObjectInfo.push(url); return { KSamplerSelect: {}, earnedBy: url } },
+          scanModels: async () => [],
+        },
+        store: {
+          status: () => ({ connected: state.connected }),
+          settings: () => ({ comfyUrl: savedUrl }),
+          models: () => [],
+          setStatus: (next) => { state.connected = next.connected },
+          infoUrl: () => state.infoUrl,
+          setInfo: (info, url) => { state.info = info; state.infoUrl = url ?? null; writes.setInfo.push({ info, url: url ?? null }) },
+          bumpInfoEpoch: () => { writes.bumpInfoEpoch.push(1) },
+          setModels: () => {},
+          markEngineLost: () => {},
+          markEngineRecovered: () => {},
+          markInventoryResync: () => {},
+        },
+      },
+    }
+  }
+
+  // The walk's Test: the candidate answers — its object_info lands, earned
+  // against the candidate url (the manual source).
+  {
+    const h = makeHarness()
+    await recovery.runEngineCheck(h.deps, candidateUrl, 'manual')
+    eq(h.writes.setInfo.length, 1, 'the candidate pull lands exactly one info write')
+    eq(h.writes.setInfo[0].url, candidateUrl, 'the write records the url it was earned against')
+
+    // THE FLAP: the loop's down-cadence probe of the SAVED url. The old code
+    // cleared the store's info right here — the candidate's verified registry
+    // gone 5 s after the walk earned it.
+    await recovery.runEngineCheck(h.deps, savedUrl, 'loop')
+    eq(h.writes.setInfo.length, 1, 'a lost probe of the SAVED url clears nothing (the info is not its url\'s)')
+
+    // The scope cuts both ways: a lost probe of the info's OWN url may clear
+    // it — that engine just answered unreachable.
+    h.up[candidateUrl] = false
+    await recovery.runEngineCheck(h.deps, candidateUrl, 'loop')
+    eq(h.writes.setInfo.length, 2, 'a lost probe of the info\'s own url still clears')
+    eq(h.writes.setInfo[1].info, {}, 'the clear lands the honest empty')
+    eq(h.writes.setInfo[1].url, candidateUrl, 'the clear is recorded against its url too')
+  }
+
+  // The connected pull that FAILS (the catch arm) is url-scoped by the same
+  // rule — its empty answers for its url alone.
+  {
+    const h = makeHarness()
+    h.deps.bridge.getObjectInfo = async () => { throw new Error('object_info refused') }
+    await recovery.runEngineCheck(h.deps, candidateUrl, 'manual')
+    eq(h.writes.setInfo.length, 1, 'a failed pull records the honest empty')
+    eq(h.writes.setInfo[0].info, {}, 'the failed pull\'s info is empty')
+    eq(h.writes.setInfo[0].url, candidateUrl, 'the failed pull\'s clear is url-scoped too')
   }
 })
 

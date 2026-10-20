@@ -131,6 +131,7 @@ function liveStore(models) {
         settings: () => state.settings,
         models: () => state.models,
         setStatus: (next) => { state.connected = next.connected },
+        infoUrl: () => null,
         setInfo: () => undefined,
         bumpInfoEpoch: () => undefined,
         setModels: (next) => { state.models = next; writes.models.push(next) },

@@ -25,6 +25,11 @@ export type SessionState = {
   checking: boolean
   gpu: GpuTelemetry | null
   info: ObjectInfo
+  /** (§5.2, zo22z6o) The url the CURRENT info was earned against — null when
+   *  none. engineRecovery's lost arm reads it: a probe clears only info its
+   *  own url earned, so the walk's candidate-verified registry survives the
+   *  saved url's down-cadence probes. */
+  infoUrl: string | null
   ollamaModels: OllamaModel[]
   /** Active LLM provider descriptor (router or Ollama fallback) from
    *  /api/lan/llm/models — drives assistant availability + model labels. */
@@ -52,7 +57,7 @@ export type SessionState = {
   setStatus(status: ComfyStatus): void
   setChecking(checking: boolean): void
   setGpu(gpu: GpuTelemetry | null): void
-  setInfo(info: ObjectInfo): void
+  setInfo(info: ObjectInfo, url?: string): void
   setOllamaModels(ollamaModels: OllamaModel[]): void
   setLlm(llm: LlmModelsResult | null): void
   setEngineRuntime(engineRuntime: ManagedEngineStatus | null): void
@@ -73,6 +78,7 @@ export const useSessionStore = create<SessionState>()((set) => ({
   checking: false,
   gpu: null,
   info: {},
+  infoUrl: null,
   ollamaModels: [],
   llm: null,
   engineRuntime: null,
@@ -86,7 +92,7 @@ export const useSessionStore = create<SessionState>()((set) => ({
   setStatus: (status) => set({ status }),
   setChecking: (checking) => set({ checking }),
   setGpu: (gpu) => set({ gpu }),
-  setInfo: (info) => set({ info }),
+  setInfo: (info, url) => set({ info, infoUrl: url ?? null }),
   setOllamaModels: (ollamaModels) => set({ ollamaModels }),
   setLlm: (llm) => set({ llm }),
   setEngineRuntime: (engineRuntime) => set({ engineRuntime }),

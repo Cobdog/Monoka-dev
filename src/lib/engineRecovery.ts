@@ -18,7 +18,9 @@
  *       dropping — the invisible restart the audit's mirror walk hit, where
  *       the engine came back between two probes and no transition fired —
  *       re-syncs within one cadence.
- *   - DISCONNECTED: clear object_info; mark the loss (R-01's contract).
+ *   - DISCONNECTED: clear object_info (URL-SCOPED — a probe clears only
+ *     info its own url earned, so the walk's candidate-verified registry
+ *     survives the saved url's lost-probe cadence); mark the loss (R-01).
  *
  * Failure honesty: a resync that throws records ok:false and never replaces
  * the store's inventory (an error-shaped return is a failure, not data).
@@ -52,7 +54,13 @@ export type EngineRecoveryStore = {
   settings(): AppSettings | null
   models(): ModelFile[]
   setStatus(status: ComfyStatus): void
-  setInfo(info: ObjectInfo): void
+  /** The url the info was earned against rides the write (§5.2): the store
+   *  records which engine the object_info describes. */
+  setInfo(info: ObjectInfo, url?: string): void
+  /** The url the store's CURRENT info was earned against (null: none — the
+   *  initial empty). The lost arm's clear reads it: a probe may only clear
+   *  info its own url earned. */
+  infoUrl(): string | null
   bumpInfoEpoch(): void
   setModels(models: ModelFile[]): void
   markEngineLost(at: number): void
@@ -95,10 +103,10 @@ export async function runEngineCheck(deps: EngineRecoveryDeps, url: string, sour
     const shouldPullInfo = transition === 'recovered' || source === 'boot' || source === 'manual'
     if (shouldPullInfo) {
       try {
-        store.setInfo(await bridge.getObjectInfo(url))
+        store.setInfo(await bridge.getObjectInfo(url), url)
         store.bumpInfoEpoch()
       } catch {
-        store.setInfo({})
+        store.setInfo({}, url)
       }
     }
     if (transition === 'recovered') {
@@ -120,7 +128,12 @@ export async function runEngineCheck(deps: EngineRecoveryDeps, url: string, sour
       }
     }
   } else {
-    store.setInfo({})
+    // (§5 residual, zo22z6o) The clear is URL-SCOPED: a probe may only
+    // degrade info its own url earned. The walk's candidate-verified
+    // object_info (a manual check of the typed candidate) must survive the
+    // SAVED url's down-cadence probes — on a virgin home the saved default
+    // being dead says nothing about the candidate the walk just verified.
+    if (store.infoUrl() === url) store.setInfo({}, url)
     if (transition === 'lost') store.markEngineLost(Date.now())
   }
   return nextStatus
