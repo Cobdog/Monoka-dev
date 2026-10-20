@@ -43,6 +43,7 @@ import { animationFabricEmitter, createAnimationRoutes, makeEngineEventTap } fro
 import { compileExtensionCaption, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../shared/animation/compiler'
 import { EngineProcess } from './engineProcess'
 import { RuntimeManager, RuntimeConfigError } from './runtime'
+import { isLoopbackPeer, LauncherConfigError, launcherEnvOverrides, probeBind, readLauncherConfig, resolveLauncherConfigPath, validateLauncherKeys, writeLauncherConfig, type LauncherConfigPatch } from './lanConfig'
 import { ENGINE_PATCH_IDS, revertEnginePatch, ENGINE_PATCHES } from './enginePatch'
 import { mergeEngineProfiles } from './engineProfiles'
 import { checkAllNodePacks, checkNodePack, ENGINE_NODE_PACKS, findNodePack, installNodePack, isUsableCheckout, nodePackFolderPresence, resolveNodePackTarget, resolveVendorRoot, uninstallNodePack } from './engineNodes'
@@ -3547,6 +3548,99 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           }
           return sendJson(response, 200, { settings: saved, ...(warnings.length ? { warnings } : {}) })
         }
+        // ---- LAN prep (wizard rework task 7, spec §2.4 — W-I1, W-I2/D8) --
+        // The walk's fourth step reads the live posture, probes the bind,
+        // and writes the launcher config (the SECOND store — never app
+        // settings) through the seam in server/lanConfig.ts.
+        if (url.pathname === '/api/lan/lan-status' && request.method === 'GET') {
+          // The posture read: the LIVE listener beside the live LanStatus,
+          // the env-override truth (the launcher exported these at boot —
+          // a key the file carries loses to them at the next boot, so the
+          // confirmation copy derives from this list and SAYS so), and the
+          // launcher config's own read (honestly unreadable when there is
+          // no file or no repo context — never a seed).
+          const configPath = resolveLauncherConfigPath()
+          let config: Record<string, unknown>
+          if (!configPath) {
+            config = { readable: false, reason: 'No launcher config location is discoverable (no repo context) — the launcher config cannot be read here.' }
+          } else {
+            try {
+              config = readLauncherConfig(configPath) as Record<string, unknown>
+            } catch (error) {
+              config = { readable: false, reason: error instanceof LauncherConfigError ? error.message : 'The launcher config could not be read.' }
+            }
+          }
+          return sendJson(response, 200, {
+            status: lanStatus,
+            posture: {
+              host: lanStatus.host ?? '0.0.0.0',
+              port: lanStatus.port ?? 4178,
+              secure: lanStatus.secure ?? false,
+              tokenEnforced: lanAuthRequired(),
+              tokenConfigured: lanToken !== '',
+            },
+            envOverrides: launcherEnvOverrides(),
+            config,
+          })
+        }
+        if (url.pathname === '/api/lan/lan-probe' && request.method === 'POST') {
+          // The bind probe (plan ruling 6): the host scope is the step's TWO
+          // choices — no arbitrary bind probing through this route — and the
+          // answer is EARNED, a real listen attempt on the exact address.
+          const body = await readJson(request, 4_000)
+          const host = body.host
+          const port = body.port
+          if (host !== '127.0.0.1' && host !== '0.0.0.0') return sendJson(response, 400, { error: 'host must be 127.0.0.1 (this machine only) or 0.0.0.0 (the whole network).' })
+          if (typeof port !== 'number' || !Number.isInteger(port) || port < 1024 || port > 65535) return sendJson(response, 400, { error: 'port must be an integer between 1024 and 65535.' })
+          return sendJson(response, 200, await probeBind(host, port))
+        }
+        if (url.pathname === '/api/lan/launcher-config' && request.method === 'POST') {
+          // The REAL second-store write (W-I1): validated READ-MODIFY-WRITE
+          // of the launcher's .start-config.json — every pre-existing key
+          // survives verbatim, a missing file is an honest refusal (never a
+          // seed), and the response names the env keys that will override
+          // the written values at the next boot.
+          const body = (await readJson(request, 16_000)) as Record<string, unknown>
+          const validKeys = ['port', 'host', 'https', 'token', 'qrPrint'] as const
+          const unknown = Object.keys(body).filter((key) => !validKeys.includes(key as (typeof validKeys)[number]))
+          if (unknown.length > 0) return sendJson(response, 400, { error: `Unknown launcher-config key(s): ${unknown.join(', ')} — valid keys are ${validKeys.join(', ')}.` })
+          const patch: LauncherConfigPatch = {}
+          for (const key of validKeys) {
+            if (body[key] !== undefined) (patch as Record<string, unknown>)[key] = body[key]
+          }
+          if (Object.keys(patch).length === 0) return sendJson(response, 400, { error: `No launcher-config keys were provided — valid keys are ${validKeys.join(', ')}.` })
+          const problems = validateLauncherKeys(patch)
+          if (problems.length > 0) return sendJson(response, 400, { error: problems.join('; ') })
+          const configPath = resolveLauncherConfigPath()
+          if (!configPath) return sendJson(response, 409, { written: [], reason: 'No launcher config location is discoverable (no repo context) — nothing was written.' })
+          try {
+            const result = writeLauncherConfig(configPath, patch)
+            return sendJson(response, 200, { written: result.written, config: result.config, envOverrides: launcherEnvOverrides() })
+          } catch (error) {
+            if (error instanceof LauncherConfigError) return sendJson(response, 409, { written: [], reason: error.message })
+            throw error
+          }
+        }
+        if (url.pathname === '/api/lan/lan-token' || url.pathname === '/api/lan/lan-token/rotate') {
+          // The token VALUE answers on this machine only (plan ruling 2):
+          // with enforcement off (the default posture) the outer /api/lan
+          // gate passes every peer, so these routes gate themselves —
+          // loopback works (the wizard runs on the host), and a LAN peer
+          // needs a VALID presented token (the same constant-time compare
+          // the outer gate uses).
+          const tokenHeader = request.headers['x-monoka-token']
+          const presentedToken = Array.isArray(tokenHeader) ? tokenHeader[0] : tokenHeader
+          if (!isLoopbackPeer(request.socket.remoteAddress) && !tokenMatches(presentedToken, lanToken)) {
+            return sendJson(response, 403, { error: 'The access token answers on this machine only.' })
+          }
+          if (url.pathname === '/api/lan/lan-token/rotate' && request.method === 'POST') {
+            const status = await rotateLanToken()
+            return sendJson(response, 200, { token: lanToken, enforced: lanAuthRequired(), status })
+          }
+          if (url.pathname === '/api/lan/lan-token' && request.method === 'GET') {
+            return sendJson(response, 200, { token: lanToken, enforced: lanAuthRequired() })
+          }
+        }
         if (url.pathname === '/api/lan/object-info' && request.method === 'GET') {
           // (wizard rework §5.1) The comfy-status pattern: an optional ?url=
           // candidate scopes the ask to the engine under test — never the
@@ -3889,6 +3983,27 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
     }
   }
 
+  /** The token rotation — hoisted from the return object (task 7) so the
+   *  loopback-gated /api/lan/lan-token/rotate route can call the SAME logic
+   *  the public seam exposes; the return object references this function.
+   *  Body byte-identical to the original inline closure. */
+  async function rotateLanToken(): Promise<LanStatus> {
+    lanToken = randomUUID().replace(/-/g, '')
+    await saveLanToken(lanToken)
+    if (lanStatus.running) {
+      // Scheme follows the actual listener (HTTPS by default): an http://
+      // link under TLS is dead on arrival and teaches users to paste
+      // certificate warnings away. The address follows the actual bind — a
+      // loopback-bound studio must not hand out LAN URLs.
+      const scheme = lanStatus.secure ? 'https' : 'http'
+      const boundHost = lanStatus.host ?? '0.0.0.0'
+      const address = boundHost === '127.0.0.1' || boundHost === 'localhost' || boundHost === '::1' ? '127.0.0.1' : lanAddress()
+      const origin = `${scheme}://${address}:${lanStatus.port ?? 4178}`
+      lanStatus = { ...lanStatus, url: `${origin}/?mobile=1&token=${lanToken}`, desktopUrl: `${origin}/?desktop=1&token=${lanToken}` }
+    }
+    return lanStatus
+  }
+
   async function startLanServer() {
     const configuredPort = Number(process.env.MONOKA_LAN_PORT)
     const port = Number.isInteger(configuredPort) && configuredPort >= 1024 && configuredPort <= 65535 ? configuredPort : 4178
@@ -4006,21 +4121,6 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
      *  boot reconcile. External mode never fires its side effects. */
     runtime,
     status: () => lanStatus,
-    rotateToken: async () => {
-      lanToken = randomUUID().replace(/-/g, '')
-      await saveLanToken(lanToken)
-      if (lanStatus.running) {
-        // Scheme follows the actual listener (HTTPS by default): an http://
-        // link under TLS is dead on arrival and teaches users to paste
-        // certificate warnings away. The address follows the actual bind — a
-        // loopback-bound studio must not hand out LAN URLs.
-        const scheme = lanStatus.secure ? 'https' : 'http'
-        const boundHost = lanStatus.host ?? '0.0.0.0'
-        const address = boundHost === '127.0.0.1' || boundHost === 'localhost' || boundHost === '::1' ? '127.0.0.1' : lanAddress()
-        const origin = `${scheme}://${address}:${lanStatus.port ?? 4178}`
-        lanStatus = { ...lanStatus, url: `${origin}/?mobile=1&token=${lanToken}`, desktopUrl: `${origin}/?desktop=1&token=${lanToken}` }
-      }
-      return lanStatus
-    },
+    rotateToken: rotateLanToken,
   }
 }

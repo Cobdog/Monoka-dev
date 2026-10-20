@@ -224,6 +224,8 @@
 .canvas-wizard-pack { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
 .canvas-wizard-pack strong { font-size: var(--text-sm); color: var(--muted-2); }
 .canvas-wizard-picks { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.canvas-wizard-pick { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.canvas-wizard-pick.current { border-color: var(--accent); }
 .canvas-wizard-fetch { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .canvas-wizard textarea { width: 100%; resize: vertical; }
 .canvas-wizard-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); }

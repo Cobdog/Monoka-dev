@@ -86,6 +86,7 @@ const SUITES = {
   h3img: { build: null, windows: false, python: false, ffmpeg: false },
   'handoff-classes': { build: null, windows: false, python: false, ffmpeg: false },
   instance: { build: 'full', windows: true, python: false, ffmpeg: false },
+  lanprep: { build: 'full', windows: false, python: false, ffmpeg: false },
   layerRegistry: { build: null, windows: false, python: false, ffmpeg: false },
   launcher: { build: 'full', windows: false, python: false, ffmpeg: false },
   llm: { build: 'full', windows: false, python: false, ffmpeg: false },
@@ -113,10 +114,10 @@ const SUITES = {
 
 /** Every suite that boots dist-server/server/index.js directly (route-level
  *  integration): the honest fan-out for the server seams. */
-const BOOTING = ['animation-export', 'animation-routes', 'datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'jobwatcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const BOOTING = ['animation-export', 'animation-routes', 'datasets', 'documents', 'fetcher', 'filmstrip', 'instance', 'jobwatcher', 'lanprep', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 
 /** Every suite drawing scratch ports through tests/lib/ports.cjs. */
-const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'jobwatcher', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'instance', 'jobwatcher', 'lanprep', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
 /** Every kit suite reading src/styles.css through the shared sheet reader
  *  (tests/lib/styleSheet.cjs — the near-term-A parser consolidation). */
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
@@ -294,6 +295,7 @@ const RULES = [
     suites: BOOTING,
     reason: 'SEAM — the server composition root: every booting suite executes it. Near-full by design; do not narrow.',
   },
+  { match: ['server/lanConfig.ts'], suites: ['lanprep', ...BOOTING], reason: 'the launcher-config seam (wizard rework task 7, 3p14abm): its own suite drives the RMW write + bind probe + loopback gate directly, and every booting suite executes it through core.ts\'s LAN routes.' },
   { match: ['server/dataHome.ts'], suites: ['rename-home', ...BOOTING], reason: 'the one-time data-home move (rename-T2): its own suite drives it against scratch homes, and every booting suite executes it through index.ts.' },
   { match: ['server/folderMigration.ts'], suites: ['rename-disk', ...BOOTING], reason: 'the one-time folder move (rename-T3): its own suite drives it against scratch trees (both arms + the collision refusal), and every booting suite executes it through startLanServer.' },
   {

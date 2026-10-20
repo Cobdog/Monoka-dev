@@ -456,3 +456,28 @@ maybe('(k) the move-pending guard: a seeded legacy home under a redirected HOME 
   })
   ok(exited, 'SIGTERM to the recorded PID stops the booted server')
 })
+
+maybe('(l) --print still parses with the LAN routes present (wizard task 7 regression floor)', async () => {
+  console.log('launcher: --print parses beside the LAN routes')
+  // The floor only (the real --setup legs are T9): the wizard's LAN routes
+  // are a server-side addition — the launcher's own contract (seed, parse,
+  // print the boot plan) must be untouched by them. This section reds if a
+  // routes change ever reaches back into the launcher's parsing.
+  const dir = scratch()
+  const config = path.join(dir, 'config.json')
+  const port = await freePort()
+  const vitePort = await freePort()
+  const seeded = run(['--print'], { env: { MONOKA_START_CONFIG: config, MONOKA_LAN_PORT: String(port), MONOKA_VITE_PORT: String(vitePort) } })
+  ok(seeded.code === 0, `a first dry run still exits 0 with the LAN routes present (got ${seeded.code})\n${seeded.out}`)
+  ok(fs.existsSync(config), 'the launcher still seeds its config on first run')
+  const reprint = run(['--print'], { env: { MONOKA_START_CONFIG: config, MONOKA_LAN_PORT: String(port), MONOKA_VITE_PORT: String(vitePort) } })
+  ok(reprint.code === 0, `a seeded config still parses and prints (got ${reprint.code})\n${reprint.out}`)
+  ok(reprint.out.includes(`port=${port}`), 'the printed plan still carries the boot port')
+
+  // The new seam compiled into the boot closure the routes ride.
+  if (!hasBuild) {
+    console.log('  NOTE: no build present — the lanConfig module arm is skipped (run pnpm build:server)')
+    return
+  }
+  ok(fs.existsSync(path.join(REPO, 'dist-server', 'server', 'lanConfig.js')), 'the launcher-config seam compiled into the boot closure')
+})

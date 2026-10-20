@@ -185,6 +185,19 @@ export const COMPONENT_FETCH_ROWS: Record<string, string> = {
  *  task 8's exit is the only place they are written. */
 export type WalkLanKeys = { host?: string; port?: number; token?: boolean }
 
+/** The step's two host choices (plan ruling 6 — the probe route refuses
+ *  anything else, so the walk's vocabulary matches). */
+export type LanHostChoice = '127.0.0.1' | '0.0.0.0'
+
+/** A bind probe verdict — earned for EXACTLY one host:port (the same
+ *  per-value discipline as the engine URL's per-URL verification). */
+export type LanProbeVerdict = {
+  host: LanHostChoice
+  port: number
+  claimable: boolean
+  reason?: string
+}
+
 /** The walk's CANDIDATE state — everything the walk collects, held in
  *  memory for the whole walk (spec §3: "No keystroke-saves mid-walk … the
  *  wizard holds CANDIDATE state in memory"). A crash or abandon mid-walk
@@ -209,6 +222,9 @@ export type WalkCandidate = {
   /** The LAN keys collected as candidates (task 7) — the exit's second
    *  store, never app settings (W-I1/W-M3). */
   lanKeys: WalkLanKeys
+  /** The bind-probe verdict for the LAN keys — earned for exactly one
+   *  host:port; any host/port edit clears it (null until then). */
+  lanProbe: LanProbeVerdict | null
 }
 
 /** The walk's starting state: the engine URL prefilled from settings, the
@@ -221,6 +237,7 @@ export function emptyWalkCandidate(comfyUrl: string): WalkCandidate {
     customNodesDir: emptyDestination(),
     overrides: {},
     lanKeys: {},
+    lanProbe: null,
   }
 }
 
@@ -314,14 +331,117 @@ export function packsGate(candidate: WalkCandidate): StepGate {
   return { verdict: 'verified' }
 }
 
-/** The LAN prep step's gate. No engine floor by design: the posture is the
- *  STUDIO server's, not the engine's (§3's table gates on the bind probe or
- *  keep-current). Keep-current — no keys collected — is the pass §3 names
- *  ("or the step was left at keep-current"): the fresh-clone path is one
- *  click. Task 7's designation extends this gate with the probe verdict. */
+// ---------------------------------------------------------------------------
+// The LAN prep step's pure block (task 7, spec §2.4): the designation state,
+// the D8 default, the probe-before-acceptance gate, and the exit seam task
+// 8's one-motion write reads. The launcher config is the SECOND store —
+// nothing here writes anything; the candidate keys are the whole story.
+// ---------------------------------------------------------------------------
+
+/** The host choice in world terms (§2.4): what each bind MEANS on the
+ *  network, not the socket spelling. */
+export const LAN_HOST_LAN_COPY = 'Any device on this network can open the studio.'
+export const LAN_HOST_LOCAL_COPY = 'This machine only — nothing else on the network can reach the studio.'
+
+/** The D8 truth, stated plainly: the printed URL invites a phone onto a
+ *  studio that today needs no token. Keeping the network open offers
+ *  enforcement ON (protection that asks the host nothing); turning it off
+ *  is one click away, and so are show/copy/reset. */
+export const LAN_TOKEN_TRUTH_COPY =
+  'The printed URL invites a phone onto a studio that today needs no token. Keeping the network open turns the access token on by default — show, copy, or reset it right here, or turn it off.'
+
+/** The restart honesty (§2.4): applies next start, never mid-session. */
+export const LAN_RESTART_COPY = 'Applies the next time the studio starts — the wizard never restarts the server.'
+
+/** The acceptance rule: claimability is answered BEFORE the designation is
+ *  accepted (§2.4 — "the step answers claimability before it accepts"). */
+export const LAN_PROBE_FIRST_COPY = 'Probe the port first — the designation is accepted once the bind answers claimable for exactly this address.'
+
+/** The launcher's own port rule (start.sh): integer 1024–65535. */
+export const LAN_PORT_RANGE_COPY = 'The port must be an integer between 1024 and 65535.'
+
+/** The D8 default (ruling D8): keeping the studio LAN-reachable offers
+ *  token enforcement ON — protection that asks the host nothing. Narrowing
+ *  to loopback offers OFF (nothing can reach it anyway). */
+export function lanTokenEnforcementDefault(host: LanHostChoice): boolean {
+  return host === '0.0.0.0'
+}
+
+/** A host choice. The D8 default RIDES the choice (the offer IS the token
+ *  key's candidate state — the step's toggle renders from it, and switching
+ *  addresses re-derives the offer rather than dragging the old answer
+ *  along). Clears the probe verdict: it belonged to the previous bind. */
+export function setLanHost(candidate: WalkCandidate, host: LanHostChoice): WalkCandidate {
+  return { ...candidate, lanProbe: null, lanKeys: { ...candidate.lanKeys, host, token: lanTokenEnforcementDefault(host) } }
+}
+
+/** A port edit. Clears the probe verdict (earned per host:port). */
+export function setLanPort(candidate: WalkCandidate, port: number | undefined): WalkCandidate {
+  return { ...candidate, lanProbe: null, lanKeys: { ...candidate.lanKeys, port } }
+}
+
+/** A token designation. NOT a bind edit — the probe verdict survives. */
+export function setLanToken(candidate: WalkCandidate, token: boolean): WalkCandidate {
+  return { ...candidate, lanKeys: { ...candidate.lanKeys, token } }
+}
+
+/** Keep-current: the DEFAULT and the one-click undo. Everything designated
+ *  and the verdict clear — nothing is written at the exit. */
+export function keepLanPosture(candidate: WalkCandidate): WalkCandidate {
+  return { ...candidate, lanKeys: {}, lanProbe: null }
+}
+
+/** Record a probe answer for EXACTLY the host:port asked — and complete the
+ *  designation with that bind: a probe IS the claim on a port, so the answer
+ *  designates what it answers for (the exit seam carries it only once the
+ *  gate verifies). An edit afterwards clears the verdict, the same as any
+ *  bind edit. */
+export function recordLanProbe(candidate: WalkCandidate, host: LanHostChoice, port: number, answer: { claimable: boolean; reason?: string }): WalkCandidate {
+  return { ...candidate, lanKeys: { ...candidate.lanKeys, host, port }, lanProbe: { host, port, claimable: answer.claimable, reason: answer.reason } }
+}
+
+/** The LAN prep step's gate (§3's table: "the designated host:port answered
+ *  the bind probe … or the step was left at keep-current"). No engine floor
+ *  by design: the posture is the STUDIO server's, not the engine's.
+ *  - Keep-current — no keys collected — is the pass §3 names: the
+ *    fresh-clone path is one click.
+ *  - A token-only designation changes no bind: verified, no probe owed.
+ *  - A bind designation needs the port rule satisfied and a claimable
+ *    verdict for EXACTLY that host:port — anything else refuses by name. */
 export function lanGate(candidate: WalkCandidate): StepGate {
-  void candidate
+  const keys = candidate.lanKeys
+  const designatesBind = keys.host !== undefined || keys.port !== undefined
+  if (!designatesBind) return { verdict: 'verified' }
+  if (keys.host !== '127.0.0.1' && keys.host !== '0.0.0.0') {
+    return { verdict: 'refused', reason: 'The host must be this machine only (127.0.0.1) or the whole network (0.0.0.0).' }
+  }
+  // An ABSENT port is an incomplete designation — probe-first territory (the
+  // recordLanProbe claim supplies it); the range rule names itself only when
+  // a port is present and breaks it.
+  if (keys.port !== undefined && (typeof keys.port !== 'number' || !Number.isInteger(keys.port) || keys.port < 1024 || keys.port > 65535)) {
+    return { verdict: 'refused', reason: LAN_PORT_RANGE_COPY }
+  }
+  const probe = candidate.lanProbe
+  if (!probe || probe.host !== keys.host || probe.port !== keys.port) {
+    return { verdict: 'refused', reason: LAN_PROBE_FIRST_COPY }
+  }
+  if (!probe.claimable) {
+    return { verdict: 'refused', reason: probe.reason ? `That port is not claimable (${probe.reason}). Try another port, then probe again.` : 'That port is not claimable. Try another port, then probe again.' }
+  }
   return { verdict: 'verified' }
+}
+
+/** The exit seam task 8's one-motion write reads: the launcher-config keys
+ *  this walk EARNED — null when the step was left at keep-current (nothing
+ *  written) and null when the gate refuses (an unprobed designation has
+ *  nothing verified to write). This is where §3's write contract ("the
+ *  designated host:port answered the bind probe, or keep-current") is
+ *  enforced for the exit; the exit motion itself is task 8's. */
+export function lanKeysForExit(candidate: WalkCandidate): WalkLanKeys | null {
+  if (lanGate(candidate).verdict !== 'verified') return null
+  const keys = candidate.lanKeys
+  if (keys.host === undefined && keys.port === undefined && keys.token === undefined) return null
+  return { ...(keys.host !== undefined ? { host: keys.host } : {}), ...(keys.port !== undefined ? { port: keys.port } : {}), ...(keys.token !== undefined ? { token: keys.token } : {}) }
 }
 
 /** The First prompt step's gate (task 8 extends: the cost preview's tier

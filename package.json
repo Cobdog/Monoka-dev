@@ -36,6 +36,7 @@
     "test:datasets": "vitest run datasets",
     "test:engine-contract": "vitest run engine-contract",
     "test:wizard": "vitest run wizard",
+    "test:lanprep": "vitest run lanprep",
     "test:resync": "vitest run resync",
     "test:ci-map": "vitest run ci-map",
     "smoke:server": "node scripts/smoke-server.cjs",

@@ -130,9 +130,10 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
     await page.locator('[data-wizard-next]').click()
     await expect(wizard).toHaveAttribute('data-wizard-step', '3')
     await expect(wizard).toContainText('4 of 5 — LAN prep')
-    // The LAN slot's honest keep-current panel (task 4's placeholder shell;
-    // task 7 fills it).
+    // The LAN step (task 7): keep-current is the DEFAULT — the fresh-clone
+    // journey passes in one click, nothing designated, nothing probed.
     await expect(page.locator('[data-wizard-lan]')).toBeVisible()
+    await expect(page.locator('[data-wizard-lan-keep][data-chosen="true"]')).toBeVisible()
     await page.locator('[data-wizard-next]').click()
     await expect(wizard).toHaveAttribute('data-wizard-step', '4')
     await expect(wizard).toContainText('5 of 5 — First prompt')

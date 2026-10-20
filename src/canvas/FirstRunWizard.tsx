@@ -13,8 +13,11 @@
  *                  (task 5 reworks the slot to named per-component truth).
  *   3. NODE PACKS — can-I-generate, the curated rows, the designated
  *                  install target, installs that verify in place (task 6).
- *   4. LAN PREP   — the honest keep-current panel (task 7's full
- *                  designation lands here).
+ *   4. LAN PREP   — the posture as a designation (task 7): host choice in
+ *                  world terms, port + bind probe before acceptance, the
+ *                  token offer with its D8 default, the printed URL —
+ *                  keep-current is the default; keys are candidates until
+ *                  the exit.
  *   5. FIRST PROMPT — one prompt spawns the first canvas chain (task 8
  *                  reworks the slot; today's PromptStep holds it).
  *
@@ -31,7 +34,7 @@ import { dbg } from '../lib/dbg'
 import { basenameOf } from '../lib/modelSelection'
 import { h3StackReport, canGenerateAnswer, stackVerdictText, type StackVerdict } from '../lib/h3Stack'
 import type { ObjectInfo } from '../lib/comfyInfo'
-import type { AppSettings, FetchEntryStatus, NodePackStatus } from '../types'
+import type { AppSettings, FetchEntryStatus, LanStatusRead, LanTokenRead, NodePackStatus } from '../types'
 import { useSessionStore } from '../state/sessionStore'
 import { useCanvasStore } from './store'
 import { CanvasSessionContext } from './sessionContext'
@@ -39,12 +42,18 @@ import { WIZARD_REOPEN_EVENT } from './FirstRunNotice'
 import { DesignationField } from './DesignationField'
 import { DIGEST_INTERIM_COPY, fetchLanded, modelsStepRows, type ComponentFetchView, type ModelsStepRow } from './wizardModels'
 import {
+  LAN_HOST_LAN_COPY,
+  LAN_HOST_LOCAL_COPY,
+  LAN_PORT_RANGE_COPY,
+  LAN_RESTART_COPY,
+  LAN_TOKEN_TRUTH_COPY,
   PACKS_AWAITING_RESTART_COPY,
   WALK_STEPS,
   curatedWizardPacks,
   customNodesPrefill,
   emptyWalkCandidate,
   isDesignated,
+  keepLanPosture,
   lanGate,
   markEngineVerified,
   modelsGate,
@@ -54,11 +63,16 @@ import {
   packsGate,
   packsInstallRefusal,
   promptGate,
+  recordLanProbe,
   setCandidateUrl,
   setDestinationValue,
+  setLanHost,
+  setLanPort,
+  setLanToken,
   shouldPresent,
   type CuratedPackRow,
   type DestinationState,
+  type LanHostChoice,
   type StepGate,
   type WalkCandidate,
 } from './wizardWalk'
@@ -225,7 +239,7 @@ export function FirstRunWizard() {
       configuredDir={settings.engine.externalCustomNodesDir ?? ''}
       onOpenPacks={() => setSettingsDock(true)}
     />
-    if (step === 3) return <LanStep gate={lanGate(walk)} />
+    if (step === 3) return <LanStep gate={lanGate(walk)} candidate={walk} onUpdateWalk={updateWalk} />
     return <PromptStep gate={promptGate(walk)} onDone={(prompt) => { patch({ done: true }); if (prompt.trim()) void submitPrompt(prompt, 'video') }} />
   })()
 
@@ -691,18 +705,181 @@ function PackRow(props: {
   </li>
 }
 
-/** Step 4 — LAN prep. PLACEHOLDER SHELL — task 7 lands the full designation
- *  (host choice, port with the bind probe, the token offer with its D8
- *  default, the printed URL). What renders today is the honest keep-current
- *  panel: nothing is designated in this step yet, so no network setting can
- *  change — the walk writes configuration once, at the exit, and only what
- *  a step designates (§3). Keep-current is §2.4's default; the fresh-clone
- *  path passes in one click. */
-function LanStep(props: { gate: StepGate }) {
+/** Step 4 — LAN prep (task 7, spec §2.4). The posture becomes a DESIGNATION:
+ *  host choice in world terms, port with the bind probe answered BEFORE
+ *  acceptance, the token offer with its D8 default, the printed URL with its
+ *  cert note. Restart honesty everywhere — keys are CANDIDATES (walk state);
+ *  they become launcher-config writes only at the exit (task 8), and the
+ *  wizard never restarts the server. Keep-current is the DEFAULT: the
+ *  fresh-clone path passes in one click (§3's named pass). No in-app QR (plan
+ *  ruling 3): the launcher's boot QR is the QR path; this step prints the
+ *  copyable URL. */
+function LanStep(props: { gate: StepGate; candidate: WalkCandidate; onUpdateWalk(move: (candidate: WalkCandidate) => WalkCandidate): void }) {
+  const { gate, candidate, onUpdateWalk } = props
+  // The live posture: read once on mount (the wizard never mutates it —
+  // the walk designates for the NEXT boot; the wizard never restarts).
+  const [read, setRead] = useState<LanStatusRead | null>(null)
+  const [readError, setReadError] = useState('')
+  const [probing, setProbing] = useState(false)
+  const [probeError, setProbeError] = useState('')
+  const [tokenState, setTokenState] = useState<LanTokenRead | null>(null)
+  const [tokenBusy, setTokenBusy] = useState(false)
+  const [tokenError, setTokenError] = useState('')
+  const [copied, setCopied] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    window.monoka.getLanStatus().then((answer) => { if (!cancelled) setRead(answer) }).catch((error: unknown) => { if (!cancelled) setReadError(error instanceof Error ? error.message : String(error)) })
+    return () => { cancelled = true }
+  }, [])
+
+  const keys = candidate.lanKeys
+  const touchesBind = keys.host !== undefined || keys.port !== undefined
+  const touchesAnything = touchesBind || keys.token !== undefined
+  const overrides = read?.envOverrides ?? []
+
+  // A host choice designates — port prefills from the LIVE posture (moving
+  // a custom-port boot by accident would be a silent lie; the 4178 default
+  // is what a fresh clone sees anyway), and the D8 default rides the choice.
+  const chooseHost = (host: LanHostChoice) => {
+    const port = keys.port ?? read?.posture.port ?? 4178
+    onUpdateWalk((current) => setLanHost(setLanPort(current, port), host))
+  }
+
+  const runProbe = async () => {
+    const host = keys.host
+    const port = keys.port
+    if ((host !== '127.0.0.1' && host !== '0.0.0.0') || typeof port !== 'number') {
+      setProbeError('Designate a host and a port first.')
+      return
+    }
+    setProbing(true)
+    setProbeError('')
+    try {
+      const answer = await window.monoka.probeLanBind(host, port)
+      onUpdateWalk((current) => recordLanProbe(current, host, port, answer))
+    } catch (error) {
+      setProbeError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setProbing(false)
+    }
+  }
+
+  const showToken = () => {
+    setTokenBusy(true)
+    setTokenError('')
+    window.monoka.getLanToken().then((answer) => setTokenState(answer)).catch((error: unknown) => setTokenError(error instanceof Error ? error.message : String(error))).finally(() => setTokenBusy(false))
+  }
+  const resetToken = () => {
+    setTokenBusy(true)
+    setTokenError('')
+    window.monoka.rotateLanToken().then((answer) => { setTokenState({ token: answer.token, enforced: answer.enforced }) }).catch((error: unknown) => setTokenError(error instanceof Error ? error.message : String(error))).finally(() => setTokenBusy(false))
+  }
+  const copy = (label: string, text: string) => {
+    void navigator.clipboard?.writeText(text).then(() => setCopied(label)).catch(() => setCopied(''))
+  }
+
+  const url = read?.status.url ?? ''
+  const secure = read?.status.secure ?? read?.posture.secure ?? false
+  const fingerprint = read?.status.certificateFingerprint
+  const probe = candidate.lanProbe
+
   return <div className="canvas-wizard-step" data-wizard-lan>
-    <p className="canvas-wizard-lede">LAN access — the studio serves its UI over the network posture it booted with. Keeping it is the default and changes nothing.</p>
-    <GateLine gate={props.gate} />
-    <p className="canvas-wizard-note">Nothing is designated in this step yet, so no network setting will change. The full designation — host reachability, port, the access token, the printable LAN URL — is this step's work; none of it is required to continue.</p>
+    <p className="canvas-wizard-lede">Who can open the studio? It is serving right now at the address below — keep that, narrow it to this machine, or keep the network and add a token.</p>
+    <GateLine gate={gate} />
+
+    {readError && <p className="canvas-wizard-warn" data-wizard-lan-read-error>The studio's live posture could not be read ({readError}) — the designation below still works; the printed URL will appear next boot.</p>}
+    {read && <div className="canvas-wizard-note" data-wizard-lan-live>
+      {url && <div className="canvas-wizard-row">
+        <span data-wizard-lan-url>{url}</span>
+        <button type="button" className="chip canvas-chip" data-wizard-lan-copy-url onClick={() => copy('url', url)}>{copied === 'url' ? 'Copied.' : 'Copy link'}</button>
+      </div>}
+      <span>{secure
+        ? <>HTTPS with a self-signed certificate — a phone will ask you to confirm once. Fingerprint {fingerprint ?? 'unavailable'}.</>
+        : 'Plain HTTP right now — no certificate is being served.'}</span>
+      {overrides.length > 0 && <span data-wizard-lan-overrides>The launcher environment sets {overrides.join(', ')} — those win over anything this step writes, every boot.</span>}
+    </div>}
+
+    {/* The keep-current card — the DEFAULT. Chosen while nothing at all is
+        designated; the one-click undo for every designation. */}
+    <div className={`canvas-wizard-pick${touchesAnything ? '' : ' current'}`} data-wizard-lan-keep data-chosen={String(!touchesAnything)}>
+      <button type="button" className="chip canvas-chip" data-wizard-lan-keep-click onClick={() => onUpdateWalk(keepLanPosture)}>Keep the current posture</button>
+      <span className="canvas-wizard-hint">Change nothing. {touchesAnything ? 'Everything designated above is cleared.' : 'The studio stays exactly as it is — nothing is written.'}</span>
+    </div>
+
+    {/* The host choice, in world terms (§2.4). */}
+    <div className="canvas-wizard-picks" data-wizard-lan-hosts>
+      <div className={`canvas-wizard-pick${keys.host === '0.0.0.0' ? ' current' : ''}`} data-wizard-lan-host="0.0.0.0">
+        <button type="button" className="chip chip--accent canvas-chip" onClick={() => chooseHost('0.0.0.0')}>Open to the network</button>
+        <span className="canvas-wizard-hint">{LAN_HOST_LAN_COPY}</span>
+      </div>
+      <div className={`canvas-wizard-pick${keys.host === '127.0.0.1' ? ' current' : ''}`} data-wizard-lan-host="127.0.0.1">
+        <button type="button" className="chip canvas-chip" onClick={() => chooseHost('127.0.0.1')}>This machine only</button>
+        <span className="canvas-wizard-hint">{LAN_HOST_LOCAL_COPY}</span>
+      </div>
+    </div>
+
+    {/* The port + bind probe — only within a designation, and the verdict is
+        earned BEFORE the gate accepts (claimability before acceptance). */}
+    {touchesBind && <div className="canvas-wizard-row" data-wizard-lan-bind>
+      <label htmlFor="wizard-lan-port">Port</label>
+      <input
+        id="wizard-lan-port"
+        type="number"
+        min={1024}
+        max={65535}
+        value={keys.port ?? ''}
+        data-wizard-lan-port
+        onChange={(event) => {
+          const text = event.target.value
+          if (text === '') { onUpdateWalk((current) => setLanPort(current, undefined)); return }
+          const parsed = Number(text)
+          if (Number.isInteger(parsed)) onUpdateWalk((current) => setLanPort(current, parsed))
+        }}
+      />
+      <button type="button" className="chip canvas-chip" data-wizard-lan-probe disabled={probing} onClick={() => { void runProbe() }}>{probing ? 'Probing…' : 'Probe this port'}</button>
+      <span className="canvas-wizard-hint">{LAN_PORT_RANGE_COPY}</span>
+      {probe && probe.claimable && <span className="canvas-wizard-ok" data-wizard-lan-probe-ok><Check size={13} /> This port is free on {probe.host} — the designation can be accepted.</span>}
+      {probe && !probe.claimable && <span className="canvas-wizard-warn" data-wizard-lan-probe-busy>{probe.reason ? `Not claimable: ${probe.reason}.` : 'Not claimable.'} Pick another port and probe again.</span>}
+      {probeError && <span className="canvas-wizard-warn" data-wizard-lan-probe-error>{probeError}</span>}
+    </div>}
+
+    {/* The token offer: STATE shown, the D8 truth stated plainly, and
+        show/copy/reset one click away (D8). The toggle designates for the
+        EXIT write; Reset is the one immediate fact (old links die), stated. */}
+    <div className="canvas-wizard-pick" data-wizard-lan-token>
+      <button
+        type="button"
+        className={`chip canvas-chip${keys.token === true ? ' chip--accent' : ''}`}
+        data-wizard-lan-token-toggle
+        data-chosen={String(keys.token === true)}
+        onClick={() => onUpdateWalk((current) => setLanToken(current, current.lanKeys.token !== true))}
+      >
+        {keys.token === true ? 'Access token: on at next start' : keys.token === false ? 'Access token: off' : 'Access token: not designated'}
+      </button>
+      <span className="canvas-wizard-hint">{keys.token === true
+        ? 'Links will need the token — the launcher prints the ready-to-open link at boot.'
+        : keys.token === false
+          ? 'The studio will serve without requiring a token.'
+          : LAN_TOKEN_TRUTH_COPY}</span>
+      <div className="canvas-wizard-row">
+        {!tokenState && <button type="button" className="chip canvas-chip" data-wizard-lan-token-show disabled={tokenBusy} onClick={showToken}>Show token</button>}
+        {tokenState && <>
+          <code data-wizard-lan-token-value>{tokenState.token}</code>
+          <button type="button" className="chip canvas-chip" data-wizard-lan-token-copy onClick={() => copy('token', tokenState.token)}>{copied === 'token' ? 'Copied.' : 'Copy'}</button>
+          <button type="button" className="chip canvas-chip" data-wizard-lan-token-reset disabled={tokenBusy} onClick={resetToken}>Reset token</button>
+          <span className="canvas-wizard-hint">Reset replaces the token now — printed links carrying the old one stop working.</span>
+        </>}
+        {tokenBusy && <span className="canvas-wizard-hint">working…</span>}
+        {tokenError && <span className="canvas-wizard-warn" data-wizard-lan-token-error>{tokenError}</span>}
+      </div>
+      {read && <span className="canvas-wizard-hint" data-wizard-lan-token-state>{read.posture.tokenEnforced
+        ? 'The token is enforced right now — links need it.'
+        : read.posture.tokenConfigured
+          ? 'A token exists; the studio currently serves without requiring it.'
+          : 'No token exists yet.'}</span>}
+    </div>
+
+    <p className="canvas-wizard-note">{LAN_RESTART_COPY}{keys.host || keys.port !== undefined ? ' Your designation lands in the launcher\'s config (not the studio settings) — the launcher reads it at every boot.' : ''}{overrides.length > 0 ? ` ${overrides.join(', ')} stay set in the launcher environment and win at boot.` : ''}</p>
   </div>
 }
 

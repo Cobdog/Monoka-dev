@@ -1,4 +1,4 @@
-import type { AppSettings, DesktopApi, SettingsRead, ExternalEngineStatus, FetchEntryStatus, LlmModelsResult, ManagedEngineStatus, ManagerAvailability, MediaKind, ModelFile, NodePackActionResult, NodePackStatus, PromptLibraryItem } from '../types'
+import type { AppSettings, DesktopApi, SettingsRead, ExternalEngineStatus, FetchEntryStatus, LanProbeAnswer, LanStatusRead, LanTokenRead, LauncherConfigPatch, LauncherConfigWriteResult, LlmModelsResult, ManagedEngineStatus, ManagerAvailability, MediaKind, ModelFile, NodePackActionResult, NodePackStatus, PromptLibraryItem } from '../types'
 
 /**
  * HTTP implementation of the DesktopApi bridge, used when the renderer runs in
@@ -344,6 +344,26 @@ export function createWebApiClient(): DesktopApi {
       if (query.sort) search.set('sort', query.sort)
       if (query.scope === 'all') search.set('scope', 'all')
       return apiFetch<{ items: PromptLibraryItem[]; cursor?: string }>(`/api/lan/prompt-library?${search}`)
+    },
+    // LAN prep (wizard rework task 7, spec §2.4): the posture read, the bind
+    // probe, the launcher-config write (the second store, W-I1), and the
+    // loopback-gated token routes. The refusal shapes ride the error path
+    // (apiFetch throws body.error on !ok) — honest refusals are rejections,
+    // never 200-with-error-data.
+    async getLanStatus() {
+      return apiFetch<LanStatusRead>('/api/lan/lan-status')
+    },
+    async probeLanBind(host: '127.0.0.1' | '0.0.0.0', port: number) {
+      return postJson<LanProbeAnswer>('/api/lan/lan-probe', { host, port })
+    },
+    async writeLauncherConfig(patch: LauncherConfigPatch) {
+      return postJson<LauncherConfigWriteResult>('/api/lan/launcher-config', patch)
+    },
+    async getLanToken() {
+      return apiFetch<LanTokenRead>('/api/lan/lan-token')
+    },
+    async rotateLanToken() {
+      return postJson<LanTokenRead & { status: LanStatusRead['status'] }>('/api/lan/lan-token/rotate', {})
     },
   }
 }

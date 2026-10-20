@@ -673,6 +673,49 @@ export type LanStatus = {
   certificateFingerprint?: string
 }
 
+// ---- LAN prep (wizard rework task 7, spec §2.4) — the walk's posture reads
+// and writes over the /api/lan/lan-* routes. ---------------------------------
+
+/** The applied posture: the LIVE listener's truth (not the config file's)
+ *  plus the token facts. */
+export type LanPosture = {
+  host: string
+  port: number
+  secure: boolean
+  tokenEnforced: boolean
+  tokenConfigured: boolean
+}
+
+/** The launcher config (`.start-config.json`) as the walk reads it: the
+ *  posture keys when the file answers, `{ readable: false, reason }` when
+ *  it does not (never a seed — the launcher seeds on ITS first run). */
+export type LauncherConfigRead =
+  | { port?: number; host?: string; https?: boolean; token?: boolean; qrPrint?: boolean; [key: string]: unknown }
+  | { readable: false; reason: string }
+
+export type LanStatusRead = {
+  status: LanStatus
+  posture: LanPosture
+  /** The launcher env keys set at boot (W-I1's honesty): they WIN over the
+   *  config file at the next boot — the confirmation copy names them. */
+  envOverrides: string[]
+  config: LauncherConfigRead
+}
+
+/** The bind probe's earned answer. */
+export type LanProbeAnswer = { claimable: boolean; reason?: string }
+
+/** The keys a launcher-config write may carry (the launcher's posture keys). */
+export type LauncherConfigPatch = { port?: number; host?: string; https?: boolean; token?: boolean; qrPrint?: boolean }
+
+export type LauncherConfigWriteResult = {
+  written: string[]
+  config: Exclude<LauncherConfigRead, { readable: false }>
+  envOverrides: string[]
+}
+
+export type LanTokenRead = { token: string; enforced: boolean }
+
 export type GpuTelemetry = {
   available: boolean
   name?: string
@@ -913,6 +956,14 @@ export type DesktopApi = {
   setFetchConsent(id: string, consented: boolean): Promise<{ entries: FetchEntryStatus[] }>
   startFetch(id: string, options?: { destinationDir?: string }): Promise<{ started: boolean; id: string }>
   removeFetched(id: string): Promise<{ entries: FetchEntryStatus[] }>
+  // LAN prep (wizard rework task 7, spec §2.4): the walk's posture read,
+  // bind probe, launcher-config write (the second store, W-I1), and the
+  // loopback-gated token routes.
+  getLanStatus(): Promise<LanStatusRead>
+  probeLanBind(host: '127.0.0.1' | '0.0.0.0', port: number): Promise<LanProbeAnswer>
+  writeLauncherConfig(patch: LauncherConfigPatch): Promise<LauncherConfigWriteResult>
+  getLanToken(): Promise<LanTokenRead>
+  rotateLanToken(): Promise<LanTokenRead & { status: LanStatus }>
 }
 
 /** One harvested community prompt (Civitai image metadata via the server's

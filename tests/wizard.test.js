@@ -680,6 +680,118 @@ test('the row sentence is the registry description\'s first sentence — the ess
   ok(walk.packRowSentence(plain) === plain, 'a single-sentence description renders whole')
 })
 
+// ---------------------------------------------------------------------------
+// TASK 7 — the LAN prep step (spec §2.4, W-I1, D8): the posture becomes a
+// designation. Keep-current is the DEFAULT (§3's named pass — the fresh
+// clone is one click); a designated host:port refuses until the bind probe
+// answers claimable for EXACTLY it (verification earned per host:port, the
+// same discipline as per-URL); the D8 default offers token enforcement ON
+// when keep-LAN is chosen, OFF on loopback. The exit seam (lanKeysForExit)
+// is what task 8's one-motion write reads.
+// ---------------------------------------------------------------------------
+
+test('the LAN designation: keep-current passes in one click; a bind designation refuses until the probe answers claimable for exactly it', () => {
+  console.log('wizard: the LAN step — the designation gate')
+
+  // KEEP-CURRENT IS THE DEFAULT (§2.4/§3): the fresh-clone path is one click
+  // — nothing designated, nothing written, gate verified.
+  const fresh = walk.emptyWalkCandidate('http://127.0.0.1:8188')
+  ok(fresh.lanKeys.host === undefined && fresh.lanKeys.port === undefined && fresh.lanKeys.token === undefined, 'a fresh candidate designates no LAN keys')
+  ok(fresh.lanProbe === null, 'a fresh candidate holds no probe verdict')
+  ok(walk.lanGate(fresh).verdict === 'verified', 'keep-current passes in one click (§3\'s named pass)')
+
+  // A host choice designates — and the gate refuses until the bind probe
+  // answers for exactly that host:port (claimability BEFORE acceptance).
+  const lan = walk.setLanHost(fresh, '0.0.0.0')
+  ok(lan.lanKeys.host === '0.0.0.0', 'the keep-LAN choice designates the network bind')
+  const gated = walk.lanGate(lan)
+  ok(gated.verdict === 'refused', `a designated bind refuses before any probe (got ${gated.verdict})`)
+  ok(gated.reason === walk.LAN_PROBE_FIRST_COPY, 'the refusal is the probe-first copy')
+
+  // The probe verdict earns the gate — for EXACTLY the designated host:port.
+  const probed = walk.recordLanProbe(lan, '0.0.0.0', 4178, { claimable: true })
+  ok(probed.lanProbe !== null && probed.lanProbe.claimable === true, 'a claimable verdict is recorded')
+  ok(walk.lanGate(probed).verdict === 'verified', 'a claimable verdict for exactly the designated host:port verifies')
+
+  // Not claimable: the honest refusal carries the probe's own reason.
+  const busy = walk.recordLanProbe(lan, '0.0.0.0', 4178, { claimable: false, reason: 'EADDRINUSE' })
+  const busyGate = walk.lanGate(busy)
+  ok(busyGate.verdict === 'refused', `a not-claimable verdict refuses (got ${busyGate.verdict})`)
+  ok(/EADDRINUSE/.test(busyGate.reason ?? ''), `the refusal carries the probe's reason (got ${JSON.stringify(busyGate.reason)})`)
+
+  // Verification is earned per host:port — an edit re-opens the gate, the
+  // stale verdict never follows (the per-URL discipline, now per-bind).
+  const moved = walk.setLanPort(probed, 5000)
+  ok(moved.lanKeys.port === 5000 && moved.lanProbe === null, 'a port edit clears the stale probe verdict')
+  ok(walk.lanGate(moved).verdict === 'refused', 'a stale verdict does not follow a port edit')
+  const rehost = walk.setLanHost(probed, '127.0.0.1')
+  ok(rehost.lanProbe === null, 'a host edit clears the stale probe verdict too')
+  // A token edit is NOT a bind edit — the verdict survives it.
+  const retoken = walk.setLanToken(probed, false)
+  ok(retoken.lanProbe !== null && retoken.lanProbe.claimable === true, 'a token edit leaves the probe verdict alone (the bind did not change)')
+  ok(walk.lanGate(retoken).verdict === 'verified', 'the gate stays verified across a token edit')
+
+  // The port rule: integer 1024–65535, the launcher's own validation —
+  // refused by name before any probe is even possible.
+  const low = walk.setLanPort(lan, 80)
+  const lowGate = walk.lanGate(low)
+  ok(lowGate.verdict === 'refused' && /1024|65535/.test(lowGate.reason ?? ''), `an out-of-range port refuses naming the rule (got ${JSON.stringify(lowGate.reason)})`)
+
+  // A token-only designation changes no bind — no probe owed, key still written.
+  const tokenOnly = walk.setLanToken(fresh, true)
+  ok(walk.lanGate(tokenOnly).verdict === 'verified', 'a token-only designation needs no bind probe (no bind changed)')
+
+  // Keep-current is reachable from anywhere — the one-click undo.
+  const kept = walk.keepLanPosture(probed)
+  ok(kept.lanKeys.host === undefined && kept.lanKeys.token === undefined && kept.lanKeys.port === undefined && kept.lanProbe === null, 'keep-current clears every designated key and the verdict')
+  ok(walk.lanGate(kept).verdict === 'verified', 'keep-current passes again after backing out')
+})
+
+test('the D8 default: keeping the network open offers token enforcement ON; narrowing to loopback offers it OFF', () => {
+  console.log('wizard: the LAN step — the D8 default')
+
+  ok(walk.lanTokenEnforcementDefault('0.0.0.0') === true, 'the network bind offers enforcement ON (protection that asks the host nothing)')
+  ok(walk.lanTokenEnforcementDefault('127.0.0.1') === false, 'the loopback bind offers enforcement OFF (nothing can reach it anyway)')
+
+  // The default RIDES the host choice — the offer is the toggle's state.
+  const lan = walk.setLanHost(walk.emptyWalkCandidate('http://127.0.0.1:8188'), '0.0.0.0')
+  ok(lan.lanKeys.token === true, 'choosing keep-LAN designates the token offer ON')
+  const local = walk.setLanHost(walk.emptyWalkCandidate('http://127.0.0.1:8188'), '127.0.0.1')
+  ok(local.lanKeys.token === false, 'narrowing to loopback designates the token offer OFF')
+  // And the host's own click re-derives the offer — switching addresses
+  // re-derives the default rather than dragging the old answer along.
+  const flipped = walk.setLanHost(lan, '127.0.0.1')
+  ok(flipped.lanKeys.token === false, 'switching the bind re-derives the offer (the old default does not survive the switch)')
+})
+
+test('the exit seam: only a verified designation carries keys — keep-current and refusals carry none (task 8 reads this)', () => {
+  console.log('wizard: the LAN step — the exit seam')
+
+  const fresh = walk.emptyWalkCandidate('http://127.0.0.1:8188')
+  ok(walk.lanKeysForExit(fresh) === null, 'keep-current carries nothing to the exit (nothing written)')
+
+  const lan = walk.setLanHost(fresh, '0.0.0.0')
+  ok(walk.lanKeysForExit(lan) === null, 'a refused designation carries nothing to the exit (the probe never answered)')
+
+  const probed = walk.recordLanProbe(lan, '0.0.0.0', 4178, { claimable: true })
+  const keys = walk.lanKeysForExit(probed)
+  ok(keys !== null && keys.host === '0.0.0.0' && keys.port === 4178 && keys.token === true, 'a verified designation carries its keys — host, port, and the D8 token offer — to the exit')
+
+  const tokenOnly = walk.setLanToken(fresh, true)
+  const tokenKeys = walk.lanKeysForExit(tokenOnly)
+  ok(tokenKeys !== null && tokenKeys.token === true && tokenKeys.host === undefined && tokenKeys.port === undefined, 'a token-only designation carries just its key')
+})
+
+test('the LAN copy speaks in world terms and states the truths plainly (D8, restart honesty)', () => {
+  console.log('wizard: the LAN step — the copy')
+
+  ok(/any device on this network/i.test(walk.LAN_HOST_LAN_COPY), 'the keep-LAN choice speaks in world terms')
+  ok(/this machine only/i.test(walk.LAN_HOST_LOCAL_COPY), 'the loopback choice speaks in world terms')
+  ok(/needs no token/.test(walk.LAN_TOKEN_TRUTH_COPY), 'the token truth states today\'s exposure plainly (the URL invites a phone onto a tokenless studio)')
+  ok(/next time the studio starts/i.test(walk.LAN_RESTART_COPY) && /never restarts/i.test(walk.LAN_RESTART_COPY), 'the restart honesty: applies next start, the wizard never restarts the server')
+  ok(/1024|65535/.test(walk.LAN_PORT_RANGE_COPY), 'the port rule copy names the range')
+})
+
 test('suite summary', () => {
   console.log(`  wizard: ${passed} assertions passed`)
 })

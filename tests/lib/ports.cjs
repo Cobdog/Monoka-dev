@@ -38,6 +38,7 @@ const RANGES = {
   jobwatcher: [4720, 40],
   instance: [6520, 40],
   resync: [6560, 40],
+  lanprep: [6600, 40],
   launcher: [7000, 100],
 }
 
