@@ -2361,3 +2361,54 @@ test('sweep #8: override layer counts — the chip attribution derivation (chain
   assert.equal(summary({ chain: 1, global: 2 }), 'chain pick (1) · global (2)', 'mixed layers are BOTH named — no row contradicted')
 })
 
+
+// ---------------------------------------------------------------------------
+// The lightx2v fetch rows (D9, task 3p14abm — the blessed wizard-rework
+// spec): the FL2V fast tiers become one-click on a fresh engine, so the tier
+// machinery's ONE truthful remediation names the fetch. One seam: the tier
+// menu (turboTierStates → PropertiesPanel) and the submit refusal
+// (turboTierRefusal → h3Submit) must name the SAME row id, and the named row
+// must exist in the catalog and land a file the tier ladder actually picks
+// (a fetch promise naming a row that does not deliver the family is the R2
+// F3 lie in a new coat). The ref2v lane and family-scoped resolutions keep
+// the publisher-only truth — no fetch rows exist for them, so a fetch
+// pointer there would be the same lie.
+// ---------------------------------------------------------------------------
+test('the lightx2v fetch rows (D9): the tier copy names the fetch through one seam; family truth stays publisher-only', () => {
+  const fetchCatalog = load('server/fetchCatalog.ts')
+  const turbo = load('src/lib/graph/turbo.ts')
+  const noTurbo = []
+  const official8 = [{ kind: 'loras', name: 'loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors', bytes: 0 }]
+
+  for (const tier of ['4', '8']) {
+    const rowId = tier === '4' ? 'lightx2v-fl2v-turbo-4' : 'lightx2v-fl2v-turbo-8'
+    const states = h3StackModule.turboTierStates(noTurbo, 'text')
+    assert.equal(states[tier].available, false, `tier ${tier} is unavailable on an empty inventory`)
+    const remediation = states[tier].remediation
+    assert.ok(remediation.includes(rowId), `tier ${tier}'s remediation names the fetch row ${rowId} (got: ${remediation})`)
+    assert.ok(remediation.includes('library') && remediation.includes('consent'), `tier ${tier}'s fetch pointer names the library and its consent gate (got: ${remediation})`)
+    assert.ok(remediation.includes('loras folder') && remediation.includes('refresh'), `tier ${tier}'s remediation keeps the publisher placement beside the fetch (got: ${remediation})`)
+    const refusal = h3StackModule.turboTierRefusal(tier, 'text')
+    assert.ok(refusal.includes(rowId), `the tier-${tier} submit refusal names the SAME fetch row — one seam (got: ${refusal})`)
+    assert.ok(refusal.includes('Quality'), `the tier-${tier} refusal keeps the Quality escape hatch (got: ${refusal})`)
+    // The named row exists, carries the blessed license, and lands a file
+    // the tier ladder will actually pick (the trap guard, seam-side).
+    const row = fetchCatalog.FETCH_CATALOG.find((entry) => entry.id === rowId)
+    assert.ok(row, `the named row ${rowId} exists in the fetch catalog`)
+    assert.equal(row.licenseSpdx, 'Apache-2.0', `${rowId} is license-clean (the blessed posture)`)
+    assert.equal(turbo.classifyTurboFamily(require('node:path').basename(row.files[0].path))?.id, tier === '4' ? 'turbo.lightx2v-fl2v-4' : 'turbo.lightx2v-fl2v-8', `${rowId}'s file satisfies the tier it unlocks`)
+  }
+
+  // An installed tier stays silent — the fetch pointer only rides absence.
+  const installed = h3StackModule.turboTierStates(official8, 'text')
+  assert.equal(installed['8'].available, true, 'the official 8-step install keeps tier 8 available')
+  assert.equal(installed['8'].remediation, '', 'an available tier carries no remediation')
+
+  // The ref2v lane and family-scoped resolutions keep the publisher-only
+  // truth: no fetch rows exist for them, so no fetch pointer may appear.
+  const refStates = h3StackModule.turboTierStates(noTurbo, 'reference')
+  assert.ok(refStates['8'].remediation.includes('drbaph') && !refStates['8'].remediation.includes('lightx2v-fl2v'), 'the ref2v lane stays publisher-truthful (got: ' + refStates['8'].remediation + ')')
+  assert.ok(!h3StackModule.turboTierRefusal('8', 'reference').includes('lightx2v-fl2v'), 'the ref2v refusal never names the fl2v fetch row')
+  const pdd = h3StackModule.turboTierStates(official8, 'text', 'turbo.pdd-fl2va-8')
+  assert.ok(pdd['8'].remediation.includes('alibaba-pai') && !pdd['8'].remediation.includes('lightx2v-fl2v'), 'an explicit family\'s remediation stays THAT family\'s truth (got: ' + pdd['8'].remediation + ')')
+})

@@ -19,6 +19,8 @@
 //   (f2) dataset-repo sources: HF DATASET repos download through the
 //       /datasets/<repo>/resolve/... URL form (task gg7mu3s — the gated
 //       fasth3-live VAE row)
+//   (f4) the lightx2v turbo rows (D9, task 3p14abm): sha-pinned FL2V
+//       fast-tier LoRAs whose files the turbo ladder will actually pick
 //   (g) engine-checkout: codeload tarball fetch → extract → main.py gate;
 //       a non-empty destination is refused
 //   (h) production HTTP transport against a local origin: redirect
@@ -57,6 +59,11 @@ const zlib = require('node:zlib')
 const crypto = require('node:crypto')
 const assert = require('node:assert/strict')
 const { makePortAllocator } = require('./lib/ports.cjs')
+// (f4) trap-guard seam: the turbo ladder's family classifier, loaded from
+// source — the graph area loads through ts-vm everywhere (its turbo ↔
+// modelSelection ↔ index cycle needs the cache warmed index-first, the
+// order vdn.test.js established; the built server carries no copy).
+const { loadTs } = require('../scripts/lib/ts-vm.cjs')
 // Scratch-home ledger (Wave 4 test hygiene): every mkdtemp registers;
 // afterAll tears them all down — per-run homes never leak again.
 const { makeScratchDir, removeAllScratchDirs } = require('./lib/scratch.cjs')
@@ -74,6 +81,7 @@ const maybe = hasServerBuild ? test : test.skip
 
 const {
   FETCH_CATALOG, findFetchEntry, fetchModelRootPath, fetchExtraModelRoots, matchesGlob, modelRootTargetPath,
+  FETCH_ENTRY_IDS, networkFetchPackIds,
 } = hasServerBuild ? require(path.join(REPO, 'dist-server', 'server', 'fetchCatalog.js')) : {}
 const { FetchManager, createHttpFetchTransport, extractTarGz, sha256File, transportForEnvironment } = hasServerBuild ? require(path.join(REPO, 'dist-server', 'server', 'fetcher.js')) : {}
 const { ENGINE_NODE_PACKS, checkNodePack, findNodePack } = hasServerBuild ? require(path.join(REPO, 'dist-server', 'server', 'engineNodes.js')) : {}
@@ -584,6 +592,43 @@ maybe('(f2) dataset-repo sources (gg7mu3s): /datasets/<repo>/resolve/... downloa
     ok(fs.existsSync(target) && path.basename(target) === 'minimax_h3_video_vae_w4a8_from_fp16.safetensors', 'the VAE links into the vae model root')
     const state = JSON.parse(fs.readFileSync(path.join(home, 'fetcher', 'fetch-state.json'), 'utf8'))
     ok(state.installs['fasth3-vae-w4a8'].verified === 'sha256', 'the gated-repo row still verifies at the sha256 level (the pin does not depend on the gate)')
+  }
+})
+
+maybe('(f4) the lightx2v turbo rows (D9, task 3p14abm): sha-pinned FL2V fast-tier LoRAs the turbo ladder will actually pick', async () => {
+  console.log('fetcher: lightx2v turbo rows (D9)')
+  {
+    loadTs('src/lib/graph/index.ts')
+    const { classifyTurboFamily } = loadTs('src/lib/graph/turbo.ts')
+    const row8 = findFetchEntry('lightx2v-fl2v-turbo-8')
+    const row4 = findFetchEntry('lightx2v-fl2v-turbo-4')
+    ok(row8 && row4, 'the two blessed rows exist in the catalog')
+    // The T=1-class trap guard: a fetched row's file must satisfy the tier
+    // it unlocks — files[0].path's basename classifies through the SAME
+    // TURBO_ENTRIES patterns the tier ladder resolves with. A row that
+    // lands a file the ladder will not pick is a fake remediation.
+    ok(classifyTurboFamily(path.basename(row8.files[0].path))?.id === 'turbo.lightx2v-fl2v-8', 'the 8-step row\'s file satisfies the fl2v 8-step turbo family')
+    ok(classifyTurboFamily(path.basename(row4.files[0].path))?.id === 'turbo.lightx2v-fl2v-4', 'the 4-step row\'s file satisfies the fl2v 4-step turbo family')
+    // Pins verified against the HF APIs 2026-10-19: tree-API sizes + LFS
+    // sha256 oids at repo HEAD 9bc1f3c0407805b00da9f762639cb435c644b2dc.
+    ok(row8.source.kind === 'hf' && row8.source.repo === 'lightx2v/Minimax-h3-Turbo' && row8.source.revision.kind === 'sha' && row8.source.revision.value === '9bc1f3c0407805b00da9f762639cb435c644b2dc', 'the 8-step row is sha-pinned at the lightx2v repo HEAD')
+    ok(row4.source.kind === 'hf' && row4.source.repo === 'lightx2v/Minimax-h3-Turbo' && row4.source.revision.kind === 'sha' && row4.source.revision.value === '9bc1f3c0407805b00da9f762639cb435c644b2dc', 'the 4-step row is sha-pinned at the same HEAD')
+    ok(row8.files[0].path === 'minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors' && row8.files[0].sizeBytes === 1_956_193_000 && row8.files[0].sha256 === '08cfe946033af7d27719b964b6e0a0e50c32138daabbd6ce4137e23df6bf9980', 'the 8-step row pins the verified LFS sha256 + size exactly')
+    ok(row4.files[0].path === 'minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors' && row4.files[0].sizeBytes === 1_956_193_000 && row4.files[0].sha256 === 'c8168ebc17bbacc4296103dda2fec1ba85b24392fa08cf2bfbcef0cff0dc3cc8', 'the 4-step row pins the verified LFS sha256 + size exactly')
+    // Placement + license: the loras root the tier ladder scans, the blessed
+    // license-clean posture, and the D9 admission rule — presence = ANY
+    // fl2v turbo of the tier, so the OFFICIAL Comfy-Org conversion satisfies
+    // the slot and a staged official file never reads as missing.
+    ok(row8.destination.kind === 'model-root' && row8.destination.root === 'loras' && row4.destination.root === 'loras', 'both rows land in the loras model root')
+    ok(row8.licenseSpdx === 'Apache-2.0' && row4.licenseSpdx === 'Apache-2.0', 'both rows carry the blessed license-clean posture (Apache-2.0)')
+    ok(matchesGlob('minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors', row8.detectGlob), 'the 8-step glob admits the official Comfy-Org conversion')
+    ok(matchesGlob('minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors', row8.detectGlob), 'the 8-step glob admits the row\'s own fetched name')
+    ok(matchesGlob('minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors', row4.detectGlob) && matchesGlob('minimax_h3_fl2v_turbo_4step_v0.1.safetensors', row4.detectGlob), 'the 4-step glob admits the fetched name and the ladder\'s older v0.1 pick')
+    ok(matchesGlob('minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors', row8.detectGlob) === false, 'the 8-step glob does NOT admit the ref2v sibling (the lanes stay distinct)')
+    // Catalog integrity extends: weights rows registered as fetch entries,
+    // never pack ids.
+    ok(FETCH_ENTRY_IDS.has('lightx2v-fl2v-turbo-8') && FETCH_ENTRY_IDS.has('lightx2v-fl2v-turbo-4'), 'both ids are registered fetch entries')
+    ok(!networkFetchPackIds().has('lightx2v-fl2v-turbo-8') && !networkFetchPackIds().has('lightx2v-fl2v-turbo-4'), 'they are weights rows, never pack ids')
   }
 })
 

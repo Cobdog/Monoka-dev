@@ -1232,11 +1232,13 @@ export function PropertiesPanel() {
               })}
             </ChipGroup>
             {/* (g1girm8) Presence truth at the choice point, VDN-note style:
-                an unavailable tier names its publisher source and placement —
-                never a fetch promise (the catalog carries no turbo rows, the
-                same truth the turbo-family note below states). Gated on the
-                engine snapshot: with no engine at all, the connection rung is
-                the first truthful step, not the LoRA placement. */}
+                an unavailable tier names its ONE remediation — publisher
+                source and placement, and (D9, task 3p14abm, 2026-10-19) the
+                catalog fetch for the fl2v lanes now that the lightx2v turbo
+                rows exist; family-scoped and ref2v resolutions stay
+                publisher-only. Gated on the engine snapshot: with no engine
+                at all, the connection rung is the first truthful step, not
+                the LoRA placement. */}
             {info && unavailableTiers.length > 0 && tierStates && (
               <p className="canvas-properties-note" data-canvas-tier-note role="note">
                 {unavailableTiers.map((tier) => `${tier === '4' ? 'Fast · 4-step' : 'Fast · 8-step'}: ${tierStates[tier].remediation}`).join(' ')} The Quality tier runs the native {draft.steps}-step path meanwhile.

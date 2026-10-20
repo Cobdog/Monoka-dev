@@ -306,6 +306,29 @@ dynamic int8 (disclosed deviation, [tde-results.md](../research/tde-results.md) 
 | `mohit67890/imajev` — the code (torch scoring/calibration path the eval imports verbatim) | **Apache-2.0** (LICENSE read from the fetched tree) `[LOCAL 2026-10-10]` | eval-time dependency (imported from the staged copy by `test-results/experiments/tde/scripts/tde_common.py`; nothing vendored, nothing shipped) |
 | `nomadoor/ComfyUI-TypedDecision` — the pack (the engine-lane integration reference; cross-read against the official path) | **MIT** (LICENSE read from the fetched tree) `[LOCAL 2026-10-10]` | fetch-consent (reference copy) |
 
+### 5k. The lightx2v turbo LoRA rows (the wizard's D9 fetch — 2026-10-19)
+
+The two blessed fast-tier rows (task 3p14abm; docs/specs/2026-10-17-wizard-rework.md
+§7 D9): lightx2v's FL2V turbo distillation line for the MiniMax-H3
+first-frame lane — 8-step v1.0 and 4-step v1.2, the ComfyUI-converted 768p
+bf16 files the tier tooltips already name. **Diligence (2026-10-19, HF
+APIs):** tree-API sizes + LFS sha256 oids at repo HEAD
+`9bc1f3c0407805b00da9f762639cb435c644b2dc`; both files sit at the repo ROOT
+(bare basenames; placement lands them in loras by basename). **License
+nuance:** the HF mirror `lightx2v/Minimax-h3-Turbo` ships NO LICENSE file
+(tags: `region:us` only) — its README states "Model assets are governed by
+the repository license" and links the GitHub source repo
+`ModelTC/Minimax-H3-Turbo`, whose GitHub license record and LICENSE text
+read **Apache-2.0** (LICENSE read 2026-10-19). The weights are MiniMax-H3
+derivatives, but the publisher licenses them permissive — the same
+fetchable posture as the Larryvrh pack and the Kijai TAE (§5a). The
+Ref2VA siblings in the same repo are deferred (first-run is the TEXT lane;
+a later curation curates them).
+
+| Asset (catalog ids) | License record | Mode |
+| --- | --- | --- |
+| `lightx2v-fl2v-turbo-8` + `lightx2v-fl2v-turbo-4` (lightx2v/Minimax-h3-Turbo — `minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors` @ `08cfe946…bf9980`, `minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors` @ `c8168ebc…dc3cc8`, both 1.96 GB) | **Apache-2.0** via the source repo ModelTC/Minimax-H3-Turbo (the HF mirror carries no LICENSE; README defers to "the repository license") `[API + LICENSE-read 2026-10-19]` | fetch-consent |
+
 ## 6. Fonts, icons, cursor (the shibui plan — none shipped yet)
 
 Planned per [shibui-fonts-icons.md](../research/shibui-fonts-icons.md); rows

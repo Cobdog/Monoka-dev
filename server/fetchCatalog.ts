@@ -39,6 +39,10 @@
  *    qwen-image-2.1-assessment.md), consent-gated under the non-commercial
  *    Qwen Research License — weights rows only; the A-3 family registry and
  *    lane graph factories are spec-round work.
+ *  - the blessed wizard D9 rows (task 3p14abm, 2026-10-19): lightx2v's FL2V
+ *    turbo LoRA line — the fast tier's own weights, the fetch that makes
+ *    the wizard's one-click path real (docs/specs/2026-10-17-wizard-rework.md
+ *    §7 D9). The Ref2VA siblings are deferred (first-run is the TEXT lane).
  *
  * Pin discipline (LICENSES.md §9.1): entries pin `sha | tag | branch`.
  * Branch pins are moving — the fetch engine resolves them to the HEAD SHA
@@ -58,7 +62,13 @@
  * files under diffusion_models/, text_encoders/ and vae/ at the repo
  * ROOT, with no split_files/ prefix; the placement basename rule lands
  * them in the matching roots regardless, verified against the loader
- * folder mappings in ComfyUI master's nodes.py).
+ * folder mappings in ComfyUI master's nodes.py) and on 2026-10-19 (the
+ * lightx2v turbo rows: tree-API sizes + LFS sha256 oids at repo HEAD
+ * 9bc1f3c0407805b00da9f762639cb435c644b2dc — files at the repo ROOT, bare
+ * basenames; the HF repo ships NO LICENSE file, so the Apache-2.0 verdict
+ * reads from the GitHub source repo ModelTC/Minimax-H3-Turbo's license
+ * record + LICENSE text, which the model README names as the governor of
+ * its model assets).
  */
 import { join, resolve } from 'node:path'
 import type { AppSettings, FetchCatalogEntry, FetchDestination, FetchModelRoot, ModelKind } from '../src/types'
@@ -804,6 +814,52 @@ export const FETCH_CATALOG: FetchCatalogEntry[] = [
     sizeClass: 'huge',
     experimentPrerequisite: true,
     homepage: 'https://huggingface.co/MATLOWAI/minimax-h3-fused-turbo-int8-convrot',
+  },
+
+  // ---- the lightx2v turbo LoRA rows (the wizard's D9 — task 3p14abm) ------
+  // The blessed one-click fast tier (docs/specs/2026-10-17-wizard-rework.md
+  // §7 D9, ruling 2026-10-19): lightx2v's FL2V turbo line, the exact files
+  // the tier tooltips already name. Pins verified against the HF APIs on
+  // 2026-10-19: tree-API sizes + LFS sha256 oids at repo HEAD
+  // 9bc1f3c0407805b00da9f762639cb435c644b2dc; both files sit at the repo
+  // ROOT (bare basenames — placement lands them in loras by basename).
+  // License: the HF repo ships NO LICENSE file (tags: region:us only); its
+  // README states "Model assets are governed by the repository license" and
+  // names the GitHub source repo ModelTC/Minimax-H3-Turbo, whose license
+  // record and LICENSE text read Apache-2.0 (verified 2026-10-19). The
+  // Ref2VA siblings in the same repo are DEFERRED: first-run is the TEXT
+  // lane; a later curation curates them.
+  {
+    id: 'lightx2v-fl2v-turbo-8',
+    name: 'lightx2v FL2V turbo 8-step LoRA (v1.0, 768p, ComfyUI bf16)',
+    group: 'weights',
+    description: 'lightx2v\'s 8-step distillation LoRA for the MiniMax-H3 first-frame (fl2v) lane — the Fast · 8-step speed tier\'s own weights, the file the tier honesty tooltips name and the turbo ladder\'s lightx2v family resolves by pattern. Presence detection is tier-broad ON PURPOSE: any fl2v 8-step turbo satisfies the slot, so an official Comfy-Org conversion staged by hand never reads as missing next to this row. Quality/step-count claims are the author line\'s; the tier machinery only needs the weights present.',
+    licenseSpdx: 'Apache-2.0',
+    licenseNote: 'Apache-2.0 via the source repo: the HF mirror ships no LICENSE file and its README defers to "the repository license" — ModelTC/Minimax-H3-Turbo on GitHub, whose license record and LICENSE text are Apache-2.0 (verified 2026-10-19). The weights are MiniMax-H3 derivatives, but the publisher licenses them permissive: fetchable under the same posture as the Larryvrh pack. docs/LICENSES.md §5.',
+    licenseUrl: 'https://github.com/ModelTC/Minimax-H3-Turbo/blob/main/LICENSE',
+    source: { kind: 'hf', repo: 'lightx2v/Minimax-h3-Turbo', revision: { kind: 'sha', value: '9bc1f3c0407805b00da9f762639cb435c644b2dc' } },
+    destination: { kind: 'model-root', root: 'loras' },
+    files: [{ path: 'minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors', sizeBytes: 1_956_193_000, sha256: '08cfe946033af7d27719b964b6e0a0e50c32138daabbd6ce4137e23df6bf9980' }],
+    detectGlob: '*fl2v_turbo_8step*',
+    sizeBytes: 1_956_193_000,
+    sizeClass: 'large',
+    homepage: 'https://huggingface.co/lightx2v/Minimax-h3-Turbo',
+  },
+  {
+    id: 'lightx2v-fl2v-turbo-4',
+    name: 'lightx2v FL2V turbo 4-step LoRA (v1.2, 768p, ComfyUI bf16)',
+    group: 'weights',
+    description: 'lightx2v\'s 4-step distillation LoRA for the MiniMax-H3 first-frame (fl2v) lane — the Fast · 4-step tier\'s own weights, v1.2 of the ComfyUI-converted 768p line the install hints name as the ladder\'s top pick (the dedicated loader/sampler pairing applies through the larryvrh pack). Presence detection is tier-broad ON PURPOSE: any fl2v 4-step turbo satisfies the slot, the v0.1 weights included. The 4-step family is the aggressive end of the speed dial — step-count/quality claims are the author line\'s.',
+    licenseSpdx: 'Apache-2.0',
+    licenseNote: 'Apache-2.0 via the source repo: the HF mirror ships no LICENSE file and its README defers to "the repository license" — ModelTC/Minimax-H3-Turbo on GitHub, whose license record and LICENSE text are Apache-2.0 (verified 2026-10-19). The weights are MiniMax-H3 derivatives, but the publisher licenses them permissive: fetchable under the same posture as the Larryvrh pack. docs/LICENSES.md §5.',
+    licenseUrl: 'https://github.com/ModelTC/Minimax-H3-Turbo/blob/main/LICENSE',
+    source: { kind: 'hf', repo: 'lightx2v/Minimax-h3-Turbo', revision: { kind: 'sha', value: '9bc1f3c0407805b00da9f762639cb435c644b2dc' } },
+    destination: { kind: 'model-root', root: 'loras' },
+    files: [{ path: 'minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors', sizeBytes: 1_956_193_000, sha256: 'c8168ebc17bbacc4296103dda2fec1ba85b24392fa08cf2bfbcef0cff0dc3cc8' }],
+    detectGlob: '*fl2v_turbo_4step*',
+    sizeBytes: 1_956_193_000,
+    sizeClass: 'large',
+    homepage: 'https://huggingface.co/lightx2v/Minimax-h3-Turbo',
   },
 
   // ---- Clone-on-demand seam (task 3ay7wbz) --------------------------------

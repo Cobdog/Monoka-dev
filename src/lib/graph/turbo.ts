@@ -252,12 +252,16 @@ export function turboFetchPlan(entries: readonly OptimizationEntry[], catalog: r
     if (rowIds.length) fetchable.push({ entryId: entry.id, label: entry.label, catalogEntryIds: rowIds })
   }
   if (fetchable.length) return { fetchable, note: '' }
-  // Nothing in the catalog carries the missing families — say so, and where
-  // the truth actually lives (each family's own option note). NEVER "these
-  // are fetchable there" against a catalog without the rows.
+  // Nothing in the catalog delivers the missing families — say so, scoped to
+  // THOSE families, and where the truth actually lives (each family's own
+  // option note). NEVER "these are fetchable there" against a catalog
+  // without the rows. (D9 dated correction, task 3p14abm 2026-10-19: the
+  // old wording claimed the catalog carries no turbo LoRA rows AT ALL —
+  // true at the R-19 audit, false since the lightx2v FL2V rows landed; the
+  // note now serves only families no row delivers, the ref2v lane today.)
   return {
     fetchable,
-    note: 'Not fetchable through the library — the model catalog carries no turbo LoRA rows. Each option\'s note names where its weights come from; fetch consent applies only to cataloged items.',
+    note: 'Not fetchable through the library — no catalog row delivers these families. Each option\'s note names where its weights come from; fetch consent applies only to cataloged items.',
   }
 }
 

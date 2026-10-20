@@ -346,7 +346,10 @@ test('(h) tier honesty — the speed tiers derive availability from the app\'s o
   eq(text['8'].loraName, 'loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors', 'the resolved LoRA is the submit path\'s own pick')
   eq(text['4'].available, false, 'tier 4 is unavailable with no 4-step file (the audited lie)')
   ok(text['4'].remediation.includes('lightx2v') && text['4'].remediation.includes('loras'), `tier 4's ONE remediation names the publisher and the placement (got: ${text['4'].remediation})`)
-  ok(!text['4'].remediation.includes('Fetchable'), 'the remediation never promises the library (the catalog carries no turbo rows)')
+  // (D9, task 3p14abm) The flip: the catalog CARRIES the fl2v turbo rows now
+  // (it deliberately carried none at g1girm8 time), so the remediation names
+  // the fetch row instead of withholding it.
+  ok(text['4'].remediation.includes('lightx2v-fl2v-turbo-4') && text['4'].remediation.includes('library'), `tier 4's remediation names the fetch row through the library (D9) (got: ${text['4'].remediation})`)
 
   const reference = h3Stack.turboTierStates(mirrorLoras, 'reference')
   eq(reference['8'].available, false, 'reference mode: the fl2v-only install leaves tier 8 unavailable in the ref2v lane')
@@ -366,6 +369,8 @@ test('(h) tier honesty — the speed tiers derive availability from the app\'s o
   ok(turbo.turboTierInstallHint('8', 'fl2v', 'turbo.pdd-fl2va-8').includes('alibaba-pai'), 'an explicit family hints its own source')
 
   const refusal = h3Stack.turboTierRefusal('4', 'text')
-  ok(refusal.includes('Fast · 4-step') && refusal.includes('minimax_h3_fl2v_turbo_4step_v1.2') && refusal.includes('refresh the engine'), `the submit refusal names the tier, the ONE truthful fix, and no second path (got: ${refusal})`)
-  ok(!refusal.includes('Fetchable'), 'the refusal never promises the library')
+  ok(refusal.includes('Fast · 4-step') && refusal.includes('minimax_h3_fl2v_turbo_4step_v1.2') && refusal.includes('refresh the engine'), `the submit refusal names the tier and the ONE fix — fetch or place, the same LoRA in the loras folder (got: ${refusal})`)
+  // (D9, task 3p14abm) The refusal names the SAME fetch row the tier menu
+  // does — one seam — instead of the old never-promise silence.
+  ok(refusal.includes('lightx2v-fl2v-turbo-4'), `the refusal names the fetch row (D9) (got: ${refusal})`)
 })

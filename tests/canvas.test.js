@@ -778,11 +778,15 @@ test('(p) the shared validation ladder (lib/h3Submit)', () => {
   // truthful path: publisher source + placement + refresh. The old behavior
   // rode the shared membership list ("…the turbo LoRA for the selected speed
   // tier… Fetch them in Settings → Fetchable items") — a promise the fetch
-  // catalog cannot fulfill (zero turbo rows), rendered directly above the
+  // catalog could not fulfill (zero turbo rows), rendered directly above the
   // panel's own "not fetchable" note: the audited double remediation.
+  // (D9 addendum, task 3p14abm, 2026-10-19) The fact changed: the catalog
+  // now CARRIES the fl2v turbo rows, so the refusal names the fetch row —
+  // by id, through the library, never the old Settings-tab phrasing.
   const fastAbsent = h3Submit.validateH3Render(request({ turbo: '4', steps: 4 }), { ...facts, modelReady: false, selection: { previewVae: '' } })
-  ok(fastAbsent && fastAbsent.includes('Fast · 4-step') && fastAbsent.includes('minimax_h3_fl2v_turbo_4step_v1.2'), `ladder: an unresolvable 4-step tier refuses by name with the publisher path (got: ${fastAbsent})`)
-  ok(!fastAbsent.includes('Fetchable items'), 'ladder: the tier refusal never promises the fetch catalog')
+  ok(fastAbsent && fastAbsent.includes('Fast · 4-step') && fastAbsent.includes('minimax_h3_fl2v_turbo_4step_v1.2'), `ladder: an unresolvable 4-step tier refuses by name with the fix path (got: ${fastAbsent})`)
+  ok(fastAbsent.includes('lightx2v-fl2v-turbo-4'), 'ladder: the tier refusal names the fetch row (D9 — the catalog carries the fl2v turbo rows)')
+  ok(!fastAbsent.includes('Fetchable items'), 'ladder: the old Settings-tab phrasing stays gone — the fetch is named by row id')
   ok(!fastAbsent.includes('the turbo LoRA for the selected speed tier'), 'ladder: the old shared-list phrasing is gone — one remediation, not two')
   const fastRef = h3Submit.validateH3Render(request({ mode: 'reference', turbo: '4', steps: 4, referenceImages: [media('/r.png', 'image')] }), { ...facts, modelReady: false, selection: { previewVae: '' } })
   ok(fastRef && fastRef.includes('ref2v_turbo_4step_v0.1'), `ladder: the reference lane's 4-step refusal names the ref2v weights (got: ${fastRef})`)

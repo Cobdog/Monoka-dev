@@ -155,9 +155,17 @@ export function h3StackReady(query: H3StackReadinessQuery): boolean {
  *  the lane LoRA that h3StackReady checks membership on) — never a parallel
  *  table (the module-head doctrine). Per fast tier in the given mode's lane:
  *  whether the tier can actually run, the LoRA the graph would load, and —
- *  when unavailable — ONE truthful remediation (publisher source + placement
- *  + refresh), deliberately worded to never promise the fetch catalog, which
- *  carries no turbo LoRA rows (R2 F3, task g1girm8). */
+ *  when unavailable — ONE truthful remediation.
+ *
+ *  Remediation history: R2 F3 (task g1girm8) worded this to NEVER promise
+ *  the fetch catalog, which then carried zero turbo LoRA rows — the audited
+ *  double remediation was a promise rendered directly above a "not
+ *  fetchable" note. D9 (the blessed wizard spec §7, task 3p14abm,
+ *  2026-10-19) changed the fact: the catalog now carries the lightx2v FL2V
+ *  turbo rows, so the remediation names the fetch FIRST and keeps the
+ *  manual placement beside it. The ref2v lane and family-scoped
+ *  resolutions stay publisher-only — no fetch rows exist for them, and a
+ *  fetch promise there would be the R2 F3 lie again. */
 export type TurboTierState = {
   tier: '4' | '8'
   available: boolean
@@ -165,6 +173,26 @@ export type TurboTierState = {
   loraName: string
   /** ONE truthful remediation; '' when available. */
   remediation: string
+}
+
+/** (D9) The FL2V fast tiers' fetch rows — ids ARE the catalog ids in
+ *  server/fetchCatalog.ts. The tier menu (turboTierStates →
+ *  PropertiesPanel) and the submit refusal (turboTierRefusal → h3Submit)
+ *  derive from THIS one table so both surfaces name the same row (the
+ *  g1girm8 one-seam discipline). */
+const FL2V_TIER_FETCH_ROWS: Record<'4' | '8', string> = {
+  '4': 'lightx2v-fl2v-turbo-4',
+  '8': 'lightx2v-fl2v-turbo-8',
+}
+
+/** The fix clause both surfaces embed: the fetch affordance when the tier's
+ *  lane is cataloged (fl2v, and no explicit family — a family-scoped
+ *  resolution names only ITS publisher), and the always-true manual
+ *  placement. */
+function turboTierFixClause(tier: '4' | '8', lane: 'fl2v' | 'ref2v', family: string | undefined, hint: string): string {
+  const fetchRow = lane === 'fl2v' && !family ? FL2V_TIER_FETCH_ROWS[tier] : ''
+  const fetchPart = fetchRow ? `fetch ${fetchRow} through the library (consent-gated), or ` : ''
+  return `${fetchPart}place one from its publisher in the engine's loras folder and refresh the engine${hint ? `: ${hint}` : ''}`
 }
 
 export function turboTierStates(models: ModelFile[], mode: GenerationMode, family?: string): Record<'4' | '8', TurboTierState> {
@@ -178,21 +206,27 @@ export function turboTierStates(models: ModelFile[], mode: GenerationMode, famil
       tier,
       available: Boolean(loraName),
       loraName: loraName ?? '',
-      remediation: loraName ? '' : `no ${tier}-step turbo LoRA is installed — place one from its publisher in the engine's loras folder and refresh the engine${hint ? `: ${hint}` : ''}`,
+      remediation: loraName ? '' : `no ${tier}-step turbo LoRA is installed — ${turboTierFixClause(tier, lane, family, hint)}`,
     }
   }
   return states
 }
 
 /** The submit-ladder refusal for a selected-but-unresolvable speed tier:
- *  the tier by name, the ONE truthful fix (publisher source, placement,
- *  refresh), and the working alternative (the Quality tier) — never a fetch
- *  promise (R2 F3, task g1girm8). */
+ *  the tier by name, the ONE truthful fix (the catalog fetch when the lane
+ *  has a row, the manual placement always — the same LoRA in the loras
+ *  folder either way), and the working alternative (the Quality tier).
+ *  History: worded at g1girm8 to never promise the fetch (R2 F3); D9
+ *  (task 3p14abm, 2026-10-19) flipped the fl2v lane to name its row. */
 export function turboTierRefusal(tier: '4' | '8', mode: GenerationMode): string {
   const lane: 'fl2v' | 'ref2v' = mode === 'reference' ? 'ref2v' : 'fl2v'
   const hint = turboTierInstallHint(tier, lane)
   const tierLabel = tier === '4' ? 'Fast · 4-step' : 'Fast · 8-step'
-  return `${tierLabel} needs a ${tier}-step turbo LoRA and none is installed in the engine's loras folder. Install one from its publisher and refresh the engine${hint ? `: ${hint}` : ''} — or switch the speed tier to Quality, which runs without it.`
+  const fetchRow = lane === 'fl2v' ? FL2V_TIER_FETCH_ROWS[tier] : ''
+  const fix = fetchRow
+    ? `Fetch ${fetchRow} through the library (consent-gated), or install one from its publisher and refresh the engine`
+    : `Install one from its publisher and refresh the engine`
+  return `${tierLabel} needs a ${tier}-step turbo LoRA and none is installed in the engine's loras folder. ${fix}${hint ? `: ${hint}` : ''} — or switch the speed tier to Quality, which runs without it.`
 }
 
 export function h3StackReport(models: ModelFile[], overrides?: ModelOverrideSlots, info?: ObjectInfo | Record<string, unknown>) {
