@@ -1469,3 +1469,224 @@ test('the packs step installs and verifies in place: curated rows, the designate
   expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
   expect(mirrorLog).not.toContain('EADDRINUSE')
 })
+
+/** (3p14abm task 8, spec §2.5/§3) THE FIRST PROMPT IS DELIBERATE: Enter
+ *  NEVER submits (a prompt is prose — it makes a newline, and nothing
+ *  fires); "Generate my first clip" runs the exit write FIRST (the settings
+ *  POST lands BEFORE the prompt POST — the saved tier is what the submit
+ *  runs) and exactly one job starts; "Just create the chain" places the
+ *  unsubmitted chain and NO prompt POST ever fires. The maintainer-instance
+ *  mirror is the engine here — a runnable stack, so the deliberate submit is
+ *  a real job and the order assertion has a prompt POST to compare against
+ *  (the fresh-external stack would refuse client-side BEFORE any POST,
+ *  which is the honest-refusal design, not this leg's subject). */
+test('the first prompt is deliberate: Enter never submits, the exit writes before the job, Just-create never submits (3p14abm task 8)', async ({ page, request }) => {
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const holder = http.createServer(() => undefined)
+  const mirrorPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', MIRROR_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  let originalSettings: Record<string, unknown> | null = null
+  // The three network shapes the exit contract governs, logged in arrival
+  // order so the settings-before-prompt assertion reads the real sequence.
+  const order: string[] = []
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+
+    originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${mirrorPort}`,
+      engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
+      // Pre-seed the W16 self-record so no background settings POST can land
+      // inside the Enter negative window (the task-4 leg's discipline).
+      testedComfyVersion: 'mirror-profile',
+    } } })
+    await resetSession(page)
+
+    // The three counting routes live for the whole page: the counters reset
+    // per arm, the log is cleared at the arm that asserts order.
+    let settingsSaves = 0
+    let chainsCreated = 0
+    let promptPosts = 0
+    await page.route('**/api/lan/settings', async (route) => {
+      if (route.request().method() === 'POST') { settingsSaves += 1; order.push('settings') }
+      await route.continue()
+    })
+    await page.route('**/api/lan/documents/chains', async (route) => {
+      if (route.request().method() === 'POST') { chainsCreated += 1; order.push('chains') }
+      await route.continue()
+    })
+    await page.route('**/api/lan/prompt', async (route) => {
+      if (route.request().method() === 'POST') { promptPosts += 1; order.push('prompt') }
+      await route.continue()
+    })
+
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    const wizard = page.locator('[data-canvas-wizard]')
+    await expect(wizard).toBeVisible({ timeout: 30_000 })
+
+    // Walk to the last step: the candidate Test verifies the engine first.
+    await page.locator('[data-wizard-test]').click()
+    await expect(page.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '1')
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '2')
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '3')
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '4')
+
+    // The cost preview speaks the seam the submit will run: the full stack
+    // verifies the 8-step tier — tier, steps, wait class.
+    const preview = page.locator('[data-wizard-cost-preview]')
+    await expect(preview).toContainText('Fast · 8-step')
+    await expect(preview).toContainText('8 steps')
+    await expect(preview).toContainText('minutes-class')
+    // The exit summary speaks the walk's truth: the verified engine rides,
+    // the keep-current LAN posture is NOT a drop (it says so), the tier rides.
+    await expect(page.locator('[data-wizard-exit-item="comfyUrl"]')).toHaveAttribute('data-carried', 'true')
+    await expect(page.locator('[data-wizard-exit-item="modelRoot"]')).toHaveAttribute('data-carried', 'false')
+    await expect(page.locator('[data-wizard-exit-item="lanKeys"]')).toHaveAttribute('data-carried', 'false')
+    await expect(page.locator('[data-wizard-exit-item="lanKeys"]')).toContainText('Keep-current')
+    await expect(page.locator('[data-wizard-exit-item="tier"]')).toHaveAttribute('data-carried', 'true')
+
+    // (a) ENTER NEVER SUBMITS: the textarea takes the newline; the negative
+    // window counts zero of all three shapes — no settings write, no chain,
+    // no job (the old step submitted on this exact keystroke).
+    const input = page.locator('[data-wizard-prompt-input]')
+    await input.fill('a lighthouse over a black sea, deliberate first clip')
+    await input.click()
+    await page.keyboard.press('Enter')
+    await expect(input).toHaveValue(/\n/)
+    await page.waitForTimeout(1_500)
+    expect(settingsSaves, 'Enter fires no settings write').toBe(0)
+    expect(chainsCreated, 'Enter spawns no chain').toBe(0)
+    expect(promptPosts, 'Enter starts no job').toBe(0)
+
+    // (b) GENERATE MY FIRST CLIP: the exit write lands BEFORE the prompt —
+    // the saved tier is what the submit runs — and exactly one job starts.
+    settingsSaves = 0
+    chainsCreated = 0
+    promptPosts = 0
+    order.length = 0
+    await page.locator('[data-wizard-generate]').click()
+    await expect.poll(() => promptPosts, { timeout: 30_000 }).toBe(1)
+    expect(chainsCreated, 'the seed chain was placed exactly once').toBe(1)
+    expect(settingsSaves, 'the exit write is ONE settings POST').toBe(1)
+    expect(order.indexOf('settings')).toBeGreaterThanOrEqual(0)
+    expect(order.indexOf('settings'), 'the settings POST lands BEFORE the prompt POST').toBeLessThan(order.indexOf('prompt'))
+    await expect(page.locator('[data-canvas-wizard]')).toHaveCount(0, { timeout: 15_000 })
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 15_000 })
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+
+    // ---- teardown ----------------------------------------------------------
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } })
+    await resetSession(page)
+  } finally {
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+
+  // (c) JUST CREATE THE CHAIN: a fresh page with the latch cleared — the
+  // exit write lands (one settings POST, the chain POSTs once) and NO prompt
+  // POST ever fires; the wizard closes and the tile remains unsubmitted.
+  const page2 = await page.context().newPage()
+  const problems2: string[] = []
+  page2.on('pageerror', (error) => problems2.push(`pageerror: ${error.message}`))
+  const holder2 = http.createServer(() => undefined)
+  const mirrorPort2 = await new Promise<number>((resolve) => holder2.listen(0, '127.0.0.1', () => resolve((holder2.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder2.close(() => resolve()))
+  const mirror2: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort2), '--profile', MIRROR_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog2 = ''
+  mirror2.stdout?.on('data', (chunk: Buffer) => { mirrorLog2 += chunk.toString() })
+  mirror2.stderr?.on('data', (chunk: Buffer) => { mirrorLog2 += chunk.toString() })
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort2, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+
+    // A second settings swap for the SECOND mirror port (the restore above
+    // put the original settings back; the walk needs its engine reachable).
+    const settings2 = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...settings2,
+      comfyUrl: `http://127.0.0.1:${mirrorPort2}`,
+      engine: { ...(settings2.engine as Record<string, unknown>), mode: 'external' },
+      testedComfyVersion: 'mirror-profile',
+    } } })
+    await resetSession(page2)
+
+    let settingsSaves2 = 0
+    let chainsCreated2 = 0
+    let promptPosts2 = 0
+    await page2.route('**/api/lan/settings', async (route) => {
+      if (route.request().method() === 'POST') settingsSaves2 += 1
+      await route.continue()
+    })
+    await page2.route('**/api/lan/documents/chains', async (route) => {
+      if (route.request().method() === 'POST') chainsCreated2 += 1
+      await route.continue()
+    })
+    await page2.route('**/api/lan/prompt', async (route) => {
+      if (route.request().method() === 'POST') promptPosts2 += 1
+      await route.continue()
+    })
+
+    // The latch from (b) lives in the shared localStorage — cleared at init
+    // so the walk presents fresh on this page.
+    await page2.addInitScript(() => { localStorage.removeItem('monoka.wizard') })
+    await page2.goto('/?canvas=1')
+    await expect(page2.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    const wizard2 = page2.locator('[data-canvas-wizard]')
+    await expect(wizard2).toBeVisible({ timeout: 30_000 })
+    await page2.locator('[data-wizard-test]').click()
+    await expect(page2.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
+    for (const step of ['1', '2', '3', '4']) {
+      await page2.locator('[data-wizard-next]').click()
+      await expect(wizard2).toHaveAttribute('data-wizard-step', step)
+    }
+
+    await page2.locator('[data-wizard-prompt-input]').fill('just the chain, no job yet')
+    await page2.locator('[data-wizard-just-chain]').click()
+    await expect(page2.locator('[data-canvas-wizard]')).toHaveCount(0, { timeout: 15_000 })
+    await expect(page2.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 15_000 })
+    // THE NEGATIVE WINDOW: no prompt POST ever fires — the chain lands
+    // unsubmitted and the tile's generate stays the single submit gesture.
+    await page2.waitForTimeout(2_500)
+    expect(promptPosts2, 'Just-create starts no job').toBe(0)
+    expect(chainsCreated2, 'the chain was placed exactly once').toBe(1)
+    expect(settingsSaves2, 'the exit write still lands (one settings POST)').toBe(1)
+
+    expect(problems2, `page2 errors: ${problems2.join(' | ')}`).toEqual([])
+
+    // ---- teardown ----------------------------------------------------------
+    await request.post('/api/lan/settings', { data: { settings: settings2 } })
+    await resetSession(page2)
+  } finally {
+    await page2.close()
+    mirror2.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror2.kill('SIGKILL'); resolve() }, 5_000)
+      mirror2.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(mirror2.exitCode !== null || mirror2.signalCode !== null).toBe(true)
+  expect(mirrorLog2).not.toContain('EADDRINUSE')
+})

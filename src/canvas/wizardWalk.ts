@@ -473,6 +473,249 @@ export function promptGate(candidate: WalkCandidate): StepGate {
 }
 
 // ---------------------------------------------------------------------------
+// The exit contract (task 8, spec §3): the ONE-MOTION write's pure block.
+// buildExitWrite derives the whole exit from VERIFIED state only — each key
+// present exactly when its step verified, the default tier resolved by the
+// plan's ruling, the LAN keys earned through lanKeysForExit (the live
+// posture passed through when the step has it); applyExitWrite merges the
+// patch over saved settings; exitWriteSummary speaks what will and will not
+// be written (the silent drop named, T7's carried review; the unverified
+// voice, T5's); placementDisclosure names where pre-exit fetches landed
+// (§3's honest exception — installs/fetches are facts, but not invisible
+// ones). Still PURE: no writes here; the wizard's exit motion consumes it.
+// ---------------------------------------------------------------------------
+
+/** Narrow structural view of the tier states — h3Stack's turboTierStates
+ *  output satisfies it (the ONE seam: the properties panel, the submit
+ *  refusal, and this exit all read the same derivation). */
+export type ExitTierStates = { '4': { available: boolean }; '8': { available: boolean } }
+
+/** The five patch keys, verbatim (spec §3's write contract): each present
+ *  ONLY when its step verified. generationDefaults is the exception that is
+ *  always present — the tier rule always resolves (never a tier that would
+ *  refuse), and 'off' is itself the honest answer. */
+export type ExitSettingsPatch = {
+  comfyUrl?: string
+  modelRoot?: string
+  engine?: { externalCustomNodesDir?: string }
+  modelOverrides?: { monoka: Record<string, string> }
+  generationDefaults?: { turbo: 'off' | '4' | '8' }
+}
+
+/** One line of the exit summary: what WILL be written (carried, with its
+ *  value) and what will NOT (with the honest reason — keep-current by
+ *  choice, a refused designation by the gate, an unverified engine by the
+ *  absence of a verdict). */
+export type ExitWriteItem = {
+  key: 'comfyUrl' | 'modelRoot' | 'customNodesDir' | 'modelOverrides' | 'lanKeys' | 'tier'
+  label: string
+  carried: boolean
+  value?: string
+  reason?: string
+  note?: string
+}
+
+export type ExitWrite = {
+  settingsPatch: ExitSettingsPatch
+  /** The second store's keys (W-I1/W-M3) — null when keep-current or a
+   *  refused designation: NOTHING is written for the LAN posture then. */
+  launcherKeys: WalkLanKeys | null
+  /** True when no fast tier verified and the written tier is 'off' — the
+   *  cost preview says "quality, the full step count" instead. */
+  tierFallback: boolean
+  items: ExitWriteItem[]
+}
+
+/** The tier→steps mapping the preview reads. 'off' is quality: the full
+ *  step count (the settings' steps default, 30 in the shipped defaults). */
+export function tierStepCount(turbo: 'off' | '4' | '8', steps: number | undefined): number {
+  if (turbo === '4') return 4
+  if (turbo === '8') return 8
+  return steps ?? 30
+}
+
+/** The wait stated as a CLASS (spec §2.5 — no invented minute counts). */
+export const TIER_WAIT_FAST_COPY = 'the wait is minutes-class'
+export const TIER_WAIT_QUALITY_COPY = 'the wait is the ~20-minute class'
+
+export function tierWaitCopy(turbo: 'off' | '4' | '8'): string {
+  return turbo === 'off' ? TIER_WAIT_QUALITY_COPY : TIER_WAIT_FAST_COPY
+}
+
+/** The cost preview line: the tier, the steps, the resolution/duration the
+ *  submit will run, the wait as a class. The tier the caller passes is the
+ *  EXIT's tier (what the saved settings will hold when the submit runs) —
+ *  not the stale saved value. */
+export function promptCostPreview(args: { turbo: 'off' | '4' | '8'; steps: number; resolution: string; duration: number }): string {
+  const label = args.turbo === '8' ? 'Fast · 8-step' : args.turbo === '4' ? 'Fast · 4-step' : 'Quality'
+  if (args.turbo === 'off') {
+    return `First clip: ${label} — will run ${args.steps} steps at quality, ${args.resolution}, ${args.duration}s · ${tierWaitCopy(args.turbo)}.`
+  }
+  return `First clip: ${label} — ${args.steps} steps at ${args.resolution}, ${args.duration}s · ${tierWaitCopy(args.turbo)}.`
+}
+
+/** The exit write (§3): everything VERIFIED in one motion, nothing else.
+ *  - comfyUrl only when a live Test answered reachable against the current
+ *    candidate (isEngineVerified's exact-string rule).
+ *  - modelRoot / engine.externalCustomNodesDir only when existence-verified.
+ *  - modelOverrides.monoka only when the walk named a pick.
+ *  - generationDefaults.turbo ALWAYS, by the plan's ruling: '8' when the
+ *    8-step lane verified, else '4', else 'off' + tierFallback (never a
+ *    tier that would refuse at submit).
+ *  - launcherKeys through lanKeysForExit — pass the live posture through
+ *    when the step has it: the live equivalence is part of the gate's
+ *    verdict, and without it a status-quo designation the step verified
+ *    would silently drop its keys (the D8 token offer with them). */
+export function buildExitWrite(
+  candidate: WalkCandidate,
+  tierStates: ExitTierStates,
+  live?: { host: string; port: number },
+  options?: { steps?: number },
+): ExitWrite {
+  const engineVerified = isEngineVerified(candidate)
+  const modelsRoot = isDesignated(candidate.modelsRoot)
+  const nodesDir = isDesignated(candidate.customNodesDir)
+  const overrides = Object.keys(candidate.overrides)
+  const tier: 'off' | '4' | '8' = tierStates['8'].available ? '8' : tierStates['4'].available ? '4' : 'off'
+  const tierFallback = tier === 'off'
+  const steps = tierStepCount(tier, options?.steps)
+
+  const items: ExitWriteItem[] = [
+    {
+      key: 'comfyUrl',
+      label: 'Engine address',
+      carried: engineVerified,
+      ...(engineVerified ? { value: candidate.comfyUrl } : {}),
+      ...(!engineVerified ? { reason: 'The address was never verified with Test — the saved address stays.' } : {}),
+    },
+    {
+      key: 'modelRoot',
+      label: 'Models root',
+      carried: modelsRoot,
+      ...(modelsRoot ? { value: candidate.modelsRoot.value } : {}),
+      ...(!modelsRoot ? { reason: 'No models root was verified — the configured root stays.' } : {}),
+    },
+    {
+      key: 'customNodesDir',
+      label: 'External custom-nodes folder',
+      carried: nodesDir,
+      ...(nodesDir ? { value: candidate.customNodesDir.value } : {}),
+      ...(!nodesDir ? { reason: 'No custom-nodes folder was verified — the configured folder stays.' } : {}),
+    },
+    {
+      key: 'modelOverrides',
+      label: 'Named model picks',
+      carried: overrides.length > 0,
+      ...(overrides.length > 0 ? { value: overrides.map((slot) => `${slot}: ${candidate.overrides[slot]}`).join(', ') } : {}),
+      ...(!(overrides.length > 0) ? { reason: 'No ambiguous model was named — inference decides.' } : {}),
+    },
+  ]
+
+  // The LAN item's voice distinguishes the two not-carried shapes: a chosen
+  // keep-current (nothing designated) and a gate-refused designation (the
+  // silent drop, T7's surface — it must speak).
+  const lanKeys = candidate.lanKeys
+  const lanTouched = lanKeys.host !== undefined || lanKeys.port !== undefined || lanKeys.token !== undefined
+  const launcherKeys = lanKeysForExit(candidate, live)
+  items.push({
+    key: 'lanKeys',
+    label: 'LAN posture',
+    carried: launcherKeys !== null,
+    ...(launcherKeys !== null
+      ? { value: [
+          ...(launcherKeys.host !== undefined ? [`host ${launcherKeys.host}`] : []),
+          ...(launcherKeys.port !== undefined ? [`port ${launcherKeys.port}`] : []),
+          ...(launcherKeys.token !== undefined ? [`token ${launcherKeys.token ? 'on' : 'off'}`] : []),
+        ].join(', ') }
+      : {}),
+    ...(!launcherKeys && !lanTouched ? { reason: 'Keep-current — nothing is written for the LAN posture.' } : {}),
+    ...(!launcherKeys && lanTouched ? { reason: 'The designation was not verified (the probe never answered claimable) — nothing is written for it.' } : {}),
+  })
+
+  items.push({
+    key: 'tier',
+    label: 'First-clip default tier',
+    carried: true,
+    value: tier === 'off' ? `Quality — ${steps} steps` : `Fast · ${tier}-step — ${steps} steps`,
+    ...(tierFallback ? { note: 'No fast tier is installed — the first clip runs at quality (the full step count).' } : {}),
+  })
+
+  return {
+    settingsPatch: {
+      ...(engineVerified ? { comfyUrl: candidate.comfyUrl } : {}),
+      ...(modelsRoot ? { modelRoot: candidate.modelsRoot.value } : {}),
+      ...(nodesDir ? { engine: { externalCustomNodesDir: candidate.customNodesDir.value } } : {}),
+      ...(overrides.length > 0 ? { modelOverrides: { monoka: { ...candidate.overrides } } } : {}),
+      // The tier rule ALWAYS resolves — 'off' is itself the honest answer.
+      generationDefaults: { turbo: tier },
+    },
+    launcherKeys,
+    tierFallback,
+    items,
+  }
+}
+
+/** The exit summary's one voice: the headline names the nothing when the
+ *  walk verified no designation at all (the T7 silent-drop surface raised to
+ *  the headline); the items are the per-key truth. */
+export function exitWriteSummary(write: ExitWrite): { headline: string; items: ExitWriteItem[] } {
+  const nothingDesignated = write.items
+    .filter((item) => item.key !== 'tier')
+    .every((item) => !item.carried)
+  return {
+    headline: nothingDesignated
+      ? 'Nothing you designated will be written — the walk verified no designation.'
+      : 'One motion at the exit — this is what the walk writes:',
+    items: write.items,
+  }
+}
+
+/** Merge an exit write over saved settings — pure, non-mutating: engine keys
+ *  spread over the saved engine config, the monoka overrides merge per
+ *  family, the tier merges into the saved generation defaults. Only the
+ *  patch's keys change; everything unrelated survives verbatim. */
+export function applyExitWrite<T extends {
+  comfyUrl: string
+  modelRoot: string
+  engine: Record<string, unknown>
+  modelOverrides?: Record<string, Record<string, string>>
+  generationDefaults: Record<string, unknown>
+}>(settings: T, write: ExitWrite): T {
+  const patch = write.settingsPatch
+  return {
+    ...settings,
+    ...(patch.comfyUrl !== undefined ? { comfyUrl: patch.comfyUrl } : {}),
+    ...(patch.modelRoot !== undefined ? { modelRoot: patch.modelRoot } : {}),
+    ...(patch.engine ? { engine: { ...settings.engine, ...patch.engine } } : {}),
+    ...(patch.modelOverrides
+      ? { modelOverrides: { ...settings.modelOverrides, monoka: { ...settings.modelOverrides?.monoka, ...patch.modelOverrides.monoka } } }
+      : {}),
+    ...(patch.generationDefaults
+      ? { generationDefaults: { ...settings.generationDefaults, ...patch.generationDefaults } }
+      : {}),
+  }
+}
+
+/** The placement seam's disclosure (T5's carried review): fetches during the
+ *  walk land in the CONFIGURED models root (the fetcher reads live settings;
+ *  the designation becomes the root only at the exit). When the designation
+ *  differs, the exit names the folder and the files that landed there — the
+ *  user can move them or re-designate; never silent invisible weights.
+ *  null when there is nothing to disclose: no designation, the same root,
+ *  or nothing placed pre-exit. */
+export type PlacementDisclosure = { folder: string; files: string[] }
+
+export function placementDisclosure(args: { placedPaths: string[]; configuredRoot: string; designatedRoot: string }): PlacementDisclosure | null {
+  const configured = args.configuredRoot.trim().replace(/\/+$/, '')
+  const designated = args.designatedRoot.trim().replace(/\/+$/, '')
+  if (!configured || !designated || configured === designated) return null
+  const prefix = `${configured}/`
+  const files = args.placedPaths.filter((file) => file.startsWith(prefix))
+  if (files.length === 0) return null
+  return { folder: configured, files }
+}
+
+// ---------------------------------------------------------------------------
 // The Node packs step's pure block (task 6, spec §2.3): the curated rows,
 // their live states, the install routes, the via labels. Everything the
 // step's JSX renders derives here so the unit suite pins the exact output —

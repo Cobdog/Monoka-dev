@@ -32,7 +32,7 @@ import { Check, RefreshCw, Sparkles, X } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { dbg } from '../lib/dbg'
 import { basenameOf } from '../lib/modelSelection'
-import { h3StackReport, canGenerateAnswer, stackVerdictText, type StackVerdict } from '../lib/h3Stack'
+import { h3StackReport, canGenerateAnswer, stackVerdictText, turboTierStates, type StackVerdict } from '../lib/h3Stack'
 import type { ObjectInfo } from '../lib/comfyInfo'
 import type { AppSettings, FetchEntryStatus, LanStatusRead, LanTokenRead, NodePackStatus } from '../types'
 import { useSessionStore } from '../state/sessionStore'
@@ -40,6 +40,7 @@ import { useCanvasStore } from './store'
 import { CanvasSessionContext } from './sessionContext'
 import { WIZARD_REOPEN_EVENT } from './FirstRunNotice'
 import { DesignationField } from './DesignationField'
+import { chainSettingsDefaults } from './generation'
 import { DIGEST_INTERIM_COPY, fetchLanded, modelsStepRows, type ComponentFetchView, type ModelsStepRow } from './wizardModels'
 import {
   LAN_HOST_LAN_COPY,
@@ -51,9 +52,12 @@ import {
   PACKS_FETCH_UNDERWAY_COPY,
   PACKS_NO_TARGET_COPY,
   WALK_STEPS,
+  applyExitWrite,
+  buildExitWrite,
   curatedWizardPacks,
   customNodesPrefill,
   emptyWalkCandidate,
+  exitWriteSummary,
   isDesignated,
   keepLanPosture,
   lanGate,
@@ -66,6 +70,8 @@ import {
   packViaLabel,
   packsGate,
   packsInstallRefusal,
+  placementDisclosure,
+  promptCostPreview,
   promptGate,
   recordLanProbe,
   setCandidateUrl,
@@ -74,6 +80,7 @@ import {
   setLanPort,
   setLanToken,
   shouldPresent,
+  tierStepCount,
   type CuratedPackRow,
   type DestinationState,
   type LanHostChoice,
@@ -122,7 +129,6 @@ export function FirstRunWizard() {
   const settings = useSessionStore((state) => state.settings)
   const modelRootIsDefault = useSessionStore((state) => state.modelRootIsDefault)
   const engineInfo = useSessionStore((state) => state.info)
-  const submitPrompt = useCanvasStore((state) => state.submitPrompt)
   const setSettingsDock = useCanvasStore((state) => state.setSettingsDock)
 
   const [state, setState] = useState<WizardState>(() => ({ ...readWizard() }))
@@ -245,7 +251,7 @@ export function FirstRunWizard() {
       onOpenPacks={() => setSettingsDock(true)}
     />
     if (step === 3) return <LanStep candidate={walk} onUpdateWalk={updateWalk} />
-    return <PromptStep gate={promptGate(walk)} onDone={(prompt) => { patch({ done: true }); if (prompt.trim()) void submitPrompt(prompt, 'video') }} />
+    return <PromptStep gate={promptGate(walk)} walk={walk} settings={settings} models={models} onLatchDone={() => patch({ done: true })} />
   })()
 
   return <div className="canvas-wizard" role="dialog" aria-label="First-run setup wizard" data-canvas-wizard data-wizard-step={step}>
@@ -967,26 +973,156 @@ function LanStep(props: { candidate: WalkCandidate; onUpdateWalk(move: (candidat
   </div>
 }
 
-/** Step 5 — the first prompt: the whole point. Task 8 reworks this slot to
- *  the deliberate submit (cost preview, Enter-never-submits, the
- *  Just-create alternative, the exit write). */
-function PromptStep(props: { gate: StepGate; onDone(prompt: string): void }) {
+/** Step 5 — the first prompt: the deliberate submit (task 8, spec §2.5/§3).
+ *  Enter NEVER submits (it inserts a newline — a prompt is prose, never a
+ *  keystroke away from a job); the cost preview reads the SAME seam the
+ *  properties panel and the submit refusal read (turboTierStates → the exit
+ *  write's tier) plus the resolution/duration the submit will run
+ *  (chainSettingsDefaults), the wait stated as a class. The exit summary
+ *  speaks what the one-motion write WILL and WON'T carry — the silent drop
+ *  named (T7's carried review), the unverified walk's honest voice (T5's) —
+ *  and the placement disclosure names where pre-exit fetches landed when the
+ *  designation differs (§3's exception: installs/fetches are facts, but not
+ *  invisible ones). The buttons run the exit motion: ONE saveSettings with
+ *  the five verified keys + the launcher-config write when LAN keys were
+ *  earned (the live posture passed through — the equivalence arm is part of
+ *  the verdict) + the latch; a FAILED write surfaces and the wizard does NOT
+ *  latch done (a close that claims done on a failed write is a silent drop).
+ *  "Generate my first clip" submits AFTER the write — the saved tier is what
+ *  the submit runs; "Just create the chain" places the unsubmitted chain. */
+function PromptStep(props: {
+  gate: StepGate
+  walk: WalkCandidate
+  settings: AppSettings
+  models: ReturnType<typeof useSessionStore.getState>['models']
+  onLatchDone(): void
+}) {
+  const { gate, walk, settings, models } = props
+  const submitPrompt = useCanvasStore((state) => state.submitPrompt)
+  const placePromptChain = useCanvasStore((state) => state.placePromptChain)
   const [prompt, setPrompt] = useState('')
+  const [exiting, setExiting] = useState(false)
+  const [exitError, setExitError] = useState('')
+  // The live posture: read once on mount, narrowed to the two host choices
+  // the gate knows — the exit wiring MUST pass it into the gate seam, or a
+  // status-quo LAN designation the step verified (the live equivalence)
+  // silently drops its keys at the exit, the D8 token offer with them.
+  const [livePosture, setLivePosture] = useState<{ host: LanHostChoice; port: number } | undefined>(undefined)
+  useEffect(() => {
+    let cancelled = false
+    window.monoka.getLanStatus().then((answer) => {
+      if (cancelled) return
+      if (answer.posture.host === '127.0.0.1' || answer.posture.host === '0.0.0.0') setLivePosture({ host: answer.posture.host, port: answer.posture.port })
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
+  // The placement seam's ledger: fetches during the walk land at the
+  // CONFIGURED models root (the fetcher reads live settings; the designation
+  // becomes the root only at the exit). Polled like the other steps' boards.
+  const [placedPaths, setPlacedPaths] = useState<string[]>([])
+  useEffect(() => {
+    let cancelled = false
+    const poll = () => window.monoka.listFetchCatalog().then((answer) => {
+      if (cancelled) return
+      const paths: string[] = []
+      for (const entry of answer.entries) {
+        if (entry.state === 'placed' && entry.placedPaths) paths.push(...entry.placedPaths)
+      }
+      setPlacedPaths(paths)
+    }).catch(() => undefined)
+    void poll()
+    const timer = window.setInterval(poll, 3000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [])
+
+  // The exit write derives ONCE per state change and both the display and
+  // the click consume the SAME object — displayed == executed, structurally.
+  const tierStates = useMemo(() => turboTierStates(models, 'text'), [models])
+  const write = useMemo(
+    () => buildExitWrite(walk, tierStates, livePosture, { steps: settings.generationDefaults?.steps }),
+    [walk, tierStates, livePosture, settings],
+  )
+  const summary = useMemo(() => exitWriteSummary(write), [write])
+  const disclosure = useMemo(
+    () => placementDisclosure({
+      placedPaths,
+      configuredRoot: settings.modelRoot,
+      designatedRoot: isDesignated(walk.modelsRoot) ? walk.modelsRoot.value : '',
+    }),
+    [placedPaths, settings, walk],
+  )
+  const preview = useMemo(() => {
+    const defaults = chainSettingsDefaults(settings)
+    const turbo = write.settingsPatch.generationDefaults?.turbo ?? defaults.turbo
+    return promptCostPreview({
+      turbo,
+      steps: tierStepCount(turbo, settings.generationDefaults?.steps),
+      resolution: defaults.resolution,
+      duration: defaults.duration,
+    })
+  }, [write, settings])
+
+  const runExit = async (mode: 'generate' | 'chain') => {
+    if (!prompt.trim() || exiting) return
+    setExiting(true)
+    setExitError('')
+    try {
+      const next = applyExitWrite(settings, write)
+      const saved = await window.monoka.saveSettings(next)
+      // The session store learns the saved settings BEFORE anything submits —
+      // the submit reads chainSettingsDefaults from the store, so the saved
+      // tier is what the submit runs.
+      useSessionStore.getState().setSettings(saved.settings)
+      if (write.launcherKeys) await window.monoka.writeLauncherConfig(write.launcherKeys)
+      props.onLatchDone()
+      if (mode === 'generate') await submitPrompt(prompt, 'video')
+      else await placePromptChain(prompt, 'video')
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error)
+      setExitError(text)
+      useCanvasStore.getState().toast('error', `The exit write did not land: ${text}`)
+    } finally {
+      setExiting(false)
+    }
+  }
+
   return <div className="canvas-wizard-step" data-wizard-prompt>
-    <p className="canvas-wizard-lede">Describe one shot. The chain lands on the canvas; generate when you're ready — a refused engine says so honestly.</p>
-    <GateLine gate={props.gate} />
+    <p className="canvas-wizard-lede">Describe one shot. The chain lands on the canvas; generate when you're ready — a refused engine says so honestly. Enter makes a newline; only a button writes or submits.</p>
+    <GateLine gate={gate} />
     <textarea
       data-wizard-prompt-input
       rows={3}
       value={prompt}
       placeholder="A lighthouse over a black sea, slow push-in, no dialogue"
       onChange={(event) => setPrompt(event.target.value)}
-      onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); props.onDone(prompt) } }}
     />
+    <p className="canvas-wizard-hint" data-wizard-cost-preview>{preview}</p>
+    <div className="canvas-wizard-exit" data-wizard-exit-summary>
+      <p>{summary.headline}</p>
+      <ul>
+        {summary.items.map((item) => (
+          <li key={item.key} data-wizard-exit-item={item.key} data-carried={String(item.carried)}>
+            <strong>{item.label}</strong>
+            {item.carried
+              ? <span> — {item.value}{item.note ? ` — ${item.note}` : ''}</span>
+              : <span className="canvas-wizard-hint"> — {item.reason}</span>}
+          </li>
+        ))}
+      </ul>
+      {disclosure && <p className="canvas-wizard-hint" data-wizard-placement-disclosure>
+        Fetched weights landed in {disclosure.folder} — your designation takes over as the models root at the exit. Move them there or re-designate; the studio will not move them silently ({disclosure.files.length} file{disclosure.files.length === 1 ? '' : 's'}).
+      </p>}
+      <p className="canvas-wizard-note">Installs and fetches that already happened are facts — they stay. A button below writes the configuration once; nothing is saved as you type.</p>
+    </div>
+    {exitError && <p className="canvas-wizard-warn" data-wizard-exit-error>{exitError}</p>}
     <div className="canvas-wizard-row">
-      <button type="button" className="chip chip--accent canvas-chip" data-wizard-finish disabled={!prompt.trim()} onClick={() => props.onDone(prompt)}>
-        <Sparkles size={12} /> Create the first chain
+      <button type="button" className="chip chip--accent canvas-chip" data-wizard-generate disabled={!prompt.trim() || exiting} onClick={() => { void runExit('generate') }}>
+        <Sparkles size={12} /> Generate my first clip
       </button>
+      <button type="button" className="chip canvas-chip" data-wizard-just-chain disabled={!prompt.trim() || exiting} onClick={() => { void runExit('chain') }}>
+        Just create the chain
+      </button>
+      {exiting && <span className="canvas-wizard-hint">writing…</span>}
     </div>
   </div>
 }

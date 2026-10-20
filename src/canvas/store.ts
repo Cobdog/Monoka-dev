@@ -394,6 +394,11 @@ type CanvasActions = {
   createCanvas(name?: string): Promise<string | null>
   /** The launcher's prompt submit: spawn the seed chain, then REAL submit. */
   submitPrompt(text: string, mediaType: 'video' | 'image'): Promise<void>
+  /** The wizard's Just-create exit: placement ONLY — the seed chain is
+   *  created, laid out, selected, and the camera flies to it, but nothing is
+   *  submitted (the tile's generate stays the single submit gesture).
+   *  Returns the chain id, or null when nothing was placed. */
+  placePromptChain(text: string, mediaType: 'video' | 'image'): Promise<string | null>
   /** Phase 5 (Studios dock): seed a chain from a kept surface — the
    *  MoviePlanner shot handoff. Richer than the launcher's submitPrompt
    *  (compiled prompt + library reference ids + duration/resolution from the
@@ -1536,14 +1541,14 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
       }
     },
 
-    submitPrompt: async (text, mediaType) => {
+    placePromptChain: async (text, mediaType) => {
       const prompt = text.trim()
       const state = get()
-      if (!prompt) return
+      if (!prompt) return null
       let projectId = state.activeProjectId
       if (!projectId) {
         const created = await get().createCanvas()
-        if (!created) return
+        if (!created) return null
         projectId = created
       }
       try {
@@ -1577,12 +1582,19 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
         set({ selection: { tileIds: [chainId] }, inspectorOpen: true, endpointMenu: null, forkMenu: null, tileMenu: null })
         get().requestCamera({ kind: 'fly', tileId: chainId })
         get().persistView()
-        // Phase 2: the REAL submission — validation-refused states stay honest
-        // (no job parks in the queue when the engine refuses).
-        await get().submitChain(chainId)
+        return chainId
       } catch (error) {
         get().toast('error', `Could not create the seed object: ${error instanceof Error ? error.message : String(error)}`)
+        return null
       }
+    },
+
+    submitPrompt: async (text, mediaType) => {
+      const chainId = await get().placePromptChain(text, mediaType)
+      if (!chainId) return
+      // Phase 2: the REAL submission — validation-refused states stay honest
+      // (no job parks in the queue when the engine refuses).
+      await get().submitChain(chainId)
     },
 
     submitChain: async (chainId) => {

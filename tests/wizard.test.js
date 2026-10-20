@@ -872,6 +872,235 @@ test('the LAN copy speaks in world terms and states the truths plainly (D8, rest
   ok(!/win over anything this step writes/.test(walk.LAN_OVERRIDES_COPY), 'the override honesty no longer claims the launcher env always beats the write (the marker fix, 3p14abm)')
 })
 
+// ---------------------------------------------------------------------------
+// Task 8 — the exit contract (spec §3): the one-motion write's pure block.
+// buildExitWrite derives the whole exit from VERIFIED state only;
+// applyExitWrite merges it over saved settings; exitWriteSummary speaks the
+// silent-drop surface (T7's carried review) and the unverified-walk voice
+// (T5's); placementDisclosure names where pre-exit fetches landed.
+// ---------------------------------------------------------------------------
+
+// The rich walk-state fixture: engine verified by a live Test, both
+// destinations designated and existence-verified, an ambiguous pick named,
+// and a probed LAN designation.
+function richWalk() {
+  let candidate = walk.setCandidateUrl(walk.emptyWalkCandidate('http://127.0.0.1:9'), 'http://127.0.0.1:8188')
+  candidate = walk.markEngineVerified(candidate, 'http://127.0.0.1:8188', true)
+  candidate = { ...candidate, modelsRoot: { value: '/engine/comfy/models', verdict: { designated: true, exists: true } } }
+  candidate = { ...candidate, customNodesDir: { value: '/engine/comfy/custom_nodes', verdict: { designated: true, exists: true } } }
+  candidate = { ...candidate, overrides: { diffusion_models: 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors' } }
+  candidate = walk.recordLanProbe(walk.setLanHost(candidate, '0.0.0.0'), '0.0.0.0', 4178, { claimable: true })
+  return candidate
+}
+
+const BOTH_TIERS = { '4': { available: true }, '8': { available: true } }
+const NO_TIERS = { '4': { available: false }, '8': { available: false } }
+
+test('buildExitWrite carries every verified designation in one motion and nothing else', () => {
+  console.log('wizard: the exit write — the one motion')
+
+  const write = walk.buildExitWrite(richWalk(), BOTH_TIERS)
+  assert.deepEqual(
+    Object.keys(write.settingsPatch).sort(),
+    ['comfyUrl', 'engine', 'generationDefaults', 'modelOverrides', 'modelRoot'],
+    `the patch keys are exactly the five (got ${JSON.stringify(Object.keys(write.settingsPatch).sort())})`,
+  )
+  ok(write.settingsPatch.comfyUrl === 'http://127.0.0.1:8188', 'the verified engine url rides')
+  ok(write.settingsPatch.modelRoot === '/engine/comfy/models', 'the designated models root rides')
+  assert.deepEqual(
+    Object.keys(write.settingsPatch.engine ?? {}),
+    ['externalCustomNodesDir'],
+    `the engine patch carries ONLY the custom-nodes folder (got ${JSON.stringify(write.settingsPatch.engine)})`,
+  )
+  ok(write.settingsPatch.engine?.externalCustomNodesDir === '/engine/comfy/custom_nodes', 'the designated custom-nodes folder rides')
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(write.settingsPatch.modelOverrides)),
+    { monoka: { diffusion_models: 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors' } },
+    `the walk's overrides ride under the monoka family (got ${JSON.stringify(write.settingsPatch.modelOverrides)})`,
+  )
+  assert.deepEqual(
+    Object.keys(write.settingsPatch.generationDefaults ?? {}),
+    ['turbo'],
+    `the generationDefaults patch carries ONLY the tier (got ${JSON.stringify(write.settingsPatch.generationDefaults)})`,
+  )
+  ok(write.settingsPatch.generationDefaults?.turbo === '8', 'the ruling: both tiers verified → the 8-step default')
+  ok(write.tierFallback === false, 'no fallback flag when a tier verified')
+
+  // The second store: the probed LAN designation rides as its own keys —
+  // never inside app settings (W-I1/W-M3).
+  ok(write.launcherKeys !== null
+    && write.launcherKeys.host === '0.0.0.0'
+    && write.launcherKeys.port === 4178
+    && write.launcherKeys.token === true,
+  `the verified LAN designation carries its keys to the second store (got ${JSON.stringify(write.launcherKeys)})`)
+
+  // NOTHING ELSE: a sparse walk (nothing verified, nothing designated) puts
+  // only the derived tier in the patch — no partial designations, no extras.
+  const sparse = walk.buildExitWrite(walk.emptyWalkCandidate('http://127.0.0.1:8188'), NO_TIERS)
+  assert.deepEqual(
+    Object.keys(sparse.settingsPatch),
+    ['generationDefaults'],
+    `nothing verified → only the tier rides (got ${JSON.stringify(Object.keys(sparse.settingsPatch))})`,
+  )
+  ok(sparse.launcherKeys === null, 'keep-current carries no launcher keys')
+})
+
+test('the default tier writes only when verified — never a tier that would refuse', () => {
+  console.log('wizard: the exit write — the tier rule')
+
+  const verified = walk.markEngineVerified(walk.emptyWalkCandidate('http://127.0.0.1:8188'), 'http://127.0.0.1:8188', true)
+  const tierOf = (tiers) => {
+    const write = walk.buildExitWrite(verified, tiers)
+    return { turbo: write.settingsPatch.generationDefaults?.turbo, fallback: write.tierFallback }
+  }
+
+  ok(tierOf(NO_TIERS).turbo === 'off', 'no verified tier → off (the exit never writes a tier that would refuse)')
+  ok(tierOf(NO_TIERS).fallback === true, 'the none arm sets the honest fallback flag')
+  ok(tierOf({ '4': { available: false }, '8': { available: true } }).turbo === '8', 'only the 8-step verified → 8')
+  ok(tierOf({ '4': { available: true }, '8': { available: false } }).turbo === '4', 'only the 4-step verified → 4')
+  ok(tierOf({ '4': { available: true }, '8': { available: true } }).turbo === '8', 'both verified → 8 (the quality-leaning ruling, asserted)')
+  ok(tierOf({ '4': { available: true }, '8': { available: true } }).fallback === false, 'no fallback flag when any tier verified')
+
+  // The REAL seam (one derivation — turboTierStates is what the properties
+  // panel and the submit refusal read; the exit reads the same ladder).
+  const eightOnly = h3.turboTierStates([M('minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors', 'loras')], 'text')
+  ok(eightOnly['8'].available === true && eightOnly['4'].available === false, 'the real seam resolves the 8-step LoRA alone')
+  ok(tierOf(eightOnly).turbo === '8', 'the exit write derives from the same seam (8 available → 8)')
+  const none = h3.turboTierStates([], 'text')
+  ok(none['4'].available === false && none['8'].available === false, 'the real seam answers both-unavailable on an empty inventory')
+  ok(tierOf(none).turbo === 'off' && tierOf(none).fallback === true, 'the real seam empty → off + fallback')
+})
+
+test('skip persists nothing: no settings patch and no launcher keys (D3)', () => {
+  console.log('wizard: the exit write — skip persists nothing')
+
+  // Skip's terminal state is the latch — the candidate is dropped whole. The
+  // most a skip-shaped exit COULD say is the untouched candidate's write:
+  // only the derived tier, nothing designated, no launcher keys.
+  const skipShaped = walk.buildExitWrite(walk.emptyWalkCandidate('http://127.0.0.1:8188'), BOTH_TIERS)
+  assert.deepEqual(Object.keys(skipShaped.settingsPatch), ['generationDefaults'], 'the untouched candidate writes only the derived tier')
+  ok(skipShaped.launcherKeys === null, 'the untouched candidate writes no launcher keys')
+  ok(walk.shouldPresent({ latchDone: false, latchSkipped: true, serverSetupRequested: false }) === false, 'the skipped latch ends the presentation')
+  ok(walk.shouldPresent({ latchDone: false, latchSkipped: false, serverSetupRequested: false }) === true, 'the un-latched walk keeps presenting')
+})
+
+test('applyExitWrite merges over saved settings without dropping unrelated keys', () => {
+  console.log('wizard: the exit write — the pure merge')
+
+  const saved = {
+    comfyUrl: 'http://old:1',
+    modelRoot: '/old/root',
+    engine: { mode: 'external', checkoutPath: '/old/checkout', externalCustomNodesDir: '/old/nodes', portPreference: 8191 },
+    modelOverrides: { monoka: { text_encoders: 'old.t5' }, other: { vae: 'keep.vae' } },
+    generationDefaults: { turbo: 'off', steps: 30, resolution: '1344x768', duration: 6 },
+  }
+  const next = walk.applyExitWrite(saved, walk.buildExitWrite(richWalk(), BOTH_TIERS))
+  ok(next.comfyUrl === 'http://127.0.0.1:8188', 'the verified url replaces the saved one')
+  ok(next.modelRoot === '/engine/comfy/models', 'the designated root replaces the saved one')
+  ok(next.engine.externalCustomNodesDir === '/engine/comfy/custom_nodes'
+    && next.engine.mode === 'external' && next.engine.portPreference === 8191,
+  'the engine merge preserves every unrelated engine key')
+  ok(next.modelOverrides.monoka.diffusion_models === 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors'
+    && next.modelOverrides.monoka.text_encoders === 'old.t5'
+    && next.modelOverrides.other.vae === 'keep.vae',
+  'the overrides merge per-family: the walk pick lands, the rest survives')
+  ok(next.generationDefaults.turbo === '8' && next.generationDefaults.steps === 30 && next.generationDefaults.resolution === '1344x768',
+  'the tier merges into the saved defaults; the rest of the defaults stays')
+  ok(saved.generationDefaults.turbo === 'off' && saved.comfyUrl === 'http://old:1', 'the saved object is untouched (a pure merge, no mutation)')
+
+  // Sparse write over saved settings: only the tier changes.
+  const sparseNext = walk.applyExitWrite(saved, walk.buildExitWrite(walk.emptyWalkCandidate('http://old:1'), NO_TIERS))
+  ok(sparseNext.comfyUrl === 'http://old:1' && sparseNext.modelRoot === '/old/root', 'nothing verified → the saved designations stay')
+  ok(sparseNext.generationDefaults.turbo === 'off', 'the tier rule still resolves (off when nothing verified)')
+})
+
+test('the exit summary speaks: what will and will not be written, the silent drop named (T7 review, T5 voice)', () => {
+  console.log('wizard: the exit write — the summary voice')
+
+  // The rich walk: every item carried, no "nothing" headline.
+  const richSummary = walk.exitWriteSummary(walk.buildExitWrite(richWalk(), BOTH_TIERS))
+  ok(Array.isArray(richSummary.items) && richSummary.items.length === 6, `six items — the five patch keys + the LAN keys (got ${richSummary.items?.length})`)
+  ok(richSummary.items.every((item) => item.carried === true), 'a fully verified walk carries every item')
+  ok(!/nothing you designated/i.test(richSummary.headline), `the carried headline does not say nothing (got ${JSON.stringify(richSummary.headline)})`)
+
+  // The UNVERIFIED WALK voice (T5): the unverified engine's item says the
+  // saved address stays — no invented verdict, no silent drop.
+  const unverifiedWrite = walk.buildExitWrite(walk.emptyWalkCandidate('http://127.0.0.1:8188'), BOTH_TIERS)
+  const urlItem = unverifiedWrite.items.find((item) => item.key === 'comfyUrl')
+  ok(urlItem.carried === false, 'the unverified url item is not carried')
+  ok(/saved address|saved/i.test(urlItem.reason ?? ''), `the unverified url item names what stays (got ${JSON.stringify(urlItem.reason)})`)
+  // T5's voice: an unverified walk's summary says what WILL and WON'T be
+  // written — and when NOTHING was verified, the headline names it.
+  const unverifiedSummary = walk.exitWriteSummary(unverifiedWrite)
+  ok(/nothing you designated will be written/i.test(unverifiedSummary.headline),
+  `the all-dropped headline names the nothing (got ${JSON.stringify(unverifiedSummary.headline)})`)
+
+  // THE SILENT DROP SURFACE (T7's carried review): a designation the gate
+  // refused (host designated, the probe never answered) is DROPPED at the
+  // exit — the summary must say so, never vanish.
+  const refused = walk.setLanHost(richWalk(), '0.0.0.0')
+  const refusedWrite = walk.buildExitWrite(refused, BOTH_TIERS)
+  ok(refusedWrite.launcherKeys === null, 'the refused designation carries no launcher keys (the existing seam)')
+  const refusedItem = refusedWrite.items.find((item) => item.key === 'lanKeys')
+  ok(refusedItem.carried === false, 'the refused LAN item is marked not-carried')
+  ok(/probe|not verified/i.test(refusedItem.reason ?? ''), `the refused item names its drop (got ${JSON.stringify(refusedItem.reason)})`)
+
+  // Keep-current is NOT a drop — its reason says so (chosen nothing).
+  const keptWrite = walk.buildExitWrite(walk.keepLanPosture(richWalk()), BOTH_TIERS)
+  const keptItem = keptWrite.items.find((item) => item.key === 'lanKeys')
+  ok(keptItem.carried === false && /keep|nothing is written/i.test(keptItem.reason ?? ''),
+  `keep-current says so by name (got ${JSON.stringify(keptItem.reason)})`)
+
+  // The tier item rides every summary with its honest value.
+  const fallbackWrite = walk.buildExitWrite(richWalk(), NO_TIERS)
+  const tierItem = fallbackWrite.items.find((item) => item.key === 'tier')
+  ok(tierItem.carried === true && /quality|30 steps/i.test(`${tierItem.value ?? ''} ${tierItem.note ?? ''}`),
+  `the fallback tier item speaks its truth (got ${JSON.stringify(tierItem)})`)
+})
+
+test('the placement disclosure: pre-exit fetches landed in the CONFIGURED root — the exit names the folder when the designation differs', () => {
+  console.log('wizard: the exit write — the placement seam')
+
+  const disclosure = walk.placementDisclosure({
+    placedPaths: ['/configured/loras/turbo.safetensors', '/configured/loras/other.safetensors', '/elsewhere/x.safetensors'],
+    configuredRoot: '/configured',
+    designatedRoot: '/engine/comfy/models',
+  })
+  ok(disclosure !== null && disclosure.folder === '/configured', `the disclosure names the configured folder (got ${JSON.stringify(disclosure)})`)
+  assert.deepEqual(
+    disclosure?.files,
+    ['/configured/loras/turbo.safetensors', '/configured/loras/other.safetensors'],
+    'only the files under the configured root, paths verbatim',
+  )
+
+  ok(walk.placementDisclosure({ placedPaths: ['/configured/loras/t.safetensors'], configuredRoot: '/configured', designatedRoot: '/configured' }) === null,
+  'the designation equals the configured root — nothing to disclose')
+  ok(walk.placementDisclosure({ placedPaths: ['/configured/loras/t.safetensors'], configuredRoot: '/configured', designatedRoot: '' }) === null,
+  'no designation — the configured root remains the root; nothing to disclose')
+  ok(walk.placementDisclosure({ placedPaths: [], configuredRoot: '/configured', designatedRoot: '/engine/comfy/models' }) === null,
+  'nothing was placed pre-exit — nothing to disclose')
+  // Trailing-slash tolerance: roots arrive from settings and designations
+  // that may carry a trailing slash; the membership test must not care.
+  const slashed = walk.placementDisclosure({ placedPaths: ['/configured/loras/t.safetensors'], configuredRoot: '/configured/', designatedRoot: '/engine/comfy/models' })
+  ok(slashed !== null && slashed.files.length === 1, 'a trailing slash on the configured root does not hide the files')
+})
+
+test('the cost preview speaks the seam the submit runs — tier, steps, the wait as a class', () => {
+  console.log('wizard: the first prompt — the cost preview')
+
+  const fast = walk.promptCostPreview({ turbo: '8', steps: 8, resolution: '1344x768', duration: 6 })
+  ok(/8-step/.test(fast) && /1344x768/.test(fast) && /6s/.test(fast), `the fast preview names tier, steps, resolution, duration (got ${JSON.stringify(fast)})`)
+  ok(/minutes-class/.test(fast), 'the fast wait is stated as a class')
+
+  const four = walk.promptCostPreview({ turbo: '4', steps: 4, resolution: '768x1344', duration: 8 })
+  ok(/4-step/.test(four) && /768x1344/.test(four), 'the 4-step preview names its own tier and shape')
+
+  const fallback = walk.promptCostPreview({ turbo: 'off', steps: 30, resolution: '1344x768', duration: 6 })
+  ok(/quality/i.test(fallback) && /30 steps/.test(fallback), `the fallback names quality and the full step count (got ${JSON.stringify(fallback)})`)
+  ok(/20-minute/.test(fallback), 'the quality wait names its class — never an invented minute count')
+  ok(!/minutes-class/.test(fallback), 'the fallback does not claim the fast class')
+})
+
 test('suite summary', () => {
   console.log(`  wizard: ${passed} assertions passed`)
 })

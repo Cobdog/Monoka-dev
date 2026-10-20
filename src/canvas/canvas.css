@@ -227,6 +227,13 @@
 .canvas-wizard-pick { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
 .canvas-wizard-pick.current { border-color: var(--accent); }
 .canvas-wizard-fetch { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+/* The exit summary (wizard rework task 8, spec §3) — the one-motion write's
+   receipt, shown before the buttons: headline, per-key carried/not-carried
+   lines, the placement disclosure. */
+.canvas-wizard-exit { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.canvas-wizard-exit p { margin: 0; }
+.canvas-wizard-exit ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0 0 0 16px; font-size: var(--text-sm); }
+.canvas-wizard-exit li strong { font-weight: 600; }
 .canvas-wizard textarea { width: 100%; resize: vertical; }
 .canvas-wizard-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); }
 .canvas-wizard-progress { display: flex; gap: 12px; list-style: none; margin: 0; padding: 0; font-size: var(--text-sm); color: var(--muted-2); }
