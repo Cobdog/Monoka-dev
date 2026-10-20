@@ -8,3 +8,7 @@
 benchmarks/results/LEADERBOARD.md text eol=lf
 benchmarks/results/registry.json text eol=lf
 benchmarks/data/*.json text eol=lf
+# The hash catalog is byte-compared by its append gate (rows/gaps keyed sets
+# across merges) and regenerated deterministically (task to7xpa7) — pin LF so
+# a Windows checkout cannot diverge from what the generator writes.
+server/hashCatalog.json text eol=lf

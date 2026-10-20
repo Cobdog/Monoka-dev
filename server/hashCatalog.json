@@ -1,0 +1,536 @@
+{
+  "version": 1,
+  "generatedAt": "2026-10-20",
+  "crawl": [
+    {
+      "repo": "Cierpliwy/krea2-inpaint-edit",
+      "revision": "9faed2d2b6cfd909401e8d6139d87b93b36c01e4",
+      "fetchedAt": "2026-09-26"
+    },
+    {
+      "repo": "Comfy-Org/Depth-Anything-3",
+      "revision": "248c0c2c1fca3cf3046db1d0d3d5256f2d078f41",
+      "fetchedAt": "2026-09-14"
+    },
+    {
+      "repo": "Comfy-Org/Qwen-Image-2.1",
+      "revision": "ace0edeb3791a594ddfa36ed5f41a178a394e921",
+      "fetchedAt": "2026-09-20"
+    },
+    {
+      "repo": "Kijai/MiniMax-H3-TAE",
+      "revision": "a213ac8bf2f148b4f32372279a7f207846978900",
+      "fetchedAt": "2026-09-22"
+    },
+    {
+      "repo": "MATLOWAI/minimax-h3-fused-turbo-int8-convrot",
+      "revision": "8a8dffaa0cd99c6184833ae0a3b4e9b0089c17b3",
+      "fetchedAt": "2026-09-15"
+    },
+    {
+      "repo": "Mamad8/MiniMax-H3-Image-VAE",
+      "revision": "main",
+      "fetchedAt": "2026-09-18"
+    },
+    {
+      "repo": "OpenVDN/vdn-minimax-h3",
+      "revision": "51eeecefdb5b524c0df5539446d1dd54a17aa439",
+      "fetchedAt": "2026-09-14"
+    },
+    {
+      "repo": "alibaba-pai/MiniMax-H3-Fun-Controlnet-Union",
+      "revision": "6419c27ece80f330826ae4439fa9c5910c475ccf",
+      "fetchedAt": "2026-09-14"
+    },
+    {
+      "repo": "conradlocke/krea2-identity-edit",
+      "revision": "89e9e7a09ee2e5c9331e952063d79b1b8a703280",
+      "fetchedAt": "2026-09-14"
+    },
+    {
+      "repo": "jacokon/fasth3-live",
+      "revision": "b21e88784d0c036ea19508cfff2c2839bddef6eb",
+      "fetchedAt": "2026-09-15"
+    },
+    {
+      "repo": "lightx2v/Minimax-h3-Turbo",
+      "revision": "9bc1f3c0407805b00da9f762639cb435c644b2dc",
+      "fetchedAt": "2026-10-19"
+    },
+    {
+      "repo": "smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models",
+      "revision": "a36feb17fbd1f20ff4bdd509ccd07e2b7b585a38",
+      "fetchedAt": "2026-09-14"
+    },
+    {
+      "repo": "yijunwang2/krea2-anypaint",
+      "revision": "1a9fb37a304c27523939c44fc2b770c11472451b",
+      "fetchedAt": "2026-09-14"
+    }
+  ],
+  "gaps": [],
+  "rows": [
+    {
+      "sha256": "08cfe946033af7d27719b964b6e0a0e50c32138daabbd6ce4137e23df6bf9980",
+      "sizeBytes": 1956193000,
+      "kind": "loras",
+      "identity": {
+        "family": "minimax-h3",
+        "artifact": "turbo-8",
+        "variant": "v1.0-768p-comfyui",
+        "quant": "bf16",
+        "dtype": "bf16"
+      },
+      "source": {
+        "repo": "lightx2v/Minimax-h3-Turbo",
+        "revision": "9bc1f3c0407805b00da9f762639cb435c644b2dc",
+        "path": "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+      },
+      "aliases": [
+        "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "24fc93c82fe84dc45d0627f4e72c637bc387d282ba18f60ed3b7f8c81089392c",
+      "sizeBytes": 851452696,
+      "kind": "vdn",
+      "identity": {
+        "family": "minimax-h3",
+        "artifact": "vdn-linear-branch",
+        "variant": "dmd-step-250+b-step-2000",
+        "quant": "unknown",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "OpenVDN/vdn-minimax-h3",
+        "revision": "51eeecefdb5b524c0df5539446d1dd54a17aa439",
+        "path": "stage-dmd-step-250/adapters/turbo/adapter_model.safetensors"
+      },
+      "aliases": [
+        "adapter_model.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "26e2e80e00c9547439786404d17ee4a6335b68f19c744633a8ad582f6df1e2eb",
+      "sizeBytes": 457111984,
+      "kind": "loras",
+      "identity": {
+        "family": "krea-2",
+        "artifact": "inpaint-edit",
+        "variant": "strong",
+        "quant": "full",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "Cierpliwy/krea2-inpaint-edit",
+        "revision": "9faed2d2b6cfd909401e8d6139d87b93b36c01e4",
+        "path": "krea2_inpaint_edit_strong.safetensors"
+      },
+      "aliases": [
+        "krea2_inpaint_edit_strong.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "3a7d09f6b27f8ead160d340f2f59c11f4ee635c4a1ee87ffd8b1b9f9ba412f7a",
+      "sizeBytes": 228587752,
+      "kind": "loras",
+      "identity": {
+        "family": "krea-2",
+        "artifact": "anypaint-adapter",
+        "variant": "rank32",
+        "quant": "rank32",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "yijunwang2/krea2-anypaint",
+        "revision": "1a9fb37a304c27523939c44fc2b770c11472451b",
+        "path": "krea2_anypaint_rank32.safetensors"
+      },
+      "aliases": [
+        "krea2_anypaint_rank32.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "418c0d2ea857e2d1215fa51baa46833f499a62eb2400ec63d337aa20d326414f",
+      "sizeBytes": 541524124,
+      "kind": "geometry_estimation",
+      "identity": {
+        "family": "depth-anything",
+        "artifact": "depth-encoder",
+        "variant": "3-base",
+        "quant": "unknown",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "Comfy-Org/Depth-Anything-3",
+        "revision": "248c0c2c1fca3cf3046db1d0d3d5256f2d078f41",
+        "path": "geometry_estimation/depth_anything_3_base.safetensors"
+      },
+      "aliases": [
+        "depth_anything_3_base.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "4262e4e9963c553fa00016bbe83961407a4fc0a888be95fd836c8d4f2304e48b",
+      "sizeBytes": 20980178976,
+      "kind": "diffusion_models",
+      "identity": {
+        "family": "minimax-h3",
+        "artifact": "fused-turbo",
+        "variant": "refdelta-r1024-turbo8-mystic07",
+        "quant": "int8-convrot",
+        "dtype": "int8"
+      },
+      "source": {
+        "repo": "MATLOWAI/minimax-h3-fused-turbo-int8-convrot",
+        "revision": "8a8dffaa0cd99c6184833ae0a3b4e9b0089c17b3",
+        "path": "diffusion_models/minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors"
+      },
+      "aliases": [
+        "minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "4c09533fdd243200e7afad92f1ed1a92dacd39c53fe64412f938ae093c82a26b",
+      "sizeBytes": 457111984,
+      "kind": "loras",
+      "identity": {
+        "family": "krea-2",
+        "artifact": "inpaint-edit",
+        "variant": "default",
+        "quant": "full",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "Cierpliwy/krea2-inpaint-edit",
+        "revision": "9faed2d2b6cfd909401e8d6139d87b93b36c01e4",
+        "path": "krea2_inpaint_edit.safetensors"
+      },
+      "aliases": [
+        "krea2_inpaint_edit.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "58558fef506f88bb41649242de9b9b3a365da806b51b2e96afbbe1625222058a",
+      "sizeBytes": 334026912,
+      "kind": "vdn",
+      "identity": {
+        "family": "minimax-h3",
+        "artifact": "vdn-linear-branch",
+        "variant": "dmd-step-250+b-step-2000",
+        "quant": "unknown",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "OpenVDN/vdn-minimax-h3",
+        "revision": "51eeecefdb5b524c0df5539446d1dd54a17aa439",
+        "path": "stage-dmd-step-250/adapters/default/adapter_model.safetensors"
+      },
+      "aliases": [
+        "adapter_model.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "59d00eb3559e69a57a68dc6bb1f2a38aebaf9365de12a9bbd7387f2435cbc5f4",
+      "sizeBytes": 457111984,
+      "kind": "loras",
+      "identity": {
+        "family": "krea-2",
+        "artifact": "inpaint-edit",
+        "variant": "mild",
+        "quant": "full",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "Cierpliwy/krea2-inpaint-edit",
+        "revision": "9faed2d2b6cfd909401e8d6139d87b93b36c01e4",
+        "path": "krea2_inpaint_edit_mild.safetensors"
+      },
+      "aliases": [
+        "krea2_inpaint_edit_mild.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "67ebba39653f6347533faed3dd9c6cc6cdb8a9a2c0d721d86abc015d449e7475",
+      "sizeBytes": 1738850040,
+      "kind": "vae",
+      "identity": {
+        "family": "minimax-h3",
+        "artifact": "video-vae",
+        "variant": "w4a8-from-fp16",
+        "quant": "w4a8",
+        "dtype": "w4a8"
+      },
+      "source": {
+        "repo": "jacokon/fasth3-live",
+        "revision": "b21e88784d0c036ea19508cfff2c2839bddef6eb",
+        "path": "minimax_h3_video_vae_w4a8_from_fp16.safetensors"
+      },
+      "aliases": [
+        "minimax_h3_video_vae_w4a8_from_fp16.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "6adf9a69cc9502d286db7b69964d37da7e9cfe4b05b4d004bc275f087d3fd3cf",
+      "sizeBytes": 1828256432,
+      "kind": "loras",
+      "identity": {
+        "family": "krea-2",
+        "artifact": "identity-edit",
+        "variant": "v1.2",
+        "quant": "full",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "conradlocke/krea2-identity-edit",
+        "revision": "89e9e7a09ee2e5c9331e952063d79b1b8a703280",
+        "path": "krea2_identity_edit_v1_2.safetensors"
+      },
+      "aliases": [
+        "krea2_identity_edit_v1_2.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "6c3d0bfa055986a803a566a862fcde283a1e63db62829e5ef4a2a5aebf50bb86",
+      "sizeBytes": 5207808784,
+      "kind": "vae",
+      "identity": {
+        "family": "minimax-h3",
+        "artifact": "t1-image-vae",
+        "variant": "step1597",
+        "quant": "unknown",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "Mamad8/MiniMax-H3-Image-VAE",
+        "revision": "main",
+        "path": "minimax_h3_t1_image_vae_step1597.safetensors"
+      },
+      "aliases": [
+        "minimax_h3_t1_image_vae_step1597.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "8bfd0f6e12abf2d2d697ecc888e5e90b0d6741d6708f05799f53afa560452e8f",
+      "sizeBytes": 9350798360,
+      "kind": "text_encoders",
+      "identity": {
+        "family": "qwen-image",
+        "artifact": "text-encoder",
+        "variant": "qwen3vl-8b-2.1",
+        "quant": "int8-convrot",
+        "dtype": "int8"
+      },
+      "source": {
+        "repo": "Comfy-Org/Qwen-Image-2.1",
+        "revision": "ace0edeb3791a594ddfa36ed5f41a178a394e921",
+        "path": "text_encoders/qwen3vl_8b_int8_convrot.safetensors"
+      },
+      "aliases": [
+        "qwen3vl_8b_int8_convrot.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "919a48acb525dc8fc70287fcd94ec1f5e5e289a77f1df14d01099c6ce204eb02",
+      "sizeBytes": 6806843904,
+      "kind": "model_patches",
+      "identity": {
+        "family": "minimax-h3",
+        "artifact": "fun-control-union",
+        "variant": "union",
+        "quant": "unknown",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "alibaba-pai/MiniMax-H3-Fun-Controlnet-Union",
+        "revision": "6419c27ece80f330826ae4439fa9c5910c475ccf",
+        "path": "MiniMax-H3-Fun-Controlnet-Union.safetensors"
+      },
+      "aliases": [
+        "MiniMax-H3-Fun-Controlnet-Union.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "a629cfea8d89a071b140c6e1935dc9a23e72de6badc18975a2bb9e6d1423d76d",
+      "sizeBytes": 20970379632,
+      "kind": "diffusion_models",
+      "identity": {
+        "family": "minimax-h3",
+        "artifact": "hybrid",
+        "variant": "smhfacct-b25-49",
+        "quant": "int8",
+        "dtype": "int8"
+      },
+      "source": {
+        "repo": "smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models",
+        "revision": "a36feb17fbd1f20ff4bdd509ccd07e2b7b585a38",
+        "path": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors"
+      },
+      "aliases": [
+        "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9",
+      "sizeBytes": 675509688,
+      "kind": "vae",
+      "identity": {
+        "family": "qwen-image",
+        "artifact": "vae",
+        "variant": "2.1-64ch-rgba",
+        "quant": "bf16",
+        "dtype": "bf16"
+      },
+      "source": {
+        "repo": "Comfy-Org/Qwen-Image-2.1",
+        "revision": "ace0edeb3791a594ddfa36ed5f41a178a394e921",
+        "path": "vae/qwen_image_2.1_vae_bf16.safetensors"
+      },
+      "aliases": [
+        "qwen_image_2.1_vae_bf16.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "c8168ebc17bbacc4296103dda2fec1ba85b24392fa08cf2bfbcef0cff0dc3cc8",
+      "sizeBytes": 1956193000,
+      "kind": "loras",
+      "identity": {
+        "family": "minimax-h3",
+        "artifact": "turbo-4",
+        "variant": "v1.2-768p-comfyui",
+        "quant": "bf16",
+        "dtype": "bf16"
+      },
+      "source": {
+        "repo": "lightx2v/Minimax-h3-Turbo",
+        "revision": "9bc1f3c0407805b00da9f762639cb435c644b2dc",
+        "path": "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
+      },
+      "aliases": [
+        "minimax_h3_fl2v_turbo_4step_v1.2_768p_comfyui_bf16.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "cb74113cb03faecd79611b01fd7fd642f0aa60d6f0b95086abee214d75eaa57d",
+      "sizeBytes": 7256783064,
+      "kind": "diffusion_models",
+      "identity": {
+        "family": "qwen-image",
+        "artifact": "dit",
+        "variant": "2.1",
+        "quant": "int8-convrot",
+        "dtype": "int8"
+      },
+      "source": {
+        "repo": "Comfy-Org/Qwen-Image-2.1",
+        "revision": "ace0edeb3791a594ddfa36ed5f41a178a394e921",
+        "path": "diffusion_models/qwen_image_2.1_int8_convrot.safetensors"
+      },
+      "aliases": [
+        "qwen_image_2.1_int8_convrot.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "dec6981c7874f5b3bc92d1a02e256b673a3b3499dc1a124714bb3b19da602855",
+      "sizeBytes": 4279428112,
+      "kind": "vdn",
+      "identity": {
+        "family": "minimax-h3",
+        "artifact": "vdn-linear-branch",
+        "variant": "dmd-step-250+b-step-2000",
+        "quant": "unknown",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "OpenVDN/vdn-minimax-h3",
+        "revision": "51eeecefdb5b524c0df5539446d1dd54a17aa439",
+        "path": "stage-dmd-step-250/linear_branch/model.safetensors"
+      },
+      "aliases": [
+        "model.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "f0f60fa072089997f817402098c2fd90777cb2660dd79cf5df42fc1e3e08e527",
+      "sizeBytes": 9791388,
+      "kind": "vae_approx",
+      "identity": {
+        "family": "minimax-h3",
+        "artifact": "preview-decoder",
+        "variant": "kijai-tae",
+        "quant": "unknown",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "Kijai/MiniMax-H3-TAE",
+        "revision": "a213ac8bf2f148b4f32372279a7f207846978900",
+        "path": "vae_approx/taeh3_decoder.safetensors"
+      },
+      "aliases": [
+        "taeh3_decoder.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "f53db0bb4b081d638f196865cbc9f055379704fafb788336784fc1ccde18d825",
+      "sizeBytes": 914159744,
+      "kind": "loras",
+      "identity": {
+        "family": "krea-2",
+        "artifact": "identity-edit",
+        "variant": "v1.2-r128",
+        "quant": "svd-r128",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "conradlocke/krea2-identity-edit",
+        "revision": "89e9e7a09ee2e5c9331e952063d79b1b8a703280",
+        "path": "krea2_identity_edit_v1_2_r128.safetensors"
+      },
+      "aliases": [
+        "krea2_identity_edit_v1_2_r128.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    },
+    {
+      "sha256": "f794b47142555c929cf536a2f1e4f335174b9aedbb08572b07d45814d4242423",
+      "sizeBytes": 457111048,
+      "kind": "loras",
+      "identity": {
+        "family": "krea-2",
+        "artifact": "identity-edit",
+        "variant": "v1.2-r64",
+        "quant": "svd-r64",
+        "dtype": "unknown"
+      },
+      "source": {
+        "repo": "conradlocke/krea2-identity-edit",
+        "revision": "89e9e7a09ee2e5c9331e952063d79b1b8a703280",
+        "path": "krea2_identity_edit_v1_2_r64.safetensors"
+      },
+      "aliases": [
+        "krea2_identity_edit_v1_2_r64.safetensors"
+      ],
+      "addedAt": "2026-10-20"
+    }
+  ]
+}

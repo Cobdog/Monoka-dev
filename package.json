@@ -27,6 +27,7 @@
     "test:engine": "vitest run engine-process",
     "test:runtime": "vitest run runtime",
     "test:fetcher": "vitest run fetcher",
+    "test:hashcatalog": "vitest run hashcatalog",
     "test:instance": "vitest run instance",
     "test:poserig": "vitest run poserig",
     "test:camera": "vitest run camera",
