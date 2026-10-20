@@ -459,6 +459,227 @@ test('fetchLanded derives from the catalog state, not component memory — place
   ok(wizardModels.fetchLanded(landed[4].fetch) === true, 'a builder-emitted view with a placed entry reads as landed')
 })
 
+// ---------------------------------------------------------------------------
+// TASK 6 — the Node packs step (spec §2.3): can-I-generate from the ONE
+// predicate, the curated rows (the long tail never renders), the designation
+// gate on every install, the via stated, and the honest between-state. The
+// pack-side pure block lives in the spine (wizardWalk.ts) beside the gates;
+// the can-I-generate narrator lives in h3Stack beside the predicate.
+// ---------------------------------------------------------------------------
+
+const registry = loadTs('src/lib/nodePackRegistry.ts', { window: { monoka: oracle } })
+
+// The live board's listing shape (NodePackStatus): the registry's 14 rows
+// decorated the way server/engineNodes.withAvailability does — nothing
+// installed, nothing active, user-fetch packs needing their network source.
+// `firstPartyShips` stands in for the payload truth the server reads off
+// the repo's custom-nodes/ root (firstPartyPayloadDir).
+function boardStatuses(firstPartyShips) {
+  return registry.ENGINE_NODE_PACKS.map((pack) => ({
+    ...pack,
+    vendored: pack.installMode === 'vendor' || (pack.installMode === 'first-party' && firstPartyShips === true),
+    installed: false,
+    availability: pack.installMode === 'user-fetch'
+      ? 'needs-source'
+      : (pack.installMode === 'vendor' || firstPartyShips === true ? 'ready' : 'unavailable'),
+    instanceState: 'absent',
+    ...(pack.installMode === 'user-fetch' ? { hasNetworkSource: true } : {}),
+    managerInstallable: false,
+    fetchConsented: false,
+  }))
+}
+
+test('the packs step answers can-I-generate from the ONE predicate (§2.3)', () => {
+  console.log('wizard: the packs step — can-I-generate')
+
+  ok(typeof h3.canGenerateAnswer === 'function', 'canGenerateAnswer exists beside the one predicate (one voice, h3Stack)')
+
+  // The yes arm: the text-lane weights resolve AND the engine serves the
+  // core classes.
+  const complete = h3.h3StackReport(LANE_FILES, undefined, STOCK_CLASSES)
+  const yes = h3.canGenerateAnswer(complete.selection, STOCK_CLASSES)
+  ok(yes.ready === true, `a complete stack on a core-serving engine reads yes (got ${yes.ready})`)
+  ok(/nothing to do here/i.test(yes.text), `the yes says nothing to do here (got ${JSON.stringify(yes.text)})`)
+
+  // The core-class arm: weights fine, KSamplerSelect not served → No, the
+  // class NAMED (weights cannot fix a node class).
+  const noSampler = {
+    MiniMaxH3ImageToVideo: STOCK_CLASSES.MiniMaxH3ImageToVideo,
+    MiniMaxH3ReferenceToVideo: STOCK_CLASSES.MiniMaxH3ReferenceToVideo,
+    SamplerCustomAdvanced: STOCK_CLASSES.SamplerCustomAdvanced,
+  }
+  const classBlocked = h3.canGenerateAnswer(complete.selection, noSampler)
+  ok(classBlocked.ready === false, 'a missing core class reads no')
+  ok(/KSamplerSelect/.test(classBlocked.text), `the no names the missing class (got ${JSON.stringify(classBlocked.text)})`)
+  ok(classBlocked.missingClasses.join('|') === 'KSamplerSelect', 'the answer carries the missing class names for the step')
+
+  // The weights arm: classes fine, weights unresolved → No, pointing at the
+  // Models step (this step never re-derives file membership).
+  const fresh = h3.h3StackReport([], undefined, STOCK_CLASSES)
+  const weightBlocked = h3.canGenerateAnswer(fresh.selection, STOCK_CLASSES)
+  ok(weightBlocked.ready === false, 'unresolved weights read no')
+  ok(/Models step/.test(weightBlocked.text), `the no points at the Models step (got ${JSON.stringify(weightBlocked.text)})`)
+  ok(weightBlocked.missingClasses.length === 0, 'a weights-only no carries no class names')
+
+  // ONE PREDICATE: the answer's ready IS h3StackReady at the text lane for
+  // the same inputs — on every combo, never a second encoding beside it.
+  const combos = [
+    [complete.selection, STOCK_CLASSES],
+    [complete.selection, noSampler],
+    [fresh.selection, STOCK_CLASSES],
+    [fresh.selection, null],
+  ]
+  for (const combo of combos) {
+    const answer = h3.canGenerateAnswer(combo[0], combo[1])
+    ok(answer.ready === h3.h3StackReady({ selection: combo[0], mode: 'text', info: combo[1] ?? undefined }), 'the answer tracks the one predicate on every combo')
+  }
+})
+
+test('curation = preflight-mapped + fast-tier + preview families; the long tail does not render (§2.3)', () => {
+  console.log('wizard: the packs step — curation')
+
+  // The submit-preflight SHAPE (MissingNodeClass): one miss whose packId
+  // maps OUTSIDE the two families — autocontext. A graph diff feeds this
+  // arm; the core-class diff the step holds is stock-only, so the families
+  // carry the rest. The fixture's first-party payload does NOT ship — the
+  // studio-tooling arm is this test's separate block below.
+  const miss = { className: 'Minimax_H3_AutoContext_parameter', packId: 'autocontext', stock: false }
+
+  const rows = walk.curatedWizardPacks({ packs: boardStatuses(false), missingClasses: [miss], info: null })
+  ok(rows.map((row) => row.packId).join('|') === 'autocontext|minimax-h3-turbo|h3-preview-override', `exactly the mapped pack + the two families render, in that order (got ${JSON.stringify(rows.map((row) => row.packId))})`)
+
+  // THE LONG TAIL: none of the other eleven renders — the board is the
+  // board's home (spec §2.3).
+  const ids = rows.map((row) => row.packId)
+  for (const tail of ['vdn-h3', 'lora-form-adapter', 'h3-hybrid-loader', 'h3-audio-t8', 'krea2edit', 'krea2-anypaint', 'krea2-ostris-edit', 'h3-image-studio', 'h3-motion-context', 'lbh-latent-upscaler', 'fizgig-h3-still']) {
+    ok(!ids.includes(tail), `the long tail never renders in the walk (${tail} stays on the board)`)
+  }
+
+  // The rows carry the registry's truth and state why they are curated.
+  const turbo = rows.find((row) => row.packId === 'minimax-h3-turbo')
+  ok(turbo.name === registry.findNodePack('minimax-h3-turbo').name, 'the row names the pack from the registry')
+  ok(turbo.licenseSpdx === 'Apache-2.0', 'the license verdict rides the row')
+  ok(typeof turbo.sentence === 'string' && turbo.sentence.length > 0 && turbo.sentence.indexOf('\n') === -1, 'the row carries one human sentence')
+  ok(rows[0].reason === 'preflight' && turbo.reason === 'family', 'the rows state why they are curated')
+  ok(turbo.status !== null && turbo.status.id === 'minimax-h3-turbo', 'the live board row rides the curated row')
+
+  // An active pack renders its ACTIVE row — the spec's flip is the install's
+  // verification payoff. The fallback reads the ONE presence rule
+  // (packPresence): a partial turbo checkout is NOT the usable feature and
+  // stays missing.
+  const partialInfo = { MiniMaxH3TurboLoRA: { input: { required: {} } } }
+  ok(registry.packPresence(partialInfo, 'minimax-h3-turbo') === false, 'fixture sanity: the one presence rule reads a partial checkout absent')
+  const partial = walk.curatedWizardPacks({ packs: boardStatuses(false), missingClasses: [], info: partialInfo })
+  ok(partial.find((row) => row.packId === 'minimax-h3-turbo').state === 'missing', 'a partial turbo checkout stays missing (the pack\'s own presenceRule, never a re-encoded any-match)')
+
+  // The board could not ask (unknown) but a served snapshot answers: fully
+  // served → the ACTIVE row.
+  const fullInfo = { MiniMaxH3TurboLoRA: { input: { required: {} } }, MiniMaxH3TurboSampler: { input: { required: {} } } }
+  const unknownBoard = boardStatuses(false).map((status) => ({ ...status, instanceState: 'unknown' }))
+  const cured = walk.curatedWizardPacks({ packs: unknownBoard, missingClasses: [], info: fullInfo })
+  ok(cured.find((row) => row.packId === 'minimax-h3-turbo').state === 'active', 'a served snapshot answers an unasking board through the one presence rule — the row reads active')
+
+  // The studio-tooling arm: the first-party pack renders ONLY when the
+  // board proves its payload ships (vendored) — the one install that needs
+  // neither network nor Manager (the journey installs exactly this row).
+  const tooling = walk.curatedWizardPacks({ packs: boardStatuses(true), missingClasses: [], info: null })
+  ok(tooling.map((row) => row.packId).join('|') === 'minimax-h3-turbo|h3-preview-override|lora-form-adapter', `the shipping payload curates the studio's own tooling pack beside the families (got ${JSON.stringify(tooling.map((row) => row.packId))})`)
+  const bare = walk.curatedWizardPacks({ packs: boardStatuses(false), missingClasses: [], info: null })
+  ok(bare.map((row) => row.packId).join('|') === 'minimax-h3-turbo|h3-preview-override', `without the payload the tooling pack does not render — only the families (got ${JSON.stringify(bare.map((row) => row.packId))})`)
+})
+
+test('installed-but-not-restarted renders awaiting-restart, never active (the honest between-state, §2.3)', () => {
+  console.log('wizard: the packs step — the between-state')
+
+  // The plan's verbatim interim copy lives once, in the spine.
+  ok(walk.PACKS_AWAITING_RESTART_COPY === 'installed — restart the engine to activate; this row verifies when it serves the classes.', 'the interim copy is the plan\'s, verbatim, in the spine')
+
+  // The arm that names the state: installed on disk (studio marker) but the
+  // instance does not serve the classes yet.
+  const installed = boardStatuses(true).map((status) => (status.id === 'lora-form-adapter' ? { ...status, installed: true, instanceState: 'absent' } : status))
+  const rows = walk.curatedWizardPacks({ packs: installed, missingClasses: [], info: null })
+  const adapter = rows.find((row) => row.packId === 'lora-form-adapter')
+  ok(adapter && adapter.state === 'awaiting-restart', `folder-present + not served reads awaiting-restart (got ${adapter && adapter.state})`)
+
+  // The flip: a fresh active verdict renders the row ACTIVE — spec §2.3's
+  // "the row flips to active only after the pack's claimed node classes
+  // appear in a fresh targeted object_info read"; installed, verified,
+  // nothing left to click.
+  const flipped = boardStatuses(true).map((status) => (status.id === 'lora-form-adapter' ? { ...status, installed: true, instanceState: 'active' } : status))
+  const activeRows = walk.curatedWizardPacks({ packs: flipped, missingClasses: [], info: null })
+  ok(activeRows.find((row) => row.packId === 'lora-form-adapter').state === 'active', 'a fresh active verdict flips the row ACTIVE (verified in place)')
+
+  // A foreign folder (present WITHOUT our marker) is on-disk truth too —
+  // the classes may still arrive on restart; the refusal is the Settings
+  // board's story, not the walk's.
+  const foreign = boardStatuses(true).map((status) => (status.id === 'lora-form-adapter' ? { ...status, installed: false, folderState: 'foreign', instanceState: 'absent' } : status))
+  const foreignRows = walk.curatedWizardPacks({ packs: foreign, missingClasses: [], info: null })
+  ok(foreignRows.find((row) => row.packId === 'lora-form-adapter').state === 'awaiting-restart', 'a foreign folder reads awaiting-restart too')
+
+  // A FRESH board absent-verdict outranks a stale served snapshot: the
+  // board asked last, and the between-state stays honest.
+  const snapshot = { MiniMaxH3LoraFormLoader: { input: { required: {} } } }
+  const staleRows = walk.curatedWizardPacks({ packs: installed, missingClasses: [], info: snapshot })
+  ok(staleRows.find((row) => row.packId === 'lora-form-adapter').state === 'awaiting-restart', 'a fresh board verdict outranks a stale snapshot')
+
+  // An unreachable instance (unknown) with no folder truth reads unknown —
+  // never missing, never active.
+  const unknownRows = walk.curatedWizardPacks({ packs: boardStatuses(true).map((status) => ({ ...status, instanceState: 'unknown' })), missingClasses: [], info: null })
+  ok(unknownRows.length > 0 && unknownRows.every((row) => row.state === 'unknown'), `an unasking board with no snapshot reads unknown rows (got ${JSON.stringify(unknownRows.map((row) => row.state))})`)
+
+  // Nothing on disk, nothing served: missing — the installable state.
+  const missingRows = walk.curatedWizardPacks({ packs: boardStatuses(true), missingClasses: [], info: null })
+  ok(missingRows.every((row) => row.state === 'missing'), 'a clean board reads missing rows — the installable state')
+})
+
+test('install rows refuse until the custom-nodes folder is designated and existence-verified (W-C1/R3 P1-8)', async () => {
+  console.log('wizard: the packs step — the designation gate')
+
+  ok(typeof walk.packsInstallRefusal === 'function', 'the refusal seam exists in the spine')
+
+  // Undesignated: the reason string — the same one the JSX renders beside
+  // the disabled button (D7: say why, never a dead end).
+  const refused = walk.packsInstallRefusal(walk.emptyDestination())
+  ok(typeof refused === 'string' && refused.length > 0, 'an undesignated folder answers a reason string')
+  ok(refused === walk.PACKS_INSTALL_REFUSAL, 'the refusal is the spine\'s one refusal copy')
+
+  // A typed-but-unverified value is NOT designated — existence is the gate.
+  const typed = walk.setDestinationValue(walk.emptyDestination(), '/engine/comfy/custom_nodes')
+  ok(walk.isDesignated(typed) === false && walk.packsInstallRefusal(typed) !== null, 'a typed-but-unverified value keeps the refusal')
+
+  // Designated (existence-verified): no refusal — the clicks open.
+  stubCheckPath({ exists: true, directory: true })
+  const designated = await walk.verifyDestination(typed)
+  ok(walk.packsInstallRefusal(designated) === null, 'a verified designation lifts the refusal')
+})
+
+test('an install\'s via is stated on the row — manager, studio, never silent', () => {
+  console.log('wizard: the packs step — the via label')
+
+  ok(walk.packViaLabel('manager') === 'installed through ComfyUI-Manager', 'the manager via names the Manager')
+  ok(walk.packViaLabel('studio') === 'installed through the studio', 'the studio via names the studio')
+  ok(walk.packViaLabel(undefined) === '', 'no via renders no label (never an invented one)')
+
+  // The route a click takes, derived from the board row's own decorations —
+  // the server's Manager-first verdict, then the payload, then the fetcher.
+  // The JSX renders exactly this decision.
+  ok(walk.packInstallPath({ managerInstallable: true, availability: 'ready', hasNetworkSource: true }) === 'route-manager', 'a Manager-eligible pack routes through Manager first')
+  ok(walk.packInstallPath({ managerInstallable: false, availability: 'ready', hasNetworkSource: true }) === 'route-studio', 'a ready payload routes through the studio')
+  ok(walk.packInstallPath({ managerInstallable: false, availability: 'needs-source', hasNetworkSource: true }) === 'fetcher', 'a network-source pack routes through the consented fetcher')
+  ok(walk.packInstallPath({ managerInstallable: false, availability: 'unavailable', hasNetworkSource: false }) === null, 'no path answers null — the row offers the manual way instead')
+  ok(walk.packInstallPath(null) === null, 'no board row answers null (nothing to install from)')
+})
+
+test('the row sentence is the registry description\'s first sentence — the essays stay on the board', () => {
+  console.log('wizard: the packs step — the row sentence')
+  const long = registry.findNodePack('h3-preview-override').description
+  const sentence = walk.packRowSentence(long)
+  ok(sentence.length < long.length && long.indexOf(sentence) === 0, 'the essay is cut to its first sentence')
+  ok(sentence.charAt(sentence.length - 1) === '.', 'the sentence keeps its period')
+  const plain = 'One sentence only.'
+  ok(walk.packRowSentence(plain) === plain, 'a single-sentence description renders whole')
+})
+
 test('suite summary', () => {
   console.log(`  wizard: ${passed} assertions passed`)
 })

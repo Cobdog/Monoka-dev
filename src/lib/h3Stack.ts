@@ -331,6 +331,35 @@ export function stackVerdictText(report: ReturnType<typeof h3StackReport>, mode:
   }
 }
 
+/** The Node packs step's can-I-generate answer (wizard rework §2.3, task 6,
+ *  2026-10-19): the first-timer's only question, answered by THE ONE
+ *  predicate — h3StackReady at the text lane over the report's own tier-'off'
+ *  selection (weights AND core classes in one call; the report's `ready` is
+ *  the turbo-8-gated pill vocabulary and must never feed this). The No
+ *  voices are ordered by what the step can fix: a missing core class first
+ *  (weights cannot fix a node class — the rows below carry the packs that
+ *  can), then unresolved weights (the Models step owns those names; this
+ *  step never re-derives file membership). */
+export type CanGenerateAnswer = { ready: boolean; text: string; missingClasses: string[] }
+
+export function canGenerateAnswer(
+  selection: H3StackReadinessQuery['selection'],
+  info?: ObjectInfo | Record<string, unknown> | null,
+): CanGenerateAnswer {
+  const missing = missingCoreNodeClasses(info ?? undefined, 'h3-video')
+  const ready = h3StackReady({ selection, mode: 'text', info: info ?? undefined })
+  if (ready) return { ready: true, text: 'Yes — the engine can generate right now; nothing to do here.', missingClasses: [] }
+  if (missing.length > 0) {
+    const names = missing.map((item) => item.className)
+    return {
+      ready: false,
+      text: `No — the engine does not serve ${names.join(', ')}. Weights cannot fix a node class: install the pack that provides it (the rows below), restart the engine, then refresh.`,
+      missingClasses: names,
+    }
+  }
+  return { ready: false, text: 'No — the text-lane weights are not resolved yet. The Models step names exactly what is missing.', missingClasses: [] }
+}
+
 export function findH3PreviewOverrideNode(info: ObjectInfo) {
   return Object.keys(info).find((name) => name === 'MiniMaxH3PreviewOverrideCS')
     ?? Object.keys(info).find((name) => /minimax.*h3.*preview.*override/i.test(name))

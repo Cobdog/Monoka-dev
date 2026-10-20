@@ -41,6 +41,9 @@
  * to check against", never an invented verdict). The module stays PURE — no
  * React, no settings-writing seam of any kind.
  */
+import { findNodePack, packPresence } from '../lib/nodePackRegistry'
+import type { MissingNodeClass } from '../lib/preflight'
+import type { NodePackStatus } from '../types'
 
 /** Narrow structural view of AppSettings — the fields a designation reads.
  *  AppSettings satisfies this; tests pass minimal fixtures. */
@@ -327,4 +330,158 @@ export function promptGate(candidate: WalkCandidate): StepGate {
   const floor = engineFloor(candidate)
   if (floor) return floor
   return { verdict: 'verified' }
+}
+
+// ---------------------------------------------------------------------------
+// The Node packs step's pure block (task 6, spec §2.3): the curated rows,
+// their live states, the install routes, the via labels. Everything the
+// step's JSX renders derives here so the unit suite pins the exact output —
+// the same view-builder discipline the Models step's wizardModels.ts holds.
+// ---------------------------------------------------------------------------
+
+/** The two families the walk curates beyond the preflight misses (spec
+ *  §2.3): the fast first-clip tier's loader pair and the live-preview
+ *  repair. Ids ARE nodePackRegistry ids. */
+export const WIZARD_PACK_FAMILIES: readonly string[] = ['minimax-h3-turbo', 'h3-preview-override']
+
+/** The studio's own tooling pack — curated when THIS install proves its
+ *  payload ships (the board's `vendored` verdict): the one install that
+ *  needs neither network nor Manager. */
+export const WIZARD_STUDIO_TOOLING_PACK = 'lora-form-adapter'
+
+/** The plan's verbatim interim copy (the between-state ruling, 2026-10-19):
+ *  the spec fixes the flip condition, not the between-state — this names it
+ *  honestly, and the step offers the re-verify beside it. */
+export const PACKS_AWAITING_RESTART_COPY = 'installed — restart the engine to activate; this row verifies when it serves the classes.'
+
+/** The D7 refusal the step renders beside every gated install click (W-C1/
+ *  R3 P1-8): the walk's gate is STRICTER than resolveNodePackTarget's
+ *  legacy checkout fallback — the walk installs only into a designated,
+ *  existence-verified folder; the fallback stays Settings' business. */
+export const PACKS_INSTALL_REFUSAL = 'Designate and verify the engine\'s external custom-nodes folder above first — installs need an existing directory on the engine\'s disk.'
+
+export type CuratedPackState = 'active' | 'awaiting-restart' | 'missing' | 'unknown'
+
+export type CuratedPackRow = {
+  packId: string
+  name: string
+  /** The registry description's first sentence — the row's one human
+   *  sentence; the deep-read essays stay on the board (spec §2.3). */
+  sentence: string
+  licenseSpdx: string
+  featureGroup: string
+  /** The live board row when the board listed the id (null otherwise —
+   *  an unlisted pack can still curate off a preflight miss). */
+  status: NodePackStatus | null
+  state: CuratedPackState
+  /** Why the row is curated: a preflight miss mapped to it, a curated
+   *  family, or the studio's own shipping tooling payload. */
+  reason: 'preflight' | 'family' | 'studio-tooling'
+}
+
+/** The registry description's first sentence — the row's one human
+ *  sentence (single-sourced: hand-written row copy would drift from the
+ *  registry the Settings board renders). */
+export function packRowSentence(description: string): string {
+  const cut = description.indexOf('. ')
+  const sentence = cut === -1 ? description : description.slice(0, cut + 1)
+  return sentence.trim()
+}
+
+/** Whether the pack is live on the engine. Freshness order: the board's
+ *  own targeted verdict first (the A-8 per-class pulls the poll just ran —
+ *  it asked LAST); a served object_info snapshot answers only when the
+ *  board could not ask (no row, or the tri-state 'unknown'), read through
+ *  packPresence — the ONE presence rule, never a re-encoded match. */
+function curatedPackActive(packId: string, status: NodePackStatus | null, info: Record<string, unknown> | null): boolean {
+  if (status && status.instanceState === 'active') return true
+  if (status && status.instanceState !== 'unknown') return false
+  return info !== null && packPresence(info, packId)
+}
+
+/** The walk's curated pack rows (spec §2.3): the preflight-mapped misses
+ *  first, then the fast-tier and preview families, then the studio's own
+ *  tooling pack when the board proves its payload ships. The 14-pack long
+ *  tail never renders here — the board is the board's home. An ACTIVE pack
+ *  stays curated and renders its active state — the spec's flip is the
+ *  install's verification payoff ("the row flips to active only after the
+ *  pack's claimed node classes appear in a fresh targeted object_info
+ *  read"); the brief's "when not already active" gloss yields to it, and
+ *  the can-I-generate line stays the step's "nothing to do here" voice. */
+export function curatedWizardPacks(args: {
+  packs: NodePackStatus[]
+  missingClasses: MissingNodeClass[]
+  /** The engine's object_info snapshot as the walk holds it (the session
+   *  store's info) — the FALLBACK activity source; null/empty when the
+   *  walk holds no snapshot. */
+  info?: Record<string, unknown> | null
+}): CuratedPackRow[] {
+  const info = args.info && typeof args.info === 'object' && Object.keys(args.info).length > 0 ? args.info : null
+  const byId: Record<string, NodePackStatus> = {}
+  for (const status of args.packs) byId[status.id] = status
+
+  const curated: CuratedPackRow[] = []
+  const seen: Record<string, boolean> = {}
+  const push = (packId: string, reason: CuratedPackRow['reason']) => {
+    if (seen[packId]) return
+    const status = byId[packId] ?? null
+    const definition = status ?? findNodePack(packId)
+    if (!definition) return
+    seen[packId] = true
+    let state: CuratedPackState
+    if (curatedPackActive(packId, status, info)) state = 'active'
+    else if (status === null) state = 'unknown'
+    else if (status.installed === true || status.folderState === 'foreign') state = 'awaiting-restart'
+    else if (status.instanceState === 'unknown') state = 'unknown'
+    else state = 'missing'
+    curated.push({
+      packId,
+      name: definition.name,
+      sentence: packRowSentence(definition.description),
+      licenseSpdx: definition.licenseSpdx,
+      featureGroup: definition.featureGroup,
+      status,
+      state,
+      reason,
+    })
+  }
+
+  for (const item of args.missingClasses) {
+    if (item.packId) push(item.packId, 'preflight')
+  }
+  for (const family of WIZARD_PACK_FAMILIES) push(family, 'family')
+  const tooling = byId[WIZARD_STUDIO_TOOLING_PACK]
+  if (tooling && tooling.vendored === true) push(WIZARD_STUDIO_TOOLING_PACK, 'studio-tooling')
+  return curated
+}
+
+/** The route a consented install click takes, read from the board row's
+ *  own decorations (the server's Manager-first verdict, the payload
+ *  availability, the fetch catalog's network entry) — the JSX renders
+ *  exactly this decision. null means no one-click path exists; the row
+ *  offers the manual way instead of a dead button. */
+export type PackInstallPath = 'route-manager' | 'route-studio' | 'fetcher'
+
+export function packInstallPath(status: NodePackStatus | null): PackInstallPath | null {
+  if (!status) return null
+  if (status.managerInstallable === true) return 'route-manager'
+  if (status.availability === 'ready') return 'route-studio'
+  if (status.hasNetworkSource === true) return 'fetcher'
+  return null
+}
+
+/** The via label — how an install actually went through, stated on the row
+ *  (Manager-first or studio fallback, never silent). */
+export function packViaLabel(via: 'manager' | 'studio' | undefined): string {
+  if (via === 'manager') return 'installed through ComfyUI-Manager'
+  if (via === 'studio') return 'installed through the studio'
+  return ''
+}
+
+/** The packs step's install gate (W-C1/R3 P1-8): installs need the
+ *  custom-nodes designation, existence-verified — the same isDesignated
+ *  gate the designations accept. Undesignated answers the reason string
+ *  the row renders beside its disabled click. */
+export function packsInstallRefusal(customNodesDir: DestinationState): string | null {
+  return isDesignated(customNodesDir) ? null : PACKS_INSTALL_REFUSAL
 }

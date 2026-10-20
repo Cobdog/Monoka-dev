@@ -18,6 +18,10 @@
  *   maintainer-instance.json — the maintainer's real inventory approximated
  *                              from their session evidence (Phase 2 mirror)
  *
+ * A profile may carry `objectInfoOmit` — class names deleted from the
+ * captured fixture after `objectInfoExtras` applies (the subtractive half:
+ * the canonical capture carries pack classes a fresh engine does not serve).
+ *
  * Usage: node e2e/mirror/fakeEngineServer.mjs --port 7341 \
  *          --profile e2e/mirror/profiles/stock-h3.json
  *
@@ -123,6 +127,14 @@ fs.mkdirSync(outputDir, { recursive: true })
 const fixture = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts/fixtures/engine-object-info.json'), 'utf8'))
 const objectInfo = { ...(fixture.nodes ?? {}) }
 for (const [className, schema] of Object.entries(profile.objectInfoExtras ?? {})) objectInfo[className] = schema
+// `objectInfoOmit` (wizard task 6, 2026-10-19): class names the profile
+// DELETES from the captured fixture. The canonical capture carries ten
+// packs' classes (a maintainer-install snapshot), so a "fresh" profile
+// needs the subtractive half — an engine that answers for the core yet
+// does NOT serve the pack classes, which is what the packs step's install
+// → awaiting-restart → active walk has to stand against. Extras apply
+// first; the omit wins.
+for (const className of profile.objectInfoOmit ?? []) delete objectInfo[className]
 
 /** The loader-class enumeration surface (wave 1 of the animation module's
  *  post-review program): the profile's `loaderEnumerations`

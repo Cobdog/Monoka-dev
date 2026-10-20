@@ -218,6 +218,11 @@
 .canvas-wizard-components { display: flex; flex-direction: column; gap: 10px; list-style: none; margin: 10px 0; padding: 0; }
 .canvas-wizard-component { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
 .canvas-wizard-component strong { font-size: var(--text-sm); color: var(--muted-2); }
+/* The packs step's curated rows (wizard rework task 6) — same row shape as
+   the components above: name, one sentence, the live state. */
+.canvas-wizard-packs { display: flex; flex-direction: column; gap: 10px; list-style: none; margin: 10px 0; padding: 0; }
+.canvas-wizard-pack { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.canvas-wizard-pack strong { font-size: var(--text-sm); color: var(--muted-2); }
 .canvas-wizard-picks { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .canvas-wizard-fetch { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .canvas-wizard textarea { width: 100%; resize: vertical; }

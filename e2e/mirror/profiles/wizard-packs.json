@@ -1,0 +1,44 @@
+{
+  "id": "wizard-packs",
+  "label": "Fresh clone, zero weights, zero pack classes",
+  "description": "Wizard-rework task 6 (2026-10-19) — the packs step's engine: the fresh-external clone MINUS the ten packs' classes the canonical capture carries (the subtractive objectInfoOmit). An install lands on disk while the engine still refuses to serve it — the honest awaiting-restart arm — until the restart leg boots the augmented profile.",
+  "systemStats": {
+    "system": { "comfyui_version": "v0.34.0", "python_version": "3.12.3", "os": "linux" },
+    "devices": [{ "name": "NVIDIA GeForce RTX 4090", "type": "cuda", "index": 0, "vram_total": 25757220864, "vram_free": 24000000000, "torch_version": "2.8.0+cu128" }]
+  },
+  "objectInfoExtras": {},
+  "objectInfoOmit": [
+    "ApplyVDNH3",
+    "ApplyVDNH3Advanced",
+    "MiniMaxH3LoraFormLoader",
+    "MiniMaxH3TurboLoRA",
+    "MiniMaxH3TurboSampler",
+    "MiniMaxH3HybridLoader",
+    "Krea2EditModelPatch",
+    "Krea2EditGroundedEncode",
+    "Krea2AnyPaintPrepare",
+    "Krea2AnyPaintEncode",
+    "Krea2AnyPaintModelPatch",
+    "TextEncodeKrea2OstrisEdit",
+    "Krea2OstrisEditModelPatch",
+    "H3ImagePrepare",
+    "H3TextToImagePrepare",
+    "H3ImageToImagePrepare",
+    "H3ReferenceEditPrepare",
+    "H3ImageDecode",
+    "MiniMaxH3MotionContext",
+    "MiniMaxH3MotionContextTrim",
+    "MiniMaxH3MotionContextSaveLatent",
+    "MiniMaxH3MotionContextLoadLatent",
+    "FizgigH3StillLatent",
+    "FizgigH3StillDecode"
+  ],
+  "modelListings": {
+    "diffusion_models": [],
+    "text_encoders": [],
+    "vae": [],
+    "loras": []
+  },
+  "customNodeDirs": [],
+  "render": { "steps": 10, "stepDelayMs": 420, "outputKind": "video", "emitBinaryPreviews": true }
+}

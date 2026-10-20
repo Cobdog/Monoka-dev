@@ -11,7 +11,8 @@
  *                  honest connect-later; managed stays a pointer (D2).
  *   2. MODELS     — the engine's inventory readout + stack verdict
  *                  (task 5 reworks the slot to named per-component truth).
- *   3. NODE PACKS — the pack board summary (task 6 reworks the slot).
+ *   3. NODE PACKS — can-I-generate, the curated rows, the designated
+ *                  install target, installs that verify in place (task 6).
  *   4. LAN PREP   — the honest keep-current panel (task 7's full
  *                  designation lands here).
  *   5. FIRST PROMPT — one prompt spawns the first canvas chain (task 8
@@ -28,8 +29,9 @@ import { Check, RefreshCw, Sparkles, X } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { dbg } from '../lib/dbg'
 import { basenameOf } from '../lib/modelSelection'
-import { h3StackReport, stackVerdictText, type StackVerdict } from '../lib/h3Stack'
-import type { AppSettings, FetchEntryStatus } from '../types'
+import { h3StackReport, canGenerateAnswer, stackVerdictText, type StackVerdict } from '../lib/h3Stack'
+import type { ObjectInfo } from '../lib/comfyInfo'
+import type { AppSettings, FetchEntryStatus, NodePackStatus } from '../types'
 import { useSessionStore } from '../state/sessionStore'
 import { useCanvasStore } from './store'
 import { CanvasSessionContext } from './sessionContext'
@@ -37,18 +39,25 @@ import { WIZARD_REOPEN_EVENT } from './FirstRunNotice'
 import { DesignationField } from './DesignationField'
 import { DIGEST_INTERIM_COPY, fetchLanded, modelsStepRows, type ComponentFetchView, type ModelsStepRow } from './wizardModels'
 import {
+  PACKS_AWAITING_RESTART_COPY,
   WALK_STEPS,
+  curatedWizardPacks,
+  customNodesPrefill,
   emptyWalkCandidate,
   isDesignated,
   lanGate,
   markEngineVerified,
   modelsGate,
   modelsRootPrefill,
+  packInstallPath,
+  packViaLabel,
   packsGate,
+  packsInstallRefusal,
   promptGate,
   setCandidateUrl,
   setDestinationValue,
   shouldPresent,
+  type CuratedPackRow,
   type DestinationState,
   type StepGate,
   type WalkCandidate,
@@ -96,7 +105,6 @@ export function FirstRunWizard() {
   const engineInfo = useSessionStore((state) => state.info)
   const submitPrompt = useCanvasStore((state) => state.submitPrompt)
   const setSettingsDock = useCanvasStore((state) => state.setSettingsDock)
-  const setLibraryDock = useCanvasStore((state) => state.setLibraryDock)
 
   const [state, setState] = useState<WizardState>(() => ({ ...readWizard() }))
   // The walk's candidate state (spec §3): born from the settings prefill the
@@ -109,25 +117,17 @@ export function FirstRunWizard() {
   useEffect(() => {
     if (settings !== null && walk === null) {
       const fresh = emptyWalkCandidate(settings.comfyUrl)
-      const prefill = modelsRootPrefill(settings, modelRootIsDefault)
-      setWalk(prefill ? { ...fresh, modelsRoot: setDestinationValue(fresh.modelsRoot, prefill) } : fresh)
+      const modelsPrefill = modelsRootPrefill(settings, modelRootIsDefault)
+      const nodesPrefill = customNodesPrefill(settings)
+      setWalk({
+        ...fresh,
+        ...(modelsPrefill ? { modelsRoot: setDestinationValue(fresh.modelsRoot, modelsPrefill) } : {}),
+        ...(nodesPrefill ? { customNodesDir: setDestinationValue(fresh.customNodesDir, nodesPrefill) } : {}),
+      })
     }
   }, [settings, walk, modelRootIsDefault])
   const [sawScan, setSawScan] = useState(false)
   useEffect(() => { if (scanning) setSawScan(true) }, [scanning])
-
-  // (R-16) The step-3 pack summary: the board's own listing, summarized.
-  const [packSummary, setPackSummary] = useState<{ active: number; total: number } | null>(null)
-  useEffect(() => {
-    if (state.step !== 2) return
-    let cancelled = false
-    void window.monoka.listEngineNodePacks().then((result) => {
-      if (cancelled) return
-      const packs = result.packs
-      setPackSummary({ active: packs.filter((pack) => pack.instanceState === 'active').length, total: packs.length })
-    }).catch(() => setPackSummary(null))
-    return () => { cancelled = true }
-  }, [state.step])
 
   // (dispatch B, k2q0n9s — the setState-in-render race, fixed) writeWizard
   // dispatches a SYNCHRONOUS window event the FirstRunNotice answers with
@@ -216,7 +216,15 @@ export function FirstRunWizard() {
       onOverridePick={pickOverride}
       onRefresh={() => void scanModels(settings, { refresh: true })}
     />
-    if (step === 2) return <PacksStep summary={packSummary} gate={packsGate(walk)} onOpenPacks={() => setSettingsDock(true)} onOpenLibrary={() => setLibraryDock(true)} />
+    if (step === 2) return <PacksStep
+      gate={packsGate(walk)}
+      stack={stack}
+      info={engineInfo}
+      customNodesDir={walk.customNodesDir}
+      onCustomNodes={(next) => updateWalk((current) => ({ ...current, customNodesDir: next }))}
+      configuredDir={settings.engine.externalCustomNodesDir ?? ''}
+      onOpenPacks={() => setSettingsDock(true)}
+    />
     if (step === 3) return <LanStep gate={lanGate(walk)} />
     return <PromptStep gate={promptGate(walk)} onDone={(prompt) => { patch({ done: true }); if (prompt.trim()) void submitPrompt(prompt, 'video') }} />
   })()
@@ -526,20 +534,161 @@ function ComponentRow(props: {
   </li>
 }
 
-/** Step 3 — the pack board summary (pre-validated chips; remediation is one click deep). Task 6 reworks this slot. */
-function PacksStep(props: { summary: { active: number; total: number } | null; gate: StepGate; onOpenPacks(): void; onOpenLibrary(): void }) {
-  const { summary, gate, onOpenPacks, onOpenLibrary } = props
+/** Step 3 — the Node packs step (task 6, spec §2.3): can-I-generate first
+ *  (h3Stack's one predicate — one voice with the Models step's verdict),
+ *  then the curated rows: the preflight-mapped packs, the fast-tier and
+ *  preview families, the studio's own shipping tooling payload. Each row
+ *  carries its live state and ONE consented install click (W-I6: the click
+ *  is the consent); the custom-nodes designation gates them (W-C1/R3 P1-8)
+ *  with the refusal rendered inline — an affordance to finish, never a dead
+ *  end. Between install and restart the row reads the honest interim; only
+ *  a fresh active verdict from the board's targeted re-ask flips it. */
+function PacksStep(props: {
+  gate: StepGate
+  stack: ReturnType<typeof h3StackReport> | null
+  info: ObjectInfo
+  customNodesDir: DestinationState
+  onCustomNodes(next: DestinationState): void
+  /** The engine settings' configured custom-nodes folder — the install
+   *  target that holds UNTIL the walk's exit (spec §3's one exception:
+   *  installs are facts, not configuration). The step says so when the
+   *  walk's designation differs. */
+  configuredDir: string
+  onOpenPacks(): void
+}) {
+  const { gate, stack, info, customNodesDir, onCustomNodes, configuredDir, onOpenPacks } = props
+  // The live board, polled while the step shows. Once an install owes a
+  // verdict the poll rides refresh:true — the server's fresh targeted
+  // object_info asks are how a row flips; the explicit re-verify sits
+  // beside the rows (never a silent maybe).
+  const [packs, setPacks] = useState<NodePackStatus[] | null>(null)
+  const [owesVerdict, setOwesVerdict] = useState(false)
+  const [via, setVia] = useState<Record<string, 'manager' | 'studio' | undefined>>({})
+  const [installErrors, setInstallErrors] = useState<Record<string, string>>({})
+  const refreshRef = useRef(false)
+  useEffect(() => { refreshRef.current = owesVerdict })
+  useEffect(() => {
+    let cancelled = false
+    const poll = () => window.monoka.listEngineNodePacks({ refresh: refreshRef.current }).then((result) => {
+      if (cancelled) return
+      setPacks(result.packs)
+    }).catch(() => { if (!cancelled) setPacks(null) })
+    void poll()
+    const timer = window.setInterval(() => { void poll() }, 3000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [])
+
+  const designated = isDesignated(customNodesDir)
+  const refusal = packsInstallRefusal(customNodesDir)
+  const rows = useMemo(
+    () => curatedWizardPacks({ packs: packs ?? [], missingClasses: stack ? stack.nodes.missing : [], info }),
+    [packs, stack, info],
+  )
+  const generate = stack ? canGenerateAnswer(stack.selection, info) : null
+
+  // W-I6: ONE click = the consent ledger record (whenever the path touches
+  // the network — a Manager install fetches the repo too) + the install.
+  // Failures render on the row — never a silent success.
+  const installPack = async (row: CuratedPackRow) => {
+    const path = packInstallPath(row.status)
+    if (!path) return
+    setInstallErrors((current) => ({ ...current, [row.packId]: '' }))
+    try {
+      if (path === 'route-manager' || path === 'route-studio') {
+        if (row.status && row.status.hasNetworkSource === true && row.status.fetchConsented !== true) {
+          await window.monoka.setFetchConsent(`pack:${row.packId}`, true)
+        }
+        const placed = await window.monoka.installEngineNodePack(row.packId)
+        setVia((current) => ({ ...current, [row.packId]: placed.via ?? 'studio' }))
+      } else {
+        await window.monoka.setFetchConsent(`pack:${row.packId}`, true)
+        await window.monoka.startFetch(`pack:${row.packId}`)
+        setVia((current) => ({ ...current, [row.packId]: 'studio' }))
+      }
+      setOwesVerdict(true)
+      dbg('wizard.packs.install', { pack: row.packId, via: path })
+    } catch (error) {
+      setInstallErrors((current) => ({ ...current, [row.packId]: error instanceof Error ? error.message : String(error) }))
+    }
+  }
+
   return <div className="canvas-wizard-step" data-wizard-packs>
-    <p className="canvas-wizard-lede">Node packs the studio can place for you — detection always reads the connected engine's live registry, and each row installs with one consented click.</p>
+    <p className="canvas-wizard-lede">The packs your first render needs, live-checked against the engine. Each row installs with one consented click once the custom-nodes folder is designated.</p>
     <GateLine gate={gate} />
-    {summary === null
+    {generate && <p className={`canvas-wizard-${generate.ready ? 'ok' : 'warn'}`} data-wizard-can-generate={generate.ready ? 'yes' : 'no'} data-ready={String(generate.ready)}>
+      {generate.ready ? <Check size={13} /> : null} {generate.text}
+    </p>}
+    <DesignationField
+      id="wizard-custom-nodes"
+      label="External custom-nodes folder"
+      question="Where should pack installs land so your engine loads them?"
+      hint={customNodesDir.value
+        ? 'Prefilled from the engine settings — verify it, or type the folder your engine actually reads.'
+        : 'Type the absolute path to the custom_nodes folder your engine reads — the studio can verify only disks it can see (same machine or shared storage).'}
+      state={customNodesDir}
+      onChange={onCustomNodes}
+    />
+    {packs === null
       ? <p className="canvas-wizard-warn" data-wizard-packs-unknown>The pack board could not be listed (the engine is offline or still loading) — it stays available in Settings → Setup → Node packs.</p>
-      : <p className="canvas-wizard-ok" data-wizard-packs-summary>{summary.active} of {summary.total} packs active on the engine{summary.active < summary.total ? ' — the missing ones can be fetched or installed from their rows.' : '.'}</p>}
+      : <ul className="canvas-wizard-packs" data-wizard-pack-rows>
+        {rows.map((row) => <PackRow
+          key={row.packId}
+          row={row}
+          designated={designated}
+          refusal={refusal}
+          viaLabel={packViaLabel(via[row.packId])}
+          installError={installErrors[row.packId] ?? ''}
+          disagreement={designated && customNodesDir.value !== configuredDir}
+          configuredDir={configuredDir}
+          onInstall={() => { void installPack(row) }}
+        />)}
+      </ul>}
     <div className="canvas-wizard-row">
-      <button type="button" className="chip canvas-chip" data-wizard-open-packs onClick={onOpenPacks}>Open the pack board (Settings)</button>
-      <button type="button" className="chip canvas-chip" data-wizard-open-library onClick={onOpenLibrary}>Open the library — get models</button>
+      <Button variant="ghost" className="chip canvas-chip" size={12} data-wizard-packs-verify icon={<RefreshCw size={12} />} onClick={() => { void window.monoka.listEngineNodePacks({ refresh: true }).then((result) => setPacks(result.packs)).catch(() => setPacks(null)) }}>
+        Re-verify against the engine
+      </Button>
+      <button type="button" className="chip canvas-chip" data-wizard-open-packs onClick={onOpenPacks}>Open the full pack board (Settings)</button>
     </div>
+    <p className="canvas-wizard-note">The studio never restarts your engine — after an install, restart it yourself; this step re-verifies while it is open. The board's long tail stays in Settings → Setup → Node packs; the walk curates only what the first render path needs.</p>
   </div>
+}
+
+/** One curated pack row: the registry's name and first sentence, the live
+ *  state (active / awaiting-restart / missing / unknown), the ONE consented
+ *  install click with its route, and the via stated after it lands. */
+function PackRow(props: {
+  row: CuratedPackRow
+  designated: boolean
+  refusal: string | null
+  viaLabel: string
+  installError: string
+  disagreement: boolean
+  configuredDir: string
+  onInstall(): void
+}) {
+  const { row, designated, refusal, viaLabel, installError, disagreement, configuredDir } = props
+  const path = packInstallPath(row.status)
+  return <li className="canvas-wizard-pack" data-wizard-pack-row={row.packId} data-pack-state={row.state}>
+    <strong>{row.name}</strong>
+    <span className="canvas-wizard-hint" data-wizard-pack-sentence>{row.sentence}</span>
+    {row.reason === 'preflight' && <span className="canvas-wizard-hint">curated: your engine is missing a node this pack provides.</span>}
+    {row.reason === 'studio-tooling' && <span className="canvas-wizard-hint">curated: the studio's own tooling — it ships with this install.</span>}
+    {row.state === 'active' && <span className="canvas-wizard-ok" data-wizard-pack-active><Check size={13} /> Active on the engine.</span>}
+    {row.state === 'awaiting-restart' && <span className="canvas-wizard-hint" data-wizard-pack-awaiting={row.packId}>{PACKS_AWAITING_RESTART_COPY}</span>}
+    {row.state === 'unknown' && <span className="canvas-wizard-hint" data-wizard-pack-unknown-state>The engine's answer for this pack is unknown right now (unreachable or still loading) — re-verify below.</span>}
+    {row.state === 'missing' && <>
+      {path
+        ? <button type="button" className="chip chip--accent canvas-chip" data-wizard-pack-install={row.packId} disabled={!designated} onClick={props.onInstall}>
+          {path === 'fetcher' ? 'Fetch and install — one click' : 'Install — one click'}
+        </button>
+        : <span className="canvas-wizard-hint" data-wizard-pack-manual>No one-click install path — a local copy through Settings → Node packs is the way.</span>}
+      {!designated && <span className="canvas-wizard-warn" data-wizard-pack-gated>{refusal}</span>}
+      {row.status && row.status.hasNetworkSource === true && <span className="canvas-wizard-hint" data-wizard-pack-license>License {row.licenseSpdx}.</span>}
+    </>}
+    {disagreement && <span className="canvas-wizard-hint" data-wizard-pack-disagreement>Your designation becomes the studio's install target when the walk completes — until then installs land in the configured folder{configuredDir ? '' : ', and an install before the walk\'s exit is refused: no target is configured yet'}.</span>}
+    {viaLabel && <span className="canvas-wizard-hint" data-wizard-pack-via={row.packId}>{viaLabel} — the row verifies when the engine serves the classes.</span>}
+    {installError && <span className="canvas-wizard-warn" data-wizard-pack-error={row.packId}>{installError}</span>}
+  </li>
 }
 
 /** Step 4 — LAN prep. PLACEHOLDER SHELL — task 7 lands the full designation

@@ -1315,3 +1315,143 @@ test('the Models step on a fresh engine: named truth, one verdict, the one-click
   expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
   expect(mirrorLog).not.toContain('EADDRINUSE')
 })
+
+test('the packs step installs and verifies in place: curated rows, the designated gate, the honest restart (3p14abm task 6)', async ({ page, request }) => {
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const holder = http.createServer(() => undefined)
+  const mirrorPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  let mirrorLog = ''
+  const spawnMirror = (profilePath: string) => {
+    const child = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', profilePath], { stdio: ['ignore', 'pipe', 'pipe'] })
+    child.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+    child.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+    return child
+  }
+  let mirror = spawnMirror('e2e/mirror/profiles/wizard-packs.json')
+  // The designated custom-nodes folder: a SCRATCH dir (the ledger tears it
+  // down) — the install's placement target, verified by the studio's real
+  // fs/check like any engine disk.
+  const scratchNodes = makeScratchDir(path.join(os.tmpdir(), 'monoka-wizard-packs-'))
+  // THE RESTART LEG's profile: the packs engine PLUS the captured
+  // form-adapter schema (contract truth read from the fixture, never a
+  // hand-written shape). The omit list drops the adapter's class — the
+  // mirror applies extras first and the omit wins — so the restarted
+  // engine serves exactly the class the install put on disk.
+  const packsProfile = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'e2e/mirror/profiles/wizard-packs.json'), 'utf8')) as { objectInfoOmit?: string[] }
+  const fixture = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'scripts/fixtures/engine-object-info.json'), 'utf8')) as { nodes: Record<string, unknown> }
+  const augmentedProfilePath = path.join(scratchNodes, 'augmented-wizard-packs.json')
+  fs.writeFileSync(augmentedProfilePath, JSON.stringify({
+    ...packsProfile,
+    objectInfoExtras: { MiniMaxH3LoraFormLoader: fixture.nodes.MiniMaxH3LoraFormLoader },
+    objectInfoOmit: (packsProfile.objectInfoOmit ?? []).filter((className) => className !== 'MiniMaxH3LoraFormLoader'),
+  }))
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+
+    const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${mirrorPort}`,
+      engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external', externalCustomNodesDir: scratchNodes },
+    } } })
+    await resetSession(page)
+
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    const wizard = page.locator('[data-canvas-wizard]')
+    await expect(wizard).toBeVisible({ timeout: 30_000 })
+    await page.locator('[data-wizard-test]').click()
+    await expect(page.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '1')
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '2')
+
+    // CAN-I-GENERATE FIRST (spec §2.3): the fresh engine serves the core
+    // classes but resolves zero weights — No, pointing at the Models step.
+    await expect(page.locator('[data-wizard-can-generate="no"]')).toContainText('Models step', { timeout: 10_000 })
+
+    // THE CURATED ROWS: exactly the two families + the studio's own tooling
+    // payload (it ships with this install — vendored). The long tail never
+    // renders; every row starts missing on the packs engine.
+    const turboRow = page.locator('[data-wizard-pack-row="minimax-h3-turbo"]')
+    const previewRow = page.locator('[data-wizard-pack-row="h3-preview-override"]')
+    const adapterRow = page.locator('[data-wizard-pack-row="lora-form-adapter"]')
+    await expect(page.locator('[data-wizard-pack-rows] [data-wizard-pack-row]')).toHaveCount(3, { timeout: 20_000 })
+    await expect(turboRow).toHaveAttribute('data-pack-state', 'missing')
+    await expect(previewRow).toHaveAttribute('data-pack-state', 'missing')
+    await expect(adapterRow).toHaveAttribute('data-pack-state', 'missing')
+    await expect(page.locator('[data-wizard-pack-row="h3-motion-context"]')).toHaveCount(0)
+    await expect(page.locator('[data-wizard-pack-row="vdn-h3"]')).toHaveCount(0)
+
+    // W-C1/R3 P1-8: the installs REFUSE until the custom-nodes folder is
+    // designated and existence-verified — disabled + the reason rendered
+    // inline (the affordance to finish, never a dead end).
+    const adapterInstall = page.locator('[data-wizard-pack-install="lora-form-adapter"]')
+    await expect(adapterInstall).toBeDisabled()
+    // The refusal renders beside EVERY gated row (same copy, one seam) —
+    // assert the first; the later toHaveCount(0) proves the gate lifts.
+    await expect(page.locator('[data-wizard-pack-gated]').first()).toContainText('custom-nodes')
+
+    // The prefill seam (honest-or-empty): the configured folder arrived
+    // from the engine settings — the field is born agreeing with it.
+    // Verify EXISTENCE and the gate opens.
+    await expect(page.locator('[data-wizard-designation-input="wizard-custom-nodes"]')).toHaveValue(scratchNodes)
+    await page.locator('[data-wizard-designation-verify="wizard-custom-nodes"]').click()
+    await expect(page.locator('[data-wizard-designation-verdict="wizard-custom-nodes"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 10_000 })
+    await expect(adapterInstall).toBeEnabled()
+    await expect(page.locator('[data-wizard-pack-gated]')).toHaveCount(0)
+
+    // THE CONSENTED INSTALL (first-party — the payload is local, no network
+    // by construction): placement lands in the designated folder.
+    await adapterInstall.click()
+    await expect.poll(() => fs.existsSync(path.join(scratchNodes, 'minimax-lora-form-adapter', '__init__.py')), { timeout: 20_000 }).toBe(true)
+    // The via is stated on the row — Manager-first or studio, never silent.
+    await expect(page.locator('[data-wizard-pack-via="lora-form-adapter"]')).toContainText('installed through the studio', { timeout: 10_000 })
+    // THE HONEST BETWEEN-STATE: installed on disk (studio marker), the
+    // engine does not serve the class yet — awaiting-restart, never active.
+    await expect(adapterRow).toHaveAttribute('data-pack-state', 'awaiting-restart', { timeout: 20_000 })
+    await expect(page.locator('[data-wizard-pack-awaiting="lora-form-adapter"]')).toContainText('restart the engine')
+
+    // THE RESTART the user performs, simulated at the engine stand-in: the
+    // mirror child re-boots on the SAME port serving the pack's class (the
+    // augmented profile). The studio never restarts engines — the step says
+    // so; the walk's poll re-verifies while it is open.
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+    mirror = spawnMirror(augmentedProfilePath)
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+
+    // THE FLIP (spec §2.3): the row reads active ONLY from the board's
+    // fresh targeted object_info ask — the poll rides refresh once an
+    // install owes a verdict, so this lands without a click.
+    await expect(adapterRow).toHaveAttribute('data-pack-state', 'active', { timeout: 30_000 })
+    await expect(page.locator('[data-wizard-pack-active]')).toContainText('Active on the engine')
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+
+    // ---- teardown ----------------------------------------------------------
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } })
+    await resetSession(page)
+  } finally {
+    removeAllScratchDirs()
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+})
