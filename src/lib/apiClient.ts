@@ -365,6 +365,10 @@ export function createWebApiClient(): DesktopApi {
     async rotateLanToken() {
       return postJson<LanTokenRead & { status: LanStatusRead['status'] }>('/api/lan/lan-token/rotate', {})
     },
+    // The --setup reset's ack (spec §4): the walk's terminal states fire it.
+    async ackSetupRequested() {
+      return postJson<{ setupRequested: boolean }>('/api/lan/setup-ack', {})
+    },
   }
 }
 

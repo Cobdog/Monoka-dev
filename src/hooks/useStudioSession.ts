@@ -104,7 +104,7 @@ export function useStudioSession() {
   const info = useSessionStore((state) => state.info)
   const ollamaModels = useSessionStore((state) => state.ollamaModels)
   const engineMode = useSessionStore((state) => state.settings?.engine.mode)
-  const { setSettings, setModelRootIsDefault, setModels, setScanning, setChecking, setGpu, setOllamaModels, setLlm, setEngineRuntime, setExternalEngine } = useSessionStore.getState()
+  const { setSettings, setModelRootIsDefault, setSetupRequested, setModels, setScanning, setChecking, setGpu, setOllamaModels, setLlm, setEngineRuntime, setExternalEngine } = useSessionStore.getState()
 
   const scanModels = useCallback(async (nextSettings: AppSettings, options?: { refresh?: boolean }) => {
     setScanning(true)
@@ -165,6 +165,9 @@ export function useStudioSession() {
       // (task 5, D7) The flag rides the same read — the walk's models-root
       // prefill is honest-or-empty on exactly this word.
       setModelRootIsDefault(loaded.modelRootIsDefault)
+      // (task 9, spec §4) The --setup reset's request rides it too — the walk
+      // re-opens over any local latch while the server asks.
+      setSetupRequested(loaded.setupRequested)
       // (hbdzmoa) The boot reads are fail-tolerant: if the app server dies
       // inside the boot window (or the engine behind it is unreachable), the
       // inventory stays empty and the engine-watch loop re-pulls once it can.
@@ -173,7 +176,7 @@ export function useStudioSession() {
       void Promise.all([scanModels(loaded.settings), runEngineCheck(loaded.settings.comfyUrl, 'boot').catch(() => undefined), refreshOllama(loaded.settings), refreshLlm()])
         .catch(() => undefined)
     })
-  }, [refreshLlm, refreshOllama, scanModels, setModelRootIsDefault, setSettings])
+  }, [refreshLlm, refreshOllama, scanModels, setModelRootIsDefault, setSetupRequested, setSettings])
 
   // (W16, perfect-state sweep 2026-09-27) Graph-compatibility self-record —
   // re-homed from the old shell (the effect died with src/App.tsx in the

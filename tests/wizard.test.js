@@ -192,6 +192,20 @@ test('shouldPresent ignores done/skipped while the server requests setup', () =>
   ok(walk.shouldPresent({ latchDone: false, latchSkipped: true, serverSetupRequested: true }) === true, 'the server setup request re-opens over a skip latch')
 })
 
+test('owesSetupAck: the ack fires on EVERY terminal walk state while the server requests setup (task 9, spec §4)', () => {
+  console.log('wizard: the setup-ack debt')
+  // The flag is the server's in-memory request; the ack is the app saying
+  // "the reopened walk reached a terminal state — the request is satisfied."
+  // Both terminals count (done AND skip — once the user acted, the request
+  // is honored; `--setup` re-arms), and NOTHING owes while the flag is down.
+  ok(walk.owesSetupAck({ done: true, skipped: false, serverSetupRequested: true }) === true, 'a done walk owes the ack while the flag stands')
+  ok(walk.owesSetupAck({ done: false, skipped: true, serverSetupRequested: true }) === true, 'a skipped walk owes the ack too (the ack-on-skip arm)')
+  ok(walk.owesSetupAck({ done: false, skipped: false, serverSetupRequested: true }) === false, 'an open walk owes NOTHING — only a terminal action consumes the request (a background tab that merely shows the walk must not eat it)')
+  ok(walk.owesSetupAck({ done: false, skipped: false, serverSetupRequested: false }) === false, 'no flag, no debt')
+  ok(walk.owesSetupAck({ done: true, skipped: false, serverSetupRequested: false }) === false, 'a done walk without the request acks nothing (the zero-terminal paths stay silent)')
+  ok(walk.owesSetupAck({ done: false, skipped: true, serverSetupRequested: false }) === false, 'a skipped walk without the request acks nothing')
+})
+
 test('a gate with no verified engine answers unverified, never a verdict (§2.1)', () => {
   console.log('wizard: the honest gates')
 

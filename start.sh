@@ -43,6 +43,8 @@ usage: ./start.sh [flags]
                      logs, source maps, vite port)
   --print            dry run: print the resolved config and boot plan without
                      booting (side effect: seeds the config on first run)
+  --setup            boot with the first-run setup walk re-opened (server-
+                     owned reset; your data is untouched)
   --set key=value    save one field and exit (keys: port, host, https, token,
                      qr-print, data-dir, engine-url, log-level, dev,
                      pretty-logs, source-maps, vite-port)
@@ -732,12 +734,13 @@ boot_dev() {
 }
 
 # --- main --------------------------------------------------------------------
-DO_CONFIGURE=0 SHOW_DEV=0 DO_PRINT=0 SET_ARG=""
+DO_CONFIGURE=0 SHOW_DEV=0 DO_PRINT=0 DO_SETUP=0 SET_ARG=""
 while [ $# -gt 0 ]; do
   case $1 in
     --configure) DO_CONFIGURE=1 ;;
     --dev) SHOW_DEV=1 ;;
     --print|--dry-run) DO_PRINT=1 ;;
+    --setup) DO_SETUP=1 ;;
     --set)
       [ $# -ge 2 ] || usage_error "--set needs a key=value argument"
       SET_ARG=$2
@@ -826,6 +829,7 @@ if [ "$DO_PRINT" = 1 ]; then
   else
     echo "  [prod] node dist-server/server/index.js"
   fi
+  [ "$DO_SETUP" = 1 ] && echo "  [--setup] the server boots with the setup walk re-opened"
   exit 0
 fi
 
@@ -853,6 +857,10 @@ export MONOKA_LOG_LEVEL="$R_LOG"
 # the saved config — the server's env-override honesty reports only what
 # the USER set, so the wizard can say "the saved choices apply" truthfully.
 export MONOKA_LAUNCHER_EXPORTED=1
+# The --setup reset (spec §4): the env is the pass-through the server's
+# in-memory setupRequested reads — the app acks it when the reopened walk
+# reaches a terminal state (done or skip); --setup re-arms.
+[ "$DO_SETUP" = 1 ] && export MONOKA_SETUP_REQUESTED=1
 if [ "$CFG_DEV" = "true" ] && [ "$CFG_PRETTY" = "true" ] && [ -z "${MONOKA_LOG_PRETTY:-}" ]; then
   export MONOKA_LOG_PRETTY=1
 fi

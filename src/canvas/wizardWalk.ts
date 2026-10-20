@@ -35,7 +35,8 @@
  * EVERYTHING the walk collects in memory (§3's candidate model — the old
  * per-keystroke setSettings writes die here; the exit's one write is task
  * 8's); shouldPresent routes the present decision (the --setup flag
- * overrides the local latch — §4; task 9 wires the real flag); the per-step
+ * overrides the local latch — §4) with owesSetupAck its terminal-state
+ * counter (the ack fires on done AND skip); the per-step
  * gates answer verified | refused-with-reason | unverified-engine (§2.1's
  * honesty: a gate with no verified engine says "unverified engine — nothing
  * to check against", never an invented verdict). The module stays PURE — no
@@ -273,11 +274,23 @@ export function isEngineVerified(candidate: WalkCandidate): boolean {
 /** The present decision (spec §4): neither done nor skipped — UNLESS the
  *  server requested setup (`--setup`): the reset is server-owned and must
  *  work from any terminal, any browser, any profile, so the flag overrides
- *  the LOCAL latch (a shell flag cannot reach into localStorage). Task 9
- *  wires the real flag; this predicate is the spine's single seam for it. */
+ *  the LOCAL latch (a shell flag cannot reach into localStorage). The flag
+ *  is the boot read (sessionStore.setupRequested); this predicate is the
+ *  spine's single seam for it. */
 export function shouldPresent(latch: { latchDone: boolean; latchSkipped: boolean; serverSetupRequested: boolean }): boolean {
   if (latch.serverSetupRequested) return true
   return !latch.latchDone && !latch.latchSkipped
+}
+
+/** The ack decision (spec §4, task 9): the walk owes the server a
+ *  setup-ack exactly when its request still stands AND the walk has reached
+ *  a TERMINAL state — done AND skip both count (once the reopened walk was
+ *  acted on, the request is satisfied; `--setup` re-arms on the next boot).
+ *  An open walk owes NOTHING: a background tab that merely shows the walk
+ *  must not eat the request. */
+export function owesSetupAck(state: { done: boolean; skipped: boolean; serverSetupRequested: boolean }): boolean {
+  if (!state.serverSetupRequested) return false
+  return state.done === true || state.skipped === true
 }
 
 /** A step-gate answer (§2: each step ends in a verified state or an honest

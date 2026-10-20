@@ -395,8 +395,9 @@ export type ModelOverrideSlots = { checkpoint?: string; fl2va?: string; ref2va?:
  *  the server-computed fresh-default flag. The flag is the SERVER'S word —
  *  the shipped modelRoot default lives in server paths, so no client can
  *  derive it (wizard rework D7: the walk's prefill is honest-or-empty on
- *  exactly this flag). */
-export type SettingsRead = { settings: AppSettings; modelRootIsDefault: boolean }
+ *  exactly this flag). `setupRequested` is the --setup reset's in-memory
+ *  request (spec §4): server-owned, cleared by the ack route. */
+export type SettingsRead = { settings: AppSettings; modelRootIsDefault: boolean; setupRequested: boolean }
 
 export type AppSettings = {
   comfyUrl: string
@@ -968,6 +969,9 @@ export type DesktopApi = {
   writeLauncherConfig(patch: LauncherConfigPatch): Promise<LauncherConfigWriteResult>
   getLanToken(): Promise<LanTokenRead>
   rotateLanToken(): Promise<LanTokenRead & { status: LanStatus }>
+  // The --setup reset's ack (spec §4): fired when the reopened walk reaches
+  // any terminal state (done AND skip); the flag dies with the boot anyway.
+  ackSetupRequested(): Promise<{ setupRequested: boolean }>
 }
 
 /** One harvested community prompt (Civitai image metadata via the server's

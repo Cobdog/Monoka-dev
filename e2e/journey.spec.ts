@@ -1690,3 +1690,116 @@ test('the first prompt is deliberate: Enter never submits, the exit writes befor
   expect(mirror2.exitCode !== null || mirror2.signalCode !== null).toBe(true)
   expect(mirrorLog2).not.toContain('EADDRINUSE')
 })
+
+/** (task 9, spec §4 — the D4 ruling) THE --setup RESET FROM ANY TERMINAL:
+ *  a shell flag re-opens the walk server-owned — any terminal, any browser,
+ *  any profile. Two standalone studio boots on ONE scratch home: boot A
+ *  plain (the done latch holds the walk closed), boot B carrying
+ *  MONOKA_SETUP_REQUESTED=1 — the walk re-opens OVER the latch with the
+ *  CURRENT designations prefilled (re-designatable; nothing uninstalled —
+ *  the reset writes nothing), and the SKIP terminal acks the request so
+ *  subsequent reloads stay closed (the ack-on-skip arm; done would too). */
+test('--setup re-runs the walk from any terminal (task 9, spec §4)', async ({ page }) => {
+  await seedWalkDone(page)
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  // One scratch home for both boots (the reset is about the SAME profile —
+  // that is the guarantee: the flag must reach the walk through a boot the
+  // user did not start from a browser); the designations point at REAL dirs
+  // so the walk's own Verify can answer exists.
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-e2e-setup-'))
+  const modelsRoot = path.join(home, 'models')
+  const customNodesDir = path.join(home, 'custom_nodes')
+  fs.mkdirSync(modelsRoot, { recursive: true })
+  fs.mkdirSync(customNodesDir, { recursive: true })
+
+  const children: ChildProcess[] = []
+  const reservePort = async () => {
+    const holder = http.createServer(() => undefined)
+    const port = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+    await new Promise<void>((resolve) => holder.close(() => resolve()))
+    return port
+  }
+  const bootStudio = async (extraEnv: Record<string, string>) => {
+    const port = await reservePort()
+    const child = spawn('node', ['dist-server/server/index.js'], {
+      env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(port), MONOKA_NO_HTTPS: '1', ...extraEnv },
+      stdio: ['ignore', 'ignore', 'ignore'],
+    })
+    children.push(child)
+    await expect.poll(async () => {
+      try { return (await fetch(`http://127.0.0.1:${port}/api/lan/settings`)).ok } catch { return false }
+    }, { timeout: 30_000 }).toBe(true)
+    return port
+  }
+  const stopStudio = async (child: ChildProcess) => {
+    if (child.exitCode !== null || child.signalCode !== null) return
+    child.kill('SIGTERM') // the recorded PID only
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { child.kill('SIGKILL'); resolve() }, 5_000)
+      child.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  const setupRead = async (port: number) => (await (await fetch(`http://127.0.0.1:${port}/api/lan/settings`)).json()) as { setupRequested?: boolean; settings: Record<string, unknown> }
+
+  try {
+    // ---- BOOT A (plain): the done latch keeps the walk closed, no request.
+    const portA = await bootStudio({})
+    const seeded = await setupRead(portA)
+    // Real designations (the walk reopens onto them) + the CI-simulation
+    // dead engine port — a virgin home inherits the shipped default (8188
+    // since the 2026-10-15 ruling), which is the maintainer's live instance.
+    await fetch(`http://127.0.0.1:${portA}/api/lan/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ settings: { ...seeded.settings, comfyUrl: 'http://127.0.0.1:59999', modelRoot: modelsRoot, engine: { ...(seeded.settings.engine as Record<string, unknown>), mode: 'external', externalCustomNodesDir: customNodesDir } } }),
+    })
+    await page.goto(`http://127.0.0.1:${portA}/?canvas=1`)
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    // The negative window IS the assertion: no wizard from the latch alone.
+    await expect(page.locator('[data-canvas-wizard]')).toHaveCount(0, { timeout: 15_000 })
+    expect((await setupRead(portA)).setupRequested).toBe(false)
+    await stopStudio(children[0])
+
+    // ---- BOOT B (the flag): the walk re-opens OVER the done latch,
+    // prefilled with the CURRENT designations.
+    const portB = await bootStudio({ MONOKA_SETUP_REQUESTED: '1' })
+    await page.goto(`http://127.0.0.1:${portB}/?canvas=1`)
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    const wizard = page.locator('[data-canvas-wizard]')
+    await expect(wizard).toBeVisible({ timeout: 30_000 })
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '1')
+    await expect(page.locator('[data-wizard-designation-input="wizard-models-root"]')).toHaveValue(modelsRoot, { timeout: 15_000 })
+    await page.locator('[data-wizard-designation-verify="wizard-models-root"]').click()
+    await expect(page.locator('[data-wizard-designation-verdict="wizard-models-root"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 15_000 })
+    // Mid-walk the request still stands — only a terminal state acks it (a
+    // background tab that merely SHOWS the walk must not eat the request).
+    expect((await setupRead(portB)).setupRequested).toBe(true)
+
+    // ---- SKIP: the second terminal. The ack fires on done AND skip; the
+    // request clears for every later read (the true→false settle).
+    await page.locator('[data-wizard-skip]').click()
+    await expect(wizard).toHaveCount(0, { timeout: 15_000 })
+    await expect.poll(async () => {
+      try { return (await setupRead(portB)).setupRequested === false } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+    // Subsequent reloads stay closed (the skip latch + the cleared flag).
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    await expect(page.locator('[data-canvas-wizard]')).toHaveCount(0, { timeout: 15_000 })
+    // USER DATA INTACT: the walk wrote nothing — designations and engine URL
+    // survive verbatim.
+    const after = await setupRead(portB)
+    expect(after.settings.modelRoot).toBe(modelsRoot)
+    expect((after.settings.engine as Record<string, unknown>).externalCustomNodesDir).toBe(customNodesDir)
+    expect(after.settings.comfyUrl).toBe('http://127.0.0.1:59999')
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+  } finally {
+    for (const child of children) await stopStudio(child)
+    removeAllScratchDirs()
+  }
+})

@@ -14,6 +14,11 @@ export type SessionState = {
    *  arrives the walk prefills EMPTY (never the studio-home default as
    *  engine-visible — W-C1). */
   modelRootIsDefault: boolean
+  /** (task 9, spec §4) The --setup reset's in-memory server request — the
+   *  walk re-opens over any local latch while it stands. Initial FALSE
+   *  fails safe: until the server's word arrives the latch rules (never a
+   *  surprise re-open; the flag is the server's word, not a client guess). */
+  setupRequested: boolean
   models: ModelFile[]
   scanning: boolean
   status: ComfyStatus
@@ -41,6 +46,7 @@ export type SessionState = {
   engineWatch: { lostAt: number | null; recoveredAt: number | null; infoEpoch: number; resync: InventoryResyncRecord | null }
   setSettings(settings: AppSettings | null): void
   setModelRootIsDefault(modelRootIsDefault: boolean): void
+  setSetupRequested(setupRequested: boolean): void
   setModels(models: ModelFile[]): void
   setScanning(scanning: boolean): void
   setStatus(status: ComfyStatus): void
@@ -60,6 +66,7 @@ export type SessionState = {
 export const useSessionStore = create<SessionState>()((set) => ({
   settings: null,
   modelRootIsDefault: true,
+  setupRequested: false,
   models: [],
   scanning: false,
   status: { connected: false, latencyMs: 0 },
@@ -73,6 +80,7 @@ export const useSessionStore = create<SessionState>()((set) => ({
   engineWatch: { lostAt: null, recoveredAt: null, infoEpoch: 0, resync: null },
   setSettings: (settings) => set({ settings }),
   setModelRootIsDefault: (modelRootIsDefault) => set({ modelRootIsDefault }),
+  setSetupRequested: (setupRequested) => set({ setupRequested }),
   setModels: (models) => set({ models }),
   setScanning: (scanning) => set({ scanning }),
   setStatus: (status) => set({ status }),

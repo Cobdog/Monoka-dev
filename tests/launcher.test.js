@@ -489,3 +489,82 @@ maybe('(l) --print still parses with the LAN routes present (wizard task 7 regre
   }
   ok(fs.existsSync(path.join(REPO, 'dist-server', 'server', 'lanConfig.js')), 'the launcher-config seam compiled into the boot closure')
 })
+
+maybe('(m) --setup boots the server with the setup request surfaced (wizard task 9, spec §4)', async () => {
+  console.log('launcher: the --setup reset')
+  // The dry-run arm: --setup parses beside the other flags and --print stays
+  // side-effect free about it — the plan NAMES the setup boot instead.
+  const dir = scratch()
+  const config = path.join(dir, 'config.json')
+  const port = await freePort()
+  const vitePort = await freePort()
+  const dry = run(['--print', '--setup'], { env: { MONOKA_START_CONFIG: config, MONOKA_LAN_PORT: String(port), MONOKA_VITE_PORT: String(vitePort) } })
+  ok(dry.code === 0, `--print --setup exits 0 (got ${dry.code})\n${dry.out}`)
+  ok(dry.out.includes('not booting'), 'the dry run still states it is not booting')
+  ok(dry.out.includes('setup walk re-opened'), 'the dry-run plan names the setup boot (the flag is visible before you commit to it)')
+
+  if (!hasBuild) {
+    console.log('  NOTE: build output absent — the real-boot legs skip (the gate runs this suite after build).')
+    return
+  }
+
+  // The real boots: the flag must reach the SERVER (the env pass-through the
+  // server's in-memory setupRequested reads). Dead engine URL in each home's
+  // settings (the documented CI-simulation convention) — the bootstrap ask
+  // below never touches a real engine; the flag's surface is the subject.
+  const boot = async (label, args) => {
+    const home = path.join(dir, label)
+    fs.mkdirSync(home, { recursive: true })
+    fs.writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ comfyUrl: 'http://127.0.0.1:9' }))
+    const bootPort = await freePort()
+    ok(run(['--set', `port=${bootPort}`], { env: { MONOKA_START_CONFIG: config } }).code === 0, `the ${label} boot's port is saved`)
+    ok(run(['--set', 'dev=false'], { env: { MONOKA_START_CONFIG: config } }).code === 0, 'the boot plan is production')
+    const child = spawn('sh', [START_SH, ...args], {
+      cwd: REPO,
+      env: { ...process.env, MONOKA_START_CONFIG: config, MONOKA_HOME: home, MONOKA_NO_HTTPS: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    return { child, port: bootPort }
+  }
+  const stop = async (child, label) => {
+    child.kill('SIGTERM') // the recorded PID only — never anything else
+    const exited = await new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 30_000)
+      child.on('exit', () => { clearTimeout(timer); resolve(true) })
+    })
+    ok(exited, `SIGTERM to the recorded PID stops the ${label} server`)
+  }
+  const readBootstrap = async (bootPort) => {
+    const response = await fetch(`http://127.0.0.1:${bootPort}/api/lan/bootstrap`)
+    return response.json()
+  }
+
+  // THE RESET BOOT: --setup → the server's bootstrap answers
+  // setupRequested:true — and it rides the DOWN-engine answer too
+  // (connected:false; the seeded URL is dead on purpose).
+  const setupBoot = await boot('setup-home', ['--setup'])
+  const setupReady = await waitUntil(async () => {
+    try {
+      const response = await fetch(`http://127.0.0.1:${setupBoot.port}/api/lan/settings`)
+      return response.ok
+    } catch { return false }
+  }, 60_000, 'the --setup boot to answer /api/lan/settings')
+  ok(setupReady, 'the --setup boot reaches readiness')
+  const setupBootstrap = await readBootstrap(setupBoot.port)
+  ok(setupBootstrap.connected === false, 'the seeded engine is dead (the flag rides the down-engine answer too)')
+  ok(setupBootstrap.setupRequested === true, `the --setup boot surfaces setupRequested:true (got ${JSON.stringify(setupBootstrap.setupRequested)})`)
+  await stop(setupBoot.child, '--setup')
+
+  // THE PLAIN BOOT: no flag, no request — the surface answers false.
+  const plainBoot = await boot('plain-home', [])
+  const plainReady = await waitUntil(async () => {
+    try {
+      const response = await fetch(`http://127.0.0.1:${plainBoot.port}/api/lan/settings`)
+      return response.ok
+    } catch { return false }
+  }, 60_000, 'the plain boot to answer /api/lan/settings')
+  ok(plainReady, 'the plain boot reaches readiness')
+  const plainBootstrap = await readBootstrap(plainBoot.port)
+  ok(plainBootstrap.setupRequested === false, `a plain boot answers setupRequested:false (got ${JSON.stringify(plainBootstrap.setupRequested)})`)
+  await stop(plainBoot.child, 'plain')
+})

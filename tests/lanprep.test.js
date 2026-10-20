@@ -22,6 +22,8 @@
 //   (g) the config write is atomic — stage + rename like the launcher's own
 //       --set; a failed write leaves the original intact, a successful one
 //       leaves no staging residue (review fix round, 3p14abm)
+//   (h) the --setup flag lifecycle: env → bootstrap/settings surface, the
+//       ack clears it, idempotent (wizard task 9, spec §4)
 //
 // HONEST LIMIT (stated): the non-loopback arm of the token gate is proven by
 // the isLoopbackPeer truth table + the route's gate shape, not by a socket
@@ -101,11 +103,15 @@ function scratch(prefix) {
 
 /** Boots the built server with a scratch home, a probed port, plain HTTP,
  *  and a SCRATCH launcher config (never the repo root's). Extra env rides
- *  through (the env-override arms). */
-async function bootServer(label, env = {}) {
+ *  through (the env-override arms). `settingsSeed` lands in the home's
+ *  settings.json BEFORE the spawn — the boot's first loadSettings caches it
+ *  (the bootstrap's engine probe fetches the configured comfyUrl, so arms
+ *  that must not touch a real engine seed a dead one). */
+async function bootServer(label, env = {}, settingsSeed = null) {
   const home = scratch(label)
   const configPath = path.join(home, 'start-config.json')
   fs.writeFileSync(configPath, JSON.stringify(seedConfig(), null, 2) + '\n')
+  if (settingsSeed) fs.writeFileSync(path.join(home, 'settings.json'), JSON.stringify(settingsSeed))
   const port = await freePort()
   const output = { text: '', label }
   const child = spawn(process.execPath, [path.join(REPO, 'dist-server', 'server', 'index.js')], {
@@ -403,6 +409,43 @@ test('(g) the config write is atomic — stage + rename, the launcher\'s own sta
   ok(done.written.join(',') === 'token', 'the retry writes the key once the location is writable')
   ok(JSON.parse(fs.readFileSync(configPath, 'utf8')).token === true, 'the written file carries the key')
   ok(fs.readdirSync(dir).filter((name) => name.endsWith('.tmp')).length === 0, `no staging residue survives the rename (got ${JSON.stringify(fs.readdirSync(dir).filter((name) => name.endsWith('.tmp')))})`)
+})
+
+test('(h) bootstrap surfaces setupRequested and the ack clears it (wizard task 9, spec §4)', async () => {
+  console.log('lanprep: the --setup flag lifecycle')
+  // The env-derived, in-memory flag: boot with MONOKA_SETUP_REQUESTED=1 →
+  // the bootstrap ask AND the settings read carry it; one POST to the ack
+  // route clears it for every later read (no settings write — the flag is
+  // the boot's, not the user's data); repeat acks stay idempotent. The
+  // engine URL is seeded DEAD before the spawn: the bootstrap probes it and
+  // the flag's surface must ride the down-engine answer too.
+  const server = await bootServer(
+    'setup-flag',
+    { MONOKA_SETUP_REQUESTED: '1' },
+    { comfyUrl: 'http://127.0.0.1:9' },
+  )
+  const api = client(server.port)
+  const bootstrap = await api.get('/api/lan/bootstrap')
+  ok(bootstrap.status === 200, `the bootstrap ask answers 200 (got ${bootstrap.status})`)
+  ok(bootstrap.body.connected === false, 'the seeded engine is dead (the flag rides the down-engine answer too)')
+  ok(bootstrap.body.setupRequested === true, `the bootstrap surfaces setupRequested:true (got ${JSON.stringify(bootstrap.body.setupRequested)})`)
+  const settings = await api.get('/api/lan/settings')
+  ok(settings.status === 200, `the settings read answers 200 (got ${settings.status})`)
+  ok(settings.body.setupRequested === true, `the settings read surfaces it too (got ${JSON.stringify(settings.body.setupRequested)})`)
+
+  const ack = await api.post('/api/lan/setup-ack', {})
+  ok(ack.status === 200, `the ack route answers 200 (got ${ack.status})`)
+  ok(ack.body.setupRequested === false, 'the ack answers the cleared state')
+  const afterAck = await api.get('/api/lan/settings')
+  ok(afterAck.body.setupRequested === false, 'the settings read is false after the ack')
+  const afterAckBootstrap = await api.get('/api/lan/bootstrap')
+  ok(afterAckBootstrap.body.setupRequested === false, 'the bootstrap is false after the ack')
+
+  // Idempotent on repeat acks (a double-fired terminal state is normal).
+  const again = await api.post('/api/lan/setup-ack', {})
+  ok(again.status === 200, `the repeat ack answers 200 (got ${again.status})`)
+  ok(again.body.setupRequested === false, 'the repeat ack stays false')
+  server.child.kill()
 })
 
 test('suite summary', () => {

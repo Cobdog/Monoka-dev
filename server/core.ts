@@ -1025,6 +1025,13 @@ export function createStudioServer(paths: StudioServerPaths) {
   // flow; restart to pick one up).
   let settingsCache: AppSettings | null = null
 
+  // The --setup reset (spec §4): the launcher's flag rides the env into an
+  // IN-MEMORY request — the reopened walk acks it (POST /api/lan/setup-ack)
+  // at any terminal state, and it dies with the boot that carried it
+  // (`--setup` re-arms). It never touches settings.json: the reset re-opens
+  // the designation walk over the user's CURRENT data, it writes nothing.
+  let setupRequested = /^(1|true|yes)$/i.test(process.env.MONOKA_SETUP_REQUESTED ?? '')
+
   /** Synchronous peek for closures that cannot await (the blob-scope
    *  resolver). Answers the cache when warm, defaults before the first load —
    *  every API path that registers blobs has already awaited loadSettings. */
@@ -1729,10 +1736,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
             logEvent({ kind: 'inventory.registry', connected: true, refresh: userRefresh, files: models.length })
             const ollama = await comfyFetch(settings.ollamaUrl, '/api/tags').catch((error: unknown) => { logFailure('bootstrap/ollama', error, undefined, 'debug'); return { models: [] } }) as { models?: Array<{ name?: string; size?: number; remote_model?: string }> }
             const ollamaModels = (ollama.models ?? []).filter((item) => item.name && !item.remote_model && item.size !== 342).map((item) => item.name as string)
-            return sendJson(response, 200, { connected: true, latencyMs: Date.now() - started, models, upscalers, ollamaModels, ollamaModel: settings.ollamaModel })
+            return sendJson(response, 200, { connected: true, latencyMs: Date.now() - started, models, upscalers, ollamaModels, ollamaModel: settings.ollamaModel, setupRequested })
           } catch (error) {
             logEvent({ kind: 'inventory.registry', connected: false, refresh: userRefresh })
-            return sendJson(response, 200, { connected: false, latencyMs: Date.now() - started, models: [], error: error instanceof Error ? error.message : String(error) })
+            return sendJson(response, 200, { connected: false, latencyMs: Date.now() - started, models: [], error: error instanceof Error ? error.message : String(error), setupRequested })
           }
         }
         // ---- Studio storage (wave 1): jobs / projects / workspace / FTS ---
@@ -3508,7 +3515,7 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           // engine never reads. The default is server-computed (it derives
           // from the data home), so the client cannot derive the flag. Pure
           // addition; the POST shape is unchanged.
-          return sendJson(response, 200, { settings, modelRootIsDefault: settings.modelRoot === defaultSettings().modelRoot })
+          return sendJson(response, 200, { settings, modelRootIsDefault: settings.modelRoot === defaultSettings().modelRoot, setupRequested })
         }
         if (url.pathname === '/api/lan/settings' && request.method === 'POST') {
           const body = await readJson(request, 200_000)
@@ -3547,6 +3554,14 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
             void runtime.stop().catch((stopFailure: unknown) => logFailure('engine/stop-on-mode-flip', stopFailure, undefined, 'warn'))
           }
           return sendJson(response, 200, { settings: saved, ...(warnings.length ? { warnings } : {}) })
+        }
+        // The --setup reset's ack (spec §4): the app POSTs once the reopened
+        // walk reaches a terminal state (done AND skip — the user acted, the
+        // request is satisfied). Idempotent; `--setup` re-arms on the next
+        // boot because the flag was only ever this boot's memory.
+        if (url.pathname === '/api/lan/setup-ack' && request.method === 'POST') {
+          setupRequested = false
+          return sendJson(response, 200, { setupRequested: false })
         }
         // ---- LAN prep (wizard rework task 7, spec §2.4 — W-I1, W-I2/D8) --
         // The walk's fourth step reads the live posture, probes the bind,

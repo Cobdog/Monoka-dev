@@ -64,6 +64,7 @@ import {
   markEngineVerified,
   modelsGate,
   modelsRootPrefill,
+  owesSetupAck,
   packAwaitingCopy,
   packFetchPhase,
   packInstallPath,
@@ -128,6 +129,11 @@ export function FirstRunWizard() {
   const scanning = useSessionStore((state) => state.scanning)
   const settings = useSessionStore((state) => state.settings)
   const modelRootIsDefault = useSessionStore((state) => state.modelRootIsDefault)
+  // (task 9, spec §4) The --setup reset's request + its clearer — the walk
+  // re-opens over any local latch while the server asks, and the terminal
+  // states hand the request back.
+  const setupRequested = useSessionStore((state) => state.setupRequested)
+  const setSetupRequested = useSessionStore((state) => state.setSetupRequested)
   const engineInfo = useSessionStore((state) => state.info)
   const setSettingsDock = useCanvasStore((state) => state.setSettingsDock)
 
@@ -200,9 +206,9 @@ export function FirstRunWizard() {
   const stack = useMemo(() => (settings ? h3StackReport(models, { ...settings.modelOverrides?.monoka, ...walk?.overrides }, engineInfo) : null), [models, settings, engineInfo, walk])
 
   // The present decision rides the spine's predicate: the local latch rules
-  // until the server requests setup (spec §4) — task 9 wires that flag in;
-  // until then `false` is exactly today's behavior, through the seam.
-  const presenting = shouldPresent({ latchDone: state.done, latchSkipped: state.skipped, serverSetupRequested: false })
+  // until the server requests setup (spec §4) — the store carries the boot
+  // read, so the reset re-opens the walk over any latch until it is acked.
+  const presenting = shouldPresent({ latchDone: state.done, latchSkipped: state.skipped, serverSetupRequested: setupRequested })
   // (§2.2, task 5) While the walk PRESENTS, the engine pills go quiet — the
   // wizard owns the verdict voice. The flag mirrors the rendered truth (the
   // same guard the body uses), so a mid-walk scan — which unrenders the
@@ -217,7 +223,23 @@ export function FirstRunWizard() {
   if (!context || !sawScan || scanning || !presenting || !settings || !walk) return null
   const { scanModels, checkConnection } = context.session
 
-  const close = () => patch({ done: true })
+  // A terminal walk state (done AND skip alike) consumes the --setup reset's
+  // request: the store flag clears SYNCHRONOUSLY with the patch (presenting
+  // consults it — a stale-true flag would re-present the walk forever), then
+  // the ack POST tells the server. Fire-and-forget with both outcomes logged;
+  // a failed ack leaves the flag standing honestly (it dies with the boot
+  // anyway, and `--setup` re-arms).
+  const finish = (part: Partial<WizardState>) => {
+    if (owesSetupAck({ done: part.done === true, skipped: part.skipped === true, serverSetupRequested: setupRequested })) {
+      setSetupRequested(false)
+      window.monoka.ackSetupRequested().then(
+        (answer) => dbg('wizard.setupAck', { cleared: answer.setupRequested }),
+        (error: unknown) => dbg('wizard.setupAck', { error: error instanceof Error ? error.message : String(error) }),
+      )
+    }
+    patch(part)
+  }
+  const close = () => finish({ done: true })
   const step = Math.min(state.step, STEP_TITLES.length - 1)
 
   // The Models step's ambiguous pick: one click designates through the
@@ -251,13 +273,13 @@ export function FirstRunWizard() {
       onOpenPacks={() => setSettingsDock(true)}
     />
     if (step === 3) return <LanStep candidate={walk} onUpdateWalk={updateWalk} />
-    return <PromptStep gate={promptGate(walk)} walk={walk} settings={settings} models={models} onLatchDone={() => patch({ done: true })} />
+    return <PromptStep gate={promptGate(walk)} walk={walk} settings={settings} models={models} onLatchDone={() => finish({ done: true })} />
   })()
 
   return <div className="canvas-wizard" role="dialog" aria-label="First-run setup wizard" data-canvas-wizard data-wizard-step={step}>
     <header className="canvas-wizard-header">
       <strong>Set up the studio <span className="canvas-wizard-step">{step + 1} of {STEP_TITLES.length} — {STEP_TITLES[step]}</span></strong>
-      <button type="button" className="canvas-wizard-skip" data-wizard-skip onClick={() => patch({ skipped: true })}>Skip for now</button>
+      <button type="button" className="canvas-wizard-skip" data-wizard-skip onClick={() => finish({ skipped: true })}>Skip for now</button>
       <button type="button" className="canvas-wizard-close" aria-label="Close the setup wizard" data-wizard-close onClick={close}><X size={14} /></button>
     </header>
     <div className="canvas-wizard-body">{body}</div>
