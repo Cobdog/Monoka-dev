@@ -327,6 +327,7 @@ const RULES = [
   { match: ['server/engineNodes.ts'], suites: ['fetcher', 'instance', 'runtime'], reason: 'the node-pack registry: every install/pack flow (also a license-audit input).' },
   { match: ['server/fetchCatalog.ts'], suites: ['benchmarks', 'fetcher'], reason: 'fetch catalog: the fetcher consumer + the benchmarks catalog bridge.' },
   { match: ['server/hashCatalog.ts'], suites: ['hashcatalog'], reason: 'the hash-catalog typed loader — its suite owns the indexes + the degradation contract (to7xpa7).' },
+  { match: ['scripts/crawl-hash-catalog.mjs'], suites: ['hashcatalog'], reason: 'the crawl generator — the suite imports it as a module (the merge legs (8a)–(8e) pin its API) and it owns the shipped json (to7xpa7).' },
   { match: ['scripts/lib/hash-catalog-identities.cjs'], suites: ['hashcatalog'], reason: 'the identity classification table — test (3) cross-checks the shipped json against it; the table and the artifact cannot drift silently (to7xpa7).' },
   { match: ['server/hashCatalog.json'], suites: ['hashcatalog', 'ci-map'], reason: 'the shipped append-only catalog: its suite derives the seed from FETCH_CATALOG; ci-map rides along because the json is the append gate\'s own input (the script\'s other leg).' },
   { match: ['server/fetcher.ts'], suites: ['fetcher'], reason: 'fetch transport + tar extraction.' },

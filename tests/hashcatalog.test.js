@@ -176,7 +176,11 @@ test('(3) every seed row matches its FETCH_CATALOG source (the seed-derivation i
     }
   }
   eq(expected.size, 22, 'the FETCH_CATALOG walk yields 22 distinct shas')
-  eq(catalog.bySha.size, expected.size, 'the shipped catalog is EXACTLY the derivation today (the crawl grows it in T2 and updates this)')
+  // T2's crawl SUPERSEDES the seed (task to7xpa7): the shipped catalog is a
+  // SUPERSET of the FETCH_CATALOG derivation — the crawl widens variants and
+  // adds repos — so the T1-scoped exact-22 pin retires to this superset
+  // check. The per-row assertions below still police every derivation row.
+  ok(catalog.bySha.size >= expected.size, `the shipped catalog is a SUPERSET of the derivation (got ${catalog.bySha.size}, derivation ${expected.size})`)
 
   for (const [sha, want] of expected) {
     const row = catalog.bySha.get(sha)
@@ -362,4 +366,209 @@ test('(7) the BUILT loader resolves the catalog from the dist-server layout', ()
   eq(probeResult.resolved, path.join(REPO, 'server', 'hashCatalog.json'), `the built layout resolves the APPEND-GATED source copy (got ${probeResult.resolved})`)
   ok(probeResult.rows >= 22, `the built loader serves the seed rows (got ${probeResult.rows})`)
   ok(probeResult.hybridPresent, 'the built loader resolves the smhfacct hybrid sha')
+})
+
+// ---------------------------------------------------------------------------
+// (8) The crawl generator — scripts/crawl-hash-catalog.mjs (T2, the crawl).
+//
+// The generator MERGES into the shipped file (spec §3 determinism): a repo
+// whose crawled content set is unchanged keeps its recorded fetchedAt, a
+// changed repo re-stamps only itself, new rows append in canonical sha
+// order, and masked oids land as gaps — never a guessed sha. Change
+// detection needs no stored fingerprint: the previous envelope's own
+// rows+gaps for a repo reconstruct its candidate set ([sha, size] pairs,
+// a sentinel for masked gaps), so legacy seed entries and fresh entries
+// compare under one deterministic rule. These legs run over FIXTURE tree
+// payloads (the --from-fixtures seam; NO network in this suite); legs
+// (8d/8e) also police the SHIPPED artifact against the manifest and the
+// classification table — satisfiable only once the real run has landed.
+// ---------------------------------------------------------------------------
+
+const D1 = '2026-11-01'
+const D2 = '2026-11-02'
+const MASKED_OID = '*'.repeat(64)
+
+const crawlMod = () => import('../scripts/crawl-hash-catalog.mjs')
+const hfFile = (p, oid, size) => ({ type: 'file', path: p, size, lfs: { oid, size } })
+const hfNonLfs = (p, size) => ({ type: 'file', path: p, size })
+const shaFor = (n) => `${'c'.repeat(60)}${String(n).padStart(4, '0')}`
+
+/** The T1 Kijai seed row verbatim (as shipped): the crawl sees the
+ *  PUBLISHER path (taeh3.safetensors) under the same sha — the merge must
+ *  keep this row byte-for-byte and report the new provenance. */
+const kijaiSeedRow = () => ({
+  sha256: KIJAI_TAE_SHA,
+  sizeBytes: KIJAI_TAE_BYTES,
+  kind: 'vae_approx',
+  identity: { family: 'minimax-h3', artifact: 'preview-decoder', variant: 'kijai-tae', quant: 'unknown', dtype: 'unknown' },
+  source: { repo: 'Kijai/MiniMax-H3-TAE', revision: 'a213ac8bf2f148b4f32372279a7f207846978900', path: 'vae_approx/taeh3_decoder.safetensors' },
+  aliases: ['taeh3_decoder.safetensors'],
+  addedAt: '2026-10-20',
+})
+
+test('(8a) an unchanged manifest regenerates byte-identically', async () => {
+  const g = await crawlMod()
+  const seed = {
+    version: 1,
+    generatedAt: '2026-10-20',
+    crawl: [{ repo: 'Kijai/MiniMax-H3-TAE', revision: 'a213ac8bf2f148b4f32372279a7f207846978900', fetchedAt: '2026-09-22' }],
+    gaps: [],
+    rows: [kijaiSeedRow()],
+  }
+  const entry = g.manifestEntryFor('Kijai/MiniMax-H3-TAE')
+  const trees = [hfFile('vae_approx/taeh3.safetensors', KIJAI_TAE_SHA, KIJAI_TAE_BYTES)]
+  const collect = () => ({ entry, ok: true, revision: entry.revision, ...g.collectFromTrees(entry, trees) })
+  const first = g.buildEnvelope({ previous: seed, results: [collect()], crawlDate: D1 })
+  const second = g.buildEnvelope({ previous: seed, results: [collect()], crawlDate: D1 })
+  eq(g.serializeCatalog(first.envelope), g.serializeCatalog(second.envelope), 'two merges over the same inputs are byte-identical')
+  eq(first.envelope.rows[0], seed.rows[0], 'the same-sha row is preserved verbatim (provenance change reported, never rewritten)')
+  ok(first.reports.some((r) => /taeh3\.safetensors/.test(r)), `the publisher-path provenance change is reported (got ${JSON.stringify(first.reports)})`)
+  eq(first.envelope.crawl[0].fetchedAt, '2026-09-22', 'the recorded fetchedAt survives: content set unchanged')
+  // The AC-5 clause proper: re-merge the MERGED file with identical trees
+  // at a LATER crawl date — nothing moves, byte-identical output.
+  const third = g.buildEnvelope({ previous: first.envelope, results: [collect()], crawlDate: D2 })
+  eq(g.serializeCatalog(third.envelope), g.serializeCatalog(first.envelope), 'a re-crawl of an unchanged repo is byte-identical at a later date')
+  eq(third.envelope.crawl[0].fetchedAt, '2026-09-22', 'fetchedAt survives the later run')
+})
+
+test('(8b) a changed repo updates only its own fetchedAt and rows', async () => {
+  const g = await crawlMod()
+  const seed = { version: 1, generatedAt: '', crawl: [], gaps: [], rows: [] }
+  const mamad8 = g.manifestEntryFor('Mamad8/MiniMax-H3-Image-VAE')
+  const kijai = g.manifestEntryFor('Kijai/MiniMax-H3-TAE')
+  const MAMAD8_REV = 'c7b9252c73707dba494cf4d99ca45d3f33f561b3'
+  const mamad8Trees = (steps) => steps.map((n) => hfFile(`minimax_h3_t1_image_vae_step${n}.safetensors`, shaFor(n), 5207808000 + n))
+  const kijaiTrees = [hfFile('vae_approx/taeh3.safetensors', KIJAI_TAE_SHA, KIJAI_TAE_BYTES)]
+  const r = (entry, revision, trees) => ({ entry, ok: true, revision, ...g.collectFromTrees(entry, trees) })
+  const v1 = g.buildEnvelope({
+    previous: seed,
+    results: [r(mamad8, MAMAD8_REV, mamad8Trees([1597])), r(kijai, kijai.revision, kijaiTrees)],
+    crawlDate: D1,
+  })
+  // v2: Mamad8 gains step2000 upstream; Kijai is untouched.
+  const v2 = g.buildEnvelope({
+    previous: v1.envelope,
+    results: [r(mamad8, MAMAD8_REV, mamad8Trees([1597, 2000])), r(kijai, kijai.revision, kijaiTrees)],
+    crawlDate: D2,
+  })
+  const crawlBy = Object.fromEntries(v2.envelope.crawl.map((c) => [c.repo, c]))
+  eq(crawlBy['Mamad8/MiniMax-H3-Image-VAE'].fetchedAt, D2, 'the changed repo re-stamps')
+  eq(crawlBy['Kijai/MiniMax-H3-TAE'].fetchedAt, D1, 'the unchanged repo keeps its recorded date')
+  eq(v1.envelope.generatedAt, D1, 'v1 generatedAt is the v1 max')
+  eq(v2.envelope.generatedAt, D2, 'generatedAt rides the max fetchedAt')
+  eq(v2.envelope.rows.length, 3, 'exactly one row appended')
+  const added = v2.envelope.rows.find((row) => row.source.path.endsWith('step2000.safetensors'))
+  ok(added, 'the new row landed')
+  eq(added.addedAt, D2, 'the new row stamps the run date')
+  eq(added.identity, { family: 'minimax-h3', artifact: 't1-image-vae', variant: 'step2000', quant: 'unknown', dtype: 'unknown' }, 'the new row classifies via the table')
+  const shas = v2.envelope.rows.map((row) => row.sha256)
+  eq(shas, [...shas].sort(), 'rows stay canonically sha-sorted')
+  for (const old of v1.envelope.rows) {
+    eq(v2.envelope.rows.find((row) => row.sha256 === old.sha256), old, `pre-existing row ${old.sha256.slice(0, 8)} is untouched`)
+  }
+})
+
+test('(8c) a masked oid lands as a gap, never a guessed sha', async () => {
+  const g = await crawlMod()
+  const entry = g.manifestEntryFor('jacokon/fasth3-live')
+  // The observed anonymous mask shape (2026-10-20 probe): the lfs block is
+  // present, the oid is 64 literal asterisks, the real size survives. The
+  // second entry is the defensive shape — the lfs block absent entirely.
+  const masked = [
+    hfFile('minimax_h3_video_vae_w4a8_from_fp16.safetensors', MASKED_OID, 1738850040),
+    hfNonLfs('minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors', 20970382880),
+  ]
+  const got = g.collectFromTrees(entry, masked)
+  eq(got.unclassified, [], 'both masked paths classify (a gap carries a full identity)')
+  eq(got.rows, [], 'a masked oid never becomes a row candidate')
+  eq(got.gaps.length, 2, 'both masked entries land as gaps')
+  const byPath = Object.fromEntries(got.gaps.map((gap) => [gap.path, gap]))
+  const w4a8 = byPath['minimax_h3_video_vae_w4a8_from_fp16.safetensors']
+  const dense = byPath['minimax_h3_fl2va_fasth3_dense_pruned_int8_convrot.safetensors']
+  ok(w4a8 && dense, 'both masked paths are present as gaps')
+  ok(w4a8.reason.startsWith('oid-masked-anonymous'), 'the w4a8 gap names the anonymous mask')
+  ok(/VT-reference/i.test(w4a8.reason), 'the w4a8 gap records the established VT-reference workaround note')
+  ok(dense.reason.startsWith('oid-masked-anonymous'), 'the lfs-absent gap names the anonymous mask too')
+  ok(w4a8.sizeBytes === 1738850040 && dense.sizeBytes === 20970382880, 'the real sizes survive into the gap records')
+  for (const gap of got.gaps) {
+    for (const key of ['family', 'artifact', 'variant', 'quant', 'dtype']) {
+      ok(typeof gap.identity[key] === 'string' && gap.identity[key].length > 0, `gap ${gap.path}: identity.${key} is non-empty`)
+    }
+  }
+  // The control: the same repo, an UNMASKED oid → a row candidate, not a gap.
+  const control = g.collectFromTrees(entry, [hfFile('minimax_h3_video_vae_w4a8_from_fp16.safetensors', 'a'.repeat(64), 1738850040)])
+  eq(control.rows.length, 1, 'the unmasked twin is a row candidate')
+  eq(control.gaps, [], 'the unmasked twin is not a gap')
+  // Envelope level: the merge emits the gaps, and NO row anywhere carries a
+  // non-sha sha — masked means absent from rows, never guessed.
+  const envelope = g.buildEnvelope({
+    previous: { version: 1, generatedAt: '', crawl: [], gaps: [], rows: [] },
+    results: [{ entry, ok: true, revision: entry.revision, ...got }],
+    crawlDate: D1,
+  }).envelope
+  eq(envelope.gaps.length, 2, 'both gaps land in the envelope')
+  eq(envelope.rows, [], 'a masked-only crawl contributes no rows')
+  for (const gap of envelope.gaps) {
+    eq(gap.repo, entry.repo, 'the gap names its repo')
+    eq(gap.revision, entry.revision, 'the gap records the revision')
+    ok(/^\d{4}-\d{2}-\d{2}$/.test(gap.addedAt), 'the gap stamps its date')
+  }
+})
+
+test("(8d) the manifest's every repo appears in the envelope's crawl block", async () => {
+  const g = await crawlMod()
+  // Fixture leg: a FAILED repo lands no fabricated crawl entry — the
+  // failure is reported loudly. The crawl block is the record of every
+  // source and date (spec §2); a fabricated entry would be a lie.
+  const seed = { version: 1, generatedAt: '', crawl: [], gaps: [], rows: [] }
+  const kijai = g.manifestEntryFor('Kijai/MiniMax-H3-TAE')
+  const fasth3 = g.manifestEntryFor('jacokon/fasth3-live')
+  const out = g.buildEnvelope({
+    previous: seed,
+    results: [
+      { entry: kijai, ok: true, revision: kijai.revision, ...g.collectFromTrees(kijai, [hfFile('vae_approx/taeh3.safetensors', KIJAI_TAE_SHA, KIJAI_TAE_BYTES)]) },
+      { entry: fasth3, ok: false, error: 'TREE-HTTP-401' },
+    ],
+    crawlDate: D1,
+  })
+  eq(out.envelope.crawl.map((c) => c.repo), ['Kijai/MiniMax-H3-TAE'], 'only successful repos land crawl entries')
+  eq(out.failures.map((f) => f.repo), ['jacokon/fasth3-live'], 'the failed repo is reported, not swallowed')
+  eq(out.envelope.gaps, [], 'a failed repo contributes no gaps')
+  // Shipped leg: after the real run, the landed envelope covers the WHOLE
+  // manifest, and every shipped row's repo has a crawl entry. RED until the
+  // real run lands — that is the point.
+  const shipped = JSON.parse(fs.readFileSync(path.join(REPO, 'server', 'hashCatalog.json'), 'utf8'))
+  const shippedRepos = new Set(shipped.crawl.map((c) => c.repo))
+  eq(g.MANIFEST.filter((e) => !shippedRepos.has(e.repo)).map((e) => e.repo), [], 'every manifest repo is recorded in the shipped crawl block')
+  eq([...new Set(shipped.rows.map((r) => r.source.repo))].filter((repo) => !shippedRepos.has(repo)), [], "every shipped row's source repo has a crawl entry")
+})
+
+test('(8e) the classification table leaves no crawled weight unclassified', async () => {
+  const g = await crawlMod()
+  // (i) A table miss FAILS the merge loudly, naming the path — never a
+  // default identity (the review event the table's header promises).
+  const openvdn = g.manifestEntryFor('OpenVDN/vdn-minimax-h3')
+  const missed = g.collectFromTrees(openvdn, [hfFile('stage-unknown/weird-file.bin', 'b'.repeat(64), 10)])
+  eq(missed.unclassified, ['stage-unknown/weird-file.bin'], 'the miss is collected')
+  assert.throws(
+    () => g.buildEnvelope({
+      previous: { version: 1, generatedAt: '', crawl: [], gaps: [], rows: [] },
+      results: [{ entry: openvdn, ok: true, revision: openvdn.revision, ...missed }],
+      crawlDate: D1,
+    }),
+    /weird-file\.bin/,
+    'the merge throws, naming the unclassifiable path',
+  )
+  // (ii) Drift battery: EVERY shipped row re-derives exactly from the
+  // manifest + table — classification cannot drift from the artifact.
+  const shipped = JSON.parse(fs.readFileSync(path.join(REPO, 'server', 'hashCatalog.json'), 'utf8'))
+  ok(shipped.rows.length >= 22, `the shipped catalog carries rows (got ${shipped.rows.length})`)
+  for (const row of shipped.rows) {
+    const entry = g.manifestEntryFor(row.source.repo)
+    ok(entry, `the manifest covers ${row.source.repo}`)
+    const got = g.classifyArtifact(entry, row.source.path)
+    ok(got, `${row.source.repo} · ${row.source.path}: the table classifies the shipped row`)
+    eq(got.identity, row.identity, `${row.source.repo} · ${row.source.path}: identity re-derives`)
+    eq(got.kind, row.kind, `${row.source.repo} · ${row.source.path}: kind re-derives`)
+  }
 })
