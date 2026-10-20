@@ -38,7 +38,7 @@ export type EngineProbeSource = 'boot' | 'loop' | 'visibility' | 'manual'
 export type EngineRecoveryBridge = {
   getComfyStatus(url: string): Promise<ComfyStatus>
   getObjectInfo(url: string): Promise<ObjectInfo>
-  scanModels(settings: AppSettings, options?: { refresh?: boolean }): Promise<ModelFile[]>
+  scanModels(settings: AppSettings, options?: { refresh?: boolean; url?: string }): Promise<ModelFile[]>
   /** The light models-only listing; null when it cannot be judged (route
    *  absent, engine flapped mid-ask). Optional: a bridge without it simply
    *  never drift-checks (the transition path still re-syncs). */
@@ -63,11 +63,14 @@ export type EngineRecoveryStore = {
 export type EngineRecoveryDeps = { bridge: EngineRecoveryBridge; store: EngineRecoveryStore }
 
 /** One re-sync: full inventory pull with refresh semantics, store update,
- *  outcome recorded. A failure keeps the current inventory and records
- *  ok:false — the surfaces' wording follows the record, never the attempt. */
-async function resyncInventory(deps: EngineRecoveryDeps, cause: InventoryResyncCause, settings: AppSettings): Promise<void> {
+ *  outcome recorded. The read rides the PROBED url (spec §5.2 — the record
+ *  describes the engine this probe just verified, so a candidate typed over
+ *  a stale saved default can never settle a 0-file record); a failure keeps
+ *  the current inventory and records ok:false — the surfaces' wording
+ *  follows the record, never the attempt. */
+async function resyncInventory(deps: EngineRecoveryDeps, cause: InventoryResyncCause, settings: AppSettings, url: string): Promise<void> {
   try {
-    const found = await deps.bridge.scanModels(settings, RECOVERY_RESYNC_OPTIONS)
+    const found = await deps.bridge.scanModels(settings, { ...RECOVERY_RESYNC_OPTIONS, url })
     deps.store.setModels(found)
     // (A-DBG) The re-sync junction: what the registry answered, and why we
     // asked — the drift/recovery split is the triage transcript's spine.
@@ -104,7 +107,7 @@ export async function runEngineCheck(deps: EngineRecoveryDeps, url: string, sour
       // with refresh semantics, and the outcome RECORDED before any
       // surface claims it.
       const settings = store.settings() ?? ({} as AppSettings)
-      await resyncInventory(deps, 'recovery', settings)
+      await resyncInventory(deps, 'recovery', settings, url)
       store.markEngineRecovered(Date.now())
     } else if (transition === 'steady' && source !== 'boot') {
       // The invisible-restart guard: the light, models-only listing (no
@@ -113,7 +116,7 @@ export async function runEngineCheck(deps: EngineRecoveryDeps, url: string, sour
       const settings = store.settings() ?? ({} as AppSettings)
       const light = bridge.lightInventory ? await bridge.lightInventory(settings).catch(() => null) : null
       if (inventoryDrifted(store.models(), light)) {
-        await resyncInventory(deps, 'drift', settings)
+        await resyncInventory(deps, 'drift', settings, url)
       }
     }
   } else {

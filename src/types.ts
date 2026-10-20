@@ -839,7 +839,11 @@ export type GenerationJob = {
 export type UploadedFile = { name: string; subfolder?: string; type?: string }
 
 export type DesktopApi = {
-  getObjectInfo(url: string): Promise<Record<string, { input: { required: Record<string, unknown[]> } }>>
+  /** (wizard rework §5.1) The optional url scopes the ask to the CANDIDATE
+   *  engine; absent = the server's saved settings. An engine that cannot be
+   *  asked THROWS (the bridge translates the route's honest connected:false
+   *  body) — a down engine never lands as an empty registry. */
+  getObjectInfo(url?: string): Promise<Record<string, { input: { required: Record<string, unknown[]> } }>>
   uploadImageData(url: string, data: string): Promise<UploadedFile>
   saveComfyOutputImage(url: string, file: { filename: string; subfolder?: string; type?: string }, outputDirectory: string): Promise<{ path: string; name: string }>
   getSettings(): Promise<AppSettings>
@@ -849,7 +853,9 @@ export type DesktopApi = {
    *  M4 (review 2026-09-19): the client must surface them, not drop them. */
   saveSettings(settings: AppSettings): Promise<{ settings: AppSettings; warnings?: string[] }>
   chooseMedia(type: MediaKind): Promise<{ path: string; name: string } | null>
-  scanModels(settings: AppSettings, options?: { refresh?: boolean }): Promise<ModelFile[]>
+  /** options.url scopes the read to the CANDIDATE engine (the walk's
+   *  connect-moment re-sync — spec §5.2); absent = the saved settings. */
+  scanModels(settings: AppSettings, options?: { refresh?: boolean; url?: string }): Promise<ModelFile[]>
   /** (sweep #2, 68e9k17) The LIGHT models-only listing for the connected-
    *  tick drift check: the engine's /models routes read directly — no
    *  object_info, no Ollama, no upscalers (A-8's megabytes stay out of the

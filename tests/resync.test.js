@@ -89,10 +89,25 @@ const recovery = hasServerBuild ? loadTs('src/lib/engineRecovery.ts') : null
 /** The HTTP bridge the renderer's web apiClient would provide, pointed at
  *  the real built server (which holds the engine URL in settings). */
 function httpBridge(serverBase) {
+  // Mirrors the web apiClient's contracts (the same shapes the renderer's
+  // bridge gives the flow): the candidate url rides on every dependent read
+  // (spec §5.2), and an honest connected:false object-info body THROWS like
+  // the real bridge's translation.
   return {
     getComfyStatus: async (url) => fetch(`${serverBase}/api/lan/comfy-status?url=${encodeURIComponent(url)}`).then((r) => r.json()),
-    getObjectInfo: async () => fetch(`${serverBase}/api/lan/object-info`).then((r) => r.json()),
-    scanModels: async (settings, options) => fetch(`${serverBase}/api/lan/bootstrap${options?.refresh ? '?refresh=1' : ''}`).then((r) => r.json()).then((body) => body.models),
+    getObjectInfo: async (url) => {
+      const query = url ? `?url=${encodeURIComponent(url)}` : ''
+      const body = await fetch(`${serverBase}/api/lan/object-info${query}`).then((r) => r.json())
+      if (body && typeof body === 'object' && body.connected === false) throw new Error(body.error ?? 'The engine could not be reached.')
+      return body
+    },
+    scanModels: async (settings, options) => {
+      const params = new URLSearchParams()
+      if (options?.refresh) params.set('refresh', '1')
+      if (options?.url) params.set('url', options.url)
+      const query = params.toString()
+      return fetch(`${serverBase}/api/lan/bootstrap${query ? `?${query}` : ''}`).then((r) => r.json()).then((body) => body.models)
+    },
     lightInventory: async () => {
       const response = await fetch(`${serverBase}/api/lan/inventory-light`)
       if (!response.ok) return null
@@ -246,6 +261,90 @@ maybe('(a)+(b)+(c) the mirror re-sync truth: light listing, sub-tick restart dri
     // The standing teardown pattern (instance suite): SIGINT, then a bounded
     // wait, then SIGKILL — a server mid-graceful-shutdown must never hang
     // the suite (and the fork's stdio pipes never keep it alive).
+    engine.kill('SIGINT')
+    server.kill('SIGINT')
+    await waitUntil(() => server.exitCode !== null, 5_000, 'server exit').catch(() => server.kill('SIGKILL'))
+    await waitUntil(() => engine.exitCode !== null, 5_000, 'engine exit').catch(() => engine.kill('SIGKILL'))
+  }
+
+  console.log(`  resync: ${passed} assertions passed`)
+})
+
+// ---- (d) the API honesty fixes (wizard rework spec §5.1–§5.3) ------------
+// The walk's Test moment reads routes that used to answer dishonestly:
+// object-info threw into the catch-all 500 body (the client swallowed it),
+// and every dependent read rode the SAVED default while the user's typed
+// candidate differed — the 0-file inventory record against an 89-file
+// engine. The fix under test: the comfy-status pattern (?url= candidate,
+// local-only guard, honest connected:false) on object-info, and the same
+// candidate scoping on bootstrap — with byte-parity when no param rides.
+maybe('(d) the API honesty fixes: object-info answers honestly; the dependent reads ride the candidate URL', async () => {
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-resync-home-'))
+  const enginePort = await freePort()
+  const deadPort = await freePort()
+  const serverPort = await freePort()
+
+  const engine = engineFor(enginePort, 'stock-h3.json')
+  const server = spawn(process.execPath, [path.join(REPO, 'dist-server', 'server', 'index.js')], {
+    cwd: REPO,
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(serverPort), MONOKA_NO_HTTPS: '1' },
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+  const base = `http://127.0.0.1:${serverPort}`
+  const apiUrl = `http://127.0.0.1:${enginePort}`
+  const api = async (route) => {
+    const response = await fetch(`${base}${route}`)
+    const body = await response.json().catch(() => null)
+    return { status: response.status, body }
+  }
+
+  try {
+    await waitUntil(async () => {
+      try { return (await fetch(`${apiUrl}/system_stats`)).ok } catch { return false }
+    }, 10_000, 'mirror engine boot (stock-h3)')
+    await waitUntil(async () => {
+      try { return (await fetch(`${base}/api/lan/settings`)).ok } catch { return false }
+    }, 15_000, 'studio server boot')
+
+    // The stale saved default: settings point at a DEAD loopback port while
+    // the mirror engine runs untouched on its own reserved port — the typed
+    // CANDIDATE the walk's Test moment holds.
+    const current = (await api('/api/lan/settings')).body.settings
+    const saved = await fetch(`${base}/api/lan/settings`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ settings: { ...current, comfyUrl: `http://127.0.0.1:${deadPort}` } }),
+    })
+    ok(saved.status === 200, 'saved settings point at the dead port (the stale saved default)')
+
+    console.log('resync: (d1) object-info answers the honest connected:false shape at the Test moment')
+    {
+      const answered = await api('/api/lan/object-info')
+      ok(answered.status === 200, `the down-engine ask answers 200, never the catch-all 500 (got ${answered.status})`)
+      ok(answered.body !== null && typeof answered.body === 'object' && answered.body.connected === false, 'the body is the honest connected:false shape')
+      ok(typeof answered.body?.error === 'string' && answered.body.error.length > 0, `the failure reason rides along (got ${JSON.stringify(answered.body?.error)})`)
+    }
+
+    console.log('resync: (d2) the object-info pull is scoped to the candidate URL')
+    {
+      const scoped = await api(`/api/lan/object-info?url=${encodeURIComponent(apiUrl)}`)
+      ok(scoped.status === 200, `the candidate-scoped ask answers 200 (got ${scoped.status})`)
+      ok(scoped.body !== null && typeof scoped.body === 'object' && 'KSamplerSelect' in scoped.body, `the MIRROR's classes came back, not the saved default's failure (got ${JSON.stringify(scoped.body && scoped.body.connected === false ? scoped.body.error : Object.keys(scoped.body ?? {}).slice(0, 4))})`)
+      const refused = await api('/api/lan/object-info?url=http://example.com:8188')
+      ok(refused.status === 400, `a non-local candidate is refused by the same guard as comfy-status (got ${refused.status})`)
+    }
+
+    console.log('resync: (d3) the 0-file inventory record dies with the candidate')
+    {
+      const stale = await api('/api/lan/bootstrap')
+      ok(stale.body?.connected === false && Array.isArray(stale.body?.models) && stale.body.models.length === 0, 'the stale saved default answers the empty record (the precondition)')
+      const scoped = await api(`/api/lan/bootstrap?url=${encodeURIComponent(apiUrl)}`)
+      ok(scoped.status === 200 && scoped.body?.connected === true, `the candidate-scoped bootstrap connects to the mirror (got ${scoped.status}: ${JSON.stringify(scoped.body?.error ?? '')})`)
+      ok(Array.isArray(scoped.body?.models) && scoped.body.models.length > 0, `the record counts the CANDIDATE's files, never 0 (got ${scoped.body?.models?.length})`)
+      ok(scoped.body.models.some((file) => file.name === 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors'), 'the mirror\'s own rows are in the candidate record')
+      const refused = await api('/api/lan/bootstrap?url=http://example.com:8188')
+      ok(refused.status === 400, `a non-local candidate is refused by the same guard (got ${refused.status})`)
+    }
+  } finally {
     engine.kill('SIGINT')
     server.kill('SIGINT')
     await waitUntil(() => server.exitCode !== null, 5_000, 'server exit').catch(() => server.kill('SIGKILL'))

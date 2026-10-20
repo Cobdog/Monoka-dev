@@ -557,7 +557,7 @@ test('(a4) engineRecovery — the probe flow: recovery resync, drift resync, hon
     h.setInventory(next, { models: next, servedKinds: ['vae'] })
     await recovery.runEngineCheck(h.deps, url, 'loop')
     eq(h.calls.scanModels.length, 1, 'drift triggered exactly one full re-pull')
-    eq(h.calls.scanModels[0], { refresh: true }, 'the drift re-pull carries refresh semantics')
+    eq(h.calls.scanModels[0], { refresh: true, url }, 'the drift re-pull carries refresh semantics + the probed url')
     eq(h.writes.setModels.length, 1, 'the fresh listing landed in the store')
     eq(h.writes.markInventoryResync.length, 1, 'the resync record landed')
     eq(h.writes.markInventoryResync[0].cause, 'drift', 'the record names the drift cause')
@@ -578,9 +578,24 @@ test('(a4) engineRecovery — the probe flow: recovery resync, drift resync, hon
     await recovery.runEngineCheck(h.deps, url, 'loop')
     eq(h.writes.markEngineRecovered.length, 1, 'the up edge marked recovered')
     eq(h.calls.scanModels.length, 1, 'the recovery resync pulled the inventory exactly once')
-    eq(h.calls.scanModels[0], { refresh: true }, 'the recovery re-pull carries refresh semantics')
+    eq(h.calls.scanModels[0], { refresh: true, url }, 'the recovery re-pull carries refresh semantics + the probed url')
     eq(h.writes.markInventoryResync.length, 1, 'the recovery resync recorded')
     eq(h.writes.markInventoryResync[0].cause, 'recovery', 'the record names the recovery cause')
+  }
+
+  // THE CANDIDATE-FORWARDING CONTRACT (spec §5.2, audit W-I5's ride): a
+  // probe against a url that DIFFERS from the store's saved settings
+  // forwards THAT url to every dependent read — the object-info pull and
+  // the connect-moment re-sync both describe the engine the probe just
+  // verified, never the stale saved default (the 0-vs-89 record dies here).
+  {
+    const h = makeHarness([])
+    const candidate = 'http://127.0.0.1:6599' // differs from the harness's saved settings
+    h.setInventory([{ name: 'cand.safetensors', kind: 'vae', bytes: 0 }], null)
+    await recovery.runEngineCheck(h.deps, candidate, 'manual')
+    eq(h.calls.getObjectInfo[0], candidate, 'the manual probe forwards the candidate url to the object-info pull')
+    eq(h.calls.scanModels.length, 1, 'the connect-moment re-sync ran (recovered transition)')
+    eq(h.calls.scanModels[0], { refresh: true, url: candidate }, 'the re-sync carries the CANDIDATE url, not the saved default')
   }
 
   // A resync that FAILS never claims success and never wipes the store.

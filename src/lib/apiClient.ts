@@ -127,14 +127,20 @@ export function createWebApiClient(): DesktopApi {
       const uploaded = await postJson<{ name: string; subfolder?: string }>('/api/lan/upload-media', { data, name: picked.name })
       return { path: comfyInputReference({ name: uploaded.name, subfolder: uploaded.subfolder, type: 'input' }), name: uploaded.name }
     },
-    async scanModels(_settings: AppSettings, options?: { refresh?: boolean }) {
+    async scanModels(_settings: AppSettings, options?: { refresh?: boolean; url?: string }) {
       // (R-12) The inventory read is ALWAYS a fresh bootstrap GET — the 10 s
       // bootstrap cache would serve a stale (engine-down) listing to the
       // recovery re-pull and to every scan after a settings change; the
       // registry is the only model source, so its reads never cache. The
       // USER refresh additionally asks the engine to re-scan its own folders
       // (best-effort POST /refresh) and drops the server's probe cache.
-      return (await apiFetch<{ models: ModelFile[] }>(options?.refresh ? '/api/lan/bootstrap?refresh=1' : '/api/lan/bootstrap')).models as never
+      // (wizard rework §5.2) options.url scopes the read to the CANDIDATE
+      // engine (the walk's connect-moment re-sync) — absent: byte-parity.
+      const params = new URLSearchParams()
+      if (options?.refresh) params.set('refresh', '1')
+      if (options?.url) params.set('url', options.url)
+      const query = params.toString()
+      return (await apiFetch<{ models: ModelFile[] }>(`/api/lan/bootstrap${query ? `?${query}` : ''}`)).models as never
     },
     async lightInventory(settings: AppSettings) {
       // (sweep #2, 68e9k17) The drift check's light read — models only, no
@@ -155,8 +161,21 @@ export function createWebApiClient(): DesktopApi {
       const query = url ? `?url=${encodeURIComponent(url)}` : ''
       return apiFetch(`/api/lan/comfy-status${query}`)
     },
-    async getObjectInfo() {
-      return apiFetch('/api/lan/object-info')
+    async getObjectInfo(url?: string) {
+      // (wizard rework §5.1) The candidate url rides when given — the web
+      // bridge used to silently DROP it (audit W-I5), so the pull fired
+      // against the stale saved default while the typed candidate differed.
+      // The route answers an honest {connected:false, error} when the engine
+      // cannot be asked; that is translated to the THROW the callers'
+      // contract already expects — the route is honest, the client never
+      // swallows an engine-down answer as an empty node registry.
+      const query = url ? `?url=${encodeURIComponent(url)}` : ''
+      const body = await apiFetch<Record<string, unknown>>(`/api/lan/object-info${query}`)
+      if (body && typeof body === 'object' && body.connected === false) {
+        const reason = body.error
+        throw new Error(typeof reason === 'string' && reason ? reason : 'The engine could not be reached.')
+      }
+      return body as Record<string, { input: { required: Record<string, unknown[]> } }>
     },
     async submitPrompt(_url: string, prompt: unknown, _clientId?: string, livePreview?: boolean) {
       // clientId is no longer forwarded: the server pins its own stable id

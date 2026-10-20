@@ -1706,16 +1706,24 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           // cache drops so pack chips re-resolve against fresh data, then
           // the listing re-pulls.
           const userRefresh = url.searchParams.get('refresh') === '1'
+          // (wizard rework §5.2) An optional ?url= candidate scopes EVERY
+          // engine ask below to the engine under test — the walk's
+          // connect-moment reads describe the just-verified candidate, so
+          // the inventory record can never again count the stale saved
+          // default's 0 files. Absent: the saved settings — byte-for-byte
+          // today's behavior.
+          const candidate = url.searchParams.get('url') ?? settings.comfyUrl
+          if (!isLocalServiceUrl(candidate)) return sendJson(response, 400, { error: 'Only local service addresses can be tested.' })
           const started = Date.now()
           try {
-            await comfyFetch(settings.comfyUrl, '/system_stats')
+            await comfyFetch(candidate, '/system_stats')
             if (userRefresh) {
-              await comfyFetch(settings.comfyUrl, '/refresh', { method: 'POST' }).catch((error: unknown) => { logFailure('inventory/engine-refresh', error, undefined, 'debug'); return null })
-              objectInfoProbe.refresh(settings.comfyUrl)
+              await comfyFetch(candidate, '/refresh', { method: 'POST' }).catch((error: unknown) => { logFailure('inventory/engine-refresh', error, undefined, 'debug'); return null })
+              objectInfoProbe.refresh(candidate)
             }
-            const info = await comfyFetch(settings.comfyUrl, '/object_info').catch((error: unknown) => { logFailure('bootstrap/object-info', error, undefined, 'debug'); return {} }) as Record<string, unknown>
+            const info = await comfyFetch(candidate, '/object_info').catch((error: unknown) => { logFailure('bootstrap/object-info', error, undefined, 'debug'); return {} }) as Record<string, unknown>
             const upscalers = comfyChoices(info, 'UpscaleModelLoader', 'model_name')
-            const inventory = await instanceInventoryFor(settings, info)
+            const inventory = await instanceInventoryFor({ ...settings, comfyUrl: candidate }, info)
             const models = registryInventoryFiles(inventory)
             logEvent({ kind: 'inventory.registry', connected: true, refresh: userRefresh, files: models.length })
             const ollama = await comfyFetch(settings.ollamaUrl, '/api/tags').catch((error: unknown) => { logFailure('bootstrap/ollama', error, undefined, 'debug'); return { models: [] } }) as { models?: Array<{ name?: string; size?: number; remote_model?: string }> }
@@ -3531,7 +3539,18 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
           return sendJson(response, 200, { settings: saved, ...(warnings.length ? { warnings } : {}) })
         }
         if (url.pathname === '/api/lan/object-info' && request.method === 'GET') {
-          return sendJson(response, 200, await comfyFetch(settings.comfyUrl, '/object_info'))
+          // (wizard rework §5.1) The comfy-status pattern: an optional ?url=
+          // candidate scopes the ask to the engine under test — never the
+          // stale saved default while the typed candidate differs — and an
+          // engine that cannot be asked answers the honest connected:false
+          // shape at 200, not a thrown catch-all body the client swallows.
+          const candidate = url.searchParams.get('url') ?? settings.comfyUrl
+          if (!isLocalServiceUrl(candidate)) return sendJson(response, 400, { error: 'Only local service addresses can be tested.' })
+          try {
+            return sendJson(response, 200, await comfyFetch(candidate, '/object_info'))
+          } catch (error) {
+            return sendJson(response, 200, { connected: false, error: error instanceof Error ? error.message : String(error) })
+          }
         }
         if (url.pathname === '/api/lan/comfy-status' && request.method === 'GET') {
           const candidate = url.searchParams.get('url') ?? settings.comfyUrl
