@@ -16,6 +16,12 @@
 //       refusal, never a seed; unknown pre-existing keys survive verbatim)
 //   (d) the env-override posture is stated ON the write (W-I1)
 //   (e) the token answers loopback only (plan ruling 2)
+//   (f) the launcher-export marker: MONOKA_LAUNCHER_EXPORTED marks the
+//       launcher's own network exports, and the honesty reports only what
+//       the USER set (review fix round, 3p14abm)
+//   (g) the config write is atomic — stage + rename like the launcher's own
+//       --set; a failed write leaves the original intact, a successful one
+//       leaves no staging residue (review fix round, 3p14abm)
 //
 // HONEST LIMIT (stated): the non-loopback arm of the token gate is proven by
 // the isLoopbackPeer truth table + the route's gate shape, not by a socket
@@ -211,6 +217,15 @@ test('(b) the bind probe refuses an in-use port honestly (the two-choice host)',
     await new Promise((resolve) => holder.close(() => resolve()))
   }
 
+  // The wizard is SERVED BY this listener — probing the studio's own port
+  // is the live-web case (review fix round, 3p14abm): the honest raw answer
+  // is claimable:false with the bind code (the holder is the studio itself).
+  // The walk's live-posture equivalence arm is what routes a designation of
+  // this exact address around the dead end — proven in the wizard suite.
+  const ownPort = await api.post('/api/lan/lan-probe', { host: '0.0.0.0', port: server.port })
+  ok(ownPort.status === 200 && ownPort.body.claimable === false, `probing the studio's OWN port answers honestly not-claimable (got ${JSON.stringify(ownPort.body)})`)
+  ok(/EADDRINUSE/i.test(String(ownPort.body.reason)), `the own-port refusal carries the bind code (got ${JSON.stringify(ownPort.body.reason)})`)
+
   // The host scope is the step's TWO choices (plan ruling 6) — no arbitrary
   // bind probing through this route.
   const foreignHost = await api.post('/api/lan/lan-probe', { host: '10.1.2.3', port: 5000 })
@@ -240,6 +255,7 @@ test('(c) launcher-config writes validated keys read-modify-write', async () => 
   const onDisk = JSON.parse(fs.readFileSync(server.configPath, 'utf8'))
   ok(onDisk.token === true, 'the file carries the written key')
   ok(onDisk.dataDir === '/tmp/lanprep-data' && onDisk.engineUrl === 'http://127.0.0.1:9999' && onDisk.vitePort === 5173, 'the file preserves EVERY pre-existing key')
+  ok(fs.readdirSync(server.home).filter((name) => name.endsWith('.tmp')).length === 0, `the write leaves no staging residue (got ${JSON.stringify(fs.readdirSync(server.home).filter((name) => name.endsWith('.tmp')))})`)
 
   // The launcher itself still parses what the route wrote (the two stores
   // stay one contract — start.sh's load mode validates every field).
@@ -333,6 +349,60 @@ test('(e) the token answers loopback only (plan ruling 2)', async () => {
   const after = await api.get('/api/lan/lan-token')
   ok(after.body.token === rotate.body.token, 'the rotated value is the one that answers now')
   server.child.kill()
+})
+
+test('(f) the launcher-export marker: the honesty reports only what the USER set', async () => {
+  console.log('lanprep: the launcher-export marker')
+  // MONOKA_LAUNCHER_EXPORTED=1 is what start.sh sets alongside its own
+  // network exports (review fix round, 3p14abm): with it present, the three
+  // LAN keys in the env are the LAUNCHER's resolution of the saved config —
+  // carrying them as "overrides" stated a falsehood (the file write wins at
+  // the next fresh-shell boot). The honesty then reports an empty list: the
+  // saved choices apply. Without the marker (a bare `node dist-server/...`
+  // boot — arms (a)/(d)), a set key IS user intent and stays named.
+  const server = await bootServer('marker', { MONOKA_LAUNCHER_EXPORTED: '1' })
+  const api = client(server.port)
+  const status = await api.get('/api/lan/lan-status')
+  ok(status.status === 200, `the marked boot answers 200 (got ${status.status})`)
+  ok(Array.isArray(status.body.envOverrides) && status.body.envOverrides.length === 0, `the marked boot reports NO user overrides (got ${JSON.stringify(status.body.envOverrides)})`)
+  const write = await api.post('/api/lan/launcher-config', { token: true })
+  ok(write.status === 200, `the write lands on the marked boot (got ${write.status})`)
+  ok(Array.isArray(write.body.envOverrides) && write.body.envOverrides.length === 0, `the write response states no user overrides either (got ${JSON.stringify(write.body.envOverrides)})`)
+  server.child.kill()
+})
+
+test('(g) the config write is atomic — stage + rename, the launcher\'s own standard', () => {
+  console.log('lanprep: the atomic config write')
+  const { writeLauncherConfig } = lanConfigModule()
+  const dir = scratch('atomic')
+  const configPath = path.join(dir, 'start-config.json')
+  const seeded = seedConfig({ dataDir: '/tmp/lanprep-atomic' })
+  fs.writeFileSync(configPath, JSON.stringify(seeded, null, 2) + '\n')
+  const original = fs.readFileSync(configPath, 'utf8')
+  // A writable FILE in a read-only DIRECTORY: an in-place truncate-at-open
+  // write would SUCCEED here (and destroy the original); the launcher's own
+  // stage + rename (start.sh:207-209) cannot even stage — the honest refusal
+  // leaves the original byte-identical.
+  const dirMode = fs.statSync(dir).mode & 0o777
+  fs.chmodSync(dir, 0o555)
+  try {
+    let refused = null
+    try {
+      writeLauncherConfig(configPath, { token: true })
+    } catch (error) {
+      refused = error
+    }
+    ok(refused !== null, `the unwritable location refuses (got ${refused === null ? 'a silent success' : String(refused)})`)
+    ok(refused !== null && refused.code === 'unwritable', `the refusal is the unwritable code (got ${JSON.stringify(refused && refused.code)})`)
+    ok(fs.readFileSync(configPath, 'utf8') === original, 'the failed write left the original byte-identical (no truncate-at-open)')
+  } finally {
+    fs.chmodSync(dir, dirMode)
+  }
+  // The success path: same-dir stage + rename — no .tmp residue survives.
+  const done = writeLauncherConfig(configPath, { token: true })
+  ok(done.written.join(',') === 'token', 'the retry writes the key once the location is writable')
+  ok(JSON.parse(fs.readFileSync(configPath, 'utf8')).token === true, 'the written file carries the key')
+  ok(fs.readdirSync(dir).filter((name) => name.endsWith('.tmp')).length === 0, `no staging residue survives the rename (got ${JSON.stringify(fs.readdirSync(dir).filter((name) => name.endsWith('.tmp')))})`)
 })
 
 test('suite summary', () => {

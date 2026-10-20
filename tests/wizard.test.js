@@ -805,6 +805,43 @@ test('the D8 default: keeping the network open offers token enforcement ON; narr
   ok(flipped.lanKeys.token === false, 'switching the bind re-derives the offer (the old default does not survive the switch)')
 })
 
+test('the live equivalence: designating exactly the live posture verifies WITHOUT a probe (the wizard is served by the listener itself)', () => {
+  console.log('wizard: the LAN step — the live equivalence')
+  const live = { host: '0.0.0.0', port: 4178 }
+  const fresh = walk.emptyWalkCandidate('http://127.0.0.1:8188')
+  // The prefilled designation (the step prefills the LIVE port) probes the
+  // studio's own listener and would always answer EADDRINUSE — the holder
+  // is the wizard's own server. Confirming the status quo needs no probe:
+  // no claimability question exists for a bind that already holds.
+  const same = walk.setLanHost(walk.setLanPort(fresh, 4178), '0.0.0.0')
+  ok(same.lanProbe === null, 'no probe has run')
+  ok(walk.lanGate(same, live).verdict === 'verified', 'designating exactly the live posture verifies without a probe (the status quo confirms itself)')
+  const exitKeys = walk.lanKeysForExit(same, live)
+  ok(exitKeys !== null && exitKeys.host === '0.0.0.0' && exitKeys.port === 4178 && exitKeys.token === true, 'the status-quo designation still carries its keys to the exit (the D8 token offer is a real change; the bind is not)')
+
+  // A port that differs from the live posture is NOT the status quo — the
+  // probe is still owed before that bind is accepted.
+  ok(walk.lanGate(walk.setLanPort(same, 5000), live).verdict === 'refused', 'a designation that differs from the live posture still owes the probe')
+
+  // EADDRINUSE on the OWN port (the host narrowed, the live listener holds
+  // the port): the refusal is translated honestly — this is the studio's
+  // own server, and it frees at the next start.
+  const narrowed = walk.recordLanProbe(walk.setLanHost(walk.setLanPort(fresh, 4178), '127.0.0.1'), '127.0.0.1', 4178, { claimable: false, reason: 'EADDRINUSE' })
+  const ownPort = walk.lanGate(narrowed, live)
+  ok(ownPort.verdict === 'refused', `the narrowed bind still refuses (got ${ownPort.verdict})`)
+  ok(/this studio/.test(ownPort.reason ?? '') && /next start/.test(ownPort.reason ?? ''), `EADDRINUSE on the live port names the studio's own listener (got ${JSON.stringify(ownPort.reason)})`)
+
+  // The same errno on a FOREIGN port keeps the generic reason — no false
+  // comfort that the next start frees a stranger's listener.
+  const foreign = walk.recordLanProbe(walk.setLanHost(fresh, '0.0.0.0'), '0.0.0.0', 5000, { claimable: false, reason: 'EADDRINUSE' })
+  const foreignGate = walk.lanGate(foreign, live)
+  ok(/not claimable/.test(foreignGate.reason ?? '') && !/this studio/.test(foreignGate.reason ?? ''), `a foreign port's EADDRINUSE keeps the generic refusal (got ${JSON.stringify(foreignGate.reason)})`)
+
+  // Without a live posture (the read never answered), nothing changes: the
+  // probe stays owed and the refusals keep their plain shapes.
+  ok(walk.lanGate(same).verdict === 'refused', 'no live posture — the equivalence arm does not fire')
+})
+
 test('the exit seam: only a verified designation carries keys — keep-current and refusals carry none (task 8 reads this)', () => {
   console.log('wizard: the LAN step — the exit seam')
 
@@ -831,6 +868,8 @@ test('the LAN copy speaks in world terms and states the truths plainly (D8, rest
   ok(/needs no token/.test(walk.LAN_TOKEN_TRUTH_COPY), 'the token truth states today\'s exposure plainly (the URL invites a phone onto a tokenless studio)')
   ok(/next time the studio starts/i.test(walk.LAN_RESTART_COPY) && /never restarts/i.test(walk.LAN_RESTART_COPY), 'the restart honesty: applies next start, the wizard never restarts the server')
   ok(/1024|65535/.test(walk.LAN_PORT_RANGE_COPY), 'the port rule copy names the range')
+  ok(/you set yourself/.test(walk.LAN_OVERRIDES_COPY) && /saved choices apply/.test(walk.LAN_OVERRIDES_COPY), `the override honesty states the real precedence (got ${JSON.stringify(walk.LAN_OVERRIDES_COPY)})`)
+  ok(!/win over anything this step writes/.test(walk.LAN_OVERRIDES_COPY), 'the override honesty no longer claims the launcher env always beats the write (the marker fix, 3p14abm)')
 })
 
 test('suite summary', () => {

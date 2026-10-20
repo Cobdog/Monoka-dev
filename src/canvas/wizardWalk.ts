@@ -360,6 +360,12 @@ export const LAN_PROBE_FIRST_COPY = 'Probe the port first — the designation is
 /** The launcher's own port rule (start.sh): integer 1024–65535. */
 export const LAN_PORT_RANGE_COPY = 'The port must be an integer between 1024 and 65535.'
 
+/** The override honesty (review fix round, 3p14abm): the launcher MARKS its
+ *  own network exports (MONOKA_LAUNCHER_EXPORTED), so what this step reports
+ *  as overrides is only what the USER set by hand — the precedence stated
+ *  precisely, neither overclaiming nor softening. */
+export const LAN_OVERRIDES_COPY = 'Environment you set yourself wins over anything saved here; the saved choices apply otherwise.'
+
 /** The D8 default (ruling D8): keeping the studio LAN-reachable offers
  *  token enforcement ON — protection that asks the host nothing. Narrowing
  *  to loopback offers OFF (nothing can reach it anyway). */
@@ -406,9 +412,13 @@ export function recordLanProbe(candidate: WalkCandidate, host: LanHostChoice, po
  *  - Keep-current — no keys collected — is the pass §3 names: the
  *    fresh-clone path is one click.
  *  - A token-only designation changes no bind: verified, no probe owed.
- *  - A bind designation needs the port rule satisfied and a claimable
- *    verdict for EXACTLY that host:port — anything else refuses by name. */
-export function lanGate(candidate: WalkCandidate): StepGate {
+ *  - A designation of EXACTLY the live posture (the wizard is served BY the
+ *    listener itself — probing it would always answer EADDRINUSE) is the
+ *    status quo confirming itself: verified without a probe.
+ *  - Any other bind designation needs the port rule satisfied and a
+ *    claimable verdict for EXACTLY that host:port — anything else refuses
+ *    by name, with the studio's own listener translated honestly. */
+export function lanGate(candidate: WalkCandidate, live?: { host: string; port: number }): StepGate {
   const keys = candidate.lanKeys
   const designatesBind = keys.host !== undefined || keys.port !== undefined
   if (!designatesBind) return { verdict: 'verified' }
@@ -421,11 +431,19 @@ export function lanGate(candidate: WalkCandidate): StepGate {
   if (keys.port !== undefined && (typeof keys.port !== 'number' || !Number.isInteger(keys.port) || keys.port < 1024 || keys.port > 65535)) {
     return { verdict: 'refused', reason: LAN_PORT_RANGE_COPY }
   }
+  // The live equivalence (review fix round, 3p14abm): designating exactly
+  // what already runs changes nothing at the next start — the status quo is
+  // its own verification, no claimability question exists for a bind that
+  // already holds.
+  if (live !== undefined && keys.host === live.host && keys.port === live.port) return { verdict: 'verified' }
   const probe = candidate.lanProbe
   if (!probe || probe.host !== keys.host || probe.port !== keys.port) {
     return { verdict: 'refused', reason: LAN_PROBE_FIRST_COPY }
   }
   if (!probe.claimable) {
+    if (live !== undefined && probe.port === live.port) {
+      return { verdict: 'refused', reason: 'That port is held by this studio\'s running server — it frees at the next start. Keep this address, or pick another port and probe again.' }
+    }
     return { verdict: 'refused', reason: probe.reason ? `That port is not claimable (${probe.reason}). Try another port, then probe again.` : 'That port is not claimable. Try another port, then probe again.' }
   }
   return { verdict: 'verified' }
@@ -434,11 +452,13 @@ export function lanGate(candidate: WalkCandidate): StepGate {
 /** The exit seam task 8's one-motion write reads: the launcher-config keys
  *  this walk EARNED — null when the step was left at keep-current (nothing
  *  written) and null when the gate refuses (an unprobed designation has
- *  nothing verified to write). This is where §3's write contract ("the
- *  designated host:port answered the bind probe, or keep-current") is
- *  enforced for the exit; the exit motion itself is task 8's. */
-export function lanKeysForExit(candidate: WalkCandidate): WalkLanKeys | null {
-  if (lanGate(candidate).verdict !== 'verified') return null
+ *  nothing verified to write). Pass the live posture through when the step
+ *  has it — the live equivalence is part of the gate's verdict. This is
+ *  where §3's write contract ("the designated host:port answered the bind
+ *  probe, or keep-current") is enforced for the exit; the exit motion
+ *  itself is task 8's. */
+export function lanKeysForExit(candidate: WalkCandidate, live?: { host: string; port: number }): WalkLanKeys | null {
+  if (lanGate(candidate, live).verdict !== 'verified') return null
   const keys = candidate.lanKeys
   if (keys.host === undefined && keys.port === undefined && keys.token === undefined) return null
   return { ...(keys.host !== undefined ? { host: keys.host } : {}), ...(keys.port !== undefined ? { port: keys.port } : {}), ...(keys.token !== undefined ? { token: keys.token } : {}) }

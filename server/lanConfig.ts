@@ -11,15 +11,16 @@
  *
  * The rest of the walk's posture truths live here too: the host+port bind
  * probe (generalized from runtime.ts's port probe), the env-override read
- * (the launcher exported MONOKA_LAN_* at boot — the server can read that
- * truth and SAY when the file it just wrote will lose to it), and the
+ * (MONOKA_LAUNCHER_EXPORTED marks the launcher's own exports, so only
+ * USER-set MONOKA_LAN_* keys are reported — user-set environment wins, the
+ * saved choices apply otherwise), and the
  * loopback-peer test that gates the token routes (plan ruling 2: with
  * enforcement off by default, any LAN peer could otherwise read or rotate
  * the token; the wizard runs on the host machine — loopback works, the LAN
  * does not).
  */
 import { createServer as createTcpServer } from 'node:net'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 /** The keys a walk/Surface may write — the launcher's posture keys. The
@@ -135,8 +136,14 @@ export function writeLauncherConfig(filePath: string, keys: LauncherConfigPatch)
   const written = Object.keys(patch).filter((key) => patch[key] !== undefined)
   const merged: Record<string, unknown> = { ...current }
   for (const key of written) merged[key] = patch[key]
+  // Stage + rename, the launcher's own standard for this same file
+  // (start.sh:207-209): a truncate-at-open write in place would brick every
+  // subsequent boot on a crash or ENOSPC mid-write; a failed STAGE leaves
+  // the original byte-identical, and the rename is atomic on POSIX.
+  const staged = `${filePath}.tmp`
   try {
-    writeFileSync(filePath, JSON.stringify(merged, null, 2) + '\n')
+    writeFileSync(staged, JSON.stringify(merged, null, 2) + '\n')
+    renameSync(staged, filePath)
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
     throw new LauncherConfigError('unwritable', `The launcher config could not be written (${code ?? 'unknown error'}).`)
@@ -171,6 +178,13 @@ export function probeBind(host: string, port: number): Promise<{ claimable: bool
 const LAUNCHER_ENV_KEYS = ['MONOKA_LAN_PORT', 'MONOKA_LAN_HOST', 'MONOKA_LAN_TOKEN'] as const
 
 export function launcherEnvOverrides(env: NodeJS.ProcessEnv = process.env): string[] {
+  // MONOKA_LAUNCHER_EXPORTED (start.sh) marks the network exports the
+  // launcher made ITSELF — its resolution of the saved config, not user
+  // intent. Reporting those as overrides stated a falsehood: the saved
+  // choices apply (the launcher re-exports the file at every boot). Only a
+  // key present WITHOUT the marker is user-set and wins over a write.
+  const launcherExported = typeof env.MONOKA_LAUNCHER_EXPORTED === 'string' && env.MONOKA_LAUNCHER_EXPORTED !== ''
+  if (launcherExported) return []
   return LAUNCHER_ENV_KEYS.filter((key) => typeof env[key] === 'string' && env[key].length > 0)
 }
 

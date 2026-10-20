@@ -44,6 +44,7 @@ import { DIGEST_INTERIM_COPY, fetchLanded, modelsStepRows, type ComponentFetchVi
 import {
   LAN_HOST_LAN_COPY,
   LAN_HOST_LOCAL_COPY,
+  LAN_OVERRIDES_COPY,
   LAN_PORT_RANGE_COPY,
   LAN_RESTART_COPY,
   LAN_TOKEN_TRUTH_COPY,
@@ -243,7 +244,7 @@ export function FirstRunWizard() {
       configuredDir={settings.engine.externalCustomNodesDir ?? ''}
       onOpenPacks={() => setSettingsDock(true)}
     />
-    if (step === 3) return <LanStep gate={lanGate(walk)} candidate={walk} onUpdateWalk={updateWalk} />
+    if (step === 3) return <LanStep candidate={walk} onUpdateWalk={updateWalk} />
     return <PromptStep gate={promptGate(walk)} onDone={(prompt) => { patch({ done: true }); if (prompt.trim()) void submitPrompt(prompt, 'video') }} />
   })()
 
@@ -790,8 +791,8 @@ function PackRow(props: {
  *  fresh-clone path passes in one click (§3's named pass). No in-app QR (plan
  *  ruling 3): the launcher's boot QR is the QR path; this step prints the
  *  copyable URL. */
-function LanStep(props: { gate: StepGate; candidate: WalkCandidate; onUpdateWalk(move: (candidate: WalkCandidate) => WalkCandidate): void }) {
-  const { gate, candidate, onUpdateWalk } = props
+function LanStep(props: { candidate: WalkCandidate; onUpdateWalk(move: (candidate: WalkCandidate) => WalkCandidate): void }) {
+  const { candidate, onUpdateWalk } = props
   // The live posture: read once on mount (the wizard never mutates it —
   // the walk designates for the NEXT boot; the wizard never restarts).
   const [read, setRead] = useState<LanStatusRead | null>(null)
@@ -812,6 +813,13 @@ function LanStep(props: { gate: StepGate; candidate: WalkCandidate; onUpdateWalk
   const touchesBind = keys.host !== undefined || keys.port !== undefined
   const touchesAnything = touchesBind || keys.token !== undefined
   const overrides = read?.envOverrides ?? []
+  // The live posture, narrowed to the two choices the gate knows — the
+  // equivalence arm (the wizard is served by the listener itself) needs it,
+  // so the gate computes HERE where the read lives, not at the step wiring.
+  const livePosture = read !== null && (read.posture.host === '127.0.0.1' || read.posture.host === '0.0.0.0')
+    ? { host: read.posture.host, port: read.posture.port }
+    : undefined
+  const gate = lanGate(candidate, livePosture)
 
   // A host choice designates — port prefills from the LIVE posture (moving
   // a custom-port boot by accident would be a silent lie; the 4178 default
@@ -872,7 +880,7 @@ function LanStep(props: { gate: StepGate; candidate: WalkCandidate; onUpdateWalk
       <span>{secure
         ? <>HTTPS with a self-signed certificate — a phone will ask you to confirm once. Fingerprint {fingerprint ?? 'unavailable'}.</>
         : 'Plain HTTP right now — no certificate is being served.'}</span>
-      {overrides.length > 0 && <span data-wizard-lan-overrides>The launcher environment sets {overrides.join(', ')} — those win over anything this step writes, every boot.</span>}
+      {overrides.length > 0 && <span data-wizard-lan-overrides>{overrides.join(', ')} come from environment you set yourself — those win over these choices.</span>}
     </div>}
 
     {/* The keep-current card — the DEFAULT. Chosen while nothing at all is
@@ -955,7 +963,7 @@ function LanStep(props: { gate: StepGate; candidate: WalkCandidate; onUpdateWalk
           : 'No token exists yet.'}</span>}
     </div>
 
-    <p className="canvas-wizard-note">{LAN_RESTART_COPY}{keys.host || keys.port !== undefined ? ' Your designation lands in the launcher\'s config (not the studio settings) — the launcher reads it at every boot.' : ''}{overrides.length > 0 ? ` ${overrides.join(', ')} stay set in the launcher environment and win at boot.` : ''}</p>
+    <p className="canvas-wizard-note">{LAN_RESTART_COPY}{keys.host || keys.port !== undefined ? ' Your designation lands in the launcher\'s config (not the studio settings) — the launcher reads it at every boot.' : ''} {overrides.length > 0 ? `${overrides.join(', ')} stay set in your environment and win over the saved choices.` : LAN_OVERRIDES_COPY}</p>
   </div>
 }
 

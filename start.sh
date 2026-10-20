@@ -849,6 +849,10 @@ export MONOKA_LOG_LEVEL="$R_LOG"
 [ "$R_HTTPS_ON" = 0 ] && export MONOKA_NO_HTTPS=1
 [ "$R_HOST" != "0.0.0.0" ] && export MONOKA_LAN_HOST="$R_HOST"
 [ "$CFG_DBG" = "true" ] && export MONOKA_DBG=1
+# Marks the MONOKA_LAN_* exports above as the launcher's own resolution of
+# the saved config — the server's env-override honesty reports only what
+# the USER set, so the wizard can say "the saved choices apply" truthfully.
+export MONOKA_LAUNCHER_EXPORTED=1
 if [ "$CFG_DEV" = "true" ] && [ "$CFG_PRETTY" = "true" ] && [ -z "${MONOKA_LOG_PRETTY:-}" ]; then
   export MONOKA_LOG_PRETTY=1
 fi
