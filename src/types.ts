@@ -357,6 +357,10 @@ export type FetchEntryStatus = FetchCatalogEntry & {
   verified?: 'sha256' | 'size' | 'none'
   inFlight?: boolean
   note?: string
+  /** The ledger's last failure for this entry, when the most recent fetch
+   *  attempt failed (the next success clears it). Structured so surfaces can
+   *  render the failure without parsing `note`. */
+  lastFailure?: string
 }
 
 /** Recorded user consent for one fetchable item. NOTHING is fetched from the

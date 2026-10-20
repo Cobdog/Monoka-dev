@@ -157,7 +157,9 @@ export function modelsStepRows(models: ModelFile[], report: { rows: H3StackSlotR
  *  matching files already at the destination. This survives the mid-walk
  *  scan's remount by construction — component-local `started` memory does
  *  not — so the post-click render derives from here; `started` only bridges
- *  the ≤2s gap between the click and the next catalog poll. */
-export function fetchLanded(view: ComponentFetchView): boolean {
+ *  the ≤2s gap between the click and the next catalog poll. The parameter
+ *  is the structural minimum so the packs step's bare catalog entries read
+ *  the SAME rule (review round, 3p14abm) — never a re-encoding beside it. */
+export function fetchLanded(view: { catalogState: FetchEntryStatus['state'] }): boolean {
   return view.catalogState === 'placed' || view.catalogState === 'present'
 }

@@ -605,3 +605,47 @@ export function packViaLabel(via: 'manager' | 'studio' | undefined): string {
 export function packsInstallRefusal(customNodesDir: DestinationState): string | null {
   return isDesignated(customNodesDir) ? null : PACKS_INSTALL_REFUSAL
 }
+
+/** The fetcher arm's interim copy (review round, 3p14abm): startFetch only
+ *  ENQUEUES — the answer is {started}, the job runs in the background, and
+ *  its failure lands in the fetch ledger, never in that promise. Until the
+ *  board confirms the folder, the row admits the fetch and claims nothing. */
+export const PACKS_FETCH_UNDERWAY_COPY = 'fetch started — the studio is placing the pack; the row verifies when the engine serves the classes.'
+
+/** The fetcher arm's post-click phase (review round, 3p14abm), read the
+ *  Models step's way: the ledger's placement is `landed`, its failure is
+ *  `failed` (the message rides the row), everything between the enqueue and
+ *  a verdict is `underway` — never "installed". Precedence is the ledger's
+ *  own timeline: a landed placement outranks everything (the failure it
+ *  answered is gone within a poll), an in-flight retry outranks the stale
+ *  failure it answers, and the failure outranks the click's started bridge
+ *  (the bridge only covers the ≤1-poll window before the catalog speaks). */
+export type PackFetchPhase = 'idle' | 'underway' | 'landed' | 'failed'
+
+export function packFetchPhase(args: { landed: boolean; inFlight: boolean; started: boolean; failure: string }): PackFetchPhase {
+  if (args.landed) return 'landed'
+  if (args.inFlight) return 'underway'
+  if (args.failure) return 'failed'
+  if (args.started) return 'underway'
+  return 'idle'
+}
+
+/** The foreign-folder copy (review round, 3p14abm): a folder the studio did
+ *  not install is on-disk truth, but "installed — restart" is false advice
+ *  there — the engine still does not serve the classes, and a restart may
+ *  not change that. The row says whose copy it is. */
+export const PACKS_FOREIGN_FOLDER_COPY = 'a folder with this pack\'s name sits in the target, but the studio did not install it — the engine does not serve the classes, and a restart may not change that. Inspect it in Settings → Node packs.'
+
+/** The awaiting-restart row's words: the plan's verbatim interim for a
+ *  studio-placed folder, the foreign honesty for one the studio does not
+ *  own. One seam so the JSX cannot mix them. */
+export function packAwaitingCopy(status: NodePackStatus | null): string {
+  return status?.folderState === 'foreign' ? PACKS_FOREIGN_FOLDER_COPY : PACKS_AWAITING_RESTART_COPY
+}
+
+/** The target-less gate (review round, 3p14abm): the walk's designation
+ *  becomes the configured target at the walk's EXIT — until then installs
+ *  ride the saved settings target, and with nothing configured the click
+ *  would fail server-side (or land in the resolve fallback the walk never
+ *  designated). The row pre-disables and says why. */
+export const PACKS_NO_TARGET_COPY = 'No install target is configured yet — the designation becomes the walk\'s exit write, and until then an install has nowhere to land. Set the engine\'s external custom-nodes folder in Settings first.'

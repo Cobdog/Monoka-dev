@@ -337,9 +337,13 @@ export function stackVerdictText(report: ReturnType<typeof h3StackReport>, mode:
  *  selection (weights AND core classes in one call; the report's `ready` is
  *  the turbo-8-gated pill vocabulary and must never feed this). The No
  *  voices are ordered by what the step can fix: a missing core class first
- *  (weights cannot fix a node class — the rows below carry the packs that
- *  can), then unresolved weights (the Models step owns those names; this
- *  step never re-derives file membership). */
+ *  (weights cannot fix a node class), then unresolved weights (the Models
+ *  step owns those names; this step never re-derives file membership). The
+ *  class arm routes by what actually fixes each name (review round,
+ *  3p14abm): the core classes are STOCK and CLASS_TO_PACK maps only pack
+ *  instanceNodeClasses, so the stock names get stackVerdictText's
+ *  update-ComfyUI advice (one voice, preflightRefusal's rule) and the rows
+ *  pointer appears only when a named class really maps to a pack. */
 export type CanGenerateAnswer = { ready: boolean; text: string; missingClasses: string[] }
 
 export function canGenerateAnswer(
@@ -351,9 +355,14 @@ export function canGenerateAnswer(
   if (ready) return { ready: true, text: 'Yes — the engine can generate right now; nothing to do here.', missingClasses: [] }
   if (missing.length > 0) {
     const names = missing.map((item) => item.className)
+    const packable = missing.filter((item) => item.packId).map((item) => item.className)
+    const stock = missing.filter((item) => !item.packId).map((item) => item.className)
+    const fixes: string[] = []
+    if (stock.length > 0) fixes.push(`no pack below provides ${stock.join(', ')} — ${stock.length === 1 ? 'it is a stock ComfyUI node this install is older than' : 'they are stock ComfyUI nodes this install is older than'}: update ComfyUI`)
+    if (packable.length > 0) fixes.push(`the rows below carry the pack for ${packable.join(', ')}: install it`)
     return {
       ready: false,
-      text: `No — the engine does not serve ${names.join(', ')}. Weights cannot fix a node class: install the pack that provides it (the rows below), restart the engine, then refresh.`,
+      text: `No — the engine does not serve ${names.join(', ')}. Weights cannot fix a node class: ${fixes.join('; ')}. Restart the engine, then refresh.`,
       missingClasses: names,
     }
   }

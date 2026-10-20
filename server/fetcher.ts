@@ -532,7 +532,12 @@ export class FetchManager {
 
   private async statusFor(entry: FetchCatalogEntry, settings: AppSettings, target: NodePackTarget | null, state: FetchStateFile): Promise<FetchEntryStatus> {
     const flight = this.inFlight.get(entry.id)
-    const base: FetchEntryStatus = { ...entry, state: 'absent', ...(flight ? { inFlight: true } : {}) }
+    // The ledger's last failure rides EVERY status shape (review round,
+    // 3p14abm): the node-pack branch returns early, so a failure filled only
+    // at the tail never reached pack entries — the wizard's packs step reads
+    // this field to render a failed fetch on the row.
+    const failure = state.failures[entry.id]
+    const base: FetchEntryStatus = { ...entry, state: 'absent', ...(flight ? { inFlight: true } : {}), ...(failure ? { lastFailure: failure } : {}) }
     const record = state.installs[entry.id]
     if (record) {
       // existsSync follows links: a placement the user removed (or a link
@@ -571,7 +576,6 @@ export class FetchManager {
       if (every) return { ...base, state: 'present' }
     }
     if (await this.cacheComplete(entry)) return { ...base, state: 'cached' }
-    const failure = state.failures[entry.id]
     if (failure) return { ...base, note: `last fetch failed: ${failure}` }
     return base
   }

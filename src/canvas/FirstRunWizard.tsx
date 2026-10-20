@@ -47,7 +47,8 @@ import {
   LAN_PORT_RANGE_COPY,
   LAN_RESTART_COPY,
   LAN_TOKEN_TRUTH_COPY,
-  PACKS_AWAITING_RESTART_COPY,
+  PACKS_FETCH_UNDERWAY_COPY,
+  PACKS_NO_TARGET_COPY,
   WALK_STEPS,
   curatedWizardPacks,
   customNodesPrefill,
@@ -58,6 +59,8 @@ import {
   markEngineVerified,
   modelsGate,
   modelsRootPrefill,
+  packAwaitingCopy,
+  packFetchPhase,
   packInstallPath,
   packViaLabel,
   packsGate,
@@ -73,6 +76,7 @@ import {
   type CuratedPackRow,
   type DestinationState,
   type LanHostChoice,
+  type PackFetchPhase,
   type StepGate,
   type WalkCandidate,
 } from './wizardWalk'
@@ -574,21 +578,34 @@ function PacksStep(props: {
   // The live board, polled while the step shows. Once an install owes a
   // verdict the poll rides refresh:true — the server's fresh targeted
   // object_info asks are how a row flips; the explicit re-verify sits
-  // beside the rows (never a silent maybe).
+  // beside the rows (never a silent maybe). The fetch catalog rides the
+  // same cadence: the fetcher arm's post-click truth — landed AND failed —
+  // reads the LEDGER the way the Models step's does (review round,
+  // 3p14abm); the catalog status carries each entry's lastFailure, so a
+  // failed fetch renders on the row within a poll, never a silent maybe.
   const [packs, setPacks] = useState<NodePackStatus[] | null>(null)
+  const [catalog, setCatalog] = useState<FetchEntryStatus[] | null>(null)
   const [owesVerdict, setOwesVerdict] = useState(false)
   const [via, setVia] = useState<Record<string, 'manager' | 'studio' | undefined>>({})
   const [installErrors, setInstallErrors] = useState<Record<string, string>>({})
+  const [fetchStarted, setFetchStarted] = useState<Record<string, boolean>>({})
+  const [installNotes, setInstallNotes] = useState<Record<string, string[]>>({})
   const refreshRef = useRef(false)
   useEffect(() => { refreshRef.current = owesVerdict })
   useEffect(() => {
     let cancelled = false
-    const poll = () => window.monoka.listEngineNodePacks({ refresh: refreshRef.current }).then((result) => {
-      if (cancelled) return
-      setPacks(result.packs)
-    }).catch(() => { if (!cancelled) setPacks(null) })
+    const poll = () => {
+      window.monoka.listEngineNodePacks({ refresh: refreshRef.current }).then((result) => {
+        if (cancelled) return
+        setPacks(result.packs)
+      }).catch(() => { if (!cancelled) setPacks(null) })
+      window.monoka.listFetchCatalog().then((list) => {
+        if (cancelled) return
+        setCatalog(list.entries)
+      }).catch(() => { if (!cancelled) setCatalog(null) })
+    }
     void poll()
-    const timer = window.setInterval(() => { void poll() }, 3000)
+    const timer = window.setInterval(poll, 3000)
     return () => { cancelled = true; window.clearInterval(timer) }
   }, [])
 
@@ -600,9 +617,29 @@ function PacksStep(props: {
   )
   const generate = stack ? canGenerateAnswer(stack.selection, info) : null
 
+  // A fetcher placement owes the board a fresh targeted verdict: once the
+  // ledger proves the folder for a pack this step enqueued, the next poll
+  // rides refresh (review round, 3p14abm — the flip must not wait for a
+  // click).
+  useEffect(() => {
+    if (catalog === null || owesVerdict) return
+    for (const row of rows) {
+      if (fetchStarted[row.packId] !== true) continue
+      const entry = catalog.find((candidate) => candidate.id === `pack:${row.packId}` && !candidate.removedAt)
+      if (entry && fetchLanded({ catalogState: entry.state })) {
+        setOwesVerdict(true)
+        break
+      }
+    }
+  }, [catalog, rows, fetchStarted, owesVerdict])
+
   // W-I6: ONE click = the consent ledger record (whenever the path touches
   // the network — a Manager install fetches the repo too) + the install.
-  // Failures render on the row — never a silent success.
+  // Failures render on the row — never a silent success. The synchronous
+  // routes (Manager, studio placement) answer with the folder on disk, so
+  // their via is stated at once and the server's install notes ride the
+  // row; the fetcher route only ENQUEUES — no via, no "installed", just the
+  // ledger-derived phase (review round, 3p14abm).
   const installPack = async (row: CuratedPackRow) => {
     const path = packInstallPath(row.status)
     if (!path) return
@@ -614,12 +651,14 @@ function PacksStep(props: {
         }
         const placed = await window.monoka.installEngineNodePack(row.packId)
         setVia((current) => ({ ...current, [row.packId]: placed.via ?? 'studio' }))
+        if (placed.notes && placed.notes.length > 0) setInstallNotes((current) => ({ ...current, [row.packId]: placed.notes ?? [] }))
       } else {
         await window.monoka.setFetchConsent(`pack:${row.packId}`, true)
-        await window.monoka.startFetch(`pack:${row.packId}`)
-        setVia((current) => ({ ...current, [row.packId]: 'studio' }))
+        const answer = await window.monoka.startFetch(`pack:${row.packId}`)
+        if (!answer.started) throw new Error('The fetch could not be started.')
+        setFetchStarted((current) => ({ ...current, [row.packId]: true }))
       }
-      setOwesVerdict(true)
+      if (path !== 'fetcher') setOwesVerdict(true)
       dbg('wizard.packs.install', { pack: row.packId, via: path })
     } catch (error) {
       setInstallErrors((current) => ({ ...current, [row.packId]: error instanceof Error ? error.message : String(error) }))
@@ -645,17 +684,36 @@ function PacksStep(props: {
     {packs === null
       ? <p className="canvas-wizard-warn" data-wizard-packs-unknown>The pack board could not be listed (the engine is offline or still loading) — it stays available in Settings → Setup → Node packs.</p>
       : <ul className="canvas-wizard-packs" data-wizard-pack-rows>
-        {rows.map((row) => <PackRow
-          key={row.packId}
-          row={row}
-          designated={designated}
-          refusal={refusal}
-          viaLabel={packViaLabel(via[row.packId])}
-          installError={installErrors[row.packId] ?? ''}
-          disagreement={designated && customNodesDir.value !== configuredDir}
-          configuredDir={configuredDir}
-          onInstall={() => { void installPack(row) }}
-        />)}
+        {rows.map((row) => {
+          const entry = catalog?.find((candidate) => candidate.id === `pack:${row.packId}` && !candidate.removedAt) ?? null
+          const ledgerFailure = entry?.lastFailure ?? ''
+          const phase = packFetchPhase({
+            landed: entry !== null && fetchLanded({ catalogState: entry.state }),
+            inFlight: entry?.inFlight === true,
+            started: fetchStarted[row.packId] === true,
+            failure: ledgerFailure,
+          })
+          // The via is stated only when it is TRUE (review F2): the
+          // synchronous routes answered with the folder on disk; the
+          // fetcher route earns the words when the ledger proves the
+          // placement — at enqueue it renders nothing.
+          const viaLabel = packViaLabel(via[row.packId]) || (phase === 'landed' && packInstallPath(row.status) === 'fetcher' ? packViaLabel('studio') : '')
+          return <PackRow
+            key={row.packId}
+            row={row}
+            designated={designated}
+            refusal={refusal}
+            fetchPhase={phase}
+            fetchFailure={ledgerFailure}
+            viaLabel={viaLabel}
+            error={installErrors[row.packId] ?? ''}
+            notes={installNotes[row.packId] ?? []}
+            noConfiguredTarget={configuredDir === ''}
+            disagreement={designated && customNodesDir.value !== configuredDir}
+            configuredDir={configuredDir}
+            onInstall={() => { void installPack(row) }}
+          />
+        })}
       </ul>}
     <div className="canvas-wizard-row">
       <Button variant="ghost" className="chip canvas-chip" size={12} data-wizard-packs-verify icon={<RefreshCw size={12} />} onClick={() => { void window.monoka.listEngineNodePacks({ refresh: true }).then((result) => setPacks(result.packs)).catch(() => setPacks(null)) }}>
@@ -669,39 +727,57 @@ function PacksStep(props: {
 
 /** One curated pack row: the registry's name and first sentence, the live
  *  state (active / awaiting-restart / missing / unknown), the ONE consented
- *  install click with its route, and the via stated after it lands. */
+ *  install click with its route, and the via stated only after the folder
+ *  is true (review round, 3p14abm): synchronous routes at once, the fetcher
+ *  when the ledger lands. A foreign folder reads its own words — the
+ *  studio-install interim would be false advice there. */
 function PackRow(props: {
   row: CuratedPackRow
   designated: boolean
   refusal: string | null
+  fetchPhase: PackFetchPhase
+  /** The fetch ledger's failure for this entry — rendered only while the
+   *  phase reads failed (an in-flight retry outranks the stale failure). */
+  fetchFailure: string
   viaLabel: string
-  installError: string
+  error: string
+  notes: string[]
+  noConfiguredTarget: boolean
   disagreement: boolean
   configuredDir: string
   onInstall(): void
 }) {
-  const { row, designated, refusal, viaLabel, installError, disagreement, configuredDir } = props
+  const { row, designated, refusal, fetchPhase, fetchFailure, viaLabel, error, notes, noConfiguredTarget, disagreement, configuredDir } = props
   const path = packInstallPath(row.status)
+  // An enqueued or landed fetch owns the row's click: re-clicking would
+  // re-consent and re-enqueue behind a job that is already running (or
+  // already placed).
+  const fetchOwnsTheClick = fetchPhase === 'underway' || fetchPhase === 'landed'
   return <li className="canvas-wizard-pack" data-wizard-pack-row={row.packId} data-pack-state={row.state}>
     <strong>{row.name}</strong>
     <span className="canvas-wizard-hint" data-wizard-pack-sentence>{row.sentence}</span>
     {row.reason === 'preflight' && <span className="canvas-wizard-hint">curated: your engine is missing a node this pack provides.</span>}
     {row.reason === 'studio-tooling' && <span className="canvas-wizard-hint">curated: the studio's own tooling — it ships with this install.</span>}
     {row.state === 'active' && <span className="canvas-wizard-ok" data-wizard-pack-active><Check size={13} /> Active on the engine.</span>}
-    {row.state === 'awaiting-restart' && <span className="canvas-wizard-hint" data-wizard-pack-awaiting={row.packId}>{PACKS_AWAITING_RESTART_COPY}</span>}
+    {row.state === 'awaiting-restart' && (row.status?.folderState === 'foreign'
+      ? <span className="canvas-wizard-hint" data-wizard-pack-foreign={row.packId}>{packAwaitingCopy(row.status)}</span>
+      : <span className="canvas-wizard-hint" data-wizard-pack-awaiting={row.packId}>{packAwaitingCopy(row.status)}</span>)}
     {row.state === 'unknown' && <span className="canvas-wizard-hint" data-wizard-pack-unknown-state>The engine's answer for this pack is unknown right now (unreachable or still loading) — re-verify below.</span>}
     {row.state === 'missing' && <>
-      {path
-        ? <button type="button" className="chip chip--accent canvas-chip" data-wizard-pack-install={row.packId} disabled={!designated} onClick={props.onInstall}>
-          {path === 'fetcher' ? 'Fetch and install — one click' : 'Install — one click'}
-        </button>
-        : <span className="canvas-wizard-hint" data-wizard-pack-manual>No one-click install path — a local copy through Settings → Node packs is the way.</span>}
+      {path && !fetchOwnsTheClick && <button type="button" className="chip chip--accent canvas-chip" data-wizard-pack-install={row.packId} disabled={!designated || noConfiguredTarget} onClick={props.onInstall}>
+        {path === 'fetcher' ? 'Fetch and install — one click' : 'Install — one click'}
+      </button>}
+      {fetchPhase === 'underway' && <span className="canvas-wizard-hint" data-wizard-pack-fetch={row.packId}>{PACKS_FETCH_UNDERWAY_COPY}</span>}
+      {!path && <span className="canvas-wizard-hint" data-wizard-pack-manual>No one-click install path — a local copy through Settings → Node packs is the way.</span>}
       {!designated && <span className="canvas-wizard-warn" data-wizard-pack-gated>{refusal}</span>}
+      {designated && noConfiguredTarget && <span className="canvas-wizard-warn" data-wizard-pack-no-target>{PACKS_NO_TARGET_COPY}</span>}
       {row.status && row.status.hasNetworkSource === true && <span className="canvas-wizard-hint" data-wizard-pack-license>License {row.licenseSpdx}.</span>}
     </>}
     {disagreement && <span className="canvas-wizard-hint" data-wizard-pack-disagreement>Your designation becomes the studio's install target when the walk completes — until then installs land in the configured folder{configuredDir ? '' : ', and an install before the walk\'s exit is refused: no target is configured yet'}.</span>}
     {viaLabel && <span className="canvas-wizard-hint" data-wizard-pack-via={row.packId}>{viaLabel} — the row verifies when the engine serves the classes.</span>}
-    {installError && <span className="canvas-wizard-warn" data-wizard-pack-error={row.packId}>{installError}</span>}
+    {notes.length > 0 && <span className="canvas-wizard-hint" data-wizard-pack-notes={row.packId}>{notes.join(' ')}</span>}
+    {fetchPhase === 'failed' && fetchFailure && <span className="canvas-wizard-warn" data-wizard-pack-fetch-error={row.packId}>{fetchFailure}</span>}
+    {error && <span className="canvas-wizard-warn" data-wizard-pack-error={row.packId}>{error}</span>}
   </li>
 }
 

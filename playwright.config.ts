@@ -87,6 +87,17 @@ const systemChromium = detectSystemChromium()
 // the fixed port fails on the bind instead of retrying.
 const e2ePort = process.env.MONOKA_E2E_PORT ?? '4199'
 
+// The fetch mock root (review round, 3p14abm) — created at CONFIG LOAD so it
+// exists before the webServer's server process boots and picks its transport
+// (transportForEnvironment reads the dir once, at startup). Empty by design:
+// the packs step's failed-fetch leg needs a fetch that fails fast and
+// deterministically (the transport's readFile throws ENOENT), with zero real
+// network. No e2e spec fetches successfully today — the Models step's leg
+// asserts the honest interim, which a failed fetch does not disturb; a
+// future success-fetch leg populates this directory with its archive.
+const fetchMockRoot = path.join(__dirname, 'test-home', 'fetch-mock')
+fs.mkdirSync(fetchMockRoot, { recursive: true })
+
 export default defineConfig({
   testDir: 'e2e',
   timeout: 60_000,
@@ -133,6 +144,7 @@ export default defineConfig({
       MONOKA_HOME: 'test-home',
       MONOKA_LAN_PORT: e2ePort,
       MONOKA_NO_HTTPS: '1',
+      MONOKA_FETCH_MOCK_ROOT: fetchMockRoot,
     },
   },
 })

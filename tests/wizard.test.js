@@ -511,6 +511,8 @@ test('the packs step answers can-I-generate from the ONE predicate (§2.3)', () 
   const classBlocked = h3.canGenerateAnswer(complete.selection, noSampler)
   ok(classBlocked.ready === false, 'a missing core class reads no')
   ok(/KSamplerSelect/.test(classBlocked.text), `the no names the missing class (got ${JSON.stringify(classBlocked.text)})`)
+  ok(!/rows below/.test(classBlocked.text), 'a stock-only miss never points at the rows — no curated row can serve a core class (CLASS_TO_PACK maps pack instanceNodeClasses only)')
+  ok(/update ComfyUI/i.test(classBlocked.text), 'a stock-only miss routes to the update-ComfyUI advice — one voice with stackVerdictText above it')
   ok(classBlocked.missingClasses.join('|') === 'KSamplerSelect', 'the answer carries the missing class names for the step')
 
   // The weights arm: classes fine, weights unresolved → No, pointing at the
@@ -668,6 +670,45 @@ test('an install\'s via is stated on the row — manager, studio, never silent',
   ok(walk.packInstallPath({ managerInstallable: false, availability: 'needs-source', hasNetworkSource: true }) === 'fetcher', 'a network-source pack routes through the consented fetcher')
   ok(walk.packInstallPath({ managerInstallable: false, availability: 'unavailable', hasNetworkSource: false }) === null, 'no path answers null — the row offers the manual way instead')
   ok(walk.packInstallPath(null) === null, 'no board row answers null (nothing to install from)')
+})
+
+test('the review round: a fetch admits it is underway, a foreign folder owns its words, a target-less install stays dark', () => {
+  console.log('wizard: the packs step — the review round')
+
+  // THE FETCHER ARM (review F2): startFetch only ENQUEUES — the answer is
+  // {started}, the job runs in the background, and its failure lands in the
+  // fetch ledger, never in that promise. The row's post-click phase derives
+  // from the ledger (the Models step's rule) — 'underway' is everything
+  // between the enqueue and a verdict, and it NEVER reads "installed".
+  ok(typeof walk.packFetchPhase === 'function', 'the fetch-phase seam exists in the spine')
+  ok(walk.packFetchPhase({ landed: false, inFlight: false, started: true, failure: '' }) === 'underway', 'an enqueued fetch reads underway')
+  ok(walk.packFetchPhase({ landed: false, inFlight: true, started: false, failure: '' }) === 'underway', 'a catalog-in-flight fetch reads underway too')
+  ok(walk.packFetchPhase({ landed: true, inFlight: false, started: false, failure: '' }) === 'landed', 'a catalog placement reads landed')
+  ok(walk.packFetchPhase({ landed: false, inFlight: false, started: false, failure: '' }) === 'idle', 'no enqueue and no ledger truth reads idle')
+  ok(walk.packFetchPhase({ landed: true, inFlight: false, started: true, failure: '' }) === 'landed', 'landed outranks the underway signals')
+  ok(walk.packFetchPhase({ landed: true, inFlight: false, started: true, failure: 'the download failed' }) === 'landed', 'landed outranks a not-yet-swept failure (the success clears it within a poll)')
+  ok(walk.packFetchPhase({ landed: false, inFlight: true, started: false, failure: 'the download failed' }) === 'underway', 'an in-flight retry outranks the stale failure it answers')
+  ok(walk.packFetchPhase({ landed: false, inFlight: false, started: true, failure: 'the download failed' }) === 'failed', 'the failure outranks the click\'s started bridge')
+
+  // The underway words: "fetch started", never "installed" — the board has
+  // not confirmed the folder yet.
+  ok(/fetch started/i.test(walk.PACKS_FETCH_UNDERWAY_COPY) && !/installed/i.test(walk.PACKS_FETCH_UNDERWAY_COPY), 'the underway copy admits the fetch, never claims installed')
+
+  // THE FOREIGN FOLDER (review minor): the studio did not install it —
+  // "installed — restart" is false advice there. The foreign copy owns its
+  // words.
+  ok(typeof walk.packAwaitingCopy === 'function', 'the awaiting-copy seam exists in the spine')
+  ok(walk.packAwaitingCopy(null) === walk.PACKS_AWAITING_RESTART_COPY, 'no board row reads the plan\'s verbatim interim')
+  const foreignCopy = walk.packAwaitingCopy({ folderState: 'foreign' })
+  ok(foreignCopy !== walk.PACKS_AWAITING_RESTART_COPY, 'a foreign folder does not read the studio-install interim')
+  ok(!/^installed/i.test(foreignCopy), 'the foreign copy never opens with "installed"')
+  ok(/restart/i.test(foreignCopy) && /may not/i.test(foreignCopy), 'the foreign copy names the restart honesty — a restart may not fix it')
+
+  // THE TARGET-LESS GATE (review minor): the walk-designated folder is not
+  // the configured target — with nothing configured the click would fail
+  // server-side (or land in a fallback the walk never designated), so the
+  // button pre-disables and the reason renders beside it.
+  ok(typeof walk.PACKS_NO_TARGET_COPY === 'string' && /no install target is configured/i.test(walk.PACKS_NO_TARGET_COPY), 'the no-target reason exists and says what is missing')
 })
 
 test('the row sentence is the registry description\'s first sentence — the essays stay on the board', () => {

@@ -1420,6 +1420,19 @@ test('the packs step installs and verifies in place: curated rows, the designate
     await expect(adapterRow).toHaveAttribute('data-pack-state', 'awaiting-restart', { timeout: 20_000 })
     await expect(page.locator('[data-wizard-pack-awaiting="lora-form-adapter"]')).toContainText('restart the engine')
 
+    // THE FAILED-FETCH ARM (review round): the turbo row routes through the
+    // consented fetcher, and startFetch only ENQUEUES — the fetch runs in
+    // the background and its failure lands in the ledger. The suite's fetch
+    // mock root (playwright.config) is empty, so the download fails fast
+    // and DETERMINISTICALLY. The row must render the failure and NEVER
+    // claim "installed" — under the pre-fix code the via span rendered at
+    // enqueue, so this count assertion is the honest-arm proof itself.
+    const turboInstall = page.locator('[data-wizard-pack-install="minimax-h3-turbo"]')
+    await turboInstall.click()
+    await expect(page.locator('[data-wizard-pack-via="minimax-h3-turbo"]')).toHaveCount(0, { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-pack-fetch-error="minimax-h3-turbo"]')).toBeVisible({ timeout: 20_000 })
+    await expect(turboRow).toHaveAttribute('data-pack-state', 'missing')
+
     // THE RESTART the user performs, simulated at the engine stand-in: the
     // mirror child re-boots on the SAME port serving the pack's class (the
     // augmented profile). The studio never restarts engines — the step says

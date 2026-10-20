@@ -415,6 +415,7 @@ maybe('(c) verification + mismatch: pins enforced, nothing unverified placed, pa
     const after = await badManager.manager.catalogStatus()
     const failedStatus = after.find((entry) => entry.id === 'mlsd-annotator')
     ok(failedStatus.state === 'absent' && /last fetch failed/.test(failedStatus.note ?? ''), 'the catalog surfaces the failure honestly')
+    ok(typeof failedStatus.lastFailure === 'string' && failedStatus.lastFailure.length > 0, 'the status carries the structured lastFailure beside the note (the wizard\'s packs step reads it)')
   }
 })
 
