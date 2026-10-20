@@ -453,10 +453,13 @@ export function readCarrySaveRecipe(bytes: Uint8Array): string | null {
 /** The content identity of ONE resolved model artifact: the enumerated NAME
  *  (aliases — weights replaced under an unchanged name keep the name), the
  *  sha-256 DIGEST of the weight-file bytes (the identity of record), and the
- *  file's BYTE SIZE. The continuation binding freezes these verbatim and the
- *  target-execution comparison at dispatch matches against the frozen set —
- *  a name-only match is never a pass. */
-export type ModelContentIdentity = { name: string; digest: string; bytes: number }
+ *  file's BYTE SIZE. `catalogRowId` (B3's animation arm) rides when the
+ *  digest matched a hash-catalog row — the row's sha256, the bySha key — so
+ *  the frozen snapshot can reference the row whose identity it carries; its
+ *  absence is honest (uncataloged bytes digest all the same). The continuation
+ *  binding freezes these verbatim and the target-execution comparison at
+ *  dispatch matches against the frozen set — a name-only match is never a pass. */
+export type ModelContentIdentity = { name: string; digest: string; bytes: number; catalogRowId?: string }
 
 /** 64 lowercase hex chars — the shape every sha-256 digest in this lane
  *  carries (the artifact record's digest and every model identity's). */
@@ -469,11 +472,15 @@ const MAX_IDENTITY_NAME_LENGTH = 512
 
 export function parseModelContentIdentity(value: unknown): ModelContentIdentity | null {
   if (!isRecord(value)) return null
-  const { name, digest, bytes } = value
+  const { name, digest, bytes, catalogRowId } = value
   if (!isNonEmptyString(name) || name.length > MAX_IDENTITY_NAME_LENGTH) return null
   if (typeof digest !== 'string' || !SHA256_HEX_RE.test(digest)) return null
   if (!isPositiveInt(bytes)) return null
-  return { name, digest, bytes }
+  // The row reference is optional; when present it must be the same sha
+  // shape (it IS a row's sha256) — a malformed reference refuses the whole
+  // identity, never a partial pass.
+  if (catalogRowId !== undefined && (typeof catalogRowId !== 'string' || !SHA256_HEX_RE.test(catalogRowId))) return null
+  return catalogRowId === undefined ? { name, digest, bytes } : { name, digest, bytes, catalogRowId }
 }
 
 /** A frozen identity SET: a non-empty array of well-formed identities with

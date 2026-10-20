@@ -220,7 +220,7 @@ import {
   engineInputName,
 } from '../shared/animation/graphs'
 import { COMPILER_VERSION, compileHeroCaption, compileSequenceCaption, compileTweenCaption } from '../shared/animation/compiler'
-import { CONTINUATION_SAVE_RECIPE_VERSION, animationInputHash, engineOutputCarryPath, readCarrySaveRecipe } from '../shared/animation/types'
+import { CONTINUATION_SAVE_RECIPE_VERSION, animationInputHash, engineOutputCarryPath, parseModelContentIdentity, readCarrySaveRecipe } from '../shared/animation/types'
 
 const REAL_INFO = require(path.join(REPO, 'scripts/fixtures/engine-object-info.json')).nodes
 
@@ -573,6 +573,31 @@ beforeAll(async () => {
   // The identity-evidence root (Task 3): built BEFORE any service exists —
   // every carrying submit in every section digests against it.
   buildEvidenceFixture()
+  // The identity seam's env (to7xpa7): the digest sidecar resolves at first
+  // use, so pointing MONOKA_HOME at the scratch home keeps hash-cache.json
+  // out of the real one; the fixture catalog carries exactly ONE row (the
+  // unet evidence file's sha) so z5 can pin B3's catalogRowId stamp through
+  // the delegated seam — every other fixture identity stays honestly
+  // unstamped.
+  process.env.MONOKA_HOME = home
+  const unetEvidenceBytes = fs.readFileSync(path.join(home, 'identity-models', 'diffusion_models', RESOLVED_UNET))
+  const fixtureCatalogPath = path.join(home, 'fixture-hash-catalog.json')
+  fs.writeFileSync(fixtureCatalogPath, JSON.stringify({
+    version: 1,
+    generatedAt: '2026-10-20',
+    crawl: [],
+    gaps: [],
+    rows: [{
+      sha256: createHash('sha256').update(unetEvidenceBytes).digest('hex'),
+      sizeBytes: unetEvidenceBytes.length,
+      kind: 'diffusion_models',
+      identity: { family: 'minimax-h3', artifact: 'ref2va', variant: 'pruned-int8-convrot', quant: 'int8', dtype: 'int8' },
+      source: { repo: 'fixture/unet-row', revision: 'z5f1x', path: RESOLVED_UNET },
+      aliases: [RESOLVED_UNET],
+      addedAt: '2026-10-20',
+    }],
+  }))
+  process.env.MONOKA_HASH_CATALOG = fixtureCatalogPath
   engineClient = createComfyEnginePort({ baseUrl: `http://127.0.0.1:${enginePort}`, blobs: sink })
   events = []
   const emit = (type, payload) => { events.push({ type, payload }) }
@@ -2925,6 +2950,21 @@ test('(z1) identical identities pass at DISPATCH — the source stamps the diges
   const landed = await waitAttemptState(target.attemptId, ['ready'], 'the extension target rendering under identical identities')
   assert.ok(landed.result, 'the target rendered and landed a candidate')
   assert.equal(await engineRecordCount(), before + 1, 'the gate PASSED — exactly one engine submission')
+})
+
+test('(z5) the digest hitting a catalog row stamps catalogRowId on the identity — B3\'s animation arm, through the delegated seam', async () => {
+  // The lane's digesting seam (now DELEGATING to server/modelIdentity — the
+  // 2026-10-20 hoist) stamps the row reference when the bytes hit a row.
+  const enumerations = await engineClient.modelEnumerations({ force: true })
+  const identities = await resolvedIdentities({ tool: 'tween', enumerations, modelFolder: evidenceFolderFor })
+  const unet = identities.find((identity) => identity.name === RESOLVED_UNET)
+  const unetBytes = fs.readFileSync(path.join(evidenceRoot.dir, 'diffusion_models', RESOLVED_UNET))
+  assert.equal(unet.catalogRowId, digestOf(unetBytes), 'the unet identity references the catalog row whose sha it matches (the row id IS the row sha — the bySha key)')
+  for (const identity of identities.filter((entry) => entry.name !== RESOLVED_UNET)) {
+    assert.equal(identity.catalogRowId, undefined, `${identity.name} matches no row — the absence is honest, never a guess`)
+  }
+  // The frozen-record boundary carries the reference (the parser's B3 arm).
+  assert.deepEqual(parseModelContentIdentity(unet), unet, 'a stamped identity round-trips the row reference verbatim')
 })
 
 test('(z2) same name, different digest — the aliased-weights refusal names the artifact and BOTH digests, nothing is submitted, the cache is never trusted past the mtime', async () => {

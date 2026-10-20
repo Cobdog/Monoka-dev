@@ -39,14 +39,22 @@
  * output (the logSanitize discipline; enumeration entries are capped in
  * count and length before they enter a message, so a pathological engine
  * cannot smuggle prose through a "filename").
+ *
+ * 2026-10-20 HOIST (task to7xpa7): the local hashing machinery — the
+ * weightFilePath containment guard, the stat-keyed digest cache, and the
+ * streaming digestWeightFile — MOVED to server/modelIdentity.ts (the
+ * catalog wave's ONE seam, spec §6's opening line: one hasher, one cache,
+ * no second digest path). This lane DELEGATES: the imports above are the
+ * seam's. Two contracts stay deliberately different: the SEAM degrades
+ * non-gating (name-suspected / unknown), while THIS lane keeps its
+ * FAIL-CLOSED refusal — a frozen snapshot's weights must digest, or the
+ * named AnimationModelEvidenceError throws (never a name-only pass). The
+ * seam's digest now also stamps catalogRowId when the bytes hit a catalog
+ * row (B3's animation arm) — this lane's evidence contract is unchanged.
  */
-import { createHash } from 'node:crypto'
-import { createReadStream } from 'node:fs'
-import { stat } from 'node:fs/promises'
-import { resolve, sep } from 'node:path'
-import { pipeline } from 'node:stream/promises'
 import { ANIMATION_MODEL_DEFAULTS } from '../../shared/animation/graphs'
 import type { AnimationTool, ModelContentIdentity } from '../../shared/animation/types'
+import { digestWeightFile, weightFilePath } from '../modelIdentity'
 
 /** The engine's own enumeration of what its loader nodes will accept —
  *  sourced server-side from /object_info (UNETLoader's unet_name,
@@ -357,56 +365,6 @@ const SLOT_EVIDENCE_FOLDERS: ReadonlyArray<{ slot: keyof ResolvedAnimationModels
   { slot: 'textEncoder', kind: 'text_encoders' },
   { slot: 'videoVae', kind: 'vae' },
 ]
-
-/** Joins an enumerated name (which may carry subfolder segments — ComfyUI
- *  enumerates relative paths) under its folder, refusing any name that
- *  would escape the folder ('..' / absolute / empty segments) — a
- *  pathological enumeration can never turn the evidence read into an
- *  arbitrary-file digest. */
-function weightFilePath(folder: string, name: string): string | null {
-  const segments = name.split(/[\\/]/).map((segment) => segment.trim()).filter((segment) => segment.length > 0)
-  if (segments.length === 0 || segments.some((segment) => segment === '..' || segment === '.')) return null
-  const root = resolve(folder)
-  const resolved = resolve(folder, ...segments)
-  if (resolved !== root && !resolved.startsWith(root + sep)) return null
-  return resolved
-}
-
-/** The identity cache: keyed by ABSOLUTE PATH, trusted only while the
- *  file's (mtimeNs, size) stat pair is unchanged — a cache hit is never
- *  trusted past the file's mtime, so a replaced file re-hashes. Weight
- *  files are gigabytes; without this the hot submit path would re-hash
- *  them per attempt. Bounded FIFO (insertion order): 4 identities per
- *  attempt means even a long-lived server rotates it slowly. The residual
- *  (accepted, like every stat-keyed cache): bytes swapped while preserving
- *  nanosecond mtime AND size — not a shape any real file operation has. */
-const identityCache = new Map<string, { statKey: string; identity: ModelContentIdentity }>()
-const IDENTITY_CACHE_MAX = 512
-
-/** Digests ONE weight file (streaming — the file can be gigabytes, so it is
- *  never buffered whole; the fetcher's sha256File precedent) through the
- *  stat-keyed cache. Null when the file cannot be read (absent, not a
- *  regular file, or vanishing between the stat and the stream — an
- *  unreadable file IS missing evidence) — the caller's named evidence
- *  refusal, never a hash of nothing and never an unclassified transport
- *  error. */
-async function digestWeightFile(absPath: string, name: string): Promise<ModelContentIdentity | null> {
-  const fileStat = await stat(absPath, { bigint: true }).catch(() => null)
-  if (fileStat === null || !fileStat.isFile()) return null
-  const statKey = `${fileStat.mtimeNs}:${fileStat.size}`
-  const cached = identityCache.get(absPath)
-  if (cached !== undefined && cached.statKey === statKey) return cached.identity
-  const hash = createHash('sha256')
-  const hashed = await pipeline(createReadStream(absPath), hash as unknown as NodeJS.WritableStream).catch(() => null)
-  if (hashed === null) return null
-  const identity: ModelContentIdentity = { name, digest: hash.digest('hex'), bytes: Number(fileStat.size) }
-  if (identityCache.size >= IDENTITY_CACHE_MAX && !identityCache.has(absPath)) {
-    const oldest = identityCache.keys().next().value
-    if (oldest !== undefined) identityCache.delete(oldest)
-  }
-  identityCache.set(absPath, { statKey, identity })
-  return identity
-}
 
 /** Digests the RESOLVED weights — the extension lane's one identity seam
  *  (spec §5 "the resolved model content identities"): resolves the four
