@@ -103,10 +103,12 @@ function main() {
     process.exit(2)
   }
   let failures = 0
+  let checked = 0
   for (const fixture of FIXTURES) {
     const oldExists = gitHasFile(oldRef, fixture)
     const newExists = gitHasFile(newRef, fixture)
     if (!oldExists && !newExists) continue
+    checked += 1
     const oldKeys = extractEntryKeys(oldExists ? readFixtureAt(oldRef, fixture) : { entries: {} })
     const newKeys = extractEntryKeys(newExists ? readFixtureAt(newRef, fixture) : { entries: {} })
     const removed = removedKeys(oldKeys, newKeys)
@@ -122,6 +124,7 @@ function main() {
     const oldExists = gitHasFile(oldRef, catalog)
     const newExists = gitHasFile(newRef, catalog)
     if (!oldExists && !newExists) continue
+    checked += 1
     if (!newExists) {
       failures += 1
       console.error(`FAIL - ${catalog}: the catalog vanished at ${newRef} — every row and gap counts as removed.`)
@@ -150,6 +153,13 @@ function main() {
     } else {
       console.log(`OK - ${catalog}: ${newKeys.rows.length} rows + ${newKeys.gaps.length} gaps (${addedRows.length + addedGaps.length} appended, 0 removed)`)
     }
+  }
+  // The vacuous-skip belt: both fixture classes absent at both refs means
+  // NOTHING was checked — a silent exit 0 there would green-light a merge
+  // whose append contract was never evaluated.
+  if (checked === 0) {
+    console.error(`FAIL - no fixture class matched at either ref (goldens: ${FIXTURES.join(', ')}; catalogs: ${CATALOGS.join(', ')}) — the append contract was not evaluated, refusing to pass vacuously.`)
+    process.exit(1)
   }
   process.exit(failures > 0 ? 1 : 0)
 }

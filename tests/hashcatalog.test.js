@@ -142,6 +142,10 @@ test('(2) a malformed or missing catalog degrades to empty, never throws', async
 
 test('(3) every seed row matches its FETCH_CATALOG source (the seed-derivation invariant)', async () => {
   const { FETCH_CATALOG } = await import('../server/fetchCatalog')
+  // The landed classification table (scripts/lib/hash-catalog-identities.cjs)
+  // — the durable artifact T2's manifest extends. The shipped json must
+  // agree with it row for row, so table and artifact cannot drift apart.
+  const { classify } = require(path.join(REPO, 'scripts', 'lib', 'hash-catalog-identities.cjs'))
   const catalog = await loadWith(null)
 
   // Walk the fetch catalog exactly as the seed was derived: model-root
@@ -187,6 +191,12 @@ test('(3) every seed row matches its FETCH_CATALOG source (the seed-derivation i
     for (const key of ['family', 'artifact', 'variant', 'quant', 'dtype']) {
       ok(typeof row.identity[key] === 'string' && row.identity[key].length > 0, `${sha.slice(0, 8)}: identity.${key} is a non-empty string`)
     }
+    // Table lockstep: the landed classification table places every seed row
+    // identically (a table MISS here means the crawler's rules and the
+    // shipped artifact have diverged).
+    const classified = classify(want.repo, want.path)
+    ok(classified, `${sha.slice(0, 8)}: the landed table classifies ${want.repo} · ${want.path}`)
+    eq(row.identity, { family: classified[0], artifact: classified[1], variant: classified[2], quant: classified[3], dtype: classified[4] }, `${sha.slice(0, 8)}: identity matches the landed table`)
   }
 })
 
@@ -306,4 +316,50 @@ test('(6d) the append gate accepts the catalog\'s FIRST landing (absent at the o
   commitCatalog(scratch, catalogJson([testRow(SHA_A)]), 'the catalog lands')
   const result = spawnSync(process.execPath, [APPEND_SCRIPT, 'HEAD~1', 'HEAD'], { cwd: scratch, encoding: 'utf8' })
   eq(result.status, 0, `the first landing has nothing to remove (stderr: ${result.stderr})`)
+})
+
+test('(6e) the append gate refuses to vacuously pass (no fixture class matched)', () => {
+  // A repo with NEITHER the goldens NOR the catalog at either ref: the gate
+  // checked nothing, and a silent exit 0 there would green-light a merge
+  // whose fixture contract was never evaluated.
+  const scratch = makeScratchDir(path.join(os.tmpdir(), 'monoka-hashcatalog-gate-'))
+  initScratchRepo(scratch)
+  const result = spawnSync(process.execPath, [APPEND_SCRIPT, 'HEAD~1', 'HEAD'], { cwd: scratch, encoding: 'utf8' })
+  ok(result.status !== 0, 'checking nothing fails the gate')
+  ok(/no fixture/i.test(result.stderr), `the error names the vacuous-skip condition (stderr: ${result.stderr})`)
+})
+
+test('(7) the BUILT loader resolves the catalog from the dist-server layout', () => {
+  // The fix-round regression test for the built-layout Critical: the
+  // compiled module lives at <repo>/dist-server/server/, and the repo's
+  // catalog is a SIBLING of dist-server (<repo>/server/), never an
+  // ancestor — the ancestor-only walk ENOENTs forever in production while
+  // staying green in vitest (which imports the TS source, where
+  // beside-module hits). Verified end-to-end through PLAIN NODE against the
+  // built module — the gate builds the server dist before this suite (the
+  // ci-map 'server' build tier), so the built artifact is the real thing.
+  const builtModule = path.join(REPO, 'dist-server', 'server', 'hashCatalog.js')
+  ok(fs.existsSync(builtModule), `the built loader exists at ${builtModule} — run pnpm build:server (the gate builds it before the suite)`)
+
+  // Plain-node probe: writes its result to a file so the pino warn stream
+  // (stdout) cannot corrupt the JSON, and runs WITHOUT
+  // MONOKA_HASH_CATALOG — the production resolution path.
+  const resultPath = path.join(makeScratchDir(path.join(os.tmpdir(), 'monoka-hashcatalog-built-')), 'probe.json')
+  const probe = `
+    const { loadHashCatalog, resolveHashCatalogPath } = require(${JSON.stringify(builtModule)})
+    const catalog = loadHashCatalog()
+    require('node:fs').writeFileSync(${JSON.stringify(resultPath)}, JSON.stringify({
+      resolved: resolveHashCatalogPath({}),
+      rows: catalog.rows.length,
+      hybridPresent: catalog.bySha.has('a629cfea8d89a071b140c6e1935dc9a23e72de6badc18975a2bb9e6d1423d76d'),
+    }))
+  `
+  const childEnv = { ...process.env }
+  delete childEnv.MONOKA_HASH_CATALOG
+  const result = spawnSync(process.execPath, ['-e', probe], { encoding: 'utf8', env: childEnv })
+  eq(result.status, 0, `the built loader loads under plain node (stderr: ${result.stderr})`)
+  const probeResult = JSON.parse(fs.readFileSync(resultPath, 'utf8'))
+  eq(probeResult.resolved, path.join(REPO, 'server', 'hashCatalog.json'), `the built layout resolves the APPEND-GATED source copy (got ${probeResult.resolved})`)
+  ok(probeResult.rows >= 22, `the built loader serves the seed rows (got ${probeResult.rows})`)
+  ok(probeResult.hybridPresent, 'the built loader resolves the smhfacct hybrid sha')
 })

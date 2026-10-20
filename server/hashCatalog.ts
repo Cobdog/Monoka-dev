@@ -165,17 +165,26 @@ function parseGap(value: unknown): CatalogGap | null {
 }
 
 /** Where the catalog lives: `MONOKA_HASH_CATALOG` wins verbatim when set
- *  (pointing it nowhere is legitimate — the EMPTY catalog answers), else
- *  the file beside this module (the built layout), else the source `server/`
- *  directory found by walking up from the build output (dist-server/server →
- *  repo root, the same walk engineNodes.ts does — the repo IS the
- *  distribution, so the source copy is the shipped copy). */
+ *  (pointing it nowhere is legitimate — the EMPTY catalog answers), else the
+ *  walk: at EACH level from this module's directory upward, probe (a) the
+ *  file beside the module and (b) `<level>/server/hashCatalog.json`. Probe
+ *  (b) is the one that matters from the BUILT layout: the compiled module
+ *  runs at `<repo>/dist-server/server/`, and the shipped catalog is a
+ *  SIBLING of dist-server (`<repo>/server/`) — never an ancestor — so an
+ *  ancestor-only walk ENOENTs forever in production while staying green
+ *  under vitest (which imports the TS source, where probe (a) hits at level
+ *  0). The walk hits at repo-root depth 2 from the build output; tsc does
+ *  not emit JSON, so there is no dist copy — the append-gated source file
+ *  IS the artifact, single-sourced. (If a future packaged build ships
+ *  without the repo tree, adding the json to the build copy step composes:
+ *  probe (a) is already first in line.) */
 export function resolveHashCatalogPath(env: NodeJS.ProcessEnv = process.env): string {
   const override = env.MONOKA_HASH_CATALOG
   if (typeof override === 'string' && override.trim()) return override
   let directory = __dirname
   for (let depth = 0; depth < 6; depth += 1) {
     if (existsSync(join(directory, 'hashCatalog.json'))) return join(directory, 'hashCatalog.json')
+    if (existsSync(join(directory, 'server', 'hashCatalog.json'))) return join(directory, 'server', 'hashCatalog.json')
     const parent = dirname(directory)
     if (parent === directory) break
     directory = parent

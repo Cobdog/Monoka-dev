@@ -97,8 +97,8 @@
       "kind": "vdn",
       "identity": {
         "family": "minimax-h3",
-        "artifact": "vdn-linear-branch",
-        "variant": "dmd-step-250+b-step-2000",
+        "artifact": "vdn-adapter-turbo",
+        "variant": "dmd-step-250",
         "quant": "unknown",
         "dtype": "unknown"
       },
@@ -223,7 +223,7 @@
       "kind": "vdn",
       "identity": {
         "family": "minimax-h3",
-        "artifact": "vdn-linear-branch",
+        "artifact": "vdn-adapter-default",
         "variant": "dmd-step-250+b-step-2000",
         "quant": "unknown",
         "dtype": "unknown"
