@@ -21,11 +21,21 @@
  * entry verbatim; only changed repos re-stamp. `generatedAt` is the max
  * crawl fetchedAt. Rows sort by sha256, the crawl block by repo, gaps by
  * `repo|path`, aliases ascending; key order is fixed; 2-space JSON +
- * trailing newline. Re-running over an unchanged world is byte-identical.
- * Change detection needs no stored fingerprint: the previous envelope's
- * own rows+gaps for a repo reconstruct its candidate set ([sha, size]
- * pairs, a sentinel for masked gaps), so legacy entries and fresh entries
- * compare under one deterministic rule.
+ * trailing newline. Re-running over an unchanged world is byte-identical
+ * at ANY date.
+ * Change detection reads each crawl entry's persisted `candidatesFinger-
+ * print` — the sha256 of the repo's pre-dedupe candidate list ([sha or
+ * mask sentinel, size] pairs, path order, duplicates kept). A reconstruc-
+ * tion from the envelope's ATTRIBUTED rows cannot serve: wherever shas
+ * collapse (the MiniMaxAI TE shards ship at three locations, OpenVDN's
+ * h3-base mirrors the official weights, publishers duplicate paths) the
+ * sha-unique rows are fewer than the repo's candidates, so the two views
+ * never re-converge and every dated re-crawl phantom-re-stamps (the
+ * round-2 review finding, fixed 2026-10-20 by persisting the fingerprint
+ * on every crawl entry). Entries from before the field existed fall back
+ * to the attributed-rows reconstruction — exact only where attribution is
+ * 1:1 (the seed's per-entry repos), failing SAFE (re-stamp) elsewhere —
+ * which is why the fix landing stamped every entry in one migration.
  *
  * Identity classification lives in scripts/lib/hash-catalog-identities.cjs
  * (the durable table this generator extends; a classify miss FAILS the run
@@ -44,6 +54,9 @@
  * RUN LOG (append a dated line per real run — the fetch-catalog convention):
  *   2026-10-20  real crawl, anonymous HTTP (api/models + api/datasets),
  *               agent-run — produced the v1 catalog (task to7xpa7).
+ *   2026-10-20  review-round-2 fix: crawl entries persist candidatesFinger-
+ *               print (the sha-collapse phantom re-stamp); re-crawl stamped
+ *               every entry — json regenerated, rows/gaps untouched.
  */
 
 import { createHash } from 'node:crypto'
@@ -62,6 +75,12 @@ const SHA_RE = /^[0-9a-f]{64}$/
 /** The anonymous mask: license-gated LFS entries return an oid of 64
  *  literal asterisks (real size intact). Anything not sha-shaped is a gap. */
 const MASKED_SENTINEL = '*'.repeat(64)
+/** The hub stores files larger than ~10 MB through Git LFS, so a
+ *  weight-shaped tree entry with NO lfs block and a size under this
+ *  threshold is a genuinely plain git file — skipped (the brief's rule),
+ *  not gapped; at or above it the absent block is the mask's defensive
+ *  shape and lands as a gap. */
+const LFS_THRESHOLD_BYTES = 10 * 1024 * 1024
 /** Weight-shaped tree entries: everything the catalog could ever verify.
  *  `.pt2` is deliberately absent — Viggle's package.pt2 files are
  *  torch.package code archives, not weights. */
@@ -252,6 +271,12 @@ function collectFromTrees(entry, trees) {
     const oid = t.lfs?.oid
     const size = t.lfs?.size ?? t.size
     if (typeof oid !== 'string' || !SHA_RE.test(oid)) {
+      // The lfs block ABSENT entirely: under the threshold that is a
+      // genuinely plain git file — skip it (the brief's rule), never
+      // misdiagnose it as the license mask; at or above the threshold the
+      // file must be LFS, so the absent block is the mask's defensive
+      // shape and lands as a gap.
+      if (t.lfs === undefined && (typeof size !== 'number' || size <= LFS_THRESHOLD_BYTES)) continue
       gaps.push({ path: t.path, sizeBytes: size, reason: gapReasonFor(entry, t.path), ...got })
     } else {
       rows.push({ path: t.path, sha256: oid, sizeBytes: t.lfs.size, ...got })
@@ -313,15 +338,21 @@ function buildEnvelope({ previous, results, crawlDate }) {
       ...result.gaps.map((g) => ({ ...g, masked: true })),
     ]
     const prevEntry = (previous.crawl ?? []).find((c) => c.repo === repo)
+    // The pre-dedupe candidate fingerprint: duplicates kept, masked gaps
+    // under the sentinel. Persisted on the crawl entry — the ONLY change
+    // signal that survives sha collapse (see the header).
     const fpNew = fingerprint(candidates.map((c) => [c.masked ? MASKED_SENTINEL : c.sha256, c.sizeBytes]))
-    const fpPrev = fingerprint(previousCandidates(previous, repo))
-    const changed = !prevEntry || fpNew !== fpPrev
+    const changed = prevEntry?.candidatesFingerprint != null
+      ? prevEntry.candidatesFingerprint !== fpNew
+      // Legacy fallback (entries from before the field existed): exact
+      // only where attribution is 1:1; fails safe (re-stamps) elsewhere.
+      : !prevEntry || fpNew !== fingerprint(previousCandidates(previous, repo))
     if (!changed && prevEntry.revision !== result.revision) {
       reports.push(`${repo}: weight set unchanged but the ref moved ${prevEntry.revision.slice(0, 8)} → ${result.revision.slice(0, 8)} — the verified record is preserved`)
     }
     result.crawlEntry = changed
-      ? { repo, revision: result.revision, fetchedAt: crawlDate }
-      : { repo: prevEntry.repo, revision: prevEntry.revision, fetchedAt: prevEntry.fetchedAt }
+      ? { repo, revision: result.revision, fetchedAt: crawlDate, candidatesFingerprint: fpNew }
+      : { ...prevEntry, candidatesFingerprint: prevEntry.candidatesFingerprint ?? fpNew }
   }
 
   // Envelope-level loud failure BEFORE any assembly: an unclassifiable
@@ -417,7 +448,12 @@ function serializeCatalog(envelope) {
     generatedAt: envelope.generatedAt,
     crawl: [...envelope.crawl]
       .sort((a, b) => (a.repo < b.repo ? -1 : 1))
-      .map((c) => ({ repo: c.repo, revision: c.revision, fetchedAt: c.fetchedAt })),
+      .map((c) => ({
+        repo: c.repo,
+        revision: c.revision,
+        fetchedAt: c.fetchedAt,
+        ...(typeof c.candidatesFingerprint === 'string' ? { candidatesFingerprint: c.candidatesFingerprint } : {}),
+      })),
     gaps: [...envelope.gaps]
       .sort(byGapKey)
       .map((g) => ({

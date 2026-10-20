@@ -5,122 +5,146 @@
     {
       "repo": "Cierpliwy/krea2-inpaint-edit",
       "revision": "9faed2d2b6cfd909401e8d6139d87b93b36c01e4",
-      "fetchedAt": "2026-09-26"
+      "fetchedAt": "2026-09-26",
+      "candidatesFingerprint": "e2e44ae1954d82f25b96b78a6ef4e034d87544bbfd2771dde62b0f6505e86a59"
     },
     {
       "repo": "Comfy-Org/Depth-Anything-3",
       "revision": "248c0c2c1fca3cf3046db1d0d3d5256f2d078f41",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "242cce9f7ddf9a52e9097d92aba28fc45ca8a3b76622bc6026914c07cde3386c"
     },
     {
       "repo": "Comfy-Org/MiniMax-H3",
       "revision": "e5eb578a89295337b8ff433a035929ce0279e0b6",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "369d01982dc3bb7933138a6b21d47a23e79b1dfdcd30ca377087837493666648"
     },
     {
       "repo": "Comfy-Org/Qwen-Image-2.1",
       "revision": "ace0edeb3791a594ddfa36ed5f41a178a394e921",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "b812da3e246d8cba9112a375b03084cd321a4921373ba8db35476b4e03cabc68"
     },
     {
       "repo": "Kijai/MiniMax-H3-TAE",
       "revision": "a213ac8bf2f148b4f32372279a7f207846978900",
-      "fetchedAt": "2026-09-22"
+      "fetchedAt": "2026-09-22",
+      "candidatesFingerprint": "398d74714f5957950a9dc9e7ecb3a9b845a0b84df6e296ef2856c8f9a186895c"
     },
     {
       "repo": "MATLOWAI/minimax-h3-fused-turbo-int8-convrot",
       "revision": "8a8dffaa0cd99c6184833ae0a3b4e9b0089c17b3",
-      "fetchedAt": "2026-09-15"
+      "fetchedAt": "2026-09-15",
+      "candidatesFingerprint": "1e550f0b1872c99a9de070e4081efab53fdd661dc5542fcca939ed3205f2d849"
     },
     {
       "repo": "Mamad8/MiniMax-H3-Image-VAE",
       "revision": "main",
-      "fetchedAt": "2026-09-18"
+      "fetchedAt": "2026-09-18",
+      "candidatesFingerprint": "2183023cb0a650f98a7fc9dfccdec54acf4a5eafe6be7728e62510e471cdbb95"
     },
     {
       "repo": "MiniMaxAI/MiniMax-H3",
       "revision": "42ed227ee7df40d41602854ae760620d6eb651fe",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "6b93a9b99f50847f742609d77beb862e893b0ea01bd4a95ca535ece00a41045b"
     },
     {
       "repo": "OpenVDN/vdn-minimax-h3",
       "revision": "51eeecefdb5b524c0df5539446d1dd54a17aa439",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "4a689a82c2b2349526974713522550b8789ebe74d02dca1434ffe388a960e1bb"
     },
     {
       "repo": "Viggle/Viggle-Animate",
       "revision": "c09398730222a1eb9b7bf9e4141d439ebef91a68",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "714e4e41a2e503a1b0dfe61113d7c7a7b240a4dd1a10cd89b2f6b176aafec3b7"
     },
     {
       "repo": "alibaba-pai/MiniMax-H3-Acc-LoRAs",
       "revision": "335001fb9e5455d68a0caa18ec2e319072150328",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "42dd525edaa98a86c0a70536665687b220e03099cfa1e0b2aa2dd4aeb27ee7c6"
     },
     {
       "repo": "alibaba-pai/MiniMax-H3-Fun-Controlnet-Union",
       "revision": "6419c27ece80f330826ae4439fa9c5910c475ccf",
-      "fetchedAt": "2026-09-14"
+      "fetchedAt": "2026-09-14",
+      "candidatesFingerprint": "c8ba33e46e7b35541f3d9534d0d386de3453a942012339512b8336ef213ede40"
     },
     {
       "repo": "aptech0081/MiniMax-H3-Acc-LoRAs-ComfyUI",
       "revision": "c169e9cd1dab4ac56b413b1343218ab4a3af2f19",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "e669dfb74014dc1e5d96326dc736c605736b05a71392e87352f16a4436f16240"
     },
     {
       "repo": "conradlocke/krea2-identity-edit",
       "revision": "89e9e7a09ee2e5c9331e952063d79b1b8a703280",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "a942800d5245de05184944adcd0cb3fe510e85c55a93cea8402a5d8b732b4f14"
     },
     {
       "repo": "drbaph/MiniMax-H3-Turbo-Lora-ComfyUI",
       "revision": "bb2bc497cbaca89dadd0bcf1856eed4f8275be20",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "239ffbdd256d70a8a5e99570a2f831f6cd9d78a8c54e3bec416f7ce4aafb4624"
     },
     {
       "repo": "drbaph/Viggle-Animate-ComfyUI",
       "revision": "cb3907d33a0ac57314135f86232fdaf4bdb23105",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "adddb53e5814a4281e42c7b8cb24be16b188ca88db5bc8cedac7d8ab6cd2a123"
     },
     {
       "repo": "hr16/DWPose-TorchScript-BatchSize5",
       "revision": "359d662a9b33b73f6d0f21732baf8845f17bb4be",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "1d046524e9ee54b8f2604a3223ea074353938fcb86a89b0e849105323870076a"
     },
     {
       "repo": "jacokon/fasth3-live",
       "revision": "b21e88784d0c036ea19508cfff2c2839bddef6eb",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "9afa5e94db2a5b8bc2aa73e29e881b6e042a84d41f5b8a186e711cc424a9e9e5"
     },
     {
       "repo": "larryvrh/MiniMax-H3-Turbo-Lora",
       "revision": "43a74557ac3f6539db8e0f2a959d03feb7a81480",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "6dd9930c6d72e6d9c0949c0f07d80a7549c749e178dbec5fb6c10c9a2ae2fa69"
     },
     {
       "repo": "lightx2v/Minimax-h3-Turbo",
       "revision": "9bc1f3c0407805b00da9f762639cb435c644b2dc",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "7bf1476610ec2eb032a21d6de6b1fdb3ee34fdb65631b48d52d02bd1b09d9867"
     },
     {
       "repo": "lllyasviel/Annotators",
       "revision": "982e7edaec38759d914a963c48c4726685de7d96",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "d39e41f3d780f269eba97d4ae17e07952fecb907e3bb8946d25c333a6d25c6d9"
     },
     {
       "repo": "smhfacct/Minimax-H3-fl2va-ref2va-hybrid-models",
       "revision": "a36feb17fbd1f20ff4bdd509ccd07e2b7b585a38",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "24a48d89a8378454da185a8d4f1b1270ce424adfdfb02bf9aeb4b1051c4e1e0a"
     },
     {
       "repo": "yijunwang2/krea2-anypaint",
       "revision": "1a9fb37a304c27523939c44fc2b770c11472451b",
-      "fetchedAt": "2026-09-14"
+      "fetchedAt": "2026-09-14",
+      "candidatesFingerprint": "5c6f47b003033b0103a0d98b442865dc61dcf3f0d1e5e4e9d1e1a3f67de42859"
     },
     {
       "repo": "yzd-v/DWPose",
       "revision": "1a7144101628d69ee7a3768d1ee3a094070dc388",
-      "fetchedAt": "2026-10-20"
+      "fetchedAt": "2026-10-20",
+      "candidatesFingerprint": "3dc86eb6dad97d10613123a458900328670e4bef92242e29cbf2cd6a5a257349"
     }
   ],
   "gaps": [

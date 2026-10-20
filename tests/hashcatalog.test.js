@@ -386,6 +386,7 @@ test('(7) the BUILT loader resolves the catalog from the dist-server layout', ()
 
 const D1 = '2026-11-01'
 const D2 = '2026-11-02'
+const D3 = '2026-11-03'
 const MASKED_OID = '*'.repeat(64)
 
 const crawlMod = () => import('../scripts/crawl-hash-catalog.mjs')
@@ -436,27 +437,47 @@ test('(8b) a changed repo updates only its own fetchedAt and rows', async () => 
   const seed = { version: 1, generatedAt: '', crawl: [], gaps: [], rows: [] }
   const mamad8 = g.manifestEntryFor('Mamad8/MiniMax-H3-Image-VAE')
   const kijai = g.manifestEntryFor('Kijai/MiniMax-H3-TAE')
+  // The COLLAPSE repo (review round 2): its tree carries the same sha at
+  // TWO paths (the intra-repo duplicate shape — the MiniMaxAI TE shards
+  // ship at three locations) and a sha that ALSO exists in Kijai's tree
+  // (the cross-repo collapse — OpenVDN's h3-base mirror). Pre-dedupe
+  // candidates: 3. Attributed rows after the merge: 1 (the duplicate
+  // collapses by sha; the third collapses into Kijai's row). Change
+  // detection must read the persisted CANDIDATE fingerprint — not a
+  // reconstruction from attributed rows — or this repo re-stamps its
+  // fetchedAt on every future crawl with an unchanged weight set.
+  const openvdn = g.manifestEntryFor('OpenVDN/vdn-minimax-h3')
+  const T_SHA = shaFor(7777)
+  const T_BYTES = 4279428112
+  const openvdnTrees = [
+    hfFile('adapters/turbo/adapter_model.safetensors', T_SHA, T_BYTES),
+    hfFile('mirror/adapters/turbo/adapter_model.safetensors', T_SHA, T_BYTES),
+    hfFile('stage-dmd-step-250/linear_branch/model.safetensors', KIJAI_TAE_SHA, KIJAI_TAE_BYTES),
+  ]
   const MAMAD8_REV = 'c7b9252c73707dba494cf4d99ca45d3f33f561b3'
   const mamad8Trees = (steps) => steps.map((n) => hfFile(`minimax_h3_t1_image_vae_step${n}.safetensors`, shaFor(n), 5207808000 + n))
   const kijaiTrees = [hfFile('vae_approx/taeh3.safetensors', KIJAI_TAE_SHA, KIJAI_TAE_BYTES)]
   const r = (entry, revision, trees) => ({ entry, ok: true, revision, ...g.collectFromTrees(entry, trees) })
-  const v1 = g.buildEnvelope({
-    previous: seed,
-    results: [r(mamad8, MAMAD8_REV, mamad8Trees([1597])), r(kijai, kijai.revision, kijaiTrees)],
-    crawlDate: D1,
-  })
-  // v2: Mamad8 gains step2000 upstream; Kijai is untouched.
-  const v2 = g.buildEnvelope({
-    previous: v1.envelope,
-    results: [r(mamad8, MAMAD8_REV, mamad8Trees([1597, 2000])), r(kijai, kijai.revision, kijaiTrees)],
-    crawlDate: D2,
-  })
+  const results = (mamad8Steps) => [
+    r(mamad8, MAMAD8_REV, mamad8Trees(mamad8Steps)),
+    r(kijai, kijai.revision, kijaiTrees),
+    r(openvdn, openvdn.revision, openvdnTrees),
+  ]
+  const v1 = g.buildEnvelope({ previous: seed, results: results([1597]), crawlDate: D1 })
+  // v2: Mamad8 gains step2000 upstream; Kijai and the collapse repo are
+  // untouched — the collapse repo MUST NOT re-stamp (its candidate list
+  // is byte-stable even though only one of three candidates keeps a row).
+  const v2 = g.buildEnvelope({ previous: v1.envelope, results: results([1597, 2000]), crawlDate: D2 })
   const crawlBy = Object.fromEntries(v2.envelope.crawl.map((c) => [c.repo, c]))
   eq(crawlBy['Mamad8/MiniMax-H3-Image-VAE'].fetchedAt, D2, 'the changed repo re-stamps')
   eq(crawlBy['Kijai/MiniMax-H3-TAE'].fetchedAt, D1, 'the unchanged repo keeps its recorded date')
+  eq(crawlBy['OpenVDN/vdn-minimax-h3'].fetchedAt, D1, 'the collapse repo does NOT re-stamp: candidates unchanged')
+  eq(typeof crawlBy['OpenVDN/vdn-minimax-h3'].candidatesFingerprint, 'string', 'the crawl entry persists the candidate fingerprint')
   eq(v1.envelope.generatedAt, D1, 'v1 generatedAt is the v1 max')
   eq(v2.envelope.generatedAt, D2, 'generatedAt rides the max fetchedAt')
-  eq(v2.envelope.rows.length, 3, 'exactly one row appended')
+  eq(v2.envelope.rows.length, 4, 'exactly one row appended')
+  eq(v2.envelope.rows.filter((row) => row.sha256 === T_SHA).length, 1, 'the intra-repo duplicate path collapses to one row')
+  eq(v2.envelope.rows.find((row) => row.sha256 === KIJAI_TAE_SHA)?.source.repo, 'Kijai/MiniMax-H3-TAE', 'the cross-repo collapse keeps the first-seen attribution')
   const added = v2.envelope.rows.find((row) => row.source.path.endsWith('step2000.safetensors'))
   ok(added, 'the new row landed')
   eq(added.addedAt, D2, 'the new row stamps the run date')
@@ -466,6 +487,13 @@ test('(8b) a changed repo updates only its own fetchedAt and rows', async () => 
   for (const old of v1.envelope.rows) {
     eq(v2.envelope.rows.find((row) => row.sha256 === old.sha256), old, `pre-existing row ${old.sha256.slice(0, 8)} is untouched`)
   }
+  // v3: re-crawl the unchanged world at a THIRD date — the full AC-5
+  // clause with collapse present: byte-identical output, nothing moves.
+  const v3 = g.buildEnvelope({ previous: v2.envelope, results: results([1597, 2000]), crawlDate: D3 })
+  eq(g.serializeCatalog(v3.envelope), g.serializeCatalog(v2.envelope), 'a dated re-crawl with collapse present is byte-identical')
+  const crawl3 = Object.fromEntries(v3.envelope.crawl.map((c) => [c.repo, c]))
+  eq(crawl3['OpenVDN/vdn-minimax-h3'].fetchedAt, D1, 'the collapse repo keeps D1 across runs')
+  eq(crawl3['Mamad8/MiniMax-H3-Image-VAE'].fetchedAt, D2, 'the changed repo keeps its D2 stamp')
 })
 
 test('(8c) a masked oid lands as a gap, never a guessed sha', async () => {
@@ -499,6 +527,15 @@ test('(8c) a masked oid lands as a gap, never a guessed sha', async () => {
   const control = g.collectFromTrees(entry, [hfFile('minimax_h3_video_vae_w4a8_from_fp16.safetensors', 'a'.repeat(64), 1738850040)])
   eq(control.rows.length, 1, 'the unmasked twin is a row candidate')
   eq(control.gaps, [], 'the unmasked twin is not a gap')
+  // The under-threshold plain file (review round 2, minor 1): a weight-
+  // shaped entry with NO lfs block under the hub's ~10 MB LFS threshold is
+  // a genuinely plain git file — skipped, never misdiagnosed as the mask.
+  // (The path classifies — the misdiagnosis at HEAD turned it into an
+  // oid-masked gap.)
+  const plain = g.collectFromTrees(entry, [hfNonLfs('minimax_h3_video_vae_w4a8_from_fp16.safetensors', 512 * 1024)])
+  eq(plain.rows, [], 'the under-threshold plain file is no row')
+  eq(plain.gaps, [], 'the under-threshold plain file is no gap — not a mask, not a gap')
+  eq(plain.unclassified, [], 'the under-threshold plain file is out of scope, not a classification miss')
   // Envelope level: the merge emits the gaps, and NO row anywhere carries a
   // non-sha sha — masked means absent from rows, never guessed.
   const envelope = g.buildEnvelope({
