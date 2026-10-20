@@ -474,6 +474,14 @@ maybe('(l) --print still parses with the LAN routes present (wizard task 7 regre
   ok(reprint.code === 0, `a seeded config still parses and prints (got ${reprint.code})\n${reprint.out}`)
   ok(reprint.out.includes(`port=${port}`), 'the printed plan still carries the boot port')
 
+  // The launcher-export marker (review fix round, 3p14abm): the launcher
+  // marks its own network exports so the server's env-override honesty can
+  // tell them from user-set keys. Deleting the export would silently flip
+  // precedence (every launcher-resolved key would report as an override) —
+  // pinned here so the line cannot vanish quietly. Static on purpose: it is
+  // start.sh's text, not the build's.
+  ok(/^export MONOKA_LAUNCHER_EXPORTED=1$/m.test(fs.readFileSync(START_SH, 'utf8')), 'start.sh still exports MONOKA_LAUNCHER_EXPORTED (the marker the env-override honesty reads)')
+
   // The new seam compiled into the boot closure the routes ride.
   if (!hasBuild) {
     console.log('  NOTE: no build present — the lanConfig module arm is skipped (run pnpm build:server)')

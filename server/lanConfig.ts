@@ -170,11 +170,13 @@ export function probeBind(host: string, port: number): Promise<{ claimable: bool
   })
 }
 
-/** The launcher env keys the walk's copy names (W-I1's honesty): when any of
- *  these is set in the server's own process env, the launcher exported it at
- *  boot and it WINS over the config file at the next boot — a wizard write
- *  of that key lands in the file and loses at boot, so the confirmation
- *  says so. Only non-empty values count (an empty var is not an override). */
+/** The launcher env keys the walk's copy names (W-I1's honesty): when one of
+ *  these is set in the server's own process env WITHOUT the launcher's own
+ *  export marker (MONOKA_LAUNCHER_EXPORTED — see launcherEnvOverrides), it
+ *  is the USER's key and wins at resolution; the confirmation names it. A
+ *  marked env carries the launcher's resolution of the SAVED config — the
+ *  saved choices apply, nothing is an override. Only non-empty values count
+ *  (an empty var is not an override). */
 const LAUNCHER_ENV_KEYS = ['MONOKA_LAN_PORT', 'MONOKA_LAN_HOST', 'MONOKA_LAN_TOKEN'] as const
 
 export function launcherEnvOverrides(env: NodeJS.ProcessEnv = process.env): string[] {
