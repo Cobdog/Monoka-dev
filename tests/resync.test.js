@@ -354,6 +354,47 @@ maybe('(d) the API honesty fixes: object-info answers honestly; the dependent re
   console.log(`  resync: ${passed} assertions passed`)
 })
 
+// ---- (e) the settings read carries modelRootIsDefault (W-C1/D7) ----------
+// The walk's models-root prefill may offer the current setting ONLY when a
+// human set it: the shipped default points at the studio home, a directory
+// an external engine never reads, and prefilling it would be the audit's
+// dead end again. Fresh-default vs user-set cannot be computed client-side
+// (the default lives in server paths), so the settings GET carries a
+// sibling `modelRootIsDefault` flag. Additive; POST shape unchanged.
+maybe('(e) the settings read carries modelRootIsDefault', async () => {
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-resync-home-'))
+  const serverPort = await freePort()
+  const server = spawn(process.execPath, [path.join(REPO, 'dist-server', 'server', 'index.js')], {
+    cwd: REPO,
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(serverPort), MONOKA_NO_HTTPS: '1' },
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+  const base = `http://127.0.0.1:${serverPort}`
+  try {
+    await waitUntil(async () => {
+      try { return (await fetch(`${base}/api/lan/settings`)).ok } catch { return false }
+    }, 15_000, 'studio server boot')
+
+    const fresh = await (await fetch(`${base}/api/lan/settings`)).json()
+    ok(fresh.modelRootIsDefault === true, 'a fresh scratch home reads modelRootIsDefault: true (the shipped default)')
+    ok(typeof fresh.settings?.modelRoot === 'string' && fresh.settings.modelRoot.length > 0, 'the settings themselves still ride the GET (additive sibling, not a replacement)')
+
+    const userRoot = path.join(home, 'engine-models')
+    const save = await fetch(`${base}/api/lan/settings`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ settings: { ...fresh.settings, modelRoot: userRoot } }),
+    })
+    ok(save.status === 200, `a settings save with a different modelRoot succeeds (got ${save.status})`)
+    const after = await (await fetch(`${base}/api/lan/settings`)).json()
+    ok(after.modelRootIsDefault === false, 'after the save the read reports modelRootIsDefault: false (user-set)')
+    ok(after.settings.modelRoot === userRoot, `the saved value round-trips (got ${after.settings.modelRoot})`)
+  } finally {
+    server.kill('SIGINT')
+    await waitUntil(() => server.exitCode !== null, 5_000, 'server exit').catch(() => server.kill('SIGKILL'))
+  }
+  console.log(`  resync: ${passed} assertions passed`)
+})
+
 test('suite summary', () => {
   console.log(`  resync: ${passed} assertions passed (total)`)
 })

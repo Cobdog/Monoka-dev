@@ -107,6 +107,7 @@ const SUITES = {
   statusToken: { build: null, windows: false, python: false, ffmpeg: false },
   'stylelint-guard': { build: null, windows: false, python: false, ffmpeg: false },
   vdn: { build: null, windows: false, python: false, ffmpeg: false },
+  wizard: { build: null, windows: false, python: false, ffmpeg: false },
   workflows: { build: null, windows: false, python: false, ffmpeg: false },
 }
 
@@ -121,7 +122,7 @@ const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
 
 /** The suites that load client TS through the VM harness (scripts/lib/ts-vm.cjs). */
-const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'vdn', 'workflows']
+const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'vdn', 'wizard', 'workflows']
 
 /** Every vitest suite — the FULL fallback set. */
 const ALL_SUITES = Object.keys(SUITES).sort()
@@ -357,6 +358,11 @@ const RULES = [
     match: ['src/canvas/camera.ts', 'src/canvas/derive.ts', 'src/canvas/generation.ts', 'src/canvas/loraTimeline.ts', 'src/canvas/ops.ts', 'src/canvas/options.ts', 'src/canvas/plan.ts', 'src/canvas/stillIntent.ts'],
     suites: ['canvas'],
     reason: 'the canvas logic modules the canvas suite loads through the VM harness.',
+  },
+  {
+    match: ['src/canvas/wizardWalk.ts'],
+    suites: ['wizard'],
+    reason: 'the first-run walk\'s pure module (wizard rework 3p14abm: destination designations D7, the candidate spine) — its own suite loads it through the VM harness.',
   },
   { match: ['src/lib/camera/**'], suites: ['camera'], reason: 'camera path model + parity goldens.' },
   { match: ['src/poserig/**'], suites: ['poserig'], reason: 'pose rig domain (logic modules; PoseRigApp.tsx rides the dir).' },

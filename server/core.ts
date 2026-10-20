@@ -3499,7 +3499,16 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
         // — foreign websites and DNS-rebinding readers — is closed by the
         // origin/Host gate above; remaining readers are the same-origin SPA
         // and accepted-posture LAN peers.
-        if (url.pathname === '/api/lan/settings' && request.method === 'GET') return sendJson(response, 200, { settings })
+        if (url.pathname === '/api/lan/settings' && request.method === 'GET') {
+          // (wizard rework W-C1/D7) The sibling flag tells fresh-default from
+          // user-set without guessing: the walk's models-root prefill may
+          // offer the current value ONLY when a human set it — the shipped
+          // default points at the studio home, a directory an external
+          // engine never reads. The default is server-computed (it derives
+          // from the data home), so the client cannot derive the flag. Pure
+          // addition; the POST shape is unchanged.
+          return sendJson(response, 200, { settings, modelRootIsDefault: settings.modelRoot === defaultSettings().modelRoot })
+        }
         if (url.pathname === '/api/lan/settings' && request.method === 'POST') {
           const body = await readJson(request, 200_000)
           // Trim BEFORE the shape check (M5): ' /models' is a padded absolute
