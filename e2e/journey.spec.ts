@@ -88,21 +88,27 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
     await expect(page.locator('[data-canvas-bar-engine], [data-canvas-engine]').first()).toContainText('ready', { timeout: 20_000 })
     await expect(wizard).toBeVisible()
     await expect(wizard).toHaveAttribute('data-wizard-step', '0')
-    await expect(wizard).toContainText('1 of 4 — Engine')
+    await expect(wizard).toContainText('1 of 5 — Engine')
 
-    // ---- STEP 2 (#9): steps 2-4 are completable (the audit's unreachable) -
+    // ---- STEP 2 (#9): steps 2-5 are completable (the audit's unreachable) -
     await page.locator('[data-wizard-next]').click()
     await expect(wizard).toHaveAttribute('data-wizard-step', '1')
-    await expect(wizard).toContainText('2 of 4 — Models')
+    await expect(wizard).toContainText('2 of 5 — Models')
     // The registry step reads the ENGINE's models (the mirror serves 15 files
     // across 5 folders — a connected instance, not an empty one).
     await expect(page.locator('[data-wizard-registry]')).toContainText('diffusion models', { timeout: 10_000 })
     await page.locator('[data-wizard-next]').click()
     await expect(wizard).toHaveAttribute('data-wizard-step', '2')
-    await expect(wizard).toContainText('3 of 4 — Node packs')
+    await expect(wizard).toContainText('3 of 5 — Node packs')
     await page.locator('[data-wizard-next]').click()
     await expect(wizard).toHaveAttribute('data-wizard-step', '3')
-    await expect(wizard).toContainText('4 of 4 — First prompt')
+    await expect(wizard).toContainText('4 of 5 — LAN prep')
+    // The LAN slot's honest keep-current panel (task 4's placeholder shell;
+    // task 7 fills it).
+    await expect(page.locator('[data-wizard-lan]')).toBeVisible()
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '4')
+    await expect(wizard).toContainText('5 of 5 — First prompt')
     // Skippable (never a nag)…
     await page.locator('[data-wizard-skip]').click()
     await expect(wizard).toHaveCount(0)
@@ -112,7 +118,7 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
     await expect(page.locator('[data-canvas-settings-dock]')).toBeVisible({ timeout: 10_000 })
     await page.locator('[data-settings-reopen-wizard]').click()
     await expect(wizard).toBeVisible({ timeout: 10_000 })
-    await expect(wizard).toContainText('1 of 4 — Engine')
+    await expect(wizard).toContainText('1 of 5 — Engine')
     // …and the dock closed behind the reopened wizard (one journey at a time).
     await expect(page.locator('[data-canvas-settings-dock]')).toHaveCount(0)
     await page.locator('[data-wizard-skip]').click()
@@ -178,10 +184,15 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
     await expect(panel.locator('[data-canvas-validation]')).toContainText('minimax_h3_t1_image_vae', { timeout: 10_000 })
     await expect(panel.locator('[data-canvas-mode]')).not.toHaveText(/video/i)
 
-    // ---- STEP 9 (#7): the fetch affordance never promises an empty catalog -
-    // The mirror's registry carries the official turbo LoRA only: 8 of 9
-    // families are missing and the fetch catalog has ZERO turbo rows. The
-    // dead-end promise ("fetchable there") must be gone.
+    // ---- STEP 9 (#7): the fetch affordance states the catalog's truth -----
+    // POST-T1 REALITY (2026-10-19; the leg's old premise died with c9cc631):
+    // the lightx2v FL2V turbo rows landed in the fetch catalog, so of the
+    // mirror's 8 missing turbo families ONE is now deliverable — the
+    // affordance is honestly the fetch BUTTON, not the dead-end note. The
+    // R-19 pin survives inverted: the button renders only when catalog rows
+    // deliver a missing family (a nonzero count, named), and the note branch
+    // — for families no row delivers — never promises "fetchable there"
+    // (unit-pinned in tests/canvas.test.js, the empty-catalog case).
     const videoTile = page.locator('[data-canvas-tile]', { hasText: 'lighthouse' })
     await videoTile.click()
     // The completed video render landed its take — the tile is a MEDIA object
@@ -189,10 +200,9 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
     await expect(bar).toHaveAttribute('data-canvas-bar-context', 'media', { timeout: 10_000 })
     await page.locator('[data-canvas-bar-properties]').click()
     await expect(panel.locator('[data-canvas-section="engine"]')).toBeVisible()
-    await expect(panel.locator('[data-canvas-turbo-fetch]')).toHaveCount(0)
-    await expect(panel.locator('[data-canvas-turbo-fetch-note]')).toBeVisible()
-    const noteText = await panel.locator('[data-canvas-turbo-fetch-note]').innerText()
-    expect(noteText.toLowerCase()).not.toContain('fetchable there')
+    await expect(panel.locator('[data-canvas-turbo-fetch]')).toBeVisible({ timeout: 10_000 })
+    await expect(panel.locator('[data-canvas-turbo-fetch]')).toContainText(/fetch missing \([1-9]\d*\)/)
+    await expect(panel.locator('[data-canvas-turbo-fetch-note]')).toHaveCount(0)
 
     // ---- STEP 10 (#6): a validation rejection carries no [redacted] token -
     await mirrorJson(mirrorPort, '/__control', { method: 'POST', body: JSON.stringify({ failMode: 'validation' }) })
@@ -943,6 +953,111 @@ test('the preview-crash retry surfaces as a first-class named event, never a sil
       const extraRecord = extraData && typeof extraData === 'object' ? extraData : {}
       expect('preview_method' in extraRecord, 'no submission ever carries the stock preview_method here (the pack owns previews; the retry drops them)').toBe(false)
     }
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+
+    // ---- teardown ----------------------------------------------------------
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } })
+    await resetSession(page)
+  } finally {
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+})
+
+/** (3p14abm task 4) THE REWORKED WALK'S ENGINE STEP — the anti-regression
+ *  pin for the candidate model (spec §2.1/§3): typing into the engine
+ *  address NEVER writes configuration (pre-fix the address input saved
+ *  settings on EVERY keystroke — the walk holds the candidate in memory
+ *  now), Test verifies the CANDIDATE through the honest candidate-scoped
+ *  path (task 2's `?url=` seams) with the device readout, and the footer is
+ *  the five-step spine (Engine → Models → Node packs → LAN prep → First
+ *  prompt). The negative observation is a legitimate sleep window per
+ *  testing.md item 5: the typing window IS the assertion — a counting route
+ *  handler must read ZERO across the keystrokes plus a poll-cycle beat
+ *  (a poll would pass vacuously on an absence). */
+test('the reworked walk: typing never saves, the candidate Test verifies, the footer is five steps (3p14abm task 4)', async ({ page, request }) => {
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const holder = http.createServer(() => undefined)
+  const mirrorPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', MIRROR_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+
+    const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${mirrorPort}`,
+      engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
+      // Pre-seed the W16 self-record (one-time testedComfyVersion save on
+      // first connect) so no LEGITIMATE settings save can land inside the
+      // counting window — the window must measure only the typing.
+      testedComfyVersion: 'mirror-profile',
+    } } })
+    await resetSession(page)
+
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    const wizard = page.locator('[data-canvas-wizard]')
+    await expect(wizard).toBeVisible({ timeout: 30_000 })
+    await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'true', { timeout: 20_000 })
+
+    // THE FIVE-STEP SPINE (the blessed order, spec §2).
+    await expect(wizard).toContainText('1 of 5 — Engine')
+    const progress = wizard.locator('[data-wizard-progress]')
+    await expect(progress).toHaveCount(5)
+    await expect(progress.nth(3)).toHaveText('LAN prep')
+    await expect(progress.nth(4)).toHaveText('First prompt')
+
+    // The prefill is the SAVED url (W-I5: the field is born agreeing with
+    // its placeholder), not empty.
+    const urlField = page.locator('[data-wizard-comfy-url]')
+    const mirrorUrl = `http://127.0.0.1:${mirrorPort}`
+    await expect(urlField).toHaveValue(mirrorUrl)
+
+    // THE NEGATIVE WINDOW: count settings saves while the candidate is
+    // edited keystroke-by-keystroke — first AWAY from the saved url (a real
+    // edit), then back. Pre-fix this walk fired one POST /api/lan/settings
+    // per character.
+    let settingsSaves = 0
+    await page.route('**/api/lan/settings', async (route) => {
+      if (route.request().method() === 'POST') settingsSaves += 1
+      await route.continue()
+    })
+    await urlField.click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await urlField.pressSequentially('http://10.255.255.1:9', { delay: 15 })
+    await expect(urlField).toHaveValue('http://10.255.255.1:9')
+    // The window IS the assertion (testing.md item 5): a poll-cycle beat
+    // after the last keystroke, then the second edit round, then the count.
+    await page.waitForTimeout(1_000)
+    await urlField.click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await urlField.pressSequentially(mirrorUrl, { delay: 15 })
+    await expect(urlField).toHaveValue(mirrorUrl)
+    await page.waitForTimeout(1_000)
+    expect(settingsSaves, 'zero settings saves across the whole typing session (the per-keystroke saves are dead)').toBe(0)
+    await page.unroute('**/api/lan/settings')
+
+    // Test verifies the CANDIDATE (task 2's candidate-scoped object-info
+    // path): the connected readout names the mirror's device.
+    await page.locator('[data-wizard-test]').click()
+    await expect(page.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator('[data-wizard-connected]')).toContainText('NVIDIA GeForce RTX 4090')
 
     expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
 

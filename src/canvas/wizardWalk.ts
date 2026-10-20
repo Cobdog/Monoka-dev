@@ -29,6 +29,17 @@
  *   - custom nodes: the configured `engine.externalCustomNodesDir` when set,
  *     else EMPTY (R3 P1-8: `resolveNodePackTarget` answers `none` without it
  *     — the install rows refuse honestly until it is designated).
+ *
+ * (Task 4, 2026-10-19 — the SPINE lands beside the designations.) The step
+ * machine: WALK_STEPS is the blessed five (spec §2); WalkCandidate holds
+ * EVERYTHING the walk collects in memory (§3's candidate model — the old
+ * per-keystroke setSettings writes die here; the exit's one write is task
+ * 8's); shouldPresent routes the present decision (the --setup flag
+ * overrides the local latch — §4; task 9 wires the real flag); the per-step
+ * gates answer verified | refused-with-reason | unverified-engine (§2.1's
+ * honesty: a gate with no verified engine says "unverified engine — nothing
+ * to check against", never an invented verdict). The module stays PURE — no
+ * React, no settings-writing seam of any kind.
  */
 
 /** Narrow structural view of AppSettings — the fields a designation reads.
@@ -141,4 +152,160 @@ export function modelsRootPrefill(settings: DesignationSettings, modelRootIsDefa
 export function customNodesPrefill(settings: DesignationSettings): string {
   const configured = (settings.engine.externalCustomNodesDir ?? '').trim()
   return configured || ''
+}
+
+// ---------------------------------------------------------------------------
+// The walk's spine (task 4, 2026-10-19 — spec §2/§2.1/§3): the step machine,
+// the CANDIDATE container, the present gate, and the per-step gates.
+// ---------------------------------------------------------------------------
+
+/** The walk's five steps (spec §2 — the blessed order; the footer renders
+ *  these verbatim, `data-wizard-step` indexes 0–4). */
+export const WALK_STEPS = ['Engine', 'Models', 'Node packs', 'LAN prep', 'First prompt']
+
+/** The LAN keys the walk collects as CANDIDATES (spec §2.4) — the honest
+ *  SECOND store (the launcher config `.start-config.json`, written through
+ *  §2.4's route, W-I1): never app settings. Task 7's step fills these;
+ *  task 8's exit is the only place they are written. */
+export type WalkLanKeys = { host?: string; port?: number; token?: boolean }
+
+/** The walk's CANDIDATE state — everything the walk collects, held in
+ *  memory for the whole walk (spec §3: "No keystroke-saves mid-walk … the
+ *  wizard holds CANDIDATE state in memory"). A crash or abandon mid-walk
+ *  leaves configuration untouched; skip persists nothing (D3); the exit
+ *  (task 8's buildExitWrite) is the ONLY place this becomes configuration. */
+export type WalkCandidate = {
+  /** The engine URL under designation — born from the settings prefill
+   *  (W-I5: the field agrees with its placeholder), edited freely, saved
+   *  only at the exit. */
+  comfyUrl: string
+  /** The URL a live Test answered REACHABLE against (§3's gate table:
+   *  "a live Test answered reachable … against the candidate URL").
+   *  Verification is earned per-URL — a candidate that is not exactly this
+   *  string is unverified. */
+  verifiedUrl: string | null
+  /** The two destination designations (D7 — the machinery above). */
+  modelsRoot: DestinationState
+  customNodesDir: DestinationState
+  /** Model overrides designated during the walk (the Models step's
+   *  ambiguous-candidate picks; task 5 writes these). */
+  overrides: Record<string, string>
+  /** The LAN keys collected as candidates (task 7) — the exit's second
+   *  store, never app settings (W-I1/W-M3). */
+  lanKeys: WalkLanKeys
+}
+
+/** The walk's starting state: the engine URL prefilled from settings, the
+ *  designations empty and unverified, nothing verified, nothing designated. */
+export function emptyWalkCandidate(comfyUrl: string): WalkCandidate {
+  return {
+    comfyUrl,
+    verifiedUrl: null,
+    modelsRoot: emptyDestination(),
+    customNodesDir: emptyDestination(),
+    overrides: {},
+    lanKeys: {},
+  }
+}
+
+/** A candidate URL edit — the exact seam the old wizard's per-keystroke
+ *  `setSettings` rode (this task kills those saves): it returns a NEW
+ *  candidate and touches nothing else. This module deliberately offers NO
+ *  settings-writing function — the walk state is the only thing an edit
+ *  touches (the journey spec's counting window proves the network half:
+ *  zero POST /api/lan/settings across the keystrokes). */
+export function setCandidateUrl(candidate: WalkCandidate, url: string): WalkCandidate {
+  if (url === candidate.comfyUrl) return candidate
+  return { ...candidate, comfyUrl: url }
+}
+
+/** Record a live Test's outcome (§2.1: "Test verifies, then the walk holds
+ *  the URL as a candidate"). Only a REACHABLE answer earns verification —
+ *  an unreachable answer is honest readout data but leaves the gate saying
+ *  "unverified engine — nothing to check against". */
+export function markEngineVerified(candidate: WalkCandidate, url: string, reachable: boolean): WalkCandidate {
+  return { ...candidate, verifiedUrl: reachable ? url : null }
+}
+
+/** Is the candidate verified? Exact-string truth: the verification belongs
+ *  to the URL it was earned against, so any edit re-opens the question. */
+export function isEngineVerified(candidate: WalkCandidate): boolean {
+  return candidate.verifiedUrl !== null && candidate.verifiedUrl === candidate.comfyUrl
+}
+
+/** The present decision (spec §4): neither done nor skipped — UNLESS the
+ *  server requested setup (`--setup`): the reset is server-owned and must
+ *  work from any terminal, any browser, any profile, so the flag overrides
+ *  the LOCAL latch (a shell flag cannot reach into localStorage). Task 9
+ *  wires the real flag; this predicate is the spine's single seam for it. */
+export function shouldPresent(latch: { latchDone: boolean; latchSkipped: boolean; serverSetupRequested: boolean }): boolean {
+  if (latch.serverSetupRequested) return true
+  return !latch.latchDone && !latch.latchSkipped
+}
+
+/** A step-gate answer (§2: each step ends in a verified state or an honest
+ *  refusal — never a silent maybe). `unverified-engine` is §2.1's honesty
+ *  class: a gate with no verified engine SAYS SO instead of inventing a
+ *  verdict. */
+export type StepGate =
+  | { verdict: 'verified' }
+  | { verdict: 'refused'; reason: string }
+  | { verdict: 'unverified-engine'; reason: string }
+
+/** The §2.1 copy, verbatim lead — the gates read this when the walk
+ *  continued unverified (the honest connect-later, stated where it bites). */
+export const UNVERIFIED_ENGINE_COPY =
+  'Unverified engine — nothing to check against. Run Test on the Engine step (continuing unverified stays allowed; this gate just will not invent a verdict).'
+
+/** The Engine step's gate (§3's table: "a live Test answered reachable …
+ *  against the candidate URL"). */
+export function engineGate(candidate: WalkCandidate): StepGate {
+  if (!candidate.comfyUrl.trim()) {
+    return { verdict: 'refused', reason: 'No engine address is designated yet — type the engine\'s URL.' }
+  }
+  if (isEngineVerified(candidate)) return { verdict: 'verified' }
+  return { verdict: 'unverified-engine', reason: UNVERIFIED_ENGINE_COPY }
+}
+
+/** The floor every engine-dependent gate reads first (§2.1: "the later
+ *  steps' verify gates read 'unverified engine — nothing to check against'
+ *  instead of inventing verdicts"). */
+function engineFloor(candidate: WalkCandidate): StepGate | null {
+  if (isEngineVerified(candidate)) return null
+  return { verdict: 'unverified-engine', reason: UNVERIFIED_ENGINE_COPY }
+}
+
+/** The Models step's gate: the engine floor first; each step's own criteria
+ *  extend its gate as its content lands (task 5 adds the rows' presence
+ *  truth and the models-root designation the fetch rows gate on). */
+export function modelsGate(candidate: WalkCandidate): StepGate {
+  const floor = engineFloor(candidate)
+  if (floor) return floor
+  return { verdict: 'verified' }
+}
+
+/** The Node packs step's gate (task 6 extends: the custom-nodes designation
+ *  and the install verifications). */
+export function packsGate(candidate: WalkCandidate): StepGate {
+  const floor = engineFloor(candidate)
+  if (floor) return floor
+  return { verdict: 'verified' }
+}
+
+/** The LAN prep step's gate. No engine floor by design: the posture is the
+ *  STUDIO server's, not the engine's (§3's table gates on the bind probe or
+ *  keep-current). Keep-current — no keys collected — is the pass §3 names
+ *  ("or the step was left at keep-current"): the fresh-clone path is one
+ *  click. Task 7's designation extends this gate with the probe verdict. */
+export function lanGate(candidate: WalkCandidate): StepGate {
+  void candidate
+  return { verdict: 'verified' }
+}
+
+/** The First prompt step's gate (task 8 extends: the cost preview's tier
+ *  verification the deliberate submit runs against). */
+export function promptGate(candidate: WalkCandidate): StepGate {
+  const floor = engineFloor(candidate)
+  if (floor) return floor
+  return { verdict: 'verified' }
 }

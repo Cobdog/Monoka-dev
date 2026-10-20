@@ -142,6 +142,97 @@ test('the custom-nodes prefill offers the configured folder or nothing (resolveN
   ok(walk.customNodesPrefill({ modelRoot: '/m', engine: { mode: 'external', checkoutPath: '', externalCustomNodesDir: '   ' } }) === '', 'a whitespace-only folder prefills EMPTY (never a padded path)')
 })
 
+test('typing in the address field never writes configuration — the candidate update is pure', () => {
+  console.log('wizard: the candidate spine (the per-keystroke saves die here, spec §3)')
+
+  // The walk starts from the settings prefill (W-I5: the field is born
+  // agreeing with its placeholder) with NOTHING verified.
+  const fresh = walk.emptyWalkCandidate('http://127.0.0.1:8188')
+  ok(fresh.comfyUrl === 'http://127.0.0.1:8188', 'the candidate starts from the settings prefill')
+  ok(fresh.verifiedUrl === null, 'a fresh candidate is unverified (nothing has answered yet)')
+
+  // THE ANTI-REGRESSION: a URL edit is a pure candidate-state change. The
+  // old wizard rode setSettings on every keystroke (one config save per
+  // character — the journey spec's counting window measured it); the walk
+  // holds the candidate in memory instead, and this module deliberately
+  // offers no settings-writing seam at all (the e2e journey proves the
+  // network half: zero POST /api/lan/settings across the keystrokes).
+  stubCheckPath({ exists: true, directory: true })
+  const typed = walk.setCandidateUrl(fresh, 'http://127.0.0.1:8190')
+  ok(typed !== fresh, 'the edit returns a NEW candidate (never mutates the walk state)')
+  ok(typed.comfyUrl === 'http://127.0.0.1:8190', 'the candidate carries the typed URL verbatim')
+  ok(fresh.comfyUrl === 'http://127.0.0.1:8188', 'the previous candidate is untouched (no shared-state write)')
+  ok(typed.modelsRoot === fresh.modelsRoot && typed.customNodesDir === fresh.customNodesDir, 'the designation slots ride unchanged (a URL edit is not a designation edit)')
+  ok(typed.verifiedUrl === null, 'the edit carries no verification (nothing answered for the new URL)')
+  ok(oracle.calls === 0, 'a URL edit consults no verification oracle (pure state update — nothing else it could touch)')
+
+  // Referential stability on a no-op edit: no spurious state churn.
+  ok(walk.setCandidateUrl(typed, 'http://127.0.0.1:8190') === typed, 'a no-op edit returns the same candidate')
+})
+
+test('shouldPresent ignores done/skipped while the server requests setup', () => {
+  console.log('wizard: the present gate (--setup overrides the local latch, spec §4 — feeds task 9)')
+
+  ok(walk.shouldPresent({ latchDone: false, latchSkipped: false, serverSetupRequested: false }) === true, 'a fresh latch presents')
+  ok(walk.shouldPresent({ latchDone: true, latchSkipped: false, serverSetupRequested: false }) === false, 'done keeps it closed')
+  ok(walk.shouldPresent({ latchDone: false, latchSkipped: true, serverSetupRequested: false }) === false, 'skipped keeps it closed (never a nag)')
+
+  // THE --setup OVERRIDE: the reset is server-owned — it must work from any
+  // terminal, any browser, any profile, so the flag overrides the LOCAL
+  // latch (a shell flag cannot reach into localStorage).
+  ok(walk.shouldPresent({ latchDone: true, latchSkipped: false, serverSetupRequested: true }) === true, 'the server setup request re-opens over a done latch')
+  ok(walk.shouldPresent({ latchDone: false, latchSkipped: true, serverSetupRequested: true }) === true, 'the server setup request re-opens over a skip latch')
+})
+
+test('a gate with no verified engine answers unverified, never a verdict (§2.1)', () => {
+  console.log('wizard: the honest gates')
+
+  const fresh = walk.emptyWalkCandidate('http://127.0.0.1:8188')
+
+  // The Engine step's own gate: an untested candidate is unverified — the
+  // honest refusal, never a verdict.
+  const engine = walk.engineGate(fresh)
+  ok(engine.verdict === 'unverified-engine', `an untested candidate is unverified (got ${engine.verdict})`)
+  ok(/nothing to check against/i.test(engine.reason ?? ''), `the refusal carries the §2.1 copy (got ${JSON.stringify(engine.reason)})`)
+
+  // An empty address: refused with a reason — still never verified.
+  const blank = walk.engineGate(walk.emptyWalkCandidate('   '))
+  ok(blank.verdict === 'refused' && typeof blank.reason === 'string' && blank.reason.length > 0, 'an empty address refuses with a reason (nothing designated)')
+
+  // THE §2.1 HONESTY over the later steps: a walk that continued without a
+  // verified engine gets the honest "unverified engine — nothing to check
+  // against" from EVERY engine-dependent gate — never an invented stack,
+  // pack, or prompt verdict.
+  const gates = [
+    ['models', walk.modelsGate(fresh)],
+    ['packs', walk.packsGate(fresh)],
+    ['prompt', walk.promptGate(fresh)],
+  ]
+  for (let i = 0; i < gates.length; i += 1) {
+    const name = gates[i][0]
+    const gate = gates[i][1]
+    ok(gate.verdict === 'unverified-engine', `the ${name} gate with no verified engine answers unverified (got ${gate.verdict})`)
+    ok(/nothing to check against/i.test(gate.reason ?? ''), `the ${name} gate's refusal carries the §2.1 copy`)
+  }
+
+  // Only a live Test answered REACHABLE against exactly the candidate flips
+  // the gates.
+  const tested = walk.markEngineVerified(fresh, 'http://127.0.0.1:8188', true)
+  ok(walk.engineGate(tested).verdict === 'verified', 'a reachable answer verifies the candidate')
+  ok(walk.modelsGate(tested).verdict === 'verified', 'the models gate opens on a verified engine')
+  ok(walk.packsGate(tested).verdict === 'verified', 'the packs gate opens on a verified engine')
+
+  // An unreachable answer is honest readout data but earns NO verification.
+  const dead = walk.markEngineVerified(fresh, 'http://127.0.0.1:8188', false)
+  ok(walk.engineGate(dead).verdict === 'unverified-engine', 'an unreachable answer leaves the gate unverified')
+
+  // Editing away from the verified URL re-opens the gate honestly: the
+  // verification belonged to THAT URL, not to the walk (earned per-URL).
+  const edited = walk.setCandidateUrl(tested, 'http://127.0.0.1:8190')
+  ok(walk.engineGate(edited).verdict === 'unverified-engine', 'a candidate edit re-opens the engine gate')
+  ok(walk.modelsGate(edited).verdict === 'unverified-engine', 'the models gate follows the candidate, not the last verdict')
+})
+
 test('suite summary', () => {
   console.log(`  wizard: ${passed} assertions passed`)
 })
