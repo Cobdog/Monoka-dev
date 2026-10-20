@@ -655,7 +655,7 @@ test('(a5) engineRecovery — a lost saved-url probe never clobbers a fresher ca
     const state = { connected: false, info: {}, infoUrl: null }
     const up = { [savedUrl]: false, [candidateUrl]: true }
     return {
-      calls, writes, up,
+      calls, writes, up, state,
       deps: {
         bridge: {
           getComfyStatus: async (url) => { calls.getComfyStatus.push(url); return { connected: up[url] === true, latencyMs: 1 } },
@@ -702,15 +702,50 @@ test('(a5) engineRecovery — a lost saved-url probe never clobbers a fresher ca
     eq(h.writes.setInfo[1].url, candidateUrl, 'the clear is recorded against its url too')
   }
 
-  // The connected pull that FAILS (the catch arm) is url-scoped by the same
-  // rule — its empty answers for its url alone.
+  // The connected pull that FAILS (the catch arm): the same-url case — with
+  // the store's info earned by THIS url, the failed pull's clear lands (the
+  // honest empty).
+  {
+    const h = makeHarness()
+    await recovery.runEngineCheck(h.deps, candidateUrl, 'manual') // earn it
+    h.deps.bridge.getObjectInfo = async () => { throw new Error('object_info refused') }
+    await recovery.runEngineCheck(h.deps, candidateUrl, 'manual') // the re-pull refuses
+    eq(h.writes.setInfo.length, 2, 'a failed pull of the info\'s own url still clears')
+    eq(h.writes.setInfo[1].info, {}, 'the failed pull\'s info is empty')
+    eq(h.writes.setInfo[1].url, candidateUrl, 'the failed pull\'s clear is url-scoped too')
+  }
+
+  // …and with NOTHING earned yet, a failed pull writes nothing: an empty
+  // store has nothing to degrade, and attributing the initial empty to a
+  // url would be a small lie (the strict rule: only clear what your url
+  // earned — the round-1 pin here claimed scoping while pinning the old
+  // unconditional attribution; r2 splits it honestly).
   {
     const h = makeHarness()
     h.deps.bridge.getObjectInfo = async () => { throw new Error('object_info refused') }
     await recovery.runEngineCheck(h.deps, candidateUrl, 'manual')
-    eq(h.writes.setInfo.length, 1, 'a failed pull records the honest empty')
-    eq(h.writes.setInfo[0].info, {}, 'the failed pull\'s info is empty')
-    eq(h.writes.setInfo[0].url, candidateUrl, 'the failed pull\'s clear is url-scoped too')
+    eq(h.writes.setInfo.length, 0, 'a failed pull over an unearned store writes nothing')
+    eq(h.state.infoUrl, null, 'and attributes nothing')
+  }
+
+  // (zo22z6o r2) The catch arm's CROSS-URL leg: candidate info EARNED, then
+  // a manual pull of the SAVED url that throws (the saved engine flapped
+  // back up but refuses object_info) — the failed pull's clear may answer
+  // for ITS url alone, so the candidate's earned info stands. This is the
+  // leg that distinguishes scoping from mere attribution: the old
+  // unconditional `setInfo({}, url)` wiped the store right here.
+  {
+    const h = makeHarness()
+    await recovery.runEngineCheck(h.deps, candidateUrl, 'manual')
+    eq(h.writes.setInfo.length, 1, 'the candidate pull lands')
+    h.up[savedUrl] = true
+    h.deps.bridge.getObjectInfo = async (url) => {
+      if (url === savedUrl) throw new Error('the saved engine refused object_info')
+      return { KSamplerSelect: {}, earnedBy: url }
+    }
+    await recovery.runEngineCheck(h.deps, savedUrl, 'manual')
+    eq(h.writes.setInfo.length, 1, 'a failed SAVED-url pull clears nothing (the info is not its url\'s)')
+    eq(h.state.info.earnedBy, candidateUrl, 'the candidate\'s earned info still stands')
   }
 })
 

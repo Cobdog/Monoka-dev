@@ -9,7 +9,9 @@
  * The flow, per probe (decisions in engineWatch.ts, wiring here):
  *   - probe status; log the junction; publish it.
  *   - CONNECTED:
- *     - boot/manual/recovered pull object_info (A-8: never per steady tick).
+ *     - boot/manual/recovered pull object_info (A-8: never per steady tick;
+ *       a FAILED pull's clear is URL-SCOPED like the lost arm's — a probe
+ *       degrades only info its own url earned).
  *     - RECOVERED re-syncs the model inventory WITH REFRESH, then records
  *       the outcome — the toast speaks only after the listing landed (or
  *       names the failure).
@@ -106,7 +108,11 @@ export async function runEngineCheck(deps: EngineRecoveryDeps, url: string, sour
         store.setInfo(await bridge.getObjectInfo(url), url)
         store.bumpInfoEpoch()
       } catch {
-        store.setInfo({}, url)
+        // (zo22z6o r2) URL-scoped like the lost arm: a failed pull of url X
+        // may only degrade info X earned — a boot/manual/recovered pull of
+        // the SAVED url that throws must not wipe the walk's
+        // candidate-earned registry either.
+        if (store.infoUrl() === url) store.setInfo({}, url)
       }
     }
     if (transition === 'recovered') {
