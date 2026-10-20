@@ -151,3 +151,13 @@ export function modelsStepRows(models: ModelFile[], report: { rows: H3StackSlotR
     }
   })
 }
+
+/** Whether the entry's fetch has landed, read from the CATALOG's own state
+ *  (review F1): 'placed' is the fetcher's install record, 'present' is
+ *  matching files already at the destination. This survives the mid-walk
+ *  scan's remount by construction — component-local `started` memory does
+ *  not — so the post-click render derives from here; `started` only bridges
+ *  the ≤2s gap between the click and the next catalog poll. */
+export function fetchLanded(view: ComponentFetchView): boolean {
+  return view.catalogState === 'placed' || view.catalogState === 'present'
+}

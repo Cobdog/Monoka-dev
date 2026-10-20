@@ -324,6 +324,9 @@ export function stackVerdictText(report: ReturnType<typeof h3StackReport>, mode:
     ready: false,
     text: missing.length > 0
       ? `Not ready to render — missing from the engine's registry: ${missing.join(', ')}. Each row below names the one file that fixes it.`
+      // Unreachable by construction: h3StackReady at a mode fails exactly
+      // when one of that mode's four lane members is unselected, so a false
+      // ready implies a non-empty `missing` — this fallback can never render.
       : 'Not ready to render — the text-lane stack could not be verified against this engine.',
   }
 }

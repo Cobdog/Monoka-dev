@@ -1156,10 +1156,14 @@ test('the reworked walk: typing never saves, the candidate Test verifies, the fo
  *  visible; the turbo row is the catalog's one-click lift, gated on a
  *  verified models-root designation (D7); the click IS the consent (W-I6);
  *  the engine's listing swap + the step's own Refresh flip the row to
- *  named-and-present with the honest name-suspected identity. A real
- *  HuggingFace download must never start — only /api/lan/fetch/start is
- *  route-sabotaged; the consent POST passes through to the studio server
- *  (the §3-sanctioned mid-walk ledger write, wiped by the settings restore). */
+ *  named-and-present with the honest name-suspected identity. Between the
+ *  click and that flip sits the review-F1 arm: weights at the CONFIGURED
+ *  models root while the engine still lists nothing — the catalog's own
+ *  'present' state must kill the fetch affordance and carry the re-scan/
+ *  restart truth across the scan's remount. A real HuggingFace download
+ *  must never start — only /api/lan/fetch/start is route-sabotaged; the
+ *  consent POST passes through to the studio server (the §3-sanctioned
+ *  mid-walk ledger write, wiped by the settings restore). */
 test('the Models step on a fresh engine: named truth, one verdict, the one-click fetch (3p14abm task 5)', async ({ page, request }) => {
   test.setTimeout(240_000)
   const problems: string[] = []
@@ -1173,6 +1177,10 @@ test('the Models step on a fresh engine: named truth, one verdict, the one-click
   mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
   mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
   const scratchRoot = makeScratchDir(path.join(os.tmpdir(), 'monoka-wizard-models-'))
+  // The studio's CONFIGURED models root — a second scratch dir, distinct
+  // from the walk's designation (scratchRoot): the catalog's presence check
+  // reads settings.modelRoot, so the review-F1 arm plants the weights HERE.
+  const configuredRoot = makeScratchDir(path.join(os.tmpdir(), 'monoka-wizard-models-'))
   const turboFile = 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'
   try {
     await expect.poll(async () => {
@@ -1184,6 +1192,7 @@ test('the Models step on a fresh engine: named truth, one verdict, the one-click
       ...originalSettings,
       comfyUrl: `http://127.0.0.1:${mirrorPort}`,
       engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
+      modelRoot: configuredRoot,
     } } })
     await resetSession(page)
 
@@ -1249,6 +1258,27 @@ test('the Models step on a fresh engine: named truth, one verdict, the one-click
     }, { timeout: 10_000 }).toBe('recorded')
     // The honest settling copy: the studio cannot make the engine see the
     // file — it names where weights land and what must happen next.
+    await expect(page.locator('[data-wizard-fetch-settling]')).toBeVisible()
+
+    // REVIEW F1, arm one — PLACED BUT NOT LISTED: the weights appear at the
+    // CONFIGURED models root (the entry's exact path; the engine still lists
+    // nothing). The catalog's own 'present' state arrives on its next poll —
+    // no refresh clicked — and must kill the fetch affordance (GONE, not
+    // disabled: a re-arm invites a second consent) while the settling truth
+    // holds.
+    const studioFile = 'minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors'
+    fs.mkdirSync(path.join(configuredRoot, 'loras'), { recursive: true })
+    fs.writeFileSync(path.join(configuredRoot, 'loras', studioFile), 'journey placeholder — never a real download\n')
+    await expect(turboFetch.locator('[data-wizard-fetch-start]')).toHaveCount(0, { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-fetch-settling]')).toBeVisible()
+
+    // REVIEW F1, arm two — THE REMOUNT: the refresh's scan unmounts this
+    // step and destroys every piece of component-local memory (the started
+    // map included). The catalog-derived landed state survives it by
+    // construction — the button stays gone and the truth stays visible.
+    await page.locator('[data-wizard-refresh]').click()
+    await expect(componentRows).toHaveCount(5, { timeout: 20_000 })
+    await expect(turboFetch.locator('[data-wizard-fetch-start]')).toHaveCount(0)
     await expect(page.locator('[data-wizard-fetch-settling]')).toBeVisible()
 
     // The engine "sees" the weight: pre-placed in the designated root's

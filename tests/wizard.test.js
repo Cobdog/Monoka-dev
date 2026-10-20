@@ -434,6 +434,31 @@ test('multi-candidate narration: picked names the others; ambiguous names the ca
   ok(rows[3].narration === 'clean', `a single-candidate row narrates clean (got ${JSON.stringify(rows[3].narration)})`)
 })
 
+test('fetchLanded derives from the catalog state, not component memory — placed/present landed, cached/absent not (review F1)', () => {
+  console.log('wizard: fetchLanded (the catalog-derived landed state)')
+  const view = (state) => ({
+    entryId: 'lightx2v-fl2v-turbo-8',
+    licenseSpdx: 'Apache-2.0',
+    catalogState: state,
+    inFlight: false,
+    destRoot: 'loras',
+    gated: false,
+  })
+
+  ok(typeof wizardModels.fetchLanded === 'function', 'fetchLanded exists on the view-builder module')
+  ok(wizardModels.fetchLanded(view('placed')) === true, "state 'placed' (the fetcher's own install record) has landed")
+  ok(wizardModels.fetchLanded(view('present')) === true, "state 'present' (matching files already at the destination) has landed")
+  ok(wizardModels.fetchLanded(view('cached')) === false, "state 'cached' (bytes in the cache, not yet placed) has NOT landed")
+  ok(wizardModels.fetchLanded(view('absent')) === false, "state 'absent' (nothing on disk) has NOT landed")
+
+  // The rows' views pass straight through: the same view the builder emits
+  // answers fetchLanded — the JSX derives from THIS, never component-local
+  // started memory (which a mid-walk scan remount destroys).
+  const report = h3.h3StackReport([], undefined, STOCK_CLASSES)
+  const landed = wizardModels.modelsStepRows([], report, [{ ...CATALOG_TURBO_8, state: 'placed' }], { designated: true })
+  ok(wizardModels.fetchLanded(landed[4].fetch) === true, 'a builder-emitted view with a placed entry reads as landed')
+})
+
 test('suite summary', () => {
   console.log(`  wizard: ${passed} assertions passed`)
 })

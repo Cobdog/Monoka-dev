@@ -35,7 +35,7 @@ import { useCanvasStore } from './store'
 import { CanvasSessionContext } from './sessionContext'
 import { WIZARD_REOPEN_EVENT } from './FirstRunNotice'
 import { DesignationField } from './DesignationField'
-import { DIGEST_INTERIM_COPY, modelsStepRows, type ComponentFetchView, type ModelsStepRow } from './wizardModels'
+import { DIGEST_INTERIM_COPY, fetchLanded, modelsStepRows, type ComponentFetchView, type ModelsStepRow } from './wizardModels'
 import {
   WALK_STEPS,
   emptyWalkCandidate,
@@ -489,6 +489,12 @@ function ComponentRow(props: {
   onFetch(): void
 }) {
   const { row, started, fetchError, designated, modelsRootValue, studioRoot } = props
+  // The post-click truth derives from the CATALOG (fetchLanded: placed/
+  // present), not component memory — a mid-walk scan remounts this step and
+  // destroys `started`, but the catalog state survives and the re-scan/
+  // restart truth with it (review F1). `started` only bridges the ≤2s gap
+  // between the click and the next catalog poll.
+  const fetched = row.fetch !== null && (started || fetchLanded(row.fetch))
   return <li className="canvas-wizard-component" data-wizard-model-row={row.label} data-row-present={row.present ? 'true' : 'false'} data-row-narration={row.narration}>
     <strong>{row.label}</strong>
     {row.present
@@ -496,7 +502,7 @@ function ComponentRow(props: {
       : <span className="canvas-wizard-warn" data-wizard-row-guide>{row.makeVisible}.</span>}
     {row.present && <span className="canvas-wizard-hint" data-wizard-row-identity>{row.identity}{row.interim ? ` — ${DIGEST_INTERIM_COPY}` : ''}</span>}
     {row.refusal && <p className="canvas-wizard-warn" data-wizard-row-refusal>{row.refusal}</p>}
-    {row.narration === 'picked' && <span className="canvas-wizard-hint" data-wizard-row-narration>Resolved to {basenameOf(row.name)} — {row.candidates.others.length} other candidate{row.candidates.others.length === 1 ? '' : 's'} matched; override in Settings if wrong.</span>}
+    {row.narration === 'picked' && <span className="canvas-wizard-hint" data-wizard-row-narration>Resolved to {basenameOf(row.name)} — {row.candidates.others.length} other candidate{row.candidates.others.length === 1 ? '' : 's'} matched{row.overrideSlot ? '; override in Settings if wrong.' : '.'}</span>}
     {row.narration === 'ambiguous' && row.overrideSlot && <div data-wizard-row-picks>
       <span className="canvas-wizard-hint">Several files match loosely — the studio picked {basenameOf(row.candidates.picked)}. Name the right one; the walk holds the pick and the exit persists it:</span>
       <div className="canvas-wizard-picks">
@@ -508,12 +514,12 @@ function ComponentRow(props: {
     {row.fetch
       ? <div className="canvas-wizard-fetch" data-wizard-fetch={row.fetch.entryId} data-fetch-gated={row.fetch.gated ? 'true' : 'false'}>
         <span className="canvas-wizard-hint" data-wizard-fetch-license>License {row.fetch.licenseSpdx}{row.fetch.licenseNote ? ` — ${row.fetch.licenseNote}` : ''}{row.fetch.sizeClass ? ` · ${row.fetch.sizeClass} download` : ''}.</span>
-        <button type="button" className="chip chip--accent canvas-chip" data-wizard-fetch-start disabled={row.fetch.gated || row.fetch.inFlight} onClick={props.onFetch}>
+        {!fetched && <button type="button" className="chip chip--accent canvas-chip" data-wizard-fetch-start disabled={row.fetch.gated || row.fetch.inFlight} onClick={props.onFetch}>
           {row.fetch.inFlight ? 'Fetching…' : 'Fetch and place — one click'}
-        </button>
+        </button>}
         {row.fetch.gated && <span className="canvas-wizard-warn" data-wizard-fetch-gated-copy>Verify a models root above first — fetches need a verified destination.</span>}
-        {started && !row.present && <span className="canvas-wizard-hint" data-wizard-fetch-settling>The fetch is underway or landed — weights place into {studioRoot}{row.fetch.destRoot ? `/${row.fetch.destRoot}` : ''}. The engine lists new weights only after its own folder re-scan or a restart (v0.34.0 serves no /refresh); refresh here once it sees the file.</span>}
-        {started && designated && modelsRootValue !== studioRoot && <span className="canvas-wizard-hint">Your designation ({modelsRootValue}) becomes the studio's models root when the walk completes — until then fetched weights land in the configured root.</span>}
+        {fetched && !row.present && <span className="canvas-wizard-hint" data-wizard-fetch-settling>The fetch is underway or landed — weights place into {studioRoot}{row.fetch.destRoot ? `/${row.fetch.destRoot}` : ''}. The engine lists new weights only after its own folder re-scan or a restart (v0.34.0 serves no /refresh); refresh here once it sees the file.</span>}
+        {fetched && designated && modelsRootValue !== studioRoot && <span className="canvas-wizard-hint">Your designation ({modelsRootValue}) becomes the studio's models root when the walk completes — until then fetched weights land in the configured root.</span>}
         {fetchError && <span className="canvas-wizard-warn" data-wizard-fetch-error>{fetchError}</span>}
       </div>
       : !row.present && <span className="canvas-wizard-hint" data-wizard-row-direct>No catalog row delivers this component — place it from its publisher where the engine reads it, then refresh.</span>}
