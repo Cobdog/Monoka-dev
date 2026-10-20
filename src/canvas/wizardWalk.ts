@@ -90,19 +90,38 @@ export function isDesignated(state: DestinationState): boolean {
   return state.verdict?.designated === true
 }
 
-/** Existence-verify a destination path: non-empty, absolute, then a stat
- *  through the fs/check route. The oracle is only asked for paths that pass
- *  the cheap checks (it answers for exactly one disk — see the header). */
+/** The absolute-path shape the walk accepts (review 2026-10-20, j63snid):
+ *  POSIX `/`-prefixed OR a Windows drive path (`C:\…`, `C:/…`) — the same
+ *  class node's path.isAbsolute answers (the settings POST's shape check
+ *  already accepts drive paths; the app supports Windows: the CI legs, the
+ *  C:\FFMPEG probe). A relative path stays refused — it would silently
+ *  resolve against the SERVER's working directory, not the engine's disk. */
+const DRIVE_PATH = /^[a-zA-Z]:[\\/]/
+
+function isAbsoluteShape(path: string): boolean {
+  return path.startsWith('/') || DRIVE_PATH.test(path)
+}
+
+/** The separator a path names for joining/prefixing: the drive root's own
+ *  slash when it is a drive path, backslash when one appears, else the
+ *  POSIX slash. Cosmetic only — both spellings are legal on Windows. */
+function separatorOf(path: string): string {
+  const drive = path.match(/^[a-zA-Z]:([\\/])/)
+  if (drive) return drive[1]
+  return path.includes('\\') ? '\\' : '/'
+}
+
+/** Existence-verify a destination path: non-empty, absolute (either
+ *  platform's shape), then a stat through the fs/check route. The oracle is
+ *  only asked for paths that pass the cheap checks (it answers for exactly
+ *  one disk — see the header). */
 export async function verifyDesignation(path: string): Promise<DestinationVerdict> {
   const trimmed = path.trim()
   if (!trimmed) {
     return { designated: false, exists: false, reason: 'No path is designated yet.' }
   }
-  // Absolute-only, matching the Settings surface's check: a relative path
-  // would silently resolve against the SERVER's working directory, not the
-  // engine's disk — refuse rather than guess.
-  if (!trimmed.startsWith('/')) {
-    return { designated: false, exists: false, reason: 'The path must be absolute (starting with /) so it names the same place on the engine\'s disk.' }
+  if (!isAbsoluteShape(trimmed)) {
+    return { designated: false, exists: false, reason: 'The path must be absolute (like /models or C:\\models) so it names the same place on the engine\'s disk.' }
   }
   try {
     const answer = await window.monoka.checkPath(trimmed)
@@ -128,10 +147,13 @@ export async function verifyDestination(state: DestinationState): Promise<Destin
   return { value: state.value, verdict }
 }
 
-/** Join a path segment POSIX-style (destination roots are absolute POSIX
- *  paths by the verify gate above). */
+/** Join a path segment with the directory's OWN separator (destination
+ *  roots are absolute by the verify gate above — POSIX or a Windows drive
+ *  path; the joined result reads like the path that was typed). */
 function joinPath(directory: string, segment: string): string {
-  return `${directory.replace(/\/+$/, '')}/${segment}`
+  const trimmed = directory.replace(/[\\/]+$/, '')
+  if (!trimmed) return segment
+  return `${trimmed}${separatorOf(trimmed)}${segment}`
 }
 
 /** The models-root prefill (D7 / plan decision 7). `modelRootIsDefault` is
@@ -142,7 +164,7 @@ function joinPath(directory: string, segment: string): string {
 export function modelsRootPrefill(settings: DesignationSettings, modelRootIsDefault: boolean): string {
   if (settings.engine.mode === 'managed') {
     const checkout = settings.engine.checkoutPath.trim()
-    if (checkout && checkout.startsWith('/')) return joinPath(checkout, 'models')
+    if (checkout && isAbsoluteShape(checkout)) return joinPath(checkout, 'models')
     return ''
   }
   const current = settings.modelRoot.trim()
@@ -719,11 +741,21 @@ export function applyExitWrite<T extends {
 export type PlacementDisclosure = { folder: string; files: string[] }
 
 export function placementDisclosure(args: { placedPaths: string[]; configuredRoot: string; designatedRoot: string }): PlacementDisclosure | null {
-  const configured = args.configuredRoot.trim().replace(/\/+$/, '')
-  const designated = args.designatedRoot.trim().replace(/\/+$/, '')
-  if (!configured || !designated || configured === designated) return null
-  const prefix = `${configured}/`
-  const files = args.placedPaths.filter((file) => file.startsWith(prefix))
+  const stripTrailing = (value: string) => value.trim().replace(/[\\/]+$/, '')
+  const configured = stripTrailing(args.configuredRoot)
+  const designated = stripTrailing(args.designatedRoot)
+  if (!configured || !designated) return null
+  // The same drive root in either spelling is the same root (the ledger may
+  // normalize slashes); POSIX roots compare exactly, as before.
+  if (configured === designated || (DRIVE_PATH.test(configured) && DRIVE_PATH.test(designated) && configured.replace(/\\/g, '/') === designated.replace(/\\/g, '/'))) return null
+  const sep = separatorOf(configured)
+  // A drive root matches its files in either separator spelling; a POSIX
+  // root keeps the exact single-prefix test (`\` is a legal FILENAME byte
+  // there — accepting it would read files that were never placed inside).
+  const prefixes = DRIVE_PATH.test(configured)
+    ? [`${configured}${sep}`, `${configured}${sep === '/' ? '\\' : '/'}`]
+    : [`${configured}${sep}`]
+  const files = args.placedPaths.filter((file) => prefixes.some((prefix) => file.startsWith(prefix)))
   if (files.length === 0) return null
   return { folder: configured, files }
 }

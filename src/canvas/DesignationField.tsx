@@ -56,7 +56,7 @@ export function DesignationField({ id, label, question, hint, placeholder, state
           id={id}
           data-wizard-designation-input={id}
           value={state.value}
-          placeholder={placeholder ?? '/absolute/path/to/directory'}
+          placeholder={placeholder ?? '/absolute/path/to/directory — or C:\\path\\to\\directory'}
           spellCheck={false}
           autoComplete="off"
           onChange={(event) => onChange(setDestinationValue(state, event.target.value))}

@@ -89,6 +89,32 @@ test('a designation verifies existence before acceptance', async () => {
   ok(oracle.calls === 1, 'the acceptance asked the oracle exactly once')
 })
 
+test('a Windows drive path verifies — the absolute-shape gate names the class both platforms accept (j63snid, review 2026-10-20)', async () => {
+  console.log('wizard: the Windows drive-path gate')
+
+  // The settings POST's shape check (node path.isAbsolute) already accepts
+  // drive paths; the walk's client gate must answer the same class — a
+  // C:\ designation is absolute on the engine's disk and verifies.
+  stubCheckPath({ exists: true, directory: true })
+  const drive = await walk.verifyDesignation('C:\\ComfyUI\\models')
+  ok(drive.designated === true && drive.exists === true, `a Windows drive designation verifies (got ${JSON.stringify(drive)})`)
+  ok(oracle.calls === 1, 'the drive path reached the existence oracle exactly once')
+
+  stubCheckPath({ exists: true, directory: true })
+  const driveSlash = await walk.verifyDesignation('d:/models')
+  ok(driveSlash.designated === true, 'a lowercase drive path with forward slashes verifies too')
+
+  // Genuinely relative paths stay refused — with copy true on BOTH
+  // platforms (the baked "starting with /" named POSIX only).
+  stubCheckPath({ exists: true, directory: true })
+  const relative = await walk.verifyDesignation('models\\diffusion_models')
+  ok(relative.designated === false, 'a relative Windows-style path is still refused')
+  ok(/absolute/i.test(relative.reason ?? ''), 'the refusal says the path must be absolute')
+  ok(/C:\\models/i.test(relative.reason ?? ''), `the refusal names the drive shape so a Windows user recognizes their case (got ${JSON.stringify(relative.reason)})`)
+  ok(!/starting with \//i.test(relative.reason ?? ''), `the POSIX-only "starting with /" wording is gone (got ${JSON.stringify(relative.reason)})`)
+  ok(oracle.calls === 0, 'the not-absolute refusal never asks the oracle')
+})
+
 test('the designation state walks empty → value → verified, and an edit clears a stale verdict', async () => {
   console.log('wizard: the state machine')
   const empty = walk.emptyDestination()
@@ -139,6 +165,14 @@ test('an existing user-set modelRoot prefills itself (re-running --setup never b
   // The managed arm keeps its own answer even over a user-set root — mode
   // decides the destination (the checkout is where the managed engine reads).
   ok(walk.modelsRootPrefill({ ...working, engine: { mode: 'managed', checkoutPath: '/opt/ComfyUI', externalCustomNodesDir: '' } }, false) === '/opt/ComfyUI/models', 'managed mode still prefills the checkout over a user-set root')
+})
+
+test('the managed-checkout prefill joins a drive checkout with its own separator (j63snid)', () => {
+  console.log('wizard: the managed prefill on a Windows checkout')
+  const managedWin = { modelRoot: '', engine: { mode: 'managed', checkoutPath: 'C:\\ComfyUI', externalCustomNodesDir: '' } }
+  ok(walk.modelsRootPrefill(managedWin, true) === 'C:\\ComfyUI\\models', `managed mode joins the checkout with its own separator (got ${JSON.stringify(walk.modelsRootPrefill(managedWin, true))})`)
+  const managedWinFwd = { modelRoot: '', engine: { mode: 'managed', checkoutPath: 'C:/ComfyUI', externalCustomNodesDir: '' } }
+  ok(walk.modelsRootPrefill(managedWinFwd, true) === 'C:/ComfyUI/models', 'a forward-slashed drive checkout joins with /')
 })
 
 test('the custom-nodes prefill offers the configured folder or nothing (resolveNodePackTarget answers none without it)', () => {
@@ -1097,6 +1131,27 @@ test('the placement disclosure: pre-exit fetches landed in the CONFIGURED root �
   // that may carry a trailing slash; the membership test must not care.
   const slashed = walk.placementDisclosure({ placedPaths: ['/configured/loras/t.safetensors'], configuredRoot: '/configured/', designatedRoot: '/engine/comfy/models' })
   ok(slashed !== null && slashed.files.length === 1, 'a trailing slash on the configured root does not hide the files')
+})
+
+test('the placement disclosure under drive roots — the prefix match is separator-aware (j63snid)', () => {
+  console.log('wizard: the placement seam on Windows roots')
+
+  const disclosure = walk.placementDisclosure({
+    placedPaths: ['C:\\models\\loras\\t.safetensors', 'D:\\elsewhere\\x.safetensors'],
+    configuredRoot: 'C:\\models',
+    designatedRoot: 'D:\\engine\\models',
+  })
+  ok(disclosure !== null && disclosure.folder === 'C:\\models', `the drive-root disclosure names the configured folder (got ${JSON.stringify(disclosure)})`)
+  assert.deepEqual(disclosure?.files, ['C:\\models\\loras\\t.safetensors'], 'only the files under the drive root, paths verbatim')
+
+  // The same root spelled the other way round hides too — a drive root
+  // compares separator-blind (the ledger may normalize slashes).
+  ok(walk.placementDisclosure({ placedPaths: ['C:\\models\\loras\\t.safetensors'], configuredRoot: 'C:\\models', designatedRoot: 'C:/models' }) === null,
+  'the same drive root in the other spelling — nothing to disclose')
+  // Trailing-slash tolerance, same as the POSIX arm: the drive root's own
+  // trailing separator must not hide the files.
+  const slashedFire = walk.placementDisclosure({ placedPaths: ['C:\\models\\loras\\t.safetensors'], configuredRoot: 'C:\\models\\', designatedRoot: 'D:\\engine\\models' })
+  ok(slashedFire !== null && slashedFire.files.length === 1, 'a trailing backslash on the configured drive root does not hide the files')
 })
 
 test('the cost preview speaks the seam the submit runs — tier, steps, the wait as a class', () => {
