@@ -104,7 +104,7 @@ export function useStudioSession() {
   const info = useSessionStore((state) => state.info)
   const ollamaModels = useSessionStore((state) => state.ollamaModels)
   const engineMode = useSessionStore((state) => state.settings?.engine.mode)
-  const { setSettings, setModels, setScanning, setChecking, setGpu, setOllamaModels, setLlm, setEngineRuntime, setExternalEngine } = useSessionStore.getState()
+  const { setSettings, setModelRootIsDefault, setModels, setScanning, setChecking, setGpu, setOllamaModels, setLlm, setEngineRuntime, setExternalEngine } = useSessionStore.getState()
 
   const scanModels = useCallback(async (nextSettings: AppSettings, options?: { refresh?: boolean }) => {
     setScanning(true)
@@ -161,16 +161,19 @@ export function useStudioSession() {
 
   useEffect(() => {
     void window.monoka.getSettings().then((loaded) => {
-      setSettings(loaded)
+      setSettings(loaded.settings)
+      // (task 5, D7) The flag rides the same read — the walk's models-root
+      // prefill is honest-or-empty on exactly this word.
+      setModelRootIsDefault(loaded.modelRootIsDefault)
       // (hbdzmoa) The boot reads are fail-tolerant: if the app server dies
       // inside the boot window (or the engine behind it is unreachable), the
       // inventory stays empty and the engine-watch loop re-pulls once it can.
       // The scan rejection used to escape this voided chain uncaught — an
       // unhandled renderer error for a read that is allowed to fail.
-      void Promise.all([scanModels(loaded), runEngineCheck(loaded.comfyUrl, 'boot').catch(() => undefined), refreshOllama(loaded), refreshLlm()])
+      void Promise.all([scanModels(loaded.settings), runEngineCheck(loaded.settings.comfyUrl, 'boot').catch(() => undefined), refreshOllama(loaded.settings), refreshLlm()])
         .catch(() => undefined)
     })
-  }, [refreshLlm, refreshOllama, scanModels, setSettings])
+  }, [refreshLlm, refreshOllama, scanModels, setModelRootIsDefault, setSettings])
 
   // (W16, perfect-state sweep 2026-09-27) Graph-compatibility self-record —
   // re-homed from the old shell (the effect died with src/App.tsx in the

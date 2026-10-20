@@ -1,8 +1,14 @@
 import http from 'node:http'
 import { spawn, type ChildProcess } from 'node:child_process'
 import type { AddressInfo } from 'node:net'
+import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
+// Scratch-dir ledger + teardown (the wave-4 hygiene contract — per-run
+// scratch never accumulates; the fresh-engine leg's designated models root
+// is a real dir the studio's fs/check must verify).
+import { makeScratchDir, removeAllScratchDirs } from '../tests/lib/scratch.cjs'
 
 /**
  * THE JOURNEY-SWEEP ACCEPTANCE WALK (task c4fifi5 — reality audit
@@ -83,20 +89,41 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
     await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
     const wizard = page.locator('[data-canvas-wizard]')
     await expect(wizard).toBeVisible({ timeout: 30_000 })
-    await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'true', { timeout: 20_000 })
-    // …and it STAYS visible after the registry fills (the vanishing bug).
-    await expect(page.locator('[data-canvas-bar-engine], [data-canvas-engine]').first()).toContainText('ready', { timeout: 20_000 })
+    // THE PILLS ARE QUIET WHILE THE WALK PRESENTS (spec §2.2 — the R1
+    // ruling: the header chip and the bar pill would contradict the step's
+    // own verdict, so they unrender for the whole presentation).
+    await expect(page.locator('[data-canvas-engine]')).toHaveCount(0, { timeout: 20_000 })
+    await expect(page.locator('[data-canvas-bar-engine]')).toHaveCount(0)
+    // The walk survives everything the engine does behind it — including
+    // the connect that fills the registry (the audit's vanishing bug).
     await expect(wizard).toBeVisible()
     await expect(wizard).toHaveAttribute('data-wizard-step', '0')
     await expect(wizard).toContainText('1 of 5 — Engine')
+    // The connect proof rides the walk's OWN Test (the candidate-scoped
+    // check — task 2's path): the pill that used to carry it is quiet while
+    // the walk presents.
+    await page.locator('[data-wizard-test]').click()
+    await expect(page.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
 
     // ---- STEP 2 (#9): steps 2-5 are completable (the audit's unreachable) -
     await page.locator('[data-wizard-next]').click()
     await expect(wizard).toHaveAttribute('data-wizard-step', '1')
     await expect(wizard).toContainText('2 of 5 — Models')
-    // The registry step reads the ENGINE's models (the mirror serves 15 files
-    // across 5 folders — a connected instance, not an empty one).
-    await expect(page.locator('[data-wizard-registry]')).toContainText('diffusion models', { timeout: 10_000 })
+    // The Models step names per-component truth (a connected instance: the
+    // mirror serves the full stack) — no counts anywhere. Five rows, the
+    // resolved names verbatim, and the connect itself is proven by rows
+    // reading present (the walk stayed up through it — F1 above).
+    const componentRows = page.locator('[data-wizard-components] [data-wizard-model-row]')
+    await expect(componentRows).toHaveCount(5, { timeout: 20_000 })
+    await expect(page.locator('[data-wizard-model-row="FL2VA"]')).toHaveAttribute('data-row-present', 'true')
+    await expect(page.locator('[data-wizard-model-row="FL2VA"] [data-wizard-row-name]')).toContainText('minimax_h3_fl2va_pruned_int8_convrot.safetensors')
+    await expect(page.locator('[data-wizard-model-row="Turbo 8"]')).toHaveAttribute('data-row-present', 'true')
+    // THE ONE VERDICT: the full text lane reads ready at mode 'text' — the
+    // turbo LoRA's presence is the only optional member, and the step says
+    // so exactly once (the old step text carried the report's turbo-gated
+    // verdict and contradicted itself).
+    await expect(page.locator('[data-wizard-verdict="ready"]')).toContainText('Ready to render', { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-verdict]')).toHaveCount(1)
     await page.locator('[data-wizard-next]').click()
     await expect(wizard).toHaveAttribute('data-wizard-step', '2')
     await expect(wizard).toContainText('3 of 5 — Node packs')
@@ -123,6 +150,10 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
     await expect(page.locator('[data-canvas-settings-dock]')).toHaveCount(0)
     await page.locator('[data-wizard-skip]').click()
     await expect(wizard).toHaveCount(0)
+    // The pills return when the walk closes — and they read the CONNECTED
+    // truth (quiet during presentation, not absent).
+    await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'true', { timeout: 20_000 })
+    await expect(page.locator('[data-canvas-bar-engine], [data-canvas-engine]').first()).toContainText('ready', { timeout: 20_000 })
 
     // ---- STEP 4: the first video render (feeds #3's graph check) ---------
     await page.locator('[data-canvas-prompt]').fill('a lighthouse over a black sea, slow push-in')
@@ -254,6 +285,7 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
  *  dropped image as the chain's FIRST FRAME (mode 'image'), generate, and
  *  read the graph the engine actually received. */
 test('the start-frame (image→video) lane wires the PreviewOverride pack node', async ({ page, request }) => {
+  await seedWalkDone(page)
   test.setTimeout(240_000)
   const problems: string[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
@@ -354,6 +386,17 @@ test('the start-frame (image→video) lane wires the PreviewOverride pack node',
   expect(mirrorLog).not.toContain('EADDRINUSE')
 })
 
+/** (task 5, §2.2) Seeds the walk's local latch DONE and the fallback notice
+ *  dismissed: these legs' subject is the render pipeline, not the walk — and
+ *  the walk owns the canvas moment while it presents (silencing the engine
+ *  pills those legs' boot-sync gates read). */
+async function seedWalkDone(page: Page) {
+  await page.addInitScript(() => {
+    localStorage.setItem('monoka.wizard', JSON.stringify({ step: 0, done: true, skipped: false }))
+    localStorage.setItem('monoka.first-run-dismissed', '1')
+  })
+}
+
 async function resetSession(page: Page) {
   await page.request.post('/api/lan/documents/session', { data: { openProjects: [], activeProject: null } })
   const listed = await page.request.get('/api/lan/jobs')
@@ -372,6 +415,7 @@ async function resetSession(page: Page) {
  *  better than the document). The server's job watcher owns observation and
  *  landing now; the fresh session + the palette recover the output. */
 test('a render that outlives its tab lands anyway — the fresh session and the palette recover it (gfv5h0g)', async ({ page, request }) => {
+  await seedWalkDone(page)
   test.setTimeout(240_000)
   const problems: string[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
@@ -674,6 +718,7 @@ test('generate never spawns workbench session nodes — the image+reference lane
  *  The proof reads the PNG the engine ACTUALLY received (IHDR of the
  *  uploaded bytes served back from the mirror's /view). */
 test('reference prep on the mirror: longest side to the resolution, aspect preserved, never cropped', async ({ page, request }) => {
+  await seedWalkDone(page)
   test.setTimeout(240_000)
   const problems: string[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
@@ -804,6 +849,7 @@ test('reference prep on the mirror: longest side to the resolution, aspect prese
  *  fail→resubmit pair), and the job record honestly notes previews are
  *  unavailable where the live-preview state renders. */
 test('a pack-absent fresh engine receives NO stock preview request and renders clean — no crash-retry detour (r3q1o49)', async ({ page, request }) => {
+  await seedWalkDone(page)
   test.setTimeout(240_000)
   const problems: string[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
@@ -896,6 +942,7 @@ test('a pack-absent fresh engine receives NO stock preview request and renders c
  *  (on the real engine the retry cannot re-crash, because it submits without
  *  preview_method), and the resubmission renders clean. */
 test('the preview-crash retry surfaces as a first-class named event, never a silent flash (r3q1o49)', async ({ page, request }) => {
+  await seedWalkDone(page)
   test.setTimeout(240_000)
   const problems: string[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
@@ -1014,7 +1061,11 @@ test('the reworked walk: typing never saves, the candidate Test verifies, the fo
     await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
     const wizard = page.locator('[data-canvas-wizard]')
     await expect(wizard).toBeVisible({ timeout: 30_000 })
-    await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'true', { timeout: 20_000 })
+    // The pills are quiet while the walk presents (§2.2/R1); the connected
+    // truth is proven by the step's own Test readout below (the NVIDIA
+    // device line — the same readout task 2 rides).
+    await expect(page.locator('[data-canvas-engine]')).toHaveCount(0, { timeout: 20_000 })
+    await expect(page.locator('[data-canvas-bar-engine]')).toHaveCount(0)
 
     // THE FIVE-STEP SPINE (the blessed order, spec §2).
     await expect(wizard).toContainText('1 of 5 — Engine')
@@ -1065,6 +1116,142 @@ test('the reworked walk: typing never saves, the candidate Test verifies, the fo
     await request.post('/api/lan/settings', { data: { settings: originalSettings } })
     await resetSession(page)
   } finally {
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
+})
+
+/** (3p14abm task 5) THE MODELS STEP ON A FRESH ENGINE: the walk against a
+ *  stock v0.34.0 with ZERO weights (the fresh-clone profile). Counts are
+ *  dead — five named rows, each missing WITH the one artifact to make
+ *  visible; the turbo row is the catalog's one-click lift, gated on a
+ *  verified models-root designation (D7); the click IS the consent (W-I6);
+ *  the engine's listing swap + the step's own Refresh flip the row to
+ *  named-and-present with the honest name-suspected identity. A real
+ *  HuggingFace download must never start — only /api/lan/fetch/start is
+ *  route-sabotaged; the consent POST passes through to the studio server
+ *  (the §3-sanctioned mid-walk ledger write, wiped by the settings restore). */
+test('the Models step on a fresh engine: named truth, one verdict, the one-click fetch (3p14abm task 5)', async ({ page, request }) => {
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const holder = http.createServer(() => undefined)
+  const mirrorPort = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+  await new Promise<void>((resolve) => holder.close(() => resolve()))
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', 'e2e/mirror/profiles/fresh-external.json'], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  const scratchRoot = makeScratchDir(path.join(os.tmpdir(), 'monoka-wizard-models-'))
+  const turboFile = 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+
+    const originalSettings = ((await (await request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
+    await request.post('/api/lan/settings', { data: { settings: {
+      ...originalSettings,
+      comfyUrl: `http://127.0.0.1:${mirrorPort}`,
+      engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
+    } } })
+    await resetSession(page)
+
+    await page.goto('/?canvas=1')
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready')
+    const wizard = page.locator('[data-canvas-wizard]')
+    await expect(wizard).toBeVisible({ timeout: 30_000 })
+    // The candidate Test verifies the engine first (task 2's path) — the
+    // Models step's gate stays unverified otherwise and invents NO verdict.
+    await page.locator('[data-wizard-test]').click()
+    await expect(page.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '1')
+
+    // NAMED TRUTH, NOT COUNTS: five rows on the empty registry, every one
+    // missing WITH its make-visible guidance — and the pills quiet while
+    // the step presents its own blocked verdict.
+    const componentRows = page.locator('[data-wizard-components] [data-wizard-model-row]')
+    await expect(componentRows).toHaveCount(5, { timeout: 20_000 })
+    await expect(page.locator('[data-canvas-engine]')).toHaveCount(0)
+    await expect(page.locator('[data-canvas-bar-engine]')).toHaveCount(0)
+    await expect(page.locator('[data-wizard-model-row="FL2VA"]')).toHaveAttribute('data-row-present', 'false')
+    await expect(page.locator('[data-wizard-model-row="FL2VA"] [data-wizard-row-guide]')).toContainText('fl2va')
+    await expect(page.locator('[data-wizard-model-row="Turbo 8"] [data-wizard-row-guide]')).toContainText('lightx2v')
+    // The fresh stack is blocked, and the verdict names the missing members.
+    await expect(page.locator('[data-wizard-verdict="blocked"]')).toContainText('FL2VA', { timeout: 10_000 })
+    // The catalog delivers exactly ONE component: the turbo row's one-click
+    // lift. The publisher-direct four say so per row (no silent nothing).
+    await expect(page.locator('[data-wizard-fetch="lightx2v-fl2v-turbo-8"]')).toHaveCount(1, { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-fetch-license]')).toContainText('Apache-2.0')
+    await expect(page.locator('[data-wizard-row-direct]')).toHaveCount(4)
+
+    // D7: the fetch is GATED until a models root verifies.
+    const turboFetch = page.locator('[data-wizard-fetch="lightx2v-fl2v-turbo-8"]')
+    await expect(turboFetch).toHaveAttribute('data-fetch-gated', 'true')
+    await expect(page.locator('[data-wizard-fetch-gated-copy]')).toBeVisible()
+
+    // Designate a scratch models root; the field verifies EXISTENCE (the
+    // studio's own fs/check against the real dir) and the gate opens.
+    await page.locator('[data-wizard-designation-input="wizard-models-root"]').fill(scratchRoot)
+    await page.locator('[data-wizard-designation-verify="wizard-models-root"]').click()
+    await expect(page.locator('[data-wizard-designation-verdict="wizard-models-root"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 10_000 })
+    await expect(turboFetch).toHaveAttribute('data-fetch-gated', 'false')
+    await expect(page.locator('[data-wizard-fetch-gated-copy]')).toHaveCount(0)
+
+    // W-I6: THE CLICK IS THE CONSENT — one click records the license
+    // acknowledgement (through to the real ledger) AND starts the fetch.
+    // The start itself is sabotaged: a real HuggingFace download must never
+    // begin from a journey.
+    let fetchStarts = 0
+    await page.route('**/api/lan/fetch/start', async (route) => {
+      fetchStarts += 1
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ started: true, id: 'lightx2v-fl2v-turbo-8' }) })
+    })
+    await page.locator('[data-wizard-fetch-start]').click()
+    // The click resolves on DISPATCH; the route fires when the request is
+    // actually issued (one consent round-trip later) — poll, never read.
+    await expect.poll(() => fetchStarts, { timeout: 10_000 })
+      .toBe(1)
+    await expect.poll(async () => {
+      const read = (await (await request.get('/api/lan/settings')).json()) as { settings: { fetch?: { consents?: Record<string, unknown> } } }
+      return read.settings.fetch?.consents?.['lightx2v-fl2v-turbo-8'] ? 'recorded' : null
+    }, { timeout: 10_000 }).toBe('recorded')
+    // The honest settling copy: the studio cannot make the engine see the
+    // file — it names where weights land and what must happen next.
+    await expect(page.locator('[data-wizard-fetch-settling]')).toBeVisible()
+
+    // The engine "sees" the weight: pre-placed in the designated root's
+    // loras folder, the mirror's listing swapped (the real engine's folder
+    // re-scan), then the STEP'S OWN refresh re-reads the engine.
+    fs.mkdirSync(path.join(scratchRoot, 'loras'), { recursive: true })
+    fs.writeFileSync(path.join(scratchRoot, 'loras', turboFile), 'journey placeholder — never a real download\n')
+    await mirrorJson(mirrorPort, '/__control', { method: 'POST', body: JSON.stringify({ modelListings: { loras: [turboFile] } }) })
+    await page.locator('[data-wizard-refresh]').click()
+    const turboRow = page.locator('[data-wizard-model-row="Turbo 8"]')
+    await expect(turboRow).toHaveAttribute('data-row-present', 'true', { timeout: 20_000 })
+    await expect(turboRow.locator('[data-wizard-row-name]')).toHaveText(turboFile)
+    // The identity vocabulary: no digest is served, so name-suspected —
+    // and the interim word stays reserved for an in-flight digest (always
+    // false today; to7xpa7).
+    await expect(turboRow.locator('[data-wizard-row-identity]')).toContainText('name-suspected')
+    await expect(turboRow.locator('[data-wizard-row-identity]')).not.toContainText('verifying bytes')
+    // …and the ONE verdict re-names what STILL blocks the fresh stack.
+    await expect(page.locator('[data-wizard-verdict="blocked"]')).toContainText('FL2VA', { timeout: 10_000 })
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+
+    // ---- teardown ----------------------------------------------------------
+    await request.post('/api/lan/settings', { data: { settings: originalSettings } })
+    await resetSession(page)
+  } finally {
+    removeAllScratchDirs()
     mirror.kill('SIGINT')
     await new Promise<void>((resolve) => {
       const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)

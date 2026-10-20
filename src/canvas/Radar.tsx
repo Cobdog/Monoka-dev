@@ -18,6 +18,10 @@ import { useCanvasStore } from './store'
 
 export function Radar() {
   const tiles = useCanvasStore((state) => state.tiles)
+  // (wizard rework §2.2, task 5) The wizard owns the verdict voice while it
+  // presents — the engine pill does not render beside it (pills agree or
+  // are quiet).
+  const wizardPresenting = useCanvasStore((state) => state.wizardPresenting)
   const chainJobs = useCanvasStore((state) => state.chainJobs)
   const projects = useCanvasStore((state) => state.projects)
   const documents = useCanvasStore((state) => state.documents)
@@ -98,7 +102,7 @@ export function Radar() {
       </button>
     )}
 
-    <button
+    {!wizardPresenting && <button
       type="button"
       className={`canvas-engine-chip ${engine.connected ? (engine.modelReady ? 'online' : 'degraded') : ''}`}
       data-canvas-engine
@@ -109,7 +113,7 @@ export function Radar() {
       style={engineToneVars((engine.connected ? (engine.modelReady ? 'online' : 'degraded') : 'offline') as ConnectionStatus)}
     >
       <span className="status-dot" /> {engine.connected ? (engine.modelReady ? 'H3 engine ready' : 'engine on · models missing') : 'engine offline'}
-    </button>
+    </button>}
 
     <div className="canvas-titlebar-spacer" />
     <button type="button" className="canvas-index-button" data-canvas-timeline-button onClick={() => useCanvasStore.getState().setTimelineOpen(true)} title="The timeline projection — the plan chronology + measured transitions (V)">

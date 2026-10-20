@@ -246,6 +246,11 @@ type CanvasState = {
   assets: CanvasAssetEntry[]
   /** Mirrored engine facts for honest UI states (EngineHost writes). */
   engine: { connected: boolean; modelReady: boolean }
+  /** (wizard rework §2.2, task 5) While the first-run walk presents, the
+   *  engine pills go QUIET — the wizard owns the verdict voice ("pills
+   *  agree or are quiet"; the R1 contradiction's second voice dies here).
+   *  The wizard's mount/unmount effect writes it. */
+  wizardPresenting: boolean
   chainJobs: Record<string, string>
   dismissedFailures: string[]
   droppedPreviews: Record<string, string>
@@ -450,6 +455,7 @@ type CanvasActions = {
    *  keep ALL takes resident (tier 1). */
   setChainLock(chainId: string, locked: boolean): Promise<void>
   setEngineFacts(facts: { connected: boolean; modelReady: boolean }): void
+  setWizardPresenting(presenting: boolean): void
   toast(tone: CanvasToast['tone'], text: string, action?: CanvasToast['action']): void
   dismissToast(id: number): void
   requestCamera(command: CameraCommand): void
@@ -771,6 +777,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     libraries: emptyLibraries,
     assets: [],
     engine: { connected: false, modelReady: false },
+    wizardPresenting: false,
     chainJobs: {},
     dismissedFailures: [],
     droppedPreviews: {},
@@ -2285,6 +2292,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     setOpEditor: (editor) => set({ opEditor: editor, endpointMenu: null, forkMenu: null, tileMenu: null }),
     setPoseRig: (panel) => set({ poseRig: panel, endpointMenu: null, forkMenu: null, tileMenu: null }),
     setEngineFacts: (facts) => set({ engine: facts }),
+    setWizardPresenting: (wizardPresenting) => set({ wizardPresenting }),
 
     toast: (tone, text, action) => {
       const id = toastSeq++

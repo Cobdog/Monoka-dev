@@ -163,6 +163,19 @@ export function customNodesPrefill(settings: DesignationSettings): string {
  *  these verbatim, `data-wizard-step` indexes 0–4). */
 export const WALK_STEPS = ['Engine', 'Models', 'Node packs', 'LAN prep', 'First prompt']
 
+/** (Task 5, spec §2.2/W-I6) The component → catalog-entry map behind the
+ *  Models step's one-click fetch rows. Keys are the stack report's row
+ *  labels; values ARE server/fetchCatalog.ts entry ids. Only the FL2V turbo
+ *  tier has a row today (D9, commit c9cc631) — the diffusion lane, the text
+ *  encoder, and both VAEs are publisher-direct, so they map to nothing and
+ *  their rows state that truth plus the make-visible guidance (never a
+ *  fetch promise over an empty catalog — R-19/F10). The view builder in
+ *  wizardModels.ts consumes this map beside the SERVED catalog: a mapped id
+ *  the catalog does not list offers no fetch either. */
+export const COMPONENT_FETCH_ROWS: Record<string, string> = {
+  'Turbo 8': 'lightx2v-fl2v-turbo-8',
+}
+
 /** The LAN keys the walk collects as CANDIDATES (spec §2.4) — the honest
  *  SECOND store (the launcher config `.start-config.json`, written through
  *  §2.4's route, W-I1): never app settings. Task 7's step fills these;
@@ -275,9 +288,11 @@ function engineFloor(candidate: WalkCandidate): StepGate | null {
   return { verdict: 'unverified-engine', reason: UNVERIFIED_ENGINE_COPY }
 }
 
-/** The Models step's gate: the engine floor first; each step's own criteria
- *  extend its gate as its content lands (task 5 adds the rows' presence
- *  truth and the models-root designation the fetch rows gate on). */
+/** The Models step's gate: the engine floor, and nothing more (task 5's
+ *  final shape). The rows' presence truth and the models-root designation
+ *  speak through the step's ONE verdict line and the fetch rows' own gate —
+ *  §2.2's one-verdict rule means a second gate verdict here would be a
+ *  second voice contradicting the first. */
 export function modelsGate(candidate: WalkCandidate): StepGate {
   const floor = engineFloor(candidate)
   if (floor) return floor

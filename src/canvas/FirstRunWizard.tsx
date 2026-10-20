@@ -23,25 +23,33 @@
  * one-motion write lands in task 8. The FirstRunNotice STAYS as the
  * fallback surface (its latch is keep-listed).
  */
-import { useContext, useEffect, useMemo, useState } from 'react'
-import { Check, HardDrive, RefreshCw, Sparkles, X } from 'lucide-react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { Check, RefreshCw, Sparkles, X } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { dbg } from '../lib/dbg'
-import { h3StackReport } from '../lib/h3Stack'
+import { basenameOf } from '../lib/modelSelection'
+import { h3StackReport, stackVerdictText, type StackVerdict } from '../lib/h3Stack'
+import type { AppSettings, FetchEntryStatus } from '../types'
 import { useSessionStore } from '../state/sessionStore'
 import { useCanvasStore } from './store'
 import { CanvasSessionContext } from './sessionContext'
 import { WIZARD_REOPEN_EVENT } from './FirstRunNotice'
+import { DesignationField } from './DesignationField'
+import { DIGEST_INTERIM_COPY, modelsStepRows, type ComponentFetchView, type ModelsStepRow } from './wizardModels'
 import {
   WALK_STEPS,
   emptyWalkCandidate,
+  isDesignated,
   lanGate,
   markEngineVerified,
   modelsGate,
+  modelsRootPrefill,
   packsGate,
   promptGate,
   setCandidateUrl,
+  setDestinationValue,
   shouldPresent,
+  type DestinationState,
   type StepGate,
   type WalkCandidate,
 } from './wizardWalk'
@@ -84,6 +92,7 @@ export function FirstRunWizard() {
   const models = useSessionStore((state) => state.models)
   const scanning = useSessionStore((state) => state.scanning)
   const settings = useSessionStore((state) => state.settings)
+  const modelRootIsDefault = useSessionStore((state) => state.modelRootIsDefault)
   const engineInfo = useSessionStore((state) => state.info)
   const submitPrompt = useCanvasStore((state) => state.submitPrompt)
   const setSettingsDock = useCanvasStore((state) => state.setSettingsDock)
@@ -93,11 +102,17 @@ export function FirstRunWizard() {
   // The walk's candidate state (spec §3): born from the settings prefill the
   // moment there are settings to prefill from, then held in memory for the
   // whole walk — NEVER a settings write (the exit's one motion is task 8's;
-  // skip persists nothing, D3).
+  // skip persists nothing, D3). The models root prefill is honest-or-empty
+  // on the SERVER'S flag (D7/W-C1): the shipped studio-home default never
+  // prefills as engine-visible.
   const [walk, setWalk] = useState<WalkCandidate | null>(null)
   useEffect(() => {
-    if (settings !== null && walk === null) setWalk(emptyWalkCandidate(settings.comfyUrl))
-  }, [settings, walk])
+    if (settings !== null && walk === null) {
+      const fresh = emptyWalkCandidate(settings.comfyUrl)
+      const prefill = modelsRootPrefill(settings, modelRootIsDefault)
+      setWalk(prefill ? { ...fresh, modelsRoot: setDestinationValue(fresh.modelsRoot, prefill) } : fresh)
+    }
+  }, [settings, walk, modelRootIsDefault])
   const [sawScan, setSawScan] = useState(false)
   useEffect(() => { if (scanning) setSawScan(true) }, [scanning])
 
@@ -153,13 +168,25 @@ export function FirstRunWizard() {
   }, [])
 
   // (R-29) The stack verdict folds the ENGINE side too: object_info says
-  // whether the instance actually serves the H3 core node classes.
-  const stack = useMemo(() => (settings ? h3StackReport(models, settings.modelOverrides?.monoka, engineInfo) : null), [models, settings, engineInfo])
+  // whether the instance actually serves the H3 core node classes. The
+  // walk's OWN ambiguous picks (walk.overrides, the Models step's one-click
+  // designations) merge over the settings layer so a pick re-resolves the
+  // row in place — they become configuration only at the exit (task 8).
+  const stack = useMemo(() => (settings ? h3StackReport(models, { ...settings.modelOverrides?.monoka, ...walk?.overrides }, engineInfo) : null), [models, settings, engineInfo, walk])
 
   // The present decision rides the spine's predicate: the local latch rules
   // until the server requests setup (spec §4) — task 9 wires that flag in;
   // until then `false` is exactly today's behavior, through the seam.
   const presenting = shouldPresent({ latchDone: state.done, latchSkipped: state.skipped, serverSetupRequested: false })
+  // (§2.2, task 5) While the walk PRESENTS, the engine pills go quiet — the
+  // wizard owns the verdict voice. The flag mirrors the rendered truth (the
+  // same guard the body uses), so a mid-walk scan — which unrenders the
+  // walk — unquiets the pills too.
+  const showsDialog = Boolean(context && sawScan && !scanning && presenting && settings && walk)
+  useEffect(() => {
+    useCanvasStore.getState().setWizardPresenting(showsDialog)
+    return () => useCanvasStore.getState().setWizardPresenting(false)
+  }, [showsDialog])
   // The session machinery (scan/check callbacks) rides the canvas session
   // context — the wizard lives on the canvas route where EngineHost provides
   if (!context || !sawScan || scanning || !presenting || !settings || !walk) return null
@@ -168,9 +195,27 @@ export function FirstRunWizard() {
   const close = () => patch({ done: true })
   const step = Math.min(state.step, STEP_TITLES.length - 1)
 
+  // The Models step's ambiguous pick: one click designates through the
+  // candidate's override slots — held in the WALK (nothing persists
+  // mid-walk, §3); the exit's write makes it configuration.
+  const pickOverride = (slot: string, name: string) => {
+    updateWalk((current) => ({ ...current, overrides: { ...current.overrides, [slot]: name } }))
+  }
+
   const body = (() => {
     if (step === 0) return <EngineStep candidate={walk} onCandidate={updateWalk} checkConnection={checkConnection} />
-    if (step === 1) return <RegistryStep models={models} scanning={scanning} stack={stack} gate={modelsGate(walk)} onRefresh={() => void scanModels(settings, { refresh: true })} />
+    if (step === 1) return <ModelsStep
+      models={models}
+      scanning={scanning}
+      stack={stack}
+      gate={modelsGate(walk)}
+      settings={settings}
+      modelRootIsDefault={modelRootIsDefault}
+      modelsRoot={walk.modelsRoot}
+      onModelsRoot={(next) => updateWalk((current) => ({ ...current, modelsRoot: next }))}
+      onOverridePick={pickOverride}
+      onRefresh={() => void scanModels(settings, { refresh: true })}
+    />
     if (step === 2) return <PacksStep summary={packSummary} gate={packsGate(walk)} onOpenPacks={() => setSettingsDock(true)} onOpenLibrary={() => setLibraryDock(true)} />
     if (step === 3) return <LanStep gate={lanGate(walk)} />
     return <PromptStep gate={promptGate(walk)} onDone={(prompt) => { patch({ done: true }); if (prompt.trim()) void submitPrompt(prompt, 'video') }} />
@@ -311,42 +356,168 @@ function EngineStep(props: {
   </div>
 }
 
-/** Step 2 — the registry readout + stack verdict (post-directive: NO path
- *  entry). The gate line rides above the content: with no verified engine
- *  the §2.1 honesty replaces the stack verdict (never an invented one).
- *  Task 5 reworks this slot to named per-component truth. */
-function RegistryStep(props: { models: ReturnType<typeof useSessionStore.getState>['models']; scanning: boolean; stack: ReturnType<typeof h3StackReport> | null; gate: StepGate; onRefresh(): void }) {
-  const { models, scanning, stack, gate, onRefresh } = props
-  const counts = useMemo(() => {
-    const byKind = new Map<string, number>()
-    for (const model of models) byKind.set(model.kind, (byKind.get(model.kind) ?? 0) + 1)
-    return [...byKind.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [models])
+/** Step 2 — the Models step (spec §2.2, task 5). The bare counts are dead:
+ *  every component renders NAMED truth (the resolved file verbatim, its
+ *  source layer, presence, the canonical hint, any refusal, the make-visible
+ *  guidance), the step carries ONE verdict in one voice (h3Stack's
+ *  stackVerdictText — the same predicate the engine chip reads, at the text
+ *  lane; the pills themselves are quiet while this step speaks), the
+ *  models-root designation rides Task 3's DesignationField seam, and a
+ *  component the fetch catalog can deliver renders a ONE-CLICK fetch row —
+ *  license verdict ON the row, the click IS the consent (W-I6). Identity
+ *  labels come from the closed vocabulary; the interim word waits for the
+ *  catalog wave's digests (always false today). */
+function ModelsStep(props: {
+  models: ReturnType<typeof useSessionStore.getState>['models']
+  scanning: boolean
+  stack: ReturnType<typeof h3StackReport> | null
+  gate: StepGate
+  settings: AppSettings
+  modelRootIsDefault: boolean
+  modelsRoot: DestinationState
+  onModelsRoot(next: DestinationState): void
+  onOverridePick(slot: string, name: string): void
+  onRefresh(): void
+}) {
+  const { models, scanning, stack, gate, settings, modelRootIsDefault, modelsRoot, onModelsRoot, onOverridePick, onRefresh } = props
+  // The served fetch catalog, polled while the step shows — the rows read
+  // live state (license, in-flight, present). OUR clicks are tracked
+  // separately: the fetched-but-not-yet-listed copy rides that truth.
+  const [catalog, setCatalog] = useState<FetchEntryStatus[] | null>(null)
+  const [started, setStarted] = useState<Record<string, boolean>>({})
+  const [fetchErrors, setFetchErrors] = useState<Record<string, string>>({})
+  const seenInFlight = useRef<Record<string, boolean>>({})
+  const settled = useRef<Record<string, boolean>>({})
+  const refreshRef = useRef(onRefresh)
+  useEffect(() => { refreshRef.current = onRefresh })
+  useEffect(() => {
+    let cancelled = false
+    const poll = () => window.monoka.listFetchCatalog().then((answer) => {
+      if (cancelled) return
+      setCatalog(answer.entries)
+      // The settled flip: an in-flight entry that stopped being in-flight
+      // has landed (or failed) — ONE engine re-scan so the row can flip
+      // named-and-present. Bounded once per entry; the refresh itself
+      // unmounts this step (the scanning guard) and the poll dies with it.
+      for (const entry of answer.entries) {
+        if (seenInFlight.current[entry.id] && entry.inFlight !== true && !settled.current[entry.id]) {
+          settled.current[entry.id] = true
+          refreshRef.current()
+        }
+        seenInFlight.current[entry.id] = entry.inFlight === true
+      }
+    }).catch(() => { if (!cancelled) setCatalog(null) })
+    void poll()
+    const timer = window.setInterval(() => { void poll() }, 2000)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [])
+
+  const designated = isDesignated(modelsRoot)
+  const rows = useMemo(
+    () => (stack ? modelsStepRows(models, stack, catalog ?? [], { designated, digestInFlight: false }) : []),
+    [models, stack, catalog, designated],
+  )
+
+  // W-I6: ONE click = the consent ledger record (the same ledger the
+  // library writes) + the start. Failures render on the row — never a
+  // silent success.
+  const startFetch = async (view: ComponentFetchView) => {
+    setFetchErrors((current) => ({ ...current, [view.entryId]: '' }))
+    try {
+      await window.monoka.setFetchConsent(view.entryId, true)
+      const answer = await window.monoka.startFetch(view.entryId)
+      if (!answer.started) throw new Error('The fetch could not be started.')
+      setStarted((current) => ({ ...current, [view.entryId]: true }))
+      dbg('wizard.models.fetch', { id: view.entryId, started: true })
+    } catch (error) {
+      setFetchErrors((current) => ({ ...current, [view.entryId]: error instanceof Error ? error.message : String(error) }))
+    }
+  }
+
+  const designationHint = modelsRoot.value
+    ? 'Prefilled from the walk\'s honest sources — verify it, or type the path your engine actually reads.'
+    : settings.engine.mode === 'managed'
+      ? 'No discoverable checkout — type the absolute path to the models directory the managed engine reads.'
+      : modelRootIsDefault
+        ? 'The shipped models root is the studio-home default, and it never prefills as engine-visible — fetched weights would land where an external engine never reads. Type the absolute path your engine reads; the studio verifies only disks it can see.'
+        : 'Type the absolute path to the models directory your engine reads — the studio can verify only disks it can see (same machine or shared storage).'
+
   return <div className="canvas-wizard-step" data-wizard-registry>
-    <p className="canvas-wizard-lede">The connected engine's own model registry — everything it can see, nothing it can't. Add weights where the engine reads them, then refresh.</p>
+    <p className="canvas-wizard-lede">The engine's own inventory, named per component. Every row states what is present, what is missing, and the one fix — the step carries one verdict.</p>
     <GateLine gate={gate} />
-    {counts.length === 0
-      ? <p className="canvas-wizard-warn" data-wizard-no-models><HardDrive size={13} /> The engine lists no models yet. You can fetch the validated stack through the library (next-next step's packs, or Settings), or place weights where the engine reads them and refresh.</p>
-      : <ul className="canvas-wizard-models" data-wizard-model-kinds>
-        {counts.map(([kind, count]) => <li key={kind} data-wizard-model-kind={kind}><strong>{kind.replace(/_/g, ' ')}</strong><span>{count}</span></li>)}
-      </ul>}
-    {gate.verdict === 'verified' && stack && <p className={`canvas-wizard-${stack.validated || stack.ready ? 'ok' : 'warn'}`} data-wizard-stack={stack.validated ? 'validated' : stack.ready ? 'custom' : 'incomplete'}>
-      {stack.validated
-        ? <><Check size={13} /> The validated official H3 stack is complete.</>
-        : stack.nodes.missing.length > 0
-          ? `The engine does not serve the studio's core render nodes (${stack.nodes.missing.map((item) => item.className).join(', ')}) — weights cannot fix this. Update ComfyUI (or install the missing node packs), restart the engine, then refresh.`
-          : stack.ready
-            ? 'Custom stack detected — every component the graphs load is present; output may differ from the validated set.'
-            : stack.rows.some((row) => row.refusal)
-              ? 'A component was found but refused (wrong class) — the row names the reason. Clear or fix the pick in Settings → Model overrides.'
-              : 'The H3 stack is incomplete — make the missing components visible to the engine (any name shape the pickers recognize resolves), then refresh.'}
-    </p>}
+    {gate.verdict === 'verified' && stack && <VerdictLine verdict={stackVerdictText(stack)} />}
+    <DesignationField
+      id="wizard-models-root"
+      label="Models root"
+      question="Where should fetched weights land so your engine sees them?"
+      hint={designationHint}
+      state={modelsRoot}
+      onChange={onModelsRoot}
+    />
+    <ul className="canvas-wizard-components" data-wizard-components>
+      {rows.map((row) => (
+        <ComponentRow key={row.label} row={row} started={started[row.fetch?.entryId ?? ''] === true} fetchError={row.fetch ? fetchErrors[row.fetch.entryId] : ''} designated={designated} modelsRootValue={modelsRoot.value} studioRoot={settings.modelRoot} onPick={onOverridePick} onFetch={() => { if (row.fetch) void startFetch(row.fetch) }} />
+      ))}
+    </ul>
     <div className="canvas-wizard-row">
       <Button variant="ghost" className="chip canvas-chip" size={12} data-wizard-refresh busy={scanning} icon={<RefreshCw size={12} />} onClick={onRefresh}>
         Refresh from the engine
       </Button>
     </div>
   </div>
+}
+
+/** The step's ONE verdict line — the text is h3Stack's narrator, the class
+ *  is its boolean. No second verdict is allowed on this step. */
+function VerdictLine({ verdict }: { verdict: StackVerdict }) {
+  return <p className={`canvas-wizard-${verdict.ready ? 'ok' : 'warn'}`} data-wizard-verdict={verdict.ready ? 'ready' : 'blocked'} data-ready={String(verdict.ready)}>
+    {verdict.ready ? <Check size={13} /> : null} {verdict.text}
+  </p>
+}
+
+/** One component row: the named truth, the identity label, the picked/
+ *  ambiguous narration with the one-click designate, and (when the catalog
+ *  delivers the component) the one-click fetch row. */
+function ComponentRow(props: {
+  row: ModelsStepRow
+  started: boolean
+  fetchError: string
+  designated: boolean
+  modelsRootValue: string
+  studioRoot: string
+  onPick(slot: string, name: string): void
+  onFetch(): void
+}) {
+  const { row, started, fetchError, designated, modelsRootValue, studioRoot } = props
+  return <li className="canvas-wizard-component" data-wizard-model-row={row.label} data-row-present={row.present ? 'true' : 'false'} data-row-narration={row.narration}>
+    <strong>{row.label}</strong>
+    {row.present
+      ? <span data-wizard-row-name>{basenameOf(row.name)}{row.source === 'override' ? ' — your pick' : ''}</span>
+      : <span className="canvas-wizard-warn" data-wizard-row-guide>{row.makeVisible}.</span>}
+    {row.present && <span className="canvas-wizard-hint" data-wizard-row-identity>{row.identity}{row.interim ? ` — ${DIGEST_INTERIM_COPY}` : ''}</span>}
+    {row.refusal && <p className="canvas-wizard-warn" data-wizard-row-refusal>{row.refusal}</p>}
+    {row.narration === 'picked' && <span className="canvas-wizard-hint" data-wizard-row-narration>Resolved to {basenameOf(row.name)} — {row.candidates.others.length} other candidate{row.candidates.others.length === 1 ? '' : 's'} matched; override in Settings if wrong.</span>}
+    {row.narration === 'ambiguous' && row.overrideSlot && <div data-wizard-row-picks>
+      <span className="canvas-wizard-hint">Several files match loosely — the studio picked {basenameOf(row.candidates.picked)}. Name the right one; the walk holds the pick and the exit persists it:</span>
+      <div className="canvas-wizard-picks">
+        {row.candidates.names.map((name) => (
+          <button key={name} type="button" className="chip canvas-chip" data-wizard-pick={name} disabled={name === row.candidates.picked} onClick={() => props.onPick(row.overrideSlot, name)}>{basenameOf(name)}</button>
+        ))}
+      </div>
+    </div>}
+    {row.fetch
+      ? <div className="canvas-wizard-fetch" data-wizard-fetch={row.fetch.entryId} data-fetch-gated={row.fetch.gated ? 'true' : 'false'}>
+        <span className="canvas-wizard-hint" data-wizard-fetch-license>License {row.fetch.licenseSpdx}{row.fetch.licenseNote ? ` — ${row.fetch.licenseNote}` : ''}{row.fetch.sizeClass ? ` · ${row.fetch.sizeClass} download` : ''}.</span>
+        <button type="button" className="chip chip--accent canvas-chip" data-wizard-fetch-start disabled={row.fetch.gated || row.fetch.inFlight} onClick={props.onFetch}>
+          {row.fetch.inFlight ? 'Fetching…' : 'Fetch and place — one click'}
+        </button>
+        {row.fetch.gated && <span className="canvas-wizard-warn" data-wizard-fetch-gated-copy>Verify a models root above first — fetches need a verified destination.</span>}
+        {started && !row.present && <span className="canvas-wizard-hint" data-wizard-fetch-settling>The fetch is underway or landed — weights place into {studioRoot}{row.fetch.destRoot ? `/${row.fetch.destRoot}` : ''}. The engine lists new weights only after its own folder re-scan or a restart (v0.34.0 serves no /refresh); refresh here once it sees the file.</span>}
+        {started && designated && modelsRootValue !== studioRoot && <span className="canvas-wizard-hint">Your designation ({modelsRootValue}) becomes the studio's models root when the walk completes — until then fetched weights land in the configured root.</span>}
+        {fetchError && <span className="canvas-wizard-warn" data-wizard-fetch-error>{fetchError}</span>}
+      </div>
+      : !row.present && <span className="canvas-wizard-hint" data-wizard-row-direct>No catalog row delivers this component — place it from its publisher where the engine reads it, then refresh.</span>}
+  </li>
 }
 
 /** Step 3 — the pack board summary (pre-validated chips; remediation is one click deep). Task 6 reworks this slot. */

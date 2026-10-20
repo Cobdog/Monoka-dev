@@ -387,6 +387,13 @@ export type FetchProgress = {
  *  audioVae on the audio-only ones — the old slot's meaning per family). */
 export type ModelOverrideSlots = { checkpoint?: string; fl2va?: string; ref2va?: string; merged?: string; textEncoder?: string; vae?: string; videoVae?: string; audioVae?: string; imageVae?: string }
 
+/** The settings GET's answer (server/core.ts): the normalized settings plus
+ *  the server-computed fresh-default flag. The flag is the SERVER'S word —
+ *  the shipped modelRoot default lives in server paths, so no client can
+ *  derive it (wizard rework D7: the walk's prefill is honest-or-empty on
+ *  exactly this flag). */
+export type SettingsRead = { settings: AppSettings; modelRootIsDefault: boolean }
+
 export type AppSettings = {
   comfyUrl: string
   ollamaUrl: string
@@ -846,7 +853,12 @@ export type DesktopApi = {
   getObjectInfo(url?: string): Promise<Record<string, { input: { required: Record<string, unknown[]> } }>>
   uploadImageData(url: string, data: string): Promise<UploadedFile>
   saveComfyOutputImage(url: string, file: { filename: string; subfolder?: string; type?: string }, outputDirectory: string): Promise<{ path: string; name: string }>
-  getSettings(): Promise<AppSettings>
+  /** The settings GET's read — the settings PLUS the server's own word on
+   *  fresh-default vs user-set (wizard rework §2.2/D7: the walk's models-root
+   *  prefill consumes the flag, and the client cannot compute it — the
+   *  shipped default lives in server paths). The route already answers this
+   *  shape; the bridge used to drop the flag. POST is unchanged. */
+  getSettings(): Promise<SettingsRead>
   getGpuTelemetry(): Promise<GpuTelemetry>
   /** Saves settings server-side. The answer carries the server-normalized
    *  settings plus any save-warnings (well-formed but nonexistent paths) —

@@ -9,6 +9,11 @@ import type { InventoryResyncRecord } from '../lib/engineWatch'
 
 export type SessionState = {
   settings: AppSettings | null
+  /** (task 5, D7) The settings GET's server-computed flag — fresh-default vs
+   *  user-set modelRoot. Initial TRUE fails safe: until the server's word
+   *  arrives the walk prefills EMPTY (never the studio-home default as
+   *  engine-visible — W-C1). */
+  modelRootIsDefault: boolean
   models: ModelFile[]
   scanning: boolean
   status: ComfyStatus
@@ -35,6 +40,7 @@ export type SessionState = {
    *  inventory that did not land is never claimed as re-synced. */
   engineWatch: { lostAt: number | null; recoveredAt: number | null; infoEpoch: number; resync: InventoryResyncRecord | null }
   setSettings(settings: AppSettings | null): void
+  setModelRootIsDefault(modelRootIsDefault: boolean): void
   setModels(models: ModelFile[]): void
   setScanning(scanning: boolean): void
   setStatus(status: ComfyStatus): void
@@ -53,6 +59,7 @@ export type SessionState = {
 
 export const useSessionStore = create<SessionState>()((set) => ({
   settings: null,
+  modelRootIsDefault: true,
   models: [],
   scanning: false,
   status: { connected: false, latencyMs: 0 },
@@ -65,6 +72,7 @@ export const useSessionStore = create<SessionState>()((set) => ({
   externalEngine: null,
   engineWatch: { lostAt: null, recoveredAt: null, infoEpoch: 0, resync: null },
   setSettings: (settings) => set({ settings }),
+  setModelRootIsDefault: (modelRootIsDefault) => set({ modelRootIsDefault }),
   setModels: (models) => set({ models }),
   setScanning: (scanning) => set({ scanning }),
   setStatus: (status) => set({ status }),

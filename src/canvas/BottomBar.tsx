@@ -26,6 +26,9 @@ export function BottomBar() {
   const documents = useCanvasStore((state) => state.documents)
   const activeProjectId = useCanvasStore((state) => state.activeProjectId)
   const engine = useCanvasStore((state) => state.engine)
+  // (wizard rework §2.2, task 5) The bar's engine pill goes quiet while the
+  // first-run walk presents — the wizard owns the verdict voice.
+  const wizardPresenting = useCanvasStore((state) => state.wizardPresenting)
   const select = useCanvasStore((state) => state.select)
   const setForkMenu = useCanvasStore((state) => state.setForkMenu)
   const submitPrompt = useCanvasStore((state) => state.submitPrompt)
@@ -144,7 +147,7 @@ export function BottomBar() {
             </ChipGroup>
             <input className="canvas-bar-prompt" data-canvas-bar-prompt value={barPrompt} placeholder={`Describe a ${barLane === 'image' ? 'still' : 'shot'} — Enter spawns it at the bar`} onChange={(event) => setBarPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); const text = barPrompt; setBarPrompt(''); void submit(text) } } } />
           </>}
-        <button
+        {!wizardPresenting && <button
           type="button"
           className={`canvas-bar-engine ${connection !== 'offline' ? connection : ''}`}
           data-canvas-bar-engine
@@ -153,7 +156,7 @@ export function BottomBar() {
           style={engineToneVars(connection)}
         >
           <span className="status-dot" /> {engine.connected ? (engine.modelReady ? 'H3 ready' : 'models missing') : 'engine offline'}
-        </button>
+        </button>}
       </>
     )}
 

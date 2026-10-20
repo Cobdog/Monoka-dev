@@ -198,32 +198,117 @@ export function teDimClassRefusal(familyKey: string, fileName: string): string |
   return `'${basenameOf(fileName)}' is a ${classId.toUpperCase()}-class text encoder (${picked.hiddenDim}-dim) — ${expectation.familyLabel} needs ${needed}, and a mismatched encoder crashes the render at the engine's text-embedding stage instead of failing cleanly. Make ${expectation.makeVisible} visible to the instance (or pick it for this family) instead.`
 }
 
+/** ---------------------------------------------------------------------------
+ *  THE SLOT LADDERS — one table, one derivation (wizard rework task 5,
+ *  2026-10-19). inferSelections' per-slot ladders moved here so the Models
+ *  step's candidate ENUMERATOR (slotCandidates) reads the exact same tiers
+ *  and fallback needles the picker reads: no second source of resolution
+ *  truth can drift (the h3Stack lesson — a parallel table is how present
+ *  models once read missing). The ladders' semantics are unchanged, tier
+ *  for tier, needle for needle.
+ * ------------------------------------------------------------------------- */
+/** The inference-resolvable slots — `merged` is override-only (inference
+ *  cannot see community merges), so it is not a slot with a ladder. */
+export type SelectionSlotKey = Exclude<keyof ModelSelection, 'merged'>
+
+export type SlotLadder = { kind: ModelKind; tiers: RegExp[]; fallbackNeedle?: string }
+
+const STATIC_SLOT_LADDERS: Record<Exclude<SelectionSlotKey, 'fl2vLora' | 'ref2vLora'>, SlotLadder> = {
+  fl2va: { kind: 'diffusion_models', tiers: [/^minimax_h3_fl2va_pruned_int8_convrot\.safetensors$/i, /^minimax_h3_fl2va.*\.safetensors$/i], fallbackNeedle: 'fl2va' },
+  ref2va: { kind: 'diffusion_models', tiers: [/^minimax_h3_ref2va_pruned_int8_convrot\.safetensors$/i, /^minimax_h3_ref2va.*\.safetensors$/i], fallbackNeedle: 'ref2va' },
+  textEncoder: { kind: 'text_encoders', tiers: [/^qwen3vl_32b_minimax_h3_nvfp4_awq\.safetensors$/i, /^qwen3vl_32b_minimax_h3.*\.safetensors$/i], fallbackNeedle: 'qwen3vl' },
+  videoVae: { kind: 'vae', tiers: [/^minimax_h3_video_vae_fp16\.safetensors$/i, /^minimax_h3_video_vae.*\.safetensors$/i], fallbackNeedle: 'video_vae' },
+  audioVae: { kind: 'vae', tiers: [/^minimax_h3_audio_vae_fp32\.safetensors$/i, /^minimax_h3_audio_vae.*\.safetensors$/i], fallbackNeedle: 'audio_vae' },
+  // The H3 preview TAE ships under two names: Kijai's original
+  // vae_approx/taeh3.safetensors (the fetchable catalog entry) and the
+  // preview-override pack's taeh3_decoder.safetensors. The engine's native
+  // previewer matches any vae_approx file starting with "taeh3" — this
+  // selection feeds the graph-side override node, so both names resolve
+  // (the explicit decoder name stays preferred).
+  previewVae: { kind: 'vae_approx', tiers: [/^taeh3_decoder\.safetensors$/i, /^taeh3\.safetensors$/i], fallbackNeedle: 'taeh3' },
+}
+
+function slotLadder(slot: SelectionSlotKey, turbo: 'off' | '4' | '8', family?: string): SlotLadder {
+  // Turbo inference is family-ranked through the optimization registry:
+  // official weights first, then lightx2v newest-first, with an explicit
+  // family choice (registry entry id) constraining the patterns to it.
+  // The registry owns these patterns — deliberately NO substring fallback
+  // here (a wrong-tier turbo pick is worse than none; the escape hatch is
+  // the explicit family pick or an override). Reference mode: the official
+  // 4-step LoRA (ComfyUI's template pair), or the 8-step fast tier when
+  // 8-step reference mode is requested — ranked larryvrh v4_step600_ema
+  // first per the 2026-09-15 bake-off (task muwufpp), lightx2v Ref2VA 8-step
+  // as the measured runner-up.
+  if (slot === 'fl2vLora') return { kind: 'loras', tiers: turboLoraPatterns('fl2v', turbo, family) }
+  if (slot === 'ref2vLora') return { kind: 'loras', tiers: turboLoraPatterns('ref2v', turbo, family) }
+  return STATIC_SLOT_LADDERS[slot]
+}
+
+/** The MODELS STEP'S ENUMERATOR (wizard rework task 5): every registry row a
+ *  slot's ladder would admit — tier matches unioned with the fallback
+ *  needle's matches — beside the ladder's own pick and HOW it was earned
+ *  ('anchored' = a tier regex; 'fallback' = the loose needle; '' = nothing
+ *  resolves). ONE derivation beside the ladders: `picked` runs the same
+ *  first-tier-with-a-match-else-needle walk inferSelections runs, so the
+ *  wizard's picked/ambiguous narration can never disagree with the picker
+ *  (pinned in tests/workflows.test.js, the no-drift invariant). */
+export type SlotCandidateSet = {
+  slot: SelectionSlotKey
+  kind: ModelKind
+  /** Every admitting registry name (verbatim subpaths), tier order first. */
+  names: string[]
+  /** The ladder's pick — exactly inferSelections' answer for this slot. */
+  picked: string
+  basis: 'anchored' | 'fallback' | ''
+}
+
+export function slotCandidates(files: ModelFile[], slot: SelectionSlotKey, turbo: 'off' | '4' | '8' = 'off', family?: string): SlotCandidateSet {
+  const ladder = slotLadder(slot, turbo, family)
+  const candidates = files.filter((file) => file.kind === ladder.kind)
+  const names: string[] = []
+  const admit = (test: (base: string) => boolean) => {
+    for (const file of candidates) {
+      const base = basenameOf(file.name)
+      if (test(base) && names.indexOf(file.name) === -1) names.push(file.name)
+    }
+  }
+  let picked = ''
+  let basis: 'anchored' | 'fallback' | '' = ''
+  for (const tier of ladder.tiers) {
+    admit((base) => tier.test(base))
+    if (!picked) {
+      const matches = candidates.filter((file) => tier.test(basenameOf(file.name)))
+      if (matches.length) {
+        picked = bestOfTier(matches).name
+        basis = 'anchored'
+      }
+    }
+  }
+  if (!picked && ladder.fallbackNeedle) {
+    const needle = ladder.fallbackNeedle.toLowerCase()
+    admit((base) => base.toLowerCase().includes(needle))
+    const matches = candidates.filter((file) => basenameOf(file.name).toLowerCase().includes(needle))
+    if (matches.length) {
+      picked = bestOfTier(matches).name
+      basis = 'fallback'
+    }
+  }
+  return { slot, kind: ladder.kind, names, picked, basis }
+}
+
 export function inferSelections(files: ModelFile[], turbo: 'off' | '4' | '8', family?: string): ModelSelection {
-  const find = (kind: ModelKind, expressions: RegExp | RegExp[], fallbackNeedle?: string) => findModel(files, kind, expressions, fallbackNeedle)
+  const pick = (slot: SelectionSlotKey) => {
+    const ladder = slotLadder(slot, turbo, family)
+    return findModel(files, ladder.kind, ladder.tiers, ladder.fallbackNeedle)
+  }
   return {
-    fl2va: find('diffusion_models', [/^minimax_h3_fl2va_pruned_int8_convrot\.safetensors$/i, /^minimax_h3_fl2va.*\.safetensors$/i], 'fl2va'),
-    ref2va: find('diffusion_models', [/^minimax_h3_ref2va_pruned_int8_convrot\.safetensors$/i, /^minimax_h3_ref2va.*\.safetensors$/i], 'ref2va'),
-    textEncoder: find('text_encoders', [/^qwen3vl_32b_minimax_h3_nvfp4_awq\.safetensors$/i, /^qwen3vl_32b_minimax_h3.*\.safetensors$/i], 'qwen3vl'),
-    videoVae: find('vae', [/^minimax_h3_video_vae_fp16\.safetensors$/i, /^minimax_h3_video_vae.*\.safetensors$/i], 'video_vae'),
-    audioVae: find('vae', [/^minimax_h3_audio_vae_fp32\.safetensors$/i, /^minimax_h3_audio_vae.*\.safetensors$/i], 'audio_vae'),
-    // The H3 preview TAE ships under two names: Kijai's original
-    // vae_approx/taeh3.safetensors (the fetchable catalog entry) and the
-    // preview-override pack's taeh3_decoder.safetensors. The engine's native
-    // previewer matches any vae_approx file starting with "taeh3" — this
-    // selection feeds the graph-side override node, so both names resolve
-    // (the explicit decoder name stays preferred).
-    previewVae: find('vae_approx', [/^taeh3_decoder\.safetensors$/i, /^taeh3\.safetensors$/i], 'taeh3'),
-    // Turbo inference is family-ranked through the optimization registry:
-    // official weights first, then lightx2v newest-first, with an explicit
-    // family choice (registry entry id) constraining the patterns to it.
-    // The registry owns these patterns — deliberately NO substring fallback
-    // here (a wrong-tier turbo pick is worse than none; the escape hatch is
-    // the explicit family pick or an override).
-    fl2vLora: find('loras', turboLoraPatterns('fl2v', turbo, family)),
-    // Reference mode: the official 4-step LoRA (ComfyUI's template pair), or
-    // the 8-step fast tier when 8-step reference mode is requested — ranked
-    // larryvrh v4_step600_ema first per the 2026-09-15 bake-off (task
-    // muwufpp), lightx2v Ref2VA 8-step as the measured runner-up.
-    ref2vLora: find('loras', turboLoraPatterns('ref2v', turbo, family)),
+    fl2va: pick('fl2va'),
+    ref2va: pick('ref2va'),
+    textEncoder: pick('textEncoder'),
+    videoVae: pick('videoVae'),
+    audioVae: pick('audioVae'),
+    previewVae: pick('previewVae'),
+    fl2vLora: pick('fl2vLora'),
+    ref2vLora: pick('ref2vLora'),
   }
 }

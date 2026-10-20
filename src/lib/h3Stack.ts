@@ -49,6 +49,14 @@ const stackSlots = [
 export type H3StackSlotRow = {
   label: string
   kind: ModelFile['kind']
+  /** The selection slot this row narrates (the ModelSelection key) — the
+   *  view builder reads it to enumerate candidates at the same slot. */
+  slot: 'fl2va' | 'textEncoder' | 'videoVae' | 'audioVae' | 'fl2vLora'
+  /** The tier the row's resolution lives at ('8' for the turbo row). */
+  tier: 'off' | '8'
+  /** The override seam the slot's ambiguous pick designates through; absent
+   *  for slots with no override (the turbo LoRA rows). */
+  overrideSlot?: ModelOverrideSlotName
   /** The canonical official artifact — DISPLAY guidance only, never a gate. */
   canonical: string
   /** The RESOLVED model the graph will load (registry name, verbatim); ''
@@ -247,6 +255,9 @@ export function h3StackReport(models: ModelFile[], overrides?: ModelOverrideSlot
     const row: H3StackSlotRow = {
       label: definition.label,
       kind: definition.kind,
+      slot: definition.field,
+      tier: definition.tier,
+      ...(definition.overrideSlot ? { overrideSlot: definition.overrideSlot } : {}),
       canonical: definition.canonical,
       selected,
       source: applied ? 'override' : selected ? 'inferred' : '',
@@ -264,6 +275,10 @@ export function h3StackReport(models: ModelFile[], overrides?: ModelOverrideSlot
   const missingNodes: MissingNodeClass[] = missingCoreNodeClasses(info, 'h3-video')
   return {
     rows,
+    // (task 5) The tier-'off' resolution itself — the SAME object the chip's
+    // predicate reads — so a narrator can call h3StackReady without
+    // re-deriving membership (one predicate, zero re-encodings).
+    selection: quality.selection,
     validated: rows.every((row) => row.present && row.isCanonical),
     // (R2) The report's ready is the ONE predicate over its own table
     // membership: the full stack (text lane + the Turbo-8 row's LoRA) with
@@ -272,6 +287,44 @@ export function h3StackReport(models: ModelFile[], overrides?: ModelOverrideSlot
     ready: h3StackReady({ selection: turbo.selection, mode: 'text', turbo: '8', info }) && rows.every((row) => !row.refusal),
     warnings: quality.resolution.warnings,
     nodes: { missing: missingNodes },
+  }
+}
+
+/** THE ONE VERDICT (wizard rework §2.2, task 5, 2026-10-19): the Models
+ *  step's single verdict line. It derives from the SAME predicate the
+ *  engine chip reads — h3StackReady at the text lane over the report's own
+ *  tier-'off' selection — never from the report's turbo-8-gated `ready`
+ *  (that vocabulary belongs to the pill; reusing it here is the R1
+ *  contradiction in reverse: a "ready" pill beside a body the step calls
+ *  incomplete). One voice, one line: missing node classes first (weights
+ *  cannot fix them), then the first refused row, then the missing component
+ *  NAMES; when every text-lane member resolves, "Ready to render." — even
+ *  with the turbo LoRA absent, because the fast tier is an upgrade, not a
+ *  requirement. The walk gates the text lane (the blessed default); the
+ *  reference lane's row lands with the catalog wave's row additions. */
+export type StackVerdict = { ready: boolean; text: string }
+
+export function stackVerdictText(report: ReturnType<typeof h3StackReport>, mode: GenerationMode = 'text'): StackVerdict {
+  const nodes = report.nodes.missing
+  if (nodes.length > 0) {
+    return { ready: false, text: `The engine does not serve the studio's core render nodes (${nodes.map((item) => item.className).join(', ')}) — weights cannot fix this. Update ComfyUI (or install the missing node packs), restart the engine, then refresh.` }
+  }
+  const refused = report.rows.find((row) => row.refusal)
+  if (refused && refused.refusal) {
+    return { ready: false, text: `${refused.label} was found but refused: ${refused.refusal}` }
+  }
+  const ready = h3StackReady({ selection: report.selection, mode })
+  if (ready) return { ready: true, text: 'Ready to render.' }
+  const laneSlot: 'fl2va' | 'ref2va' = mode === 'reference' ? 'ref2va' : 'fl2va'
+  const members: Array<H3StackSlotRow['slot'] | 'ref2va'> = [laneSlot, 'textEncoder', 'videoVae', 'audioVae']
+  const missing = report.rows
+    .filter((row) => members.indexOf(row.slot) !== -1 && !row.selected)
+    .map((row) => row.label)
+  return {
+    ready: false,
+    text: missing.length > 0
+      ? `Not ready to render — missing from the engine's registry: ${missing.join(', ')}. Each row below names the one file that fixes it.`
+      : 'Not ready to render — the text-lane stack could not be verified against this engine.',
   }
 }
 

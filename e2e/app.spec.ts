@@ -354,13 +354,16 @@ test('a crashing docked surface is contained by its error boundary without leaki
             const value = Reflect.get(target, property, receiver)
             if (property !== 'getSettings' || typeof value !== 'function') return value
             return async () => {
-              const settings = await (value as () => Promise<Record<string, unknown>>)()
-              const poisoned = { ...settings, testedComfyVersion: 'e2e-pinned' }
+              // (task 5) getSettings now hands over the SERVER'S read shape
+              // ({ settings, modelRootIsDefault } — the D7 seam) — the poison
+              // vehicle rides the INNER settings object the app stores.
+              const read = await (value as () => Promise<{ settings: Record<string, unknown> }>)()
+              const poisoned = { ...read.settings, testedComfyVersion: 'e2e-pinned' }
               Object.defineProperty(poisoned, 'promptContentLevel', {
                 enumerable: true,
                 get: () => { throw new Error('settings.promptContentLevel render failed: moonlit qzxveldra umbrella merchants waltzing') },
               })
-              return poisoned
+              return { ...read, settings: poisoned }
             }
           },
         })
@@ -776,7 +779,9 @@ test('first-run guidance (R-16): the wizard owns the journey; the notice is the 
   // Resumable: step through engine → models → packs (each step persists).
   await wizard.locator('[data-wizard-next]').click()
   await expect(wizard).toHaveAttribute('data-wizard-step', '1')
-  await expect(page.locator('[data-wizard-no-models]')).toBeVisible()
+  // (task 5) The Models step names per-component truth — five rows, each
+  // missing WITH its make-visible guidance (offline engine, empty registry).
+  await expect(page.locator('[data-wizard-components] [data-wizard-model-row]')).toHaveCount(5)
   await wizard.locator('[data-wizard-next]').click()
   await expect(wizard).toHaveAttribute('data-wizard-step', '2')
   // Back works; the final step takes a prompt (skipped here — the skip path
@@ -1257,6 +1262,13 @@ test('--color-status-ok is defined and drives the Radar engine chip online tone;
     }
   })
 
+  // (wizard rework task 5, §2.2) The walk owns the moment while it presents
+  // and silences the engine pills — this leg's subject IS the chip's tone,
+  // so the walk's latch is seeded done and the notice dismissed.
+  await page.addInitScript(() => {
+    localStorage.setItem('monoka.wizard', JSON.stringify({ step: 0, done: true, skipped: false }))
+    localStorage.setItem('monoka.first-run-dismissed', '1')
+  })
   const originalSettings = ((await (await page.request.get('/api/lan/settings')).json()) as { settings: Record<string, unknown> }).settings
   // Engine-connected boots would auto-resume stale queued jobs against the
   // fake engine (shared-home accumulation) — cancel them through the app's

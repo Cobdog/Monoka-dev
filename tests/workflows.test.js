@@ -2412,3 +2412,64 @@ test('the lightx2v fetch rows (D9): the tier copy names the fetch through one se
   const pdd = h3StackModule.turboTierStates(official8, 'text', 'turbo.pdd-fl2va-8')
   assert.ok(pdd['8'].remediation.includes('alibaba-pai') && !pdd['8'].remediation.includes('lightx2v-fl2v'), 'an explicit family\'s remediation stays THAT family\'s truth (got: ' + pdd['8'].remediation + ')')
 })
+
+// ---------------------------------------------------------------------------
+// THE NO-DRIFT INVARIANT (wizard rework task 5, 2026-10-19): slotCandidates
+// is the ENUMERATOR beside the ladders — it exists so the wizard's Models
+// step can narrate "resolved to X, N others matched" without a SECOND
+// source of resolution truth. Its pick must therefore BE inferSelections'
+// pick for the same slot/tier/family, always — the narration can never
+// disagree with the picker.
+// ---------------------------------------------------------------------------
+test('slotCandidates agrees with the ladder pick across every slot, tier, family (wizard task 5 no-drift)', () => {
+  const { slotCandidates } = load('src/lib/modelSelection.ts')
+  const m = (name, kind) => ({ name, kind, bytes: 4096 })
+  const fixtures = [
+    [],
+    [ // the official lane, complete
+      m('H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'diffusion_models'),
+      m('qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', 'text_encoders'),
+      m('minimax_h3_video_vae_fp16.safetensors', 'vae'),
+      m('minimax_h3_audio_vae_fp32.safetensors', 'vae'),
+      m('minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors', 'loras'),
+      m('vae_approx/taeh3.safetensors', 'vae_approx'),
+    ],
+    [ // the ambiguous world: loose fallback candidates only
+      m('H3/ssd/minimax_h3_fl2va_fp8.safetensors', 'diffusion_models'),
+      m('H3/ssd/someother_dit.safetensors', 'diffusion_models'),
+      m('qwen3vl_4b_small.safetensors', 'text_encoders'),
+      m('qwen3vl_8b_awesome.safetensors', 'text_encoders'),
+      m('thing_video_vae_repack.safetensors', 'vae'),
+      m('lightx2v_i2v_480p_cfg_1.5_distill_lora_rank64.safetensors', 'loras'),
+      m('lightx2v_i2v_480p_cfg_1.5_distill_lora_rank32.safetensors', 'loras'),
+    ],
+    [ // subpaths + renamed quants (R-12's world)
+      m('H3/sub/dir/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'diffusion_models'),
+      m('deep/nested/qwen3vl_32b_renamed_quant.safetensors', 'text_encoders'),
+      m('vae/minimax_h3_video_vae_fp16.safetensors', 'vae'),
+      m('vae/minimax_h3_audio_vae_fp32.safetensors', 'vae'),
+    ],
+  ]
+  const slots = ['fl2va', 'ref2va', 'textEncoder', 'videoVae', 'audioVae', 'previewVae', 'fl2vLora', 'ref2vLora']
+  let checked = 0
+  for (let fi = 0; fi < fixtures.length; fi += 1) {
+    const files = fixtures[fi]
+    for (const slot of slots) {
+      for (const turbo of ['off', '4', '8']) {
+        for (const family of [undefined, 'lightx2v', 'turbo.pdd-fl2va-8']) {
+          const enumerated = slotCandidates(files, slot, turbo, family)
+          const picked = inferSelections(files, turbo, family)[slot]
+          assert.equal(enumerated.picked, picked, `fixture ${fi} slot ${slot} turbo ${turbo} family ${family}: the enumeration's pick drifts from the ladder's`)
+          if (picked) {
+            assert.ok(enumerated.names.includes(picked), `fixture ${fi} slot ${slot}: the pick enumerates among its own candidates`)
+            assert.ok(enumerated.basis !== '', `fixture ${fi} slot ${slot}: a pick carries its basis`)
+          } else {
+            assert.equal(enumerated.basis, '', `fixture ${fi} slot ${slot}: no pick carries no basis`)
+          }
+          checked += 1
+        }
+      }
+    }
+  }
+  assert.ok(checked >= 288, `the matrix ran (${checked} slot/tier/family/fixture combinations)`)
+})

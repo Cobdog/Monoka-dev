@@ -1,0 +1,18 @@
+{
+  "id": "fresh-external",
+  "label": "Fresh clone, zero weights",
+  "description": "Wizard-rework task 5 (2026-10-19) — the fresh-clone engine the Models step must guide: a stock ComfyUI v0.34.0 (the captured object-info fixture serves the stock H3 core classes automatically) with ZERO weights visible and NO node packs. Every component row reads missing-with-guidance and the turbo fetch offer is the only lift.",
+  "systemStats": {
+    "system": { "comfyui_version": "v0.34.0", "python_version": "3.12.3", "os": "linux" },
+    "devices": [{ "name": "NVIDIA GeForce RTX 4090", "type": "cuda", "index": 0, "vram_total": 25757220864, "vram_free": 24000000000, "torch_version": "2.8.0+cu128" }]
+  },
+  "objectInfoExtras": {},
+  "modelListings": {
+    "diffusion_models": [],
+    "text_encoders": [],
+    "vae": [],
+    "loras": []
+  },
+  "customNodeDirs": [],
+  "render": { "steps": 10, "stepDelayMs": 420, "outputKind": "video", "emitBinaryPreviews": true }
+}

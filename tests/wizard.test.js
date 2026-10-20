@@ -30,6 +30,12 @@ function ok(condition, label) {
 // window.monoka.checkPath at call time and the stub mutates under it.
 const oracle = { calls: 0, checkPath: async () => ({ exists: false }) }
 const walk = loadTs('src/canvas/wizardWalk.ts', { window: { monoka: oracle } })
+// Task 5 (the Models step): the row derivations + the one-verdict narrator —
+// the stack report and the selection ladders load through the same harness
+// (the chain is VM-proven in tests/workflows.test.js).
+const h3 = loadTs('src/lib/h3Stack.ts', { window: { monoka: oracle } })
+const selection = loadTs('src/lib/modelSelection.ts', { window: { monoka: oracle } })
+const wizardModels = loadTs('src/canvas/wizardModels.ts', { window: { monoka: oracle } })
 
 function stubCheckPath(answer) {
   oracle.calls = 0
@@ -231,6 +237,199 @@ test('a gate with no verified engine answers unverified, never a verdict (§2.1)
   const edited = walk.setCandidateUrl(tested, 'http://127.0.0.1:8190')
   ok(walk.engineGate(edited).verdict === 'unverified-engine', 'a candidate edit re-opens the engine gate')
   ok(walk.modelsGate(edited).verdict === 'unverified-engine', 'the models gate follows the candidate, not the last verdict')
+})
+
+// ---------------------------------------------------------------------------
+// TASK 5 — the Models step (spec §2.2): named per-component truth, ONE
+// verdict in one voice, one-click fetch rows, the closed identity vocabulary,
+// the picked/ambiguous narration. The step's VIEW BUILDER is pure
+// (src/canvas/wizardModels.ts) so these pin the exact output the JSX renders.
+// ---------------------------------------------------------------------------
+
+const M = (name, kind) => ({ name, kind, bytes: 4096 })
+// The stock core render classes — an engine that serves them (weights are
+// the only question; the verdict's node-class arm stays green).
+const STOCK_CLASSES = {
+  MiniMaxH3ImageToVideo: { input: { required: {} } },
+  MiniMaxH3ReferenceToVideo: { input: { required: {} } },
+  KSamplerSelect: { input: { required: {} } },
+  SamplerCustomAdvanced: { input: { required: {} } },
+}
+// The official four-file text lane — NO turbo LoRA. The R1 fixture: the old
+// step's count + verdict pair read "incomplete" beside a stack the graph
+// could actually run.
+const LANE_FILES = [
+  M('H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'diffusion_models'),
+  M('qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', 'text_encoders'),
+  M('minimax_h3_video_vae_fp16.safetensors', 'vae'),
+  M('minimax_h3_audio_vae_fp32.safetensors', 'vae'),
+]
+// The catalog row D9 landed (server/fetchCatalog.ts, commit c9cc631) — the
+// view builder reads this SHAPE from the served catalog (FetchEntryStatus).
+const CATALOG_TURBO_8 = {
+  id: 'lightx2v-fl2v-turbo-8',
+  name: 'lightx2v FL2V turbo 8-step LoRA',
+  licenseSpdx: 'Apache-2.0',
+  licenseNote: 'upstream ModelTC lightx2v; repackaged for the H3 FL2V lane',
+  sizeClass: 'medium',
+  destination: { kind: 'model-root', root: 'loras' },
+  state: 'absent',
+  inFlight: false,
+}
+
+test('every component renders named truth — counts alone never render (§2.2)', () => {
+  console.log('wizard: the Models step — named truth')
+  const report = h3.h3StackReport(LANE_FILES, undefined, STOCK_CLASSES)
+  const rows = wizardModels.modelsStepRows(LANE_FILES, report, [], { designated: true })
+
+  ok(rows.length === 5, `five component rows render (got ${rows.length})`)
+  ok(rows.map((row) => row.label).join('|') === 'FL2VA|Text encoder|Video VAE|Audio VAE|Turbo 8', 'the rows carry the five component labels in stack order')
+
+  // A present row names the RESOLVED file — registry subpath verbatim, the
+  // exact string the graph loader accepts — with its source layer.
+  const fl2va = rows[0]
+  ok(fl2va.name === 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', `a present row names the resolved file verbatim (got ${JSON.stringify(fl2va.name)})`)
+  ok(fl2va.present === true, 'the present row states presence truth')
+  ok(fl2va.source === 'inferred', `the row attributes its layer (got ${JSON.stringify(fl2va.source)})`)
+  ok(fl2va.isCanonical === true, 'the official artifact is named as canonical (display guidance, not a gate)')
+
+  // A missing row states absence + ONE truthful remediation (what naming
+  // makes it visible) — never a bare count.
+  const turbo = rows[4]
+  ok(turbo.name === '' && turbo.present === false, 'the missing row states its absence')
+  ok(/turbo/i.test(turbo.makeVisible), `the missing row carries its make-visible guidance (got ${JSON.stringify(turbo.makeVisible)})`)
+  ok(turbo.refusal === '', 'an absent component owes no refusal (absence is not a refusal)')
+  ok(rows.every((row) => typeof row.name === 'string'), 'every row carries string truth (name or empty) — the bare-count shape is dead')
+})
+
+test('ONE verdict in one voice — a text-lane-complete stack reads Ready to render with no incomplete wording (R1)', () => {
+  console.log('wizard: the one verdict')
+  const report = h3.h3StackReport(LANE_FILES, undefined, STOCK_CLASSES)
+
+  // The report's own `ready` stays turbo-8-gated — that verdict belongs to
+  // the engine pill's vocabulary. The STEP verdict must NOT reuse it.
+  ok(report.ready === false, 'the report ready stays turbo-8-gated (the pill vocabulary)')
+  const verdict = h3.stackVerdictText(report)
+  ok(verdict.ready === true, 'the step verdict derives from the SAME predicate at the text lane — ready without the turbo LoRA')
+  ok(/ready to render/i.test(verdict.text), `the verdict says so plainly (got ${JSON.stringify(verdict.text)})`)
+
+  // No "incomplete" wording anywhere in the step output for a ready stack.
+  const rows = wizardModels.modelsStepRows(LANE_FILES, report, [], {})
+  const stepText = verdict.text + '|' + rows.map((row) => [row.name, row.refusal, row.makeVisible, row.narration].join('|')).join('|')
+  ok(!/incomplete/i.test(stepText), 'no incomplete wording anywhere in the step output (the R1 contradiction, dead at the seam)')
+
+  // The honest inverse: a genuinely missing member is NAMED in the verdict.
+  const partial = h3.h3StackReport(LANE_FILES.slice(0, 3), undefined, STOCK_CLASSES)
+  const blocked = h3.stackVerdictText(partial)
+  ok(blocked.ready === false && /Audio VAE/.test(blocked.text), `a missing member is named by the verdict (got ${JSON.stringify(blocked.text)})`)
+})
+
+test('a missing component with a catalog row offers a one-click fetch carrying the license verdict; without one, publisher-direct (W-I6/R-19)', () => {
+  console.log('wizard: the fetch rows')
+  const fresh = [] // the fresh-clone engine: nothing listed
+  const report = h3.h3StackReport(fresh, undefined, STOCK_CLASSES)
+
+  // The map lives in the walk's spine module (walk configuration, like the
+  // designation rules).
+  ok(walk.COMPONENT_FETCH_ROWS['Turbo 8'] === 'lightx2v-fl2v-turbo-8', 'the component→catalog map is the spine’s (Turbo 8 → lightx2v-fl2v-turbo-8)')
+  ok(walk.COMPONENT_FETCH_ROWS['FL2VA'] === undefined, 'publisher-direct components map to nothing')
+
+  // With the served catalog row: the turbo row offers THE fetch, license on
+  // the row (the click IS the consent — W-I6).
+  const offered = wizardModels.modelsStepRows(fresh, report, [CATALOG_TURBO_8], { designated: true })
+  const turbo = offered[4]
+  ok(turbo.fetch !== null, 'the mapped component carries a fetch view')
+  ok(turbo.fetch.entryId === 'lightx2v-fl2v-turbo-8', `the fetch view names the catalog entry (got ${JSON.stringify(turbo.fetch && turbo.fetch.entryId)})`)
+  ok(turbo.fetch.licenseSpdx === 'Apache-2.0', 'the license verdict rides the row')
+  ok(/ModelTC/.test(turbo.fetch.licenseNote ?? ''), 'the provenance note rides the row')
+  ok(turbo.fetch.destRoot === 'loras', 'the placement root rides the row (model-root destination)')
+  ok(turbo.fetch.gated === false, 'with a verified destination the fetch is offered ungated')
+
+  // A component with no catalog row carries NO fetch view — the remediation
+  // stays publisher-direct + makeVisible (never a fetch promise, R-19/F10).
+  ok(offered[0].fetch === null, 'a component with no catalog row carries no fetch view (publisher-direct)')
+
+  // The R-19 pin survives inverted: a mapped id absent from the SERVED
+  // catalog promises no fetch either.
+  const bare = wizardModels.modelsStepRows(fresh, report, [], { designated: true })
+  ok(bare[4].fetch === null, 'a mapped component with the entry absent from the served catalog promises no fetch')
+
+  // D7's honest downgrade: before the models root verifies, the fetch stays
+  // gated — the row says why, never fake remediation.
+  const gated = wizardModels.modelsStepRows(fresh, report, [CATALOG_TURBO_8], { designated: false })
+  ok(gated[4].fetch.gated === true, 'before the destination verifies the fetch stays gated')
+})
+
+test('identity labels come from the closed vocabulary; the interim word renders only when a digest is in flight (to7xpa7)', () => {
+  console.log('wizard: the identity vocabulary')
+  ok(wizardModels.IDENTITY_LABELS.join('|') === 'hash-confirmed|name-suspected|unknown', 'the vocabulary is CLOSED — three labels, fixed order')
+  ok(wizardModels.DIGEST_INTERIM_COPY === 'verifying bytes — identified by name for now', 'the reserved interim word is the spec’s, verbatim')
+
+  const report = h3.h3StackReport(LANE_FILES, undefined, STOCK_CLASSES)
+  const rows = wizardModels.modelsStepRows(LANE_FILES, report, [], {})
+  const presentRows = rows.filter((row) => row.present)
+  ok(presentRows.length === 4, `the fixture has four present rows (got ${presentRows.length})`)
+  for (const row of presentRows) {
+    ok(row.identity === 'name-suspected', `today's honest fallback labels every present row name-suspected (got ${JSON.stringify(row.identity)} on ${row.label})`)
+    ok(row.interim === false, 'no interim word while no digest is in flight (the catalog wave drives this; today always false)')
+  }
+  ok(rows[4].identity === '', 'an absent component carries no identity label (nothing to identify)')
+
+  const digest = wizardModels.modelsStepRows(LANE_FILES, report, [], { digestInFlight: true })
+  ok(digest[0].identity === 'name-suspected' && digest[0].interim === true, 'a digest in flight adds the interim word beside the name-suspected label')
+})
+
+test('multi-candidate narration: picked names the others; ambiguous names the candidates (slotCandidates)', () => {
+  console.log('wizard: the candidate narration')
+
+  // THREE anchored candidates: the official artifact wins the first tier;
+  // the enumeration carries the other two for the picked narration.
+  const quartet = [
+    M('H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'diffusion_models'),
+    M('H3/ssd/minimax_h3_fl2va_fp8.safetensors', 'diffusion_models'),
+    M('H3/ssd/minimax_h3_fl2va_lite_experimental.safetensors', 'diffusion_models'),
+    M('H3/ssd/minimax_h3_ref2va_pruned_int8_convrot.safetensors', 'diffusion_models'),
+    M('qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', 'text_encoders'),
+    M('minimax_h3_video_vae_fp16.safetensors', 'vae'),
+    M('minimax_h3_audio_vae_fp32.safetensors', 'vae'),
+  ]
+  const set = selection.slotCandidates(quartet, 'fl2va')
+  ok(set.picked === 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', `the enumeration's pick is the ladder's pick (got ${JSON.stringify(set.picked)})`)
+  ok(set.basis === 'anchored', 'the anchored tier earned the pick')
+  ok(set.names.length === 3, `every fl2va-shaped file enumerates (got ${set.names.length})`)
+
+  const report = h3.h3StackReport(quartet, undefined, STOCK_CLASSES)
+  const rows = wizardModels.modelsStepRows(quartet, report, [], {})
+  const fl2va = rows[0]
+  ok(fl2va.narration === 'picked', `three anchored candidates narrate as picked (got ${JSON.stringify(fl2va.narration)})`)
+  ok(fl2va.candidates.others.length === 2, `the narration carries the others (got ${fl2va.candidates.others.length})`)
+
+  // AMBIGUOUS: the anchored tiers miss; the fallback needle picks loosely
+  // — and the dimension guard refuses the loose pick. The row names its
+  // candidates and exposes the override seam the one-click designate rides.
+  const smallTes = [
+    M('qwen3vl_4b_small.safetensors', 'text_encoders'),
+    M('qwen3vl_8b_awesome.safetensors', 'text_encoders'),
+  ]
+  const teSet = selection.slotCandidates(smallTes, 'textEncoder')
+  ok(teSet.basis === 'fallback', 'the anchored tiers missed; the fallback needle earned the pick')
+  ok(teSet.names.length === 2, 'the loose candidates enumerate')
+
+  const ambFiles = smallTes.concat([
+    M('H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'diffusion_models'),
+    M('minimax_h3_video_vae_fp16.safetensors', 'vae'),
+    M('minimax_h3_audio_vae_fp32.safetensors', 'vae'),
+  ])
+  const ambReport = h3.h3StackReport(ambFiles, undefined, STOCK_CLASSES)
+  const ambRows = wizardModels.modelsStepRows(ambFiles, ambReport, [], {})
+  const teRow = ambRows[1]
+  ok(teRow.narration === 'ambiguous', `a fallback-needle pick narrates as ambiguous (got ${JSON.stringify(teRow.narration)})`)
+  ok(teRow.candidates.names.length === 2, 'the ambiguous row names its candidates')
+  ok(teRow.refusal !== '' && /32B/.test(teRow.refusal), `the loose pick still refuses through the dimension guard (got ${JSON.stringify(teRow.refusal)})`)
+  ok(teRow.overrideSlot === 'textEncoder', 'the ambiguous row exposes the override seam the one-click designate rides')
+
+  // A single clean candidate narrates clean (no narration noise).
+  ok(rows[3].narration === 'clean', `a single-candidate row narrates clean (got ${JSON.stringify(rows[3].narration)})`)
 })
 
 test('suite summary', () => {

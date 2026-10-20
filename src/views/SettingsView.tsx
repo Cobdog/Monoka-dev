@@ -160,7 +160,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
       setSettings(saved.settings)
       bumpPackSaveTick() // the persisted form just changed the pack target too
       await window.monoka.startManagedEngine()
-      setSettings(await window.monoka.getSettings()) // comfyUrl re-pointed server-side on success
+      setSettings((await window.monoka.getSettings()).settings) // comfyUrl re-pointed server-side on success
     } catch (error) {
       setEngineActionError(error instanceof Error ? error.message : String(error))
     } finally {

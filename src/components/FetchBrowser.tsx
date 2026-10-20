@@ -114,7 +114,7 @@ export function FetchBrowser({ settings, setSettings, onAfterFetch, onAdoptCheck
     setError(null)
     try {
       await window.monoka.setFetchConsent(entry.id, true)
-      setSettings(await window.monoka.getSettings())
+      setSettings((await window.monoka.getSettings()).settings)
       const started = await window.monoka.startFetch(entry.id, entry.destination.kind === 'engine-checkout' && destinationDir.trim() ? { destinationDir: destinationDir.trim() } : undefined)
       if (!started.started) throw new Error('The fetch could not be started.')
       setConsentFor(null)

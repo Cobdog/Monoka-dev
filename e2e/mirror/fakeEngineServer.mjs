@@ -238,6 +238,13 @@ const state = {
   // { "loaderEnumerations": { unet, clip, vae, lora } | null }. null serves
   // the captured fixture as-is (the stock empty combos).
   loaderEnumerations: profile.loaderEnumerations ?? null,
+  // (wizard rework task 5) Runtime-overridable model listings — the
+  // per-kind arrays the /models routes serve. null serves the profile's
+  // boot value (the null-restore convention below mirrors
+  // loaderEnumerations). The fresh-profile leg pre-places a weight and
+  // swaps this so the engine "sees" it without a restart — the honest
+  // folder re-scan shape the walk's fetched-but-not-listed copy names.
+  modelListings: null,
   // While true, every /object_info answer (full + targeted) is ACCEPTED and
   // NEVER WRITTEN — the hung-enumeration shape (an engine whose object-info
   // surface stalls). The studio's enumeration fetch must be time-bounded or
@@ -316,6 +323,9 @@ const control = (req, res, url) => {
         // fixture only when the profile itself carries none).
         if ('loaderEnumerations' in patch && patch.loaderEnumerations === null) {
           state.loaderEnumerations = profile.loaderEnumerations ?? null
+        }
+        if ('modelListings' in patch && patch.modelListings === null) {
+          state.modelListings = null
         }
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ profile: profile.id, ...state }))
@@ -723,11 +733,11 @@ async function handle(req, res) {
       return json(res, 200, className in source ? { [className]: source[className] } : {})
     }
 
-    if (url.pathname === '/models') return json(res, 200, Object.keys(profile.modelListings ?? {}))
+    if (url.pathname === '/models') return json(res, 200, Object.keys(state.modelListings ?? profile.modelListings ?? {}))
     const folder = /^\/models\/(.+)$/.exec(url.pathname)
     if (folder) {
       const kind = decodeURIComponent(folder[1])
-      const listing = (profile.modelListings ?? {})[kind]
+      const listing = (state.modelListings ?? profile.modelListings ?? {})[kind]
       if (!listing) { res.writeHead(404); res.end(); return }
       return json(res, 200, listing)
     }

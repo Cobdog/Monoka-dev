@@ -133,6 +133,18 @@ async function activeDocument(page: Page) {
   }, session.activeProject!)
 }
 
+// (wizard rework task 5, spec §2.2) While the first-run walk PRESENTS it
+// owns the canvas moment — and the engine pills go quiet with it. This
+// suite's subject is the canvas surfaces themselves, so the walk's latch is
+// seeded DONE (and the fallback notice dismissed): the walk never presents
+// here and the chrome under test stays mounted.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('monoka.wizard', JSON.stringify({ step: 0, done: true, skipped: false }))
+    localStorage.setItem('monoka.first-run-dismissed', '1')
+  })
+})
+
 test('canvas boots to the launcher (§4) with radar + chips + resume cards', async ({ page }) => {
   const problems = await trackErrors(page)
   await resetSession(page)

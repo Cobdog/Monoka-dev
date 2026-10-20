@@ -10,6 +10,18 @@ import { makeScratchDir, removeAllScratchDirs } from '../tests/lib/scratch.cjs'
 
 test.afterAll(() => { void removeAllScratchDirs() })
 
+// (wizard rework task 5, spec §2.2) While the first-run walk PRESENTS it
+// owns the canvas moment — and the engine pills go quiet with it. This
+// suite's subject is the canvas surfaces themselves, so the walk's latch is
+// seeded DONE (and the fallback notice dismissed): the walk never presents
+// here and the chrome under test stays mounted.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('monoka.wizard', JSON.stringify({ step: 0, done: true, skipped: false }))
+    localStorage.setItem('monoka.first-run-dismissed', '1')
+  })
+})
+
 /**
  * THE WAVE-1 ACCEPTANCE BAR (task jpc96dp, plan §3): the maintainer's exact
  * first-session journey, walked end to end on EXTERNAL mode against a fake
@@ -576,6 +588,11 @@ test('Wave 1 A-DBG: ?dbg=1 turns the console into a tagged triage transcript; of
   quiet.on('console', (message) => { if (message.text().includes('[dbg:')) quietLines.push(message.text()) })
   await quiet.goto('/?canvas=1')
   await quiet.evaluate(() => window.localStorage.removeItem('monoka-dbg'))
+  // The FIRST load legitimately has dbg on (the ?dbg=1 page persisted the
+  // flag into this shared context) — its lines are not the subject. The
+  // silence contract starts at the reload, where the module re-reads the
+  // (now cleared) flag.
+  quietLines.length = 0
   await quiet.reload()
   await expect(quiet.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
   await quiet.waitForTimeout(2_000)

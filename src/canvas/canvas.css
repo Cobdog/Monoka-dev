@@ -213,6 +213,13 @@
 .canvas-wizard-models li { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; }
 .canvas-wizard-models strong { font-size: var(--text-sm); color: var(--muted-2); text-transform: capitalize; }
 .canvas-wizard-models span { font-size: var(--text-lg); }
+/* The Models step's named component rows (wizard rework task 5) — one row
+   per component: label, resolved name or guidance, identity, narration. */
+.canvas-wizard-components { display: flex; flex-direction: column; gap: 10px; list-style: none; margin: 10px 0; padding: 0; }
+.canvas-wizard-component { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.canvas-wizard-component strong { font-size: var(--text-sm); color: var(--muted-2); }
+.canvas-wizard-picks { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.canvas-wizard-fetch { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .canvas-wizard textarea { width: 100%; resize: vertical; }
 .canvas-wizard-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--line); }
 .canvas-wizard-progress { display: flex; gap: 12px; list-style: none; margin: 0; padding: 0; font-size: var(--text-sm); color: var(--muted-2); }

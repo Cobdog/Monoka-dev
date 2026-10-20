@@ -1,4 +1,4 @@
-import type { AppSettings, DesktopApi, ExternalEngineStatus, FetchEntryStatus, LlmModelsResult, ManagedEngineStatus, ManagerAvailability, MediaKind, ModelFile, NodePackActionResult, NodePackStatus, PromptLibraryItem } from '../types'
+import type { AppSettings, DesktopApi, SettingsRead, ExternalEngineStatus, FetchEntryStatus, LlmModelsResult, ManagedEngineStatus, ManagerAvailability, MediaKind, ModelFile, NodePackActionResult, NodePackStatus, PromptLibraryItem } from '../types'
 
 /**
  * HTTP implementation of the DesktopApi bridge, used when the renderer runs in
@@ -109,7 +109,10 @@ export function createWebApiClient(): DesktopApi {
 
   return {
     async getSettings() {
-      return (await apiFetch<{ settings: AppSettings }>('/api/lan/settings')).settings
+      // (task 5, D7) The whole read rides back — the server-computed
+      // fresh-default flag used to be dropped here, leaving the walk's
+      // models-root prefill nothing honest to stand on.
+      return apiFetch<SettingsRead>('/api/lan/settings')
     },
     async saveSettings(settings: AppSettings) {
       // M4 (review 2026-09-19): the whole answer rides back — the server's
