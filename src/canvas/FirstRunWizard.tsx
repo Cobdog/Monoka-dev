@@ -123,7 +123,7 @@ const COMMON_PORTS = [8188, 8189, 8190, 8191, 8192]
 
 const STEP_TITLES = WALK_STEPS
 
-export function FirstRunWizard() {
+export function FirstRunWizard({ scrim = false }: { scrim?: boolean }) {
   const context = useContext(CanvasSessionContext)
   const models = useSessionStore((state) => state.models)
   const scanning = useSessionStore((state) => state.scanning)
@@ -285,7 +285,7 @@ export function FirstRunWizard() {
     return <PromptStep gate={promptGate(walk)} walk={walk} settings={settings} models={models} onLatchDone={() => finish({ done: true })} />
   })()
 
-  return <div className="canvas-wizard" role="dialog" aria-label="First-run setup wizard" data-canvas-wizard data-wizard-step={step}>
+  const dialog = (<div className="canvas-wizard" role="dialog" aria-label="First-run setup wizard" data-canvas-wizard data-wizard-step={step}>
     <header className="canvas-wizard-header">
       <strong>Set up the studio <span className="canvas-wizard-step">{step + 1} of {STEP_TITLES.length} — {STEP_TITLES[step]}</span></strong>
       <button type="button" className="canvas-wizard-skip" data-wizard-skip onClick={() => finish({ skipped: true })}>Skip for now</button>
@@ -303,7 +303,15 @@ export function FirstRunWizard() {
         {step < STEP_TITLES.length - 1 && <button type="button" className="chip chip--accent canvas-chip" data-wizard-next onClick={() => patch({ step: step + 1 })}>Next — {STEP_TITLES[step + 1]}</button>}
       </div>
     </footer>
-  </div>
+  </div>)
+  // (7kyhdin r2) The over-canvas mount presents inside its own scrim
+  // wrapper — the wrapper commits and unmounts WITH the walk (this body's
+  // guard is the same predicate showsDialog publishes to the canvas store),
+  // so a latched walk leaves no layer at all over a working canvas. The
+  // review's Critical: the wrapper used to render unconditionally in
+  // CanvasApp — a permanent full-inset z-modal scrim above every tile.
+  if (!scrim) return dialog
+  return <div className="canvas-wizard-over" data-canvas-wizard-over>{dialog}</div>
 }
 
 /** The step's gate line (§2: verified or honestly refused — never a silent

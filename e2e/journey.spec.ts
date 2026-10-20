@@ -167,6 +167,11 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
     // (the walk used to mount only inside the empty-canvas Launcher — the
     // button closed the dock and did nothing the moment the first prompt
     // landed; the same silent dispatch the card names).
+    // (7kyhdin r2, the review's Critical) The steady state leaves NO walk
+    // layer over a working canvas: the scrim wrapper exists only while the
+    // walk presents. The old shape rendered the full-inset z-modal wrapper
+    // unconditionally — a permanent 42% scrim above every tile.
+    await expect(page.locator('[data-canvas-wizard-over]')).toHaveCount(0)
     await page.locator('[data-canvas-settings-button]').click()
     await expect(page.locator('[data-canvas-settings-dock]')).toBeVisible({ timeout: 10_000 })
     await page.locator('[data-settings-reopen-wizard]').click()
@@ -177,6 +182,8 @@ test('Journey sweep — the maintainer\'s walk on the environment mirror (#4/#6/
     await expect(page.locator('[data-canvas-settings-dock]')).toHaveCount(0)
     await page.locator('[data-wizard-skip]').click()
     await expect(wizard).toHaveCount(0)
+    // …and the dismissed walk unmounts its overlay with it (no idle layer).
+    await expect(page.locator('[data-canvas-wizard-over]')).toHaveCount(0)
 
     // ---- STEP 5 (#3): the PreviewOverride pack owns this render's preview -
     // (M6/C7: PR #48 claims the pack routes when present; the audit's walk

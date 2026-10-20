@@ -247,18 +247,15 @@ export function CanvasApp() {
       <LibraryDock />
       <RemediationDock />
       <DiagnosticsDock />
-      {/* (7kyhdin) The walk over a WORKING canvas: the Settings dock's
+      {/* (7kyhdin, r2) The walk over a WORKING canvas: the Settings dock's
           reopen dispatch (and any walk still pending) presents here — the
           Launcher's mount owns the empty canvas, this one owns every canvas
           with work. Mutually exclusive by emptyCanvas, so exactly one walk
           is ever mounted and the reopen signal always finds a listener.
-          The walk's own render guard (shouldPresent + the scan witness)
-          decides whether it shows; this surface only hosts it. */}
-      {phase === 'ready' && !emptyCanvas && (
-        <div className="canvas-wizard-over" data-canvas-wizard-over>
-          <FirstRunWizard />
-        </div>
-      )}
+          The scrim wrapper lives INSIDE the wizard's presenting branch (the
+          scrim prop): an idle walk renders nothing here — no layer, no
+          scrim, no stacking above the tiles. */}
+      {phase === 'ready' && !emptyCanvas && <FirstRunWizard scrim />}
       <IndexOverlay />
       <LibraryOverlay />
       <TimelineOverlay />
