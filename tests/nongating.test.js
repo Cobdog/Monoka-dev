@@ -25,6 +25,15 @@
 //   4. N1 fetch suggestions are one-directionally removable
 //   5. N2 with bytes ABSENT (unconfigured roots) the catalog is behaviorally null
 //   6. H-I3's cap — the designation dependency caps, never violates
+//
+// (task CT7) The AC section below runs the spec §7 headline criteria over a
+// SECOND world — quartetSoupWorld: the quartet under renamed needle-free
+// names, the alias soup with its T=1-named liar, and the orphaned rows from
+// CT6's review rider. These legs are AC PINS: the machinery landed in
+// T3–T5, so the unit legs assert the AC sentences against it (the wiring
+// gap they exposed — the wizard's identify ask never covering a
+// name-invisible file — is driven RED/GREEN by the e2e leg, the only
+// harness that runs the real component).
 import { test, beforeAll, afterAll } from 'vitest'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -37,7 +46,7 @@ const assert = require('node:assert/strict')
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const { makeScratchDir, removeAllScratchDirs } = require(path.join(REPO, 'tests', 'lib', 'scratch.cjs'))
-const { nongatingWorld } = require(path.join(REPO, 'tests', 'lib', 'hashfixture.cjs'))
+const { nongatingWorld, quartetSoupWorld } = require(path.join(REPO, 'tests', 'lib', 'hashfixture.cjs'))
 const { loadTs } = require(path.join(REPO, 'scripts', 'lib', 'ts-vm.cjs'))
 
 afterAll(async () => {
@@ -62,6 +71,15 @@ let h3StackVm
 let wizardModelsVm
 let h3SubmitVm
 
+// The AC world (task CT7): the §7 quartet + soup inventory — the spec's own
+// headline fixtures — through the same three arms. `acWorld.orphans` are the
+// no-file catalog rows the CT6-review rider surveys.
+let acScratch
+let acWorld
+let acNull
+let acPrimed
+let acCap
+
 const FOREIGN_NAME = 'foreign_repack_9000.safetensors'
 const MASTER_ALPHA = 'masters/master_alpha.safetensors'
 const MASTER_BETA = 'masters/master_beta.safetensors'
@@ -78,6 +96,23 @@ const T1VAE = 'minimax_h3_t1_image_vae_fp16.safetensors'
 const TAEH3 = 'taeh3_decoder.safetensors'
 const TURBO8_OFFICIAL = 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'
 const TURBO8_RENAMED = 'renamed_speed_rider.safetensors'
+
+// The AC world's names (quartetSoupWorld): the §7 quartet under needle-free
+// renamed basenames, the soup's byte-identical alias copies + q8 variant,
+// and the T=1-NAMED file whose bytes are the video VAE's. QS_ = the
+// quartet-soup world (distinct from the nongating world's names above).
+const QS_AURORA = 'renamed/aurora_master.safetensors' // official FL2VA, renamed
+const QS_BOREALIS = 'renamed/borealis_master.safetensors' // official Ref2VA, renamed
+const QS_CASCADE = 'renamed/cascade_motion.safetensors' // the Viggle-Animate build, renamed
+const QS_DELTA = 'renamed/dualstream_merge.safetensors' // the smhfacct hybrid, renamed
+const QS_TE = 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors'
+const QS_VVAE = 'minimax_h3_video_vae_fp16.safetensors'
+const QS_ALIAS2 = 'minimax_h3_video_vae_fp16__setCMBalias2.safetensors'
+const QS_ALIAS3 = 'minimax_h3_video_vae_fp16__alias3.safetensors'
+const QS_VVAE_Q8 = 'minimax_h3_video_vae_q8.safetensors'
+const QS_AVAE = 'minimax_h3_audio_vae_fp32.safetensors'
+const QS_T1_LIAR = 'minimax_h3_t1_image_vae_fp16.safetensors' // bytes = the video VAE fp16's
+const QS_TAEH3 = 'taeh3_decoder.safetensors'
 
 const ALL_SLOTS = ['fl2va', 'ref2va', 'textEncoder', 'videoVae', 'audioVae', 'previewVae', 'fl2vLora', 'ref2vLora']
 const ALL_TIERS = ['off', '4', '8']
@@ -140,6 +175,22 @@ beforeAll(async () => {
     localStorage: { getItem: () => null, setItem: () => undefined, removeItem: () => undefined },
     window: { monoka: {} },
   })
+
+  // The AC world's three arms — same discipline, same anti-vacuity: the
+  // primed arm must actually carry the quartet + the whole soup confirmed,
+  // and the cap arm must carry zero confirmations.
+  acScratch = makeScratchDir(path.join(require('node:os').tmpdir(), 'monoka-nongating-ac-'))
+  acWorld = quartetSoupWorld(acScratch)
+  acNull = acWorld.files.map(({ name, kind, bytes }) => ({ name, kind, bytes }))
+  acPrimed = await identify(acNull, acWorld.catalogPath, path.join(acScratch, 'cache', 'hash-cache.json'), acWorld.roots)
+  acCap = await identify(acNull, acWorld.catalogPath, path.join(acScratch, 'cache', 'hash-cache-cap.json'), {})
+  const acConfirmed = acPrimed.filter((file) => file.identity && file.identity.verdict === 'hash-confirmed').map((file) => file.name).sort()
+  eq(acConfirmed, [
+    QS_AURORA, QS_BOREALIS, QS_CASCADE, QS_DELTA, QS_TE,
+    QS_VVAE, QS_ALIAS2, QS_ALIAS3, QS_VVAE_Q8, QS_AVAE, QS_T1_LIAR, QS_TAEH3, TURBO8_OFFICIAL,
+  ].sort(), 'AC anti-vacuity: the whole quartet AND the whole soup (aliases + q8 + the liar) hash-confirm through the real engine')
+  ok(acNull.every((file) => file.identity === undefined), 'AC null: no file carries an identity block')
+  ok(acCap.every((file) => file.identity && file.identity.verdict !== 'hash-confirmed'), 'AC cap: zero hash-confirmed verdicts')
 })
 
 // ---------------------------------------------------------------------------
@@ -571,4 +622,187 @@ test('H-I3 arm 6: the whole resolution surface under unconfigured roots equals t
   const capStrings = allRefusals(capFiles)
   eq([...capStrings].filter((string) => !nullStrings.has(string)), [], 'cap: zero new refusals')
   eq([...nullStrings].filter((string) => !capStrings.has(string)), [], 'cap: zero disappeared refusals')
+})
+
+// ---------------------------------------------------------------------------
+// task CT7 — the spec's headline acceptance criteria, asserted as sentences
+// over the AC world (§7 quartet + soup; the fixtures flow through the same
+// landed machinery, these legs pin the ACs' own words against it)
+// ---------------------------------------------------------------------------
+
+/** The identity block of a named file in an arm. */
+const acBlock = (files, name) => {
+  const file = files.find((candidate) => candidate.name === name)
+  ok(file, `AC: ${name} is in the inventory`)
+  return file.identity
+}
+
+test('AC-1: the quartet resolves by hash — named verdicts, both lanes live, the hybrid offered not loaded, no fetch suggestion for any present file', () => {
+  // Each verdict is hash-confirmed and NAMES the identity: family + variant
+  // + quant all carried (the human sentence's substance).
+  const named = [
+    [QS_AURORA, 'fl2va', 'pruned-int8-convrot', 'int8'],
+    [QS_BOREALIS, 'ref2va', 'pruned-int8-convrot', 'int8'],
+    [QS_CASCADE, 'viggle', 'drbaph-int8-convrot', 'int8'],
+    [QS_DELTA, 'hybrid', 'smhfacct-b25-49', 'int8'],
+  ]
+  for (const [name, artifact, variant, quant] of named) {
+    const block = acBlock(acPrimed, name)
+    eq([block.verdict, block.family, block.artifact, block.variant, block.quant], ['hash-confirmed', 'minimax-h3', artifact, variant, quant], `AC-1: ${name} is hash-confirmed and NAMED`)
+  }
+
+  // The lanes resolve: the stack is ready at BOTH lanes over the primed
+  // selection — no false "stack incomplete" about bytes it is serving.
+  const primedSelection = selection.inferSelections(acPrimed, 'off')
+  eq(primedSelection.fl2va, QS_AURORA, 'AC-1: the renamed FL2VA resolves the first-frame lane through the hash rung')
+  eq(primedSelection.ref2va, QS_BOREALIS, 'AC-1: the renamed Ref2VA resolves the reference lane')
+  ok(h3StackVm.h3StackReady({ selection: primedSelection, mode: 'text', turbo: 'off' }), 'AC-1: the text lane is ready (no false stack-incomplete)')
+  ok(h3StackVm.h3StackReady({ selection: primedSelection, mode: 'reference', turbo: 'off' }), 'AC-1: the reference lane is ready too')
+  eq(h3StackVm.stackVerdictText(h3StackVm.h3StackReport(acPrimed), 'text').text, 'Ready to render.', 'AC-1: the verdict line reads Ready')
+  // The contrast that makes it a flip, not a tautology: under the null
+  // catalog the SAME inventory is name-invisible — the verdict says
+  // incomplete and NAMES FL2VA missing.
+  const nullVerdict = h3StackVm.stackVerdictText(h3StackVm.h3StackReport(acNull), 'text')
+  ok(!nullVerdict.ready && nullVerdict.text.indexOf('FL2VA') !== -1, 'AC-1 contrast: the null catalog cannot see the renamed quartet (the verdict names FL2VA missing)')
+
+  // The hybrid is NAMED with the merged-pick affordance and is NOT the
+  // resolved lane checkpoint — never silently loaded.
+  const fl2vaRow = wizardModelsVm.modelsStepRows(acPrimed, h3StackVm.h3StackReport(acPrimed), servedCatalog(), { designated: true })
+    .find((row) => row.slot === 'fl2va')
+  eq(JSON.stringify(fl2vaRow.mergedPickOffer), JSON.stringify({ name: QS_DELTA, summary: 'minimax-h3 · hybrid · smhfacct-b25-49 · int8' }), 'AC-1: the hybrid names itself on the fl2va row — family + artifact + variant + quant, one sentence')
+  ok(fl2vaRow.name === QS_AURORA && fl2vaRow.name !== QS_DELTA, 'AC-1: the lane checkpoint stays the FL2VA master, never the hybrid')
+  eq(wizardModelsVm.modelsStepRows(acNull, h3StackVm.h3StackReport(acNull), servedCatalog(), { designated: true })
+    .find((row) => row.slot === 'fl2va').mergedPickOffer, undefined, 'AC-1 contrast: no bytes, no offer (the null catalog cannot name the hybrid)')
+
+  // No fetch suggestion for any present file: with every component present
+  // and byte-confirmed the step offers NOTHING — the one mapped row
+  // (turbo-8) is suppressed by hash-confirmed presence, and the null world
+  // still offers it (removal rides byte evidence only).
+  eq(fetchViews(acPrimed, { designated: true }), [], 'AC-1: zero fetch views — no "download X" about present files')
+  eq(fetchViews(acNull, { designated: true }), [REPORT], 'AC-1 contrast: the null world still offers the turbo-8 fetch (name-only presence never removes it)')
+})
+
+test('AC-2: the soup collapses — one named identity across identical shas, decoder classes from identity rows, the T=1-named liar named as the video VAE', () => {
+  // Identical shas group under ONE named identity: every soup file — the
+  // official, both byte-identical aliases, the q8 variant, and the liar —
+  // carries the video VAE's named identity block, and the one row's
+  // publisher basenames ride every byte-identical copy's block.
+  const soup = [QS_VVAE, QS_ALIAS2, QS_ALIAS3, QS_VVAE_Q8, QS_T1_LIAR]
+  for (const name of soup) {
+    const block = acBlock(acPrimed, name)
+    eq([block.verdict, block.family, block.artifact], ['hash-confirmed', 'minimax-h3', 'video-vae'], `AC-2: ${name} groups under the video-VAE identity`)
+  }
+  eq(acBlock(acPrimed, QS_VVAE).variant, 'fp16', 'AC-2: the fp16 cut is named')
+  eq(acBlock(acPrimed, QS_VVAE_Q8).variant, 'q8', 'AC-2: the distinct-sha q8 keeps its own variant name')
+  const rowAliases = acBlock(acPrimed, QS_ALIAS2).aliases || []
+  for (const base of [QS_VVAE, QS_ALIAS2, QS_ALIAS3]) {
+    ok(rowAliases.indexOf(base) !== -1, `AC-2: the byte-identical copies share ONE row — its aliases name ${base}`)
+  }
+
+  // The report/candidates present them as ONE artifact's candidates: the
+  // video-VAE pool IS the soup (five files, one pick, the official wins the
+  // H-M2 tie-break), and the wizard row narrates the duplicates.
+  const set = selection.slotCandidates(acPrimed, 'videoVae', 'off')
+  eq([set.basis, set.picked], ['hash', QS_VVAE], 'AC-2: the soup resolves on byte evidence with the official basename winning the tie-break')
+  eq(set.names.slice().sort().join('|'), soup.slice().sort().join('|'), "AC-2: the candidates are exactly the soup — one artifact's candidate list, not five artifacts")
+  const vvaeRow = wizardModelsVm.modelsStepRows(acPrimed, h3StackVm.h3StackReport(acPrimed), servedCatalog(), { designated: true })
+    .find((row) => row.slot === 'videoVae')
+  eq(vvaeRow.narration, 'picked', 'AC-2: the row narrates the duplicate candidates (picked among several)')
+  eq(vvaeRow.candidates.others.length, 4, "AC-2: all four other soup files render as this row's other candidates")
+
+  // Decoder-class verdicts come from identity rows: the T=1-NAMED file
+  // hashing to the video VAE labels as a VIDEO decoder — the name's lie
+  // corrected by bytes (the same name with no byte evidence keeps the lie).
+  eq(overrides.modelClassHint('vae', QS_T1_LIAR, acBlock(acPrimed, QS_T1_LIAR)), 'video decoder', 'AC-2: the liar labels as a video decoder from its bytes')
+  eq(overrides.modelClassHint('vae', QS_T1_LIAR, undefined), 'T=1 image decoder', 'AC-2 contrast: the NAME alone still says T=1 (the fallback keeps its documented limits)')
+  eq(overrides.modelClassHint('vae', QS_VVAE, acBlock(acPrimed, QS_VVAE)), 'video decoder', 'AC-2: the official labels from its bytes too')
+
+  // The name's lie is corrected END TO END: the videoVae override accepts
+  // the liar under primed (the guard reads the artifact) and refuses it
+  // under null (the T=1 name marker — today's behavior, unchanged).
+  eq(overrides.overridePickOutcome('monoka', 'videoVae', QS_T1_LIAR, acPrimed).state, 'applied', 'AC-2: the liar picks the video-VAE slot clean — the bytes are the class')
+  eq(overrides.overridePickOutcome('monoka', 'videoVae', QS_T1_LIAR, acNull).state, 'refused', 'AC-2 contrast: name-only evidence still refuses the T=1 name at the video slot')
+})
+
+test('AC-4: remote honesty — unconfigured roots cap every verdict at name-suspected and nothing anywhere claims hash-confirmed', () => {
+  // The cap's vocabulary over the AC world: name-suspected exactly for the
+  // aliased basenames, unknown for everything else (the renamed quartet and
+  // the liar — its basename is in no alias bucket), verifying nowhere.
+  const nameSuspected = acCap.filter((file) => file.identity.verdict === 'name-suspected').map((file) => file.name).sort()
+  eq(nameSuspected, [QS_AVAE, QS_TE, QS_TAEH3, TURBO8_OFFICIAL, QS_ALIAS2, QS_ALIAS3, QS_VVAE, QS_VVAE_Q8].sort(), 'AC-4: exactly the aliased basenames read name-suspected — the renamed quartet and the liar read unknown')
+  ok(acCap.every((file) => file.identity.verifying === undefined), 'AC-4: verifying is nowhere — no digest even enqueues without readable bytes')
+
+  // Nothing anywhere claims hash-confirmed: the whole payload, the stack
+  // report, the wizard rows, and the tier states carry no such string.
+  for (const [label, serialized] of [
+    ['the payload blocks', JSON.stringify(acCap)],
+    ['the stack report', JSON.stringify(h3StackVm.h3StackReport(acCap))],
+    ['the wizard rows', JSON.stringify(wizardModelsVm.modelsStepRows(acCap, h3StackVm.h3StackReport(acCap), servedCatalog(), { designated: true }))],
+    ['the tier states', JSON.stringify(h3StackVm.turboTierStates(acCap, 'text'))],
+  ]) {
+    eq(serialized.indexOf('hash-confirmed'), -1, `AC-4: ${label} never claims hash-confirmed`)
+  }
+
+  // The route arm: the identify trigger itself, asked over UNCONFIGURED
+  // roots, answers the same honest vocabulary — no block claims bytes it
+  // never read and no marker promises a digest that cannot start.
+  const routeEngine = createModelIdentityEngine({
+    catalog: loadHashCatalog({ MONOKA_HASH_CATALOG: acWorld.catalogPath }),
+    hashCachePath: path.join(acScratch, 'cache', 'hash-cache-route.json'),
+  })
+  const answer = routeEngine.requestIdentification(acWorld.files.map(({ name, kind }) => ({ kind, name })), settingsFor({}))
+  ok(answer.results.every((result) => result.identity.verdict === 'name-suspected' || result.identity.verdict === 'unknown'), 'AC-4 route: every answer is name-suspected or unknown')
+  ok(answer.results.every((result) => result.identity.verifying === undefined), 'AC-4 route: no verifying marker without readable bytes')
+  eq(JSON.stringify(answer).indexOf('hash-confirmed'), -1, 'AC-4 route: the answer payload never claims hash-confirmed')
+})
+
+test('N2 rider (CT6 review Important-2): an orphaned catalog row obligates nothing anywhere, under either catalog', () => {
+  // The corner CT6's string-diff could not see: a catalog row with NO file
+  // in the inventory (the row is orphaned — the file-uncataloged direction
+  // was CT6's; this is the reverse). No surface may nag a fetch for it: not
+  // the wizard rows, not the stack verdict text, not the remediation
+  // strings — under the null catalog (no rows at all) or the primed one
+  // (the orphan rows present).
+  const orphanAliases = acWorld.orphans.flatMap((orphan) => orphan.aliases)
+  eq(orphanAliases.length, 2, 'rider: the fixture carries the two orphan rows (turbo-4 + viggle-bf16)')
+  const stackReportOf = (files) => h3StackVm.h3StackReport(files)
+  const surfaced = (files) => {
+    const strings = allRefusals(files)
+    strings.add(h3StackVm.stackVerdictText(stackReportOf(files), 'text').text)
+    strings.add(h3StackVm.stackVerdictText(stackReportOf(files), 'reference').text)
+    for (const tier of ['4', '8']) strings.add(h3StackVm.turboTierStates(files, 'text')[tier].remediation)
+    strings.add(JSON.stringify(wizardModelsVm.modelsStepRows(files, stackReportOf(files), servedCatalog(), { designated: true })))
+    strings.add(JSON.stringify(fetchViews(files, { designated: true })))
+    return strings
+  }
+  for (const [label, files] of [['null', acNull], ['primed', acPrimed], ['cap', acCap]]) {
+    const strings = surfaced(files)
+    for (const alias of orphanAliases) {
+      const hit = [...strings].filter((string) => string.indexOf(alias) !== -1)
+      eq(hit, [], `rider: no ${label}-catalog surface names the orphaned row's alias ${alias}`)
+    }
+  }
+
+  // The sharp case pinned: tier 4's remediation is byte-identical between
+  // the arms — the orphaned turbo-4 row adds nothing to (and removes
+  // nothing from) the one truthful remediation the null world already
+  // voiced, and that remediation names the FETCH catalog's consent-gated
+  // row, never the hash row's alias.
+  eq(h3StackVm.turboTierStates(acPrimed, 'text')['4'].remediation, h3StackVm.turboTierStates(acNull, 'text')['4'].remediation, 'rider: the tier-4 remediation is unchanged by the orphaned turbo-4 row')
+  ok(h3StackVm.turboTierStates(acNull, 'text')['4'].remediation.indexOf('fetch lightx2v-fl2v-turbo-4 through the library (consent-gated)') !== -1, "rider: the remediation names the fetch row it always named (the orphan's alias never joins it)")
+
+  // And the fetch views: the orphan never adds one under any arm — primed
+  // offers nothing (turbo-8 byte-confirmed present), null and cap offer
+  // exactly the one row the null world always offered.
+  eq(fetchViews(acPrimed, { designated: true }), [], 'rider: primed offers no fetch view')
+  eq(fetchViews(acNull, { designated: true }), [REPORT], 'rider: null offers exactly the turbo-8 row (the orphan adds nothing)')
+  eq(fetchViews(acCap, { designated: true }), [REPORT], 'rider: the cap arm equals null (the orphan adds nothing there either)')
+
+  // The whole refusal surface stays flip-only-via-hash for the AC world
+  // too: zero ADDED strings primed-over-null (the removed set is the
+  // sanctioned direction — the renamed-quartet membership refusals and the
+  // liar's class refusal, both hash-justified).
+  const acNullStrings = allRefusals(acNull)
+  const acPrimedStrings = allRefusals(acPrimed)
+  eq([...acPrimedStrings].filter((string) => !acNullStrings.has(string)), [], 'rider: zero new refusal strings primed-over-null over the AC world')
 })

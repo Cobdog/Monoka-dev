@@ -9,6 +9,9 @@ import { expect, test, type Page } from '@playwright/test'
 // scratch never accumulates; the fresh-engine leg's designated models root
 // is a real dir the studio's fs/check must verify).
 import { makeScratchDir, removeAllScratchDirs } from '../tests/lib/scratch.cjs'
+// The hash-catalog fixture world (to7xpa7): real synthetic bytes + the
+// strict fixture catalog the quartet/soup e2e boots the studio against.
+import { quartetSoupWorld } from '../tests/lib/hashfixture.cjs'
 
 /**
  * THE JOURNEY-SWEEP ACCEPTANCE WALK (task c4fifi5 — reality audit
@@ -2467,6 +2470,200 @@ test('the uncataloged extra: wizard → submit unchanged, the catalog ABSENT vs 
   expect(maskGraphVolatile(present.graph)).toEqual(maskGraphVolatile(absent.graph))
   for (const arm of [absent, present]) expect(arm.mirrorLog, 'the mirror bound its port cleanly').not.toContain('EADDRINUSE')
   expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+})
+
+/** (to7xpa7, task CT7, spec §7 AC-1/AC-2/AC-4) THE HEADLINE WALK — the
+ *  quartet and the soup on the mirror, one boot, three phases:
+ *
+ *  A. AC-4 (the cap, BEFORE any designation): the quartet-renamed profile
+ *     lists the four renamed checkpoints, but the walk's models root is
+ *     un-designated and the studio's configured root is the fresh home's
+ *     default — no bytes readable, no digest enqueued, so every present row
+ *     reads name-suspected, the FL2VA row reads MISSING (the renamed name
+ *     is invisible to the ladder), and over a bounded negative window no
+ *     'hash-confirmed' ever appears. The turbo fetch view renders GATED —
+ *     the cap keeps the affordance (N1: removal rides byte evidence only).
+ *  B. AC-1 (the designation turns hashing on): designate the scratch models
+ *     root through the landed D7 field; the step's identify trigger hashes
+ *     what the engine lists; the rows FLIP to hash-confirmed (expect.poll —
+ *     the named condition is the digest settle + the store merge), the
+ *     verdict line reads Ready, the merged-pick offer names the hybrid, and
+ *     NO fetch row renders for any present component.
+ *  C. AC-2 (the soup): the video-VAE row names the official artifact and
+ *     narrates the duplicate candidates; the T=1-NAMED liar's label — the
+ *     identity block every per-file surface renders — names the VIDEO VAE
+ *     (the wizard renders per-SLOT labels only, so the liar's own label is
+ *     asserted at the identify route, the payload the labels derive from;
+ *     the unit leg pins the rendered class hint itself).
+ */
+test('the quartet resolves by hash, the soup collapses, remote stays honest (to7xpa7 AC-1/AC-2/AC-4)', async ({ page }) => {
+  test.setTimeout(300_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+
+  const LIAR = 'minimax_h3_t1_image_vae_fp16.safetensors'
+  const HYBRID = 'renamed/dualstream_merge.safetensors'
+
+  // The scratch world: per-kind roots holding the synthetic files the
+  // catalog describes (quartetSoupWorld), the studio's configured modelRoot,
+  // AND the mirror's listed inventory — one set of bytes, three consumers.
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-e2e-quartet-'))
+  const engineModelsRoot = path.join(home, 'engine-models')
+  const world = quartetSoupWorld(engineModelsRoot)
+
+  const reservePort = async () => {
+    const holder = http.createServer(() => undefined)
+    const port = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+    await new Promise<void>((resolve) => holder.close(() => resolve()))
+    return port
+  }
+  const mirrorPort = await reservePort()
+  const studioPort = await reservePort()
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', 'e2e/mirror/profiles/quartet-renamed.json'], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  const studio = spawn('node', ['dist-server/server/index.js'], {
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(studioPort), MONOKA_NO_HTTPS: '1', MONOKA_HASH_CATALOG: world.catalogPath },
+    stdio: ['ignore', 'ignore', 'ignore'],
+  })
+  const stopStudio = async () => {
+    if (studio.exitCode !== null || studio.signalCode !== null) return
+    studio.kill('SIGTERM')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { studio.kill('SIGKILL'); resolve() }, 5_000)
+      studio.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+  }
+  const mirrorUrl = `http://127.0.0.1:${mirrorPort}`
+  try {
+    await expect.poll(async () => {
+      try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+    }, { timeout: 15_000 }).toBe(true)
+    await expect.poll(async () => {
+      try { return (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).ok } catch { return false }
+    }, { timeout: 30_000 }).toBe(true)
+    const seeded = (await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).json()) as { settings: Record<string, unknown> }
+    await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ settings: { ...seeded.settings, comfyUrl: mirrorUrl, testedComfyVersion: 'mirror-profile', modelRoot: engineModelsRoot, engine: { ...(seeded.settings.engine as Record<string, unknown>), mode: 'external' } } }),
+    })
+
+    await page.goto(`http://127.0.0.1:${studioPort}/?canvas=1`)
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    const wizard = page.locator('[data-canvas-wizard]')
+    await expect(wizard).toBeVisible({ timeout: 30_000 })
+
+    // Engine step: url prefilled from the settings POST, verified, through.
+    const urlField = page.locator('[data-wizard-comfy-url]')
+    await expect(urlField).toHaveValue(mirrorUrl)
+    await page.locator('[data-wizard-test]').click()
+    await expect(page.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
+    await page.locator('[data-wizard-next]').click()
+    await expect(wizard).toHaveAttribute('data-wizard-step', '1')
+
+    // ---- PHASE A (AC-4): the cap, before any designation. The renamed
+    // quartet is name-invisible (FL2VA reads missing), every present row is
+    // name-suspected with no interim marker (nothing is in flight), the
+    // fetch affordance survives GATED, and no hash-confirmed ever appears.
+    const componentRows = page.locator('[data-wizard-components] [data-wizard-model-row]')
+    await expect(componentRows).toHaveCount(5, { timeout: 20_000 })
+    const fl2vaRow = page.locator('[data-wizard-model-row="FL2VA"]')
+    await expect(fl2vaRow).toHaveAttribute('data-row-present', 'false', { timeout: 20_000 })
+    await expect(fl2vaRow.locator('[data-wizard-row-guide]')).toBeVisible()
+    for (const label of ['Text encoder', 'Video VAE', 'Audio VAE', 'Turbo 8']) {
+      const identity = page.locator(`[data-wizard-model-row="${label}"] [data-wizard-row-identity]`)
+      await expect(identity, `AC-4: ${label} reads name-suspected pre-designation`).toContainText('name-suspected', { timeout: 20_000 })
+      await expect(identity, `AC-4: ${label} carries no interim marker (nothing is in flight)`).not.toContainText('verifying bytes')
+    }
+    await expect(page.locator('[data-wizard-fetch="lightx2v-fl2v-turbo-8"]')).toHaveCount(1, { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-fetch="lightx2v-fl2v-turbo-8"]')).toHaveAttribute('data-fetch-gated', 'true')
+    await expect(page.locator('[data-wizard-verdict]')).toHaveAttribute('data-wizard-verdict', 'blocked', { timeout: 10_000 })
+    // The negative window IS the assertion (the settle-or-poll convention):
+    // three samples across the step's own 2s poll cadence — no surface may
+    // claim byte evidence while the studio cannot read a root.
+    for (let sample = 0; sample < 3; sample += 1) {
+      const stepText = (await wizard.textContent()) ?? ''
+      expect(stepText, `AC-4 negative window (sample ${sample + 1}/3): no hash-confirmed while un-designated`).not.toContain('hash-confirmed')
+      await page.waitForTimeout(2_000)
+    }
+
+    // ---- PHASE B (AC-1): designate through the landed D7 field; the rows
+    // flip as the digests settle and the store re-derives (the named
+    // condition of the poll below); the verdict reads Ready; the hybrid
+    // names itself; no fetch row survives for a present component.
+    const designation = page.locator('[data-wizard-designation-input="wizard-models-root"]')
+    await expect(designation).toHaveValue(engineModelsRoot, { timeout: 15_000 })
+    await page.locator('[data-wizard-designation-verify="wizard-models-root"]').click()
+    await expect(page.locator('[data-wizard-designation-verdict="wizard-models-root"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 15_000 })
+    // The named condition: the digest settle through the identify route +
+    // mergeModelIdentities — the FL2VA row can only read hash-confirmed
+    // once the renamed master's BYTES identify it (no name rule sees it).
+    await expect.poll(async () => {
+      const present = await fl2vaRow.getAttribute('data-row-present')
+      const identity = await fl2vaRow.locator('[data-wizard-row-identity]').textContent().catch(() => null)
+      return present === 'true' && (identity ?? '').includes('hash-confirmed')
+    }, { timeout: 30_000 }).toBe(true)
+    for (const label of ['FL2VA', 'Text encoder', 'Video VAE', 'Audio VAE', 'Turbo 8']) {
+      await expect(page.locator(`[data-wizard-model-row="${label}"] [data-wizard-row-identity]`), `AC-1: ${label} flips to hash-confirmed`).toContainText('hash-confirmed')
+      await expect(page.locator(`[data-wizard-model-row="${label}"] [data-wizard-row-identity]`), `AC-1: ${label} no longer wears the interim word`).not.toContainText('verifying bytes')
+    }
+    await expect(page.locator('[data-wizard-verdict]')).toHaveAttribute('data-wizard-verdict', 'ready', { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-verdict]')).toContainText('Ready to render.')
+    const mergedOffer = page.locator(`[data-wizard-merged-offer="${HYBRID}"]`)
+    await expect(mergedOffer, 'AC-1: the hash-confirmed hybrid names itself on the FL2VA row').toBeVisible({ timeout: 10_000 })
+    await expect(mergedOffer).toContainText('dualstream_merge')
+    await expect(mergedOffer, 'AC-1: the offer carries the human sentence — family + artifact + variant + quant').toContainText('minimax-h3 · hybrid · smhfacct-b25-49 · int8')
+    await expect(page.locator(`[data-wizard-merged-pick="${HYBRID}"]`)).toBeVisible()
+    await expect(fl2vaRow.locator('[data-wizard-row-name]'), 'AC-1: the lane checkpoint is the renamed FL2VA master, never the hybrid').toContainText('aurora_master')
+    // No fetch suggestion for any present file: the one mapped row
+    // (turbo-8) is suppressed by hash-confirmed presence — zero fetch rows.
+    await expect(page.locator('[data-wizard-fetch]'), 'AC-1: no fetch row renders for any present component').toHaveCount(0, { timeout: 10_000 })
+
+    // ---- PHASE C (AC-2): the soup. The video-VAE row names the official
+    // artifact and narrates its duplicate candidates; the T=1-named liar's
+    // own label names the VIDEO VAE — asserted at the identify route (the
+    // payload every per-file label derives from; the digests settled in
+    // phase B, so the route answers from the cache).
+    const vvaeRow = page.locator('[data-wizard-model-row="Video VAE"]')
+    await expect(vvaeRow.locator('[data-wizard-row-name]')).toContainText('minimax_h3_video_vae_fp16.safetensors')
+    await expect(vvaeRow.locator('[data-wizard-row-identity]')).toContainText('hash-confirmed')
+    await expect(vvaeRow.locator('[data-wizard-row-narration]'), 'AC-2: the row narrates the duplicate candidates').toContainText('4 other candidates')
+    await expect.poll(async () => {
+      try {
+        const answer = await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/models/identify`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ files: [{ kind: 'vae', name: LIAR }] }),
+        })).json() as { results?: Array<{ name: string; identity?: { verdict: string; artifact: string; variant: string } }> }
+        const block = answer.results?.[0]?.identity
+        return block ? `${block.verdict}|${block.artifact}|${block.variant}` : 'none'
+      } catch { return 'none' }
+    }, { timeout: 15_000 }).toBe('hash-confirmed|video-vae|fp16')
+
+    // The rider's e2e arm (CT6 review Important-2): the booted fixture
+    // catalog carries two ORPHANED rows (turbo-4 + viggle-bf16 — rows with
+    // no file in the engine's listing). No wizard surface may nag a fetch
+    // for them: neither orphan alias ever appears on the step.
+    const finalStepText = (await wizard.textContent()) ?? ''
+    for (const orphanAlias of world.orphans.flatMap((orphan) => orphan.aliases)) {
+      expect(finalStepText, `rider: no wizard surface names the orphaned row ${orphanAlias}`).not.toContain(orphanAlias)
+    }
+
+    expect(mirrorLog, 'the mirror bound its port cleanly').not.toContain('EADDRINUSE')
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+  } finally {
+    await stopStudio()
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+    removeAllScratchDirs()
+  }
+  expect(mirror.exitCode !== null || mirror.signalCode !== null).toBe(true)
+  expect(mirrorLog).not.toContain('EADDRINUSE')
 })
 
 /** (task 9, spec §4 — the D4 ruling) THE --setup RESET FROM ANY TERMINAL:

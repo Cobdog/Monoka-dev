@@ -118,6 +118,125 @@ const NONGATING_INVENTORY = [
     row: { artifact: 'turbo-8', variant: 'lightx2v-8step', quant: 'bf16', dtype: 'bf16', aliases: ['lightx2v_fl2v_turbo_8step_v1.0_comfyui.safetensors'] } },
 ]
 
+// ---------------------------------------------------------------------------
+// the AC world (task CT7, spec §7 AC-1/AC-2/AC-4 — the headline fixture):
+// the §7 quartet under NEEDLE-FREE renamed names + the alias soup + the
+// T=1-named liar + the orphaned rows (CT6's review Important-2)
+// ---------------------------------------------------------------------------
+
+/** The AC world's inventory. Same conventions as NONGATING_INVENTORY (the
+ *  `row: 'shared'` mechanism writes byte-identical copies). The shapes the
+ *  spec's §1 walkthrough named, made small and real:
+ *  - the quartet masters (spec §7 AC-1): four diffusion checkpoints whose
+ *    basenames carry NO family token (aurora/borealis/cascade/dualstream —
+ *    needle-free against every ladder tier and fallback needle) — the
+ *    name-invisible case only the hash rung can resolve;
+ *  - the supporting stack (TE, audio VAE, taeh3, turbo-8) under canonical
+ *    names, exactly like the maintainer-instance profile's own stack;
+ *  - the soup (AC-2): the video VAE fp16 row carries THREE basenames (the
+ *    official name plus two byte-identical alias copies — the ~30-variant
+ *    `__setCMBalias2`-style walkthrough shape, sampled), a distinct-sha q8
+ *    variant beside it, and the LIAR: a T=1-NAMED file whose bytes are the
+ *    video VAE's (same label → same sha; its own basename is in NO alias
+ *    bucket — the name's lie corrected by bytes, never by the name index);
+ *  - the orphan rows (the CT6-review rider): a turbo-4 row and a
+ *    viggle-bf16 row whose shas describe bytes NOT in the inventory —
+ *    catalog rows with no file (N2's "row exists ∧ nothing lists it"
+ *    corner; nothing may nag a fetch for them under any catalog). */
+const AC_INVENTORY = [
+  { name: 'renamed/aurora_master.safetensors', kind: 'diffusion_models', label: 'qs-fl2va', size: 4096,
+    row: { artifact: 'fl2va', variant: 'pruned-int8-convrot', quant: 'int8', dtype: 'int8', aliases: ['minimax_h3_fl2va_pruned_int8_convrot.safetensors'] } },
+  { name: 'renamed/borealis_master.safetensors', kind: 'diffusion_models', label: 'qs-ref2va', size: 4097,
+    row: { artifact: 'ref2va', variant: 'pruned-int8-convrot', quant: 'int8', dtype: 'int8', aliases: ['minimax_h3_ref2va_pruned_int8_convrot.safetensors'] } },
+  { name: 'renamed/cascade_motion.safetensors', kind: 'diffusion_models', label: 'qs-viggle', size: 4098,
+    row: { artifact: 'viggle', variant: 'drbaph-int8-convrot', quant: 'int8', dtype: 'int8', aliases: ['minimax_h3_viggle_animate_drbaph_int8.safetensors'] } },
+  { name: 'renamed/dualstream_merge.safetensors', kind: 'diffusion_models', label: 'qs-hybrid', size: 4099,
+    row: { artifact: 'hybrid', variant: 'smhfacct-b25-49', quant: 'int8', dtype: 'int8', aliases: ['minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors'] } },
+  { name: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', kind: 'text_encoders', label: 'qs-te', size: 8192,
+    row: { artifact: 'text-encoder', variant: 'nvfp4-awq', quant: 'nvfp4', dtype: 'fp4', aliases: ['qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors'] } },
+  { name: 'minimax_h3_video_vae_fp16.safetensors', kind: 'vae', label: 'qs-vvae', size: 6144,
+    row: { artifact: 'video-vae', variant: 'fp16', quant: 'fp16', dtype: 'fp16',
+      aliases: ['minimax_h3_video_vae_fp16.safetensors', 'minimax_h3_video_vae_fp16__setCMBalias2.safetensors', 'minimax_h3_video_vae_fp16__alias3.safetensors'] } },
+  { name: 'minimax_h3_video_vae_fp16__setCMBalias2.safetensors', kind: 'vae', label: 'qs-vvae', size: 6144, row: 'shared' },
+  { name: 'minimax_h3_video_vae_fp16__alias3.safetensors', kind: 'vae', label: 'qs-vvae', size: 6144, row: 'shared' },
+  { name: 'minimax_h3_video_vae_q8.safetensors', kind: 'vae', label: 'qs-vvae-q8', size: 3072,
+    row: { artifact: 'video-vae', variant: 'q8', quant: 'q8', dtype: 'int8', aliases: ['minimax_h3_video_vae_q8.safetensors'] } },
+  { name: 'minimax_h3_audio_vae_fp32.safetensors', kind: 'vae', label: 'qs-avae', size: 2049,
+    row: { artifact: 'audio-vae', variant: 'fp32', quant: 'fp32', dtype: 'fp32', aliases: ['minimax_h3_audio_vae_fp32.safetensors'] } },
+  // THE LIAR: named like the T=1 image VAE, byte-identical to the video VAE
+  // (same label + size as the fp16 master → same real sha on disk).
+  { name: 'minimax_h3_t1_image_vae_fp16.safetensors', kind: 'vae', label: 'qs-vvae', size: 6144, row: 'shared' },
+  { name: 'taeh3_decoder.safetensors', kind: 'vae_approx', label: 'qs-taeh3', size: 1024,
+    row: { artifact: 'preview-decoder', variant: 'alpha', quant: 'fp16', dtype: 'fp16', aliases: ['taeh3_decoder.safetensors'] } },
+  { name: 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors', kind: 'loras', label: 'qs-turbo8', size: 5120,
+    row: { artifact: 'turbo-8', variant: 'comfyui-bf16', quant: 'bf16', dtype: 'bf16', aliases: ['minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'] } },
+]
+
+/** The orphan rows (CT6's review Important-2): shas of bytes NO inventory
+ *  file carries — catalog rows with no file in the scan. The turbo-4 orphan
+ *  is the sharp case: its artifact maps to a slot with a live fetch
+ *  remediation (tier 4's consent-gated fetch row), so any code path that
+ *  confused "a catalog row exists" with "the user should download it" would
+ *  surface HERE first. Nothing ever may. */
+const AC_ORPHANS = [
+  { label: 'qs-orphan-turbo4', size: 4444, kind: 'loras',
+    identity: { artifact: 'turbo-4', variant: 'lightx2v-4step', quant: 'bf16', dtype: 'bf16' },
+    aliases: ['lightx2v_fl2v_turbo_4step_v1.0_comfyui.safetensors'] },
+  { label: 'qs-orphan-viggle', size: 5555, kind: 'diffusion_models',
+    identity: { artifact: 'viggle', variant: 'official-bf16-shards', quant: 'bf16', dtype: 'bf16' },
+    aliases: ['minimax_h3_viggle_animate_bf16.safetensors'] },
+]
+
+/** Writes the AC world under `dir` (per-kind roots + real bytes + the
+ *  strict fixture catalog INCLUDING the orphan rows) and returns { roots,
+ *  catalogPath, files, orphans } — `files` is the inventory as
+ *  ModelFile-shaped plain objects, `orphans` the no-file rows' { artifact,
+ *  aliases } for the no-nag assertions. The catalog path is what a spawned
+ *  studio's MONOKA_HASH_CATALOG (and a direct loadHashCatalog) consumes;
+ *  e2e/mirror/profiles/quartet-renamed.json lists these exact names. */
+function quartetSoupWorld(dir) {
+  const roots = {
+    diffusion_models: path.join(dir, 'diffusion_models'),
+    text_encoders: path.join(dir, 'text_encoders'),
+    vae: path.join(dir, 'vae'),
+    vae_approx: path.join(dir, 'vae_approx'),
+    loras: path.join(dir, 'loras'),
+  }
+  const files = []
+  const rows = []
+  for (const entry of AC_INVENTORY) {
+    const content = fixtureBytes(entry.label, entry.size)
+    const written = writeFixtureFile(roots[entry.kind], entry.name, content)
+    files.push({ name: entry.name, kind: entry.kind, bytes: written.bytes })
+    if (entry.row === 'shared') continue // the byte-identical soup copies: the master's row already carries every basename
+    if (entry.row) {
+      rows.push(catalogRow({
+        sha256: written.sha,
+        sizeBytes: written.bytes,
+        kind: entry.kind,
+        identity: { family: 'minimax-h3', artifact: entry.row.artifact, variant: entry.row.variant, quant: entry.row.quant, dtype: entry.row.dtype },
+        aliases: entry.row.aliases,
+      }))
+    }
+  }
+  const orphans = []
+  for (const orphan of AC_ORPHANS) {
+    // Real sha of real bytes that are NEVER written to the roots — an honest
+    // row about an absent artifact, never an invented hash.
+    const sha = sha256Of(fixtureBytes(orphan.label, orphan.size))
+    rows.push(catalogRow({
+      sha256: sha,
+      sizeBytes: orphan.size,
+      kind: orphan.kind,
+      identity: { family: 'minimax-h3', ...orphan.identity },
+      aliases: orphan.aliases,
+    }))
+    orphans.push({ artifact: orphan.identity.artifact, aliases: orphan.aliases, sha })
+  }
+  const catalogPath = writeCatalogFile(dir, rows)
+  return { roots, catalogPath, files, orphans }
+}
+
 /** Writes the whole world under `dir` (per-kind roots + real bytes + the
  *  strict fixture catalog) and returns { roots, catalogPath, files } —
  *  `files` is the inventory as ModelFile-shaped plain objects ({ name, kind,
@@ -155,4 +274,4 @@ function nongatingWorld(dir) {
   return { roots, catalogPath, files }
 }
 
-module.exports = { sha256Of, writeFixtureFile, catalogRow, writeCatalogFile, fixtureBytes, nongatingWorld }
+module.exports = { sha256Of, writeFixtureFile, catalogRow, writeCatalogFile, fixtureBytes, nongatingWorld, quartetSoupWorld }

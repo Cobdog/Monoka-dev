@@ -439,11 +439,13 @@ function EngineStep(props: {
  *  license verdict ON the row, the click IS the consent (W-I6). Identity
  *  labels come from the closed vocabulary and flip LIVE (to7xpa7): on
  *  step-entry with a verified models root the step asks the identify route
- *  for every named file, merges the verdicts through the session store, and
- *  re-asks while any block still wears `verifying` — the reserved interim
- *  word rides the per-row marker first, the whole-step flag as the degraded
- *  fallback. A hash-confirmed hybrid renders the merged-pick affordance
- *  (one click sets ONLY the merged override). */
+ *  for every named file AND every registry file of the rows' kinds (CT7's
+ *  name-invisible widening — a renamed checkpoint no ladder can name is
+ *  the rung's whole reason), merges the verdicts through the session
+ *  store, and re-asks while any block still wears `verifying` — the
+ *  reserved interim word rides the per-row marker first, the whole-step
+ *  flag as the degraded fallback. A hash-confirmed hybrid renders the
+ *  merged-pick affordance (one click sets ONLY the merged override). */
 function ModelsStep(props: {
   models: ReturnType<typeof useSessionStore.getState>['models']
   scanning: boolean
@@ -498,31 +500,48 @@ function ModelsStep(props: {
     () => (stack ? modelsStepRows(models, stack, catalog ?? [], { designated, digestInFlight }) : []),
     [models, stack, catalog, designated, digestInFlight],
   )
-  // The identify ask: every file the rows name (resolved + candidates),
-  // deduped as `kind:name` parts — the joined string is the effect's key, so
-  // a mid-walk re-scan that renames rows re-asks while the 2s catalog poll
+  // The identify ask: every file the rows name (resolved + candidates) PLUS
+  // every registry file of the rows' KINDS (CT7, 2026-10-20 — the
+  // name-invisible widening). The spec's headline case is a RENAMED
+  // checkpoint whose basename matches no ladder tier and no fallback
+  // needle: no row can name it until its BYTES identify it, so an ask
+  // limited to row-named files can never flip the row (the e2e quartet leg
+  // drove that gap RED). Those files are exactly "registry-listed files a
+  // pending verdict needs" in spec §6's own words — any diffusion file
+  // could be the renamed lane master, any lora the renamed turbo — and the
+  // size pre-filter keeps the widened ask cheap (unknown sizes skip without
+  // a read). Deduped as `kind:name` parts, row-named files first so the
+  // resolved rows settle first; the joined string is the effect's key, so a
+  // mid-walk re-scan that renames rows re-asks while the 2s catalog poll
   // does not.
   const digestKey = useMemo(() => {
     const seen = new Set<string>()
     const parts: string[] = []
+    const admit = (kind: ModelKind, name: string) => {
+      if (!name) return
+      const key = `${kind}:${name}`
+      if (seen.has(key)) return
+      seen.add(key)
+      parts.push(key)
+    }
     for (const row of rows) {
-      for (const name of [row.name, ...row.candidates.names]) {
-        if (!name) continue
-        const key = `${row.kind}:${name}`
-        if (seen.has(key)) continue
-        seen.add(key)
-        parts.push(key)
-      }
+      for (const name of [row.name, ...row.candidates.names]) admit(row.kind, name)
+    }
+    const rowKinds = new Set(rows.map((row) => row.kind))
+    for (const model of models) {
+      if (rowKinds.has(model.kind)) admit(model.kind, model.name)
     }
     return parts.join('|')
-  }, [rows])
+  }, [rows, models])
   // (to7xpa7) The hash catalog's live labels: on step-entry with a verified
   // models root, ask the identify route for every named file, merge the
   // answer through the session store, and re-ask on a ~2s cadence while any
   // answer still wears `verifying`. Stop conditions are named: every marker
   // cleared, the round cap, or unmount — a wedged digest worker must not
   // pin the step in a loop (the standing inventory read carries the slow
-  // tail; identifyModelFiles is only the trigger).
+  // tail; identifyModelFiles is only the trigger). The ask is chunked at
+  // the route's own 64-file bound (CT7: the widened ask can exceed it); one
+  // chunk failing never stops the others.
   useEffect(() => {
     if (!designated || !digestKey) return
     let cancelled = false
@@ -530,15 +549,19 @@ function ModelsStep(props: {
       const sep = part.indexOf(':')
       return { kind: part.slice(0, sep) as ModelKind, name: part.slice(sep + 1) }
     })
+    const chunks: Array<{ kind: ModelKind; name: string }[]> = []
+    for (let index = 0; index < pairs.length; index += 64) chunks.push(pairs.slice(index, index + 64))
     const run = async () => {
       for (let round = 0; round < 15; round += 1) {
         let verifying = false
-        try {
-          const answer = await window.monoka.identifyModelFiles(pairs)
-          if (cancelled) return
-          useSessionStore.getState().mergeModelIdentities(answer.results)
-          verifying = answer.results.some((result) => result.identity?.verifying === true)
-        } catch { verifying = false }
+        for (const chunk of chunks) {
+          try {
+            const answer = await window.monoka.identifyModelFiles(chunk)
+            if (cancelled) return
+            useSessionStore.getState().mergeModelIdentities(answer.results)
+            if (answer.results.some((result) => result.identity?.verifying === true)) verifying = true
+          } catch { /* one chunk's failure must not stop the rest */ }
+        }
         if (!verifying) return
         await new Promise((resolve) => window.setTimeout(resolve, 2000))
         if (cancelled) return
