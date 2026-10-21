@@ -1,0 +1,30 @@
+/* The take viewer core's sheet (foelihc T2, spec §2/§3) — the stage + the
+   transport row the core renders. Per-surface sheet in the datasets.css /
+   workbench.css tradition: imported by TakeViewerCore.tsx, dies with it
+   (the modularity contract). The wheel/zoom semantics live INSIDE
+   .take-viewer-stage only — the host surface's wheel is untouched. */
+
+.take-viewer-core { display: flex; flex-direction: column; min-height: 0; min-width: 0; flex: 1; }
+
+/* The stage: fit-to-view letterbox. The media box is centered and
+   source-true (max dimensions by aspect); zoom scales it about the center
+   and pan translates it, clamped so the media always covers the stage. */
+.take-viewer-stage { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; touch-action: none; background: var(--color-surface-abyss); border-radius: var(--radius); }
+.take-viewer-stage.zoomed { cursor: grab; }
+.take-viewer-stage.zoomed:active { cursor: grabbing; }
+.take-viewer-media { max-width: 100%; max-height: 100%; transform-origin: center center; will-change: transform; }
+.take-viewer-video, .take-viewer-image { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; }
+.take-viewer-video video { display: block; max-width: 100%; max-height: 100%; }
+
+/* The transport row (§3's table): one row, every control keyboard-reachable
+   via the map; the row's controls carry the focusable-chrome mark. */
+.take-viewer-transport { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 10px; flex: 0 0 auto; }
+.take-viewer-btn { padding: 4px; }
+.take-viewer-chip { padding: 3px 8px; }
+.take-viewer-timecode { font-variant-numeric: tabular-nums; color: var(--muted); font-size: var(--text-sm); padding: 0 6px; white-space: nowrap; }
+
+/* The honest states — the whole surface, never chrome around them. */
+.take-viewer-verdict, .take-viewer-missing { display: grid; place-content: center; gap: 8px; padding: 32px; text-align: center; flex: 1; }
+.take-viewer-verdict p { max-width: 56ch; margin: 0; color: var(--color-text-soft); font-size: var(--text-lg); line-height: 1.5; }
+.take-viewer-missing-title { margin: 0; font-weight: 700; color: var(--warning); font-size: var(--text-lg); }
+.take-viewer-missing-body { margin: 0; max-width: 64ch; color: var(--muted); font-size: var(--text-md); line-height: 1.5; }

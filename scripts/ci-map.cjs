@@ -112,6 +112,7 @@ const SUITES = {
   statusToken: { build: null, windows: false, python: false, ffmpeg: false },
   'stylelint-guard': { build: null, windows: false, python: false, ffmpeg: false },
   takemath: { build: null, windows: false, python: false, ffmpeg: false },
+  takeviewer: { build: null, windows: false, python: false, ffmpeg: false },
   vdn: { build: null, windows: false, python: false, ffmpeg: false },
   wizard: { build: null, windows: false, python: false, ffmpeg: false },
   workflows: { build: null, windows: false, python: false, ffmpeg: false },
@@ -128,7 +129,7 @@ const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
 
 /** The suites that load client TS through the VM harness (scripts/lib/ts-vm.cjs). */
-const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'identitywire', 'nongating', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'takemath', 'vdn', 'wizard', 'workflows']
+const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'identitywire', 'nongating', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'takemath', 'takeviewer', 'vdn', 'wizard', 'workflows']
 
 /** Every vitest suite — the FULL fallback set. */
 const ALL_SUITES = Object.keys(SUITES).sort()
@@ -390,6 +391,11 @@ const RULES = [
     match: ['src/media/takeMath.ts', 'src/media/filmstripLayout.ts'],
     suites: ['takemath'],
     reason: "the take viewer's pure math (foelihc T1: frame/time arithmetic with the T-C1 two-hop contract, the T-M1 clamp, timecode, the strip mapping) — the takemath suite loads it through the VM harness; filmstripLayout rides along as the ONE fps constant the math consumes, so a layout diff re-proves the convention end to end.",
+  },
+  {
+    match: ['src/media/takeViewerModel.ts', 'src/media/TakeViewerCore.tsx', 'src/media/takeviewer.css'],
+    suites: ['takeviewer'],
+    reason: "the take viewer core (foelihc T2): the takeViewerModel spine — the transport machine, the scoped keymap with the T-M3 focusable-chrome guard, the source fallback, the surface gates, the zoom math — is loaded through the VM harness by the takeviewer suite. The React shell + sheet ride the same rule deliberately (no unit suite executes React — the repo's posture): their diffs re-prove the model contract the shell must not drift from, while the rendered behavior is e2e-owned (T7's journey legs) and the shell's own net stays typecheck + scoped lint.",
   },
   { match: ['src/lib/camera/**'], suites: ['camera'], reason: 'camera path model + parity goldens.' },
   { match: ['src/poserig/**'], suites: ['poserig'], reason: 'pose rig domain (logic modules; PoseRigApp.tsx rides the dir).' },
