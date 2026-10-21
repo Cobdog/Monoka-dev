@@ -34,7 +34,7 @@ import { dbg } from '../lib/dbg'
 import { basenameOf } from '../lib/modelSelection'
 import { h3StackReport, canGenerateAnswer, stackVerdictText, turboTierStates, type StackVerdict } from '../lib/h3Stack'
 import type { ObjectInfo } from '../lib/comfyInfo'
-import type { AppSettings, FetchEntryStatus, LanStatusRead, LanTokenRead, NodePackStatus } from '../types'
+import type { AppSettings, FetchEntryStatus, LanStatusRead, LanTokenRead, ModelKind, NodePackStatus } from '../types'
 import { useSessionStore } from '../state/sessionStore'
 import { useCanvasStore } from './store'
 import { CanvasSessionContext } from './sessionContext'
@@ -437,8 +437,13 @@ function EngineStep(props: {
  *  models-root designation rides Task 3's DesignationField seam, and a
  *  component the fetch catalog can deliver renders a ONE-CLICK fetch row —
  *  license verdict ON the row, the click IS the consent (W-I6). Identity
- *  labels come from the closed vocabulary; the interim word waits for the
- *  catalog wave's digests (always false today). */
+ *  labels come from the closed vocabulary and flip LIVE (to7xpa7): on
+ *  step-entry with a verified models root the step asks the identify route
+ *  for every named file, merges the verdicts through the session store, and
+ *  re-asks while any block still wears `verifying` — the reserved interim
+ *  word rides the per-row marker first, the whole-step flag as the degraded
+ *  fallback. A hash-confirmed hybrid renders the merged-pick affordance
+ *  (one click sets ONLY the merged override). */
 function ModelsStep(props: {
   models: ReturnType<typeof useSessionStore.getState>['models']
   scanning: boolean
@@ -485,10 +490,63 @@ function ModelsStep(props: {
   }, [])
 
   const designated = isDesignated(modelsRoot)
+  // (to7xpa7) The whole-step degraded flag: true while ANY payload block
+  // wears the verifying marker. The per-row markers take precedence; this
+  // flag only covers present rows the payload carried no block for.
+  const digestInFlight = useMemo(() => models.some((model) => model.identity?.verifying === true), [models])
   const rows = useMemo(
-    () => (stack ? modelsStepRows(models, stack, catalog ?? [], { designated, digestInFlight: false }) : []),
-    [models, stack, catalog, designated],
+    () => (stack ? modelsStepRows(models, stack, catalog ?? [], { designated, digestInFlight }) : []),
+    [models, stack, catalog, designated, digestInFlight],
   )
+  // The identify ask: every file the rows name (resolved + candidates),
+  // deduped as `kind:name` parts — the joined string is the effect's key, so
+  // a mid-walk re-scan that renames rows re-asks while the 2s catalog poll
+  // does not.
+  const digestKey = useMemo(() => {
+    const seen = new Set<string>()
+    const parts: string[] = []
+    for (const row of rows) {
+      for (const name of [row.name, ...row.candidates.names]) {
+        if (!name) continue
+        const key = `${row.kind}:${name}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        parts.push(key)
+      }
+    }
+    return parts.join('|')
+  }, [rows])
+  // (to7xpa7) The hash catalog's live labels: on step-entry with a verified
+  // models root, ask the identify route for every named file, merge the
+  // answer through the session store, and re-ask on a ~2s cadence while any
+  // answer still wears `verifying`. Stop conditions are named: every marker
+  // cleared, the round cap, or unmount — a wedged digest worker must not
+  // pin the step in a loop (the standing inventory read carries the slow
+  // tail; identifyModelFiles is only the trigger).
+  useEffect(() => {
+    if (!designated || !digestKey) return
+    let cancelled = false
+    const pairs = digestKey.split('|').map((part) => {
+      const sep = part.indexOf(':')
+      return { kind: part.slice(0, sep) as ModelKind, name: part.slice(sep + 1) }
+    })
+    const run = async () => {
+      for (let round = 0; round < 15; round += 1) {
+        let verifying = false
+        try {
+          const answer = await window.monoka.identifyModelFiles(pairs)
+          if (cancelled) return
+          useSessionStore.getState().mergeModelIdentities(answer.results)
+          verifying = answer.results.some((result) => result.identity?.verifying === true)
+        } catch { verifying = false }
+        if (!verifying) return
+        await new Promise((resolve) => window.setTimeout(resolve, 2000))
+        if (cancelled) return
+      }
+    }
+    void run()
+    return () => { cancelled = true }
+  }, [designated, digestKey])
 
   // W-I6: ONE click = the consent ledger record (the same ledger the
   // library writes) + the start. Failures render on the row — never a
@@ -567,6 +625,10 @@ function ComponentRow(props: {
   // restart truth with it (review F1). `started` only bridges the ≤2s gap
   // between the click and the next catalog poll.
   const fetched = row.fetch !== null && (started || fetchLanded(row.fetch))
+  // (to7xpa7) The merged-pick affordance stands down once the hybrid IS the
+  // row's resolution (the merged override applied through the stack report)
+  // — the offer's job is done, the row already names it.
+  const mergedOffer = row.mergedPickOffer && row.name !== row.mergedPickOffer.name ? row.mergedPickOffer : null
   return <li className="canvas-wizard-component" data-wizard-model-row={row.label} data-row-present={row.present ? 'true' : 'false'} data-row-narration={row.narration}>
     <strong>{row.label}</strong>
     {row.present
@@ -582,6 +644,10 @@ function ComponentRow(props: {
           <button key={name} type="button" className="chip canvas-chip" data-wizard-pick={name} disabled={name === row.candidates.picked} onClick={() => props.onPick(row.overrideSlot, name)}>{basenameOf(name)}</button>
         ))}
       </div>
+    </div>}
+    {mergedOffer && <div className="canvas-wizard-picks" data-wizard-merged-offer={mergedOffer.name}>
+      <span className="canvas-wizard-hint">Hash-confirmed hybrid present: {basenameOf(mergedOffer.name)} ({mergedOffer.summary}).</span>
+      <button type="button" className="chip chip--accent canvas-chip" data-wizard-merged-pick={mergedOffer.name} onClick={() => props.onPick('merged', mergedOffer.name)}>Use as the merged pick — one click</button>
     </div>}
     {row.fetch
       ? <div className="canvas-wizard-fetch" data-wizard-fetch={row.fetch.entryId} data-fetch-gated={row.fetch.gated ? 'true' : 'false'}>

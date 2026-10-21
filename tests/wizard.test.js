@@ -429,6 +429,74 @@ test('identity labels come from the closed vocabulary; the interim word renders 
   ok(digest[0].identity === 'name-suspected' && digest[0].interim === true, 'a digest in flight adds the interim word beside the name-suspected label')
 })
 
+test('the labels read the payload: per-file verdicts, per-row interim precedence, degraded parity (to7xpa7 D6)', () => {
+  console.log('wizard: the labels read the payload')
+  const blocks = {
+    'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors': { verdict: 'hash-confirmed' },
+    'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors': { verdict: 'name-suspected', verifying: true },
+    'minimax_h3_video_vae_fp16.safetensors': { verdict: 'unknown' },
+  }
+  const payloadFiles = LANE_FILES.map((file) => (blocks[file.name] ? { name: file.name, kind: file.kind, bytes: file.bytes, identity: blocks[file.name] } : file))
+  const report = h3.h3StackReport(payloadFiles, undefined, STOCK_CLASSES)
+  const rows = wizardModels.modelsStepRows(payloadFiles, report, [], {})
+  ok(rows[0].identity === 'hash-confirmed', `the hash-confirmed block renders its verdict (got ${JSON.stringify(rows[0].identity)})`)
+  ok(rows[1].identity === 'name-suspected' && rows[1].interim === true, `a verifying block renders the interim word PER-ROW (got ${JSON.stringify(rows[1].identity)}/${JSON.stringify(rows[1].interim)})`)
+  ok(rows[2].identity === 'unknown', `an unknown block renders unknown (got ${JSON.stringify(rows[2].identity)})`)
+  ok(rows[3].identity === 'name-suspected' && rows[3].interim === false, `an absent block keeps the fallback label with no interim (got ${JSON.stringify(rows[3].identity)}/${JSON.stringify(rows[3].interim)})`)
+  const digest = wizardModels.modelsStepRows(payloadFiles, report, [], { digestInFlight: true })
+  ok(digest[0].interim === false, `a hash-confirmed label never wears the interim word (got ${JSON.stringify(digest[0].interim)})`)
+  ok(digest[3].interim === true, 'the whole-step boolean still covers the absent-block row (the fallback stands)')
+  const plain = wizardModels.modelsStepRows(LANE_FILES, h3.h3StackReport(LANE_FILES, undefined, STOCK_CLASSES), [], {})
+  ok(plain.map((row) => row.identity).join('|') === 'name-suspected|name-suspected|name-suspected|name-suspected|', 'degraded mode (no blocks) renders today\'s labels bit-for-bit')
+})
+
+test('a hash-confirmed present artifact removes its fetch row; name-suspected presence never does (to7xpa7 H-I1)', () => {
+  console.log('wizard: the fetch-suggestion removal')
+  const confirmed = LANE_FILES.concat([
+    { name: 'H3/ssd/my_renamed_speed_lora.safetensors', kind: 'loras', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'turbo-8', aliases: ['minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'] } },
+  ])
+  const confirmedRows = wizardModels.modelsStepRows(confirmed, h3.h3StackReport(confirmed, undefined, STOCK_CLASSES), [CATALOG_TURBO_8], { designated: true })
+  ok(confirmedRows[4].fetch === null, `the hash-confirmed turbo-8 present under ANY name removes the fetch row (got ${JSON.stringify(confirmedRows[4].fetch && confirmedRows[4].fetch.entryId)})`)
+  const wrongLane = LANE_FILES.concat([
+    { name: 'H3/ssd/ref_lane_speed.safetensors', kind: 'loras', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'turbo-8', aliases: ['minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors'] } },
+  ])
+  const wrongLaneRows = wizardModels.modelsStepRows(wrongLane, h3.h3StackReport(wrongLane, undefined, STOCK_CLASSES), [CATALOG_TURBO_8], { designated: true })
+  ok(wrongLaneRows[4].fetch !== null, 'the ref2v lane\'s turbo-8 does not remove the fl2v fetch row (the suppression is lane-scoped)')
+  const suspected = LANE_FILES.concat([
+    { name: 'H3/ssd/my_renamed_speed_lora.safetensors', kind: 'loras', bytes: 0 },
+  ])
+  const suspectedRows = wizardModels.modelsStepRows(suspected, h3.h3StackReport(suspected, undefined, STOCK_CLASSES), [CATALOG_TURBO_8], { designated: true })
+  ok(suspectedRows[4].fetch !== null, 'a name-suspected present LoRA keeps the fetch view — removal ONLY on byte evidence')
+})
+
+test('the merged hybrid is named, offered, never auto-loaded (to7xpa7 §4 + rq0lsax)', () => {
+  console.log('wizard: the merged-pick offer')
+  const hybridFile = { name: 'H3/ssd/minimax_h3_hybrid_fl2va_ref2va_b30-49-int8.safetensors', kind: 'diffusion_models', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'hybrid', aliases: ['minimax_h3_hybrid_fl2va_ref2va_b30-49-int8.safetensors'] } }
+  const realFl2va = { name: 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', kind: 'diffusion_models', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'fl2va', aliases: ['minimax_h3_fl2va_pruned_int8_convrot.safetensors'] } }
+  const files = [realFl2va, hybridFile].concat(LANE_FILES.slice(1))
+  const report = h3.h3StackReport(files, undefined, STOCK_CLASSES)
+  const rows = wizardModels.modelsStepRows(files, report, [], {})
+  ok(rows[0].name === realFl2va.name, `the fl2va lane picks the REAL fl2va — the hybrid never auto-loads (got ${JSON.stringify(rows[0].name)})`)
+  ok(selection.inferSelections(files, 'off').merged === undefined, 'inference never fills the merged slot (the deliberate exception)')
+  const offer = rows[0].mergedPickOffer
+  ok(offer && offer.name === hybridFile.name, `the fl2va row carries the one-click merged-pick offer naming the hybrid (got ${JSON.stringify(offer)})`)
+  ok(offer && /hybrid/.test(offer.summary), `the offer summarizes the identity (got ${JSON.stringify(offer && offer.summary)})`)
+  // The click's effect: the override seam takes the merged slot — and ONLY
+  // it — and the hash-confirmed hybrid is not class-refused there. (The
+  // report rows attribute `source` per-SLOT: a merged pick supersedes the
+  // lane rows without an fl2va-slot override ever existing, so the landing
+  // is pinned on the loaded name plus the seam's own verdicts.)
+  const merged = h3.h3StackReport(files, { merged: hybridFile.name }, STOCK_CLASSES)
+  ok(merged.rows[0].selected === hybridFile.name && merged.rows[0].present, 'the merged pick lands: the lane row loads the hybrid')
+  ok(!merged.rows[0].refusal, `a hash-confirmed hybrid is not refused on the merged slot (got ${JSON.stringify(merged.rows[0].refusal)})`)
+  const overrides = loadTs('src/lib/modelOverrides.ts', { window: { monoka: oracle } })
+  const seam = overrides.resolveModelOverrides('monoka', files, { merged: hybridFile.name })
+  ok(seam.slots.merged && seam.slots.merged.state === 'applied', 'the click lands on the merged slot (applied)')
+  ok(Object.keys(seam.slots).filter((key) => key !== 'merged').every((key) => seam.slots[key].state === 'auto'), 'and ONLY the merged slot moved — every other slot stays auto')
+  const plain = wizardModels.modelsStepRows(LANE_FILES, h3.h3StackReport(LANE_FILES, undefined, STOCK_CLASSES), [], {})
+  ok(!plain[0].mergedPickOffer, 'no hybrid present → no offer')
+})
+
 test('multi-candidate narration: picked names the others; ambiguous names the candidates (slotCandidates)', () => {
   console.log('wizard: the candidate narration')
 

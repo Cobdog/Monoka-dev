@@ -19,11 +19,22 @@
  *  guidance, never missing-because-unlisted; a found-but-refused pick (or
  *  a resolved TE of the wrong dimension class) narrates the existing
  *  refusal machinery's reason and blocks readiness, exactly like the
- *  submission would. */
+ *  submission would.
+ *
+ *  (to7xpa7, 2026-10-20) The rows resolve through the hash rung now (H-M1:
+ *  a hash-confirmed identity outranks every name rule in the shared
+ *  resolveSlot), so the report narrates byte evidence three ways: each row
+ *  carries the RESOLVED file's identity block verbatim; `isCanonical`
+ *  upgrades — a hash-confirmed match of the row's canonical artifact is
+ *  canonical whatever the filename says (DISPLAY guidance only, never a
+ *  gate — readiness still runs on resolution + presence + the same
+ *  refusals as before); and the TE row's dimension-class refusal reads the
+ *  bytes first, the filename token second (only ever relaxing — the guards
+ *  never gain a refusal, N1). */
 import type { GenerationMode, ModelFile, ModelSelection, ModelOverrideSlots } from '../types'
 import type { ObjectInfo } from './comfyInfo'
 import { dbg } from './dbg'
-import { basenameOf, inferSelections, teDimClassRefusal } from './modelSelection'
+import { basenameOf, identityConfirmsArtifact, inferSelections, slotArtifacts, teDimClassRefusal } from './modelSelection'
 import { resolveModels, type ModelOverrideSlotName } from './modelOverrides'
 import { turboTierInstallHint, vdnAvailability } from './graph'
 import { missingCoreNodeClasses, type MissingNodeClass } from './preflight'
@@ -70,7 +81,12 @@ export type H3StackSlotRow = {
   layer?: 'chain' | 'global'
   /** Presence truth: the registry lists the resolved name verbatim. */
   present: boolean
-  /** The resolved basename IS the canonical artifact (display hint). */
+  /** The RESOLVED file's hash-catalog identity block, verbatim (to7xpa7);
+   *  absent when the block is (models carry it only when identified). */
+  identity?: ModelFile['identity']
+  /** The resolved file IS the canonical artifact (display hint):
+   *  basename-compare, or — upgraded (to7xpa7) — a hash-confirmed match of
+   *  the row's slot artifact. Never a gate. */
   isCanonical: boolean
   /** Found but refused — the existing refusal machinery's reason (an
    *  override pick the family contract rejects, or the TE dimension-class
@@ -246,11 +262,15 @@ export function h3StackReport(models: ModelFile[], overrides?: ModelOverrideSlot
     const outcome = definition.overrideSlot ? quality.resolution.slots[definition.overrideSlot] : null
     const applied = outcome && outcome.state === 'applied' ? outcome : null
     const refused = outcome && outcome.state === 'refused' ? outcome : null
+    // (to7xpa7) The resolved file rides along: its identity block feeds the
+    // isCanonical upgrade and the TE row's byte-first class read.
+    const resolvedFile = selected ? models.find((model) => model.name === selected) : undefined
     // (eyzcev5 composition) The submit validate rung runs the TE
     // dimension-class guard on the RESOLVED selection — best-available can
     // resolve a 4B-class encoder NON-EMPTY (the crash class the old
-    // readiness could not see). The row narrates the same verdict.
-    const teRefusal = definition.overrideSlot === 'textEncoder' && selected ? teDimClassRefusal('monoka', selected) : null
+    // readiness could not see). The row narrates the same verdict —
+    // byte-first since to7xpa7 (the identity arm only relaxes, N1).
+    const teRefusal = definition.overrideSlot === 'textEncoder' && selected ? teDimClassRefusal('monoka', selected, resolvedFile && resolvedFile.identity) : null
     const refusal = refused ? refused.reason : (teRefusal ?? undefined)
     const row: H3StackSlotRow = {
       label: definition.label,
@@ -263,7 +283,9 @@ export function h3StackReport(models: ModelFile[], overrides?: ModelOverrideSlot
       source: applied ? 'override' : selected ? 'inferred' : '',
       ...(applied && applied.layer ? { layer: applied.layer } : {}),
       present: Boolean(selected) && models.some((model) => model.name === selected),
-      isCanonical: Boolean(selected) && basenameOf(selected).toLowerCase() === definition.canonical.toLowerCase(),
+      ...(resolvedFile && resolvedFile.identity ? { identity: resolvedFile.identity } : {}),
+      isCanonical: Boolean(selected) && (basenameOf(selected).toLowerCase() === definition.canonical.toLowerCase()
+        || (!!resolvedFile && identityConfirmsArtifact(resolvedFile, slotArtifacts(definition.field, definition.tier)))),
       ...(refusal ? { refusal } : {}),
       makeVisible: definition.makeVisible,
     }

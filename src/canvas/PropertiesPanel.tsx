@@ -1345,7 +1345,7 @@ export function PropertiesPanel() {
                     CLASS at the choice point — same heuristics the
                     validate-time guards use, before the pick. */}
                 {candidates.map((model) => {
-                  const hint = modelClassHint(kind, model.name)
+                  const hint = modelClassHint(kind, model.name, model.identity)
                   return <option key={model.name} value={model.name}>{hint ? `${model.name} · ${hint}` : model.name}</option>
                 })}
               </StudioSelect>

@@ -2423,7 +2423,7 @@ test('the lightx2v fetch rows (D9): the tier copy names the fetch through one se
 // ---------------------------------------------------------------------------
 test('slotCandidates agrees with the ladder pick across every slot, tier, family (wizard task 5 no-drift)', () => {
   const { slotCandidates } = load('src/lib/modelSelection.ts')
-  const m = (name, kind) => ({ name, kind, bytes: 4096 })
+  const m = (name, kind, identity) => (identity ? { name, kind, bytes: 4096, identity } : { name, kind, bytes: 4096 })
   const fixtures = [
     [],
     [ // the official lane, complete
@@ -2449,9 +2449,24 @@ test('slotCandidates agrees with the ladder pick across every slot, tier, family
       m('vae/minimax_h3_video_vae_fp16.safetensors', 'vae'),
       m('vae/minimax_h3_audio_vae_fp32.safetensors', 'vae'),
     ],
+    [ // the hash-confirmed world (to7xpa7): renamed files whose BYTES name their slots — the rung must resolve them and the enumeration must agree
+      m('H3/ssd/my_renamed_checkpoint.safetensors', 'diffusion_models', { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'fl2va', aliases: ['minimax_h3_fl2va_pruned_int8_convrot.safetensors'] }),
+      m('renamed_reference.safetensors', 'diffusion_models', { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'ref2va' }),
+      m('deep/nested/encoder_under_a_lie.safetensors', 'text_encoders', { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'text-encoder' }),
+      m('renamed_video_decoder.safetensors', 'vae', { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'video-vae' }),
+      m('renamed_audio_decoder.safetensors', 'vae', { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'audio-vae' }),
+      m('vae_approx/renamed_preview.safetensors', 'vae_approx', { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'preview-decoder' }),
+      m('loras/renamed_speed.safetensors', 'loras', { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'turbo-8', aliases: ['minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'] }),
+    ],
+    [ // the merged world: a hash-confirmed hybrid maps to NO slot, and a name-suspected block earns no rung
+      m('merged_thing.safetensors', 'diffusion_models', { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'hybrid' }),
+      m('H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'diffusion_models', { verdict: 'name-suspected', family: 'minimax-h3', artifact: 'fl2va' }),
+      m('qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', 'text_encoders'),
+    ],
   ]
   const slots = ['fl2va', 'ref2va', 'textEncoder', 'videoVae', 'audioVae', 'previewVae', 'fl2vLora', 'ref2vLora']
   let checked = 0
+  const basisSeen = {}
   for (let fi = 0; fi < fixtures.length; fi += 1) {
     const files = fixtures[fi]
     for (const slot of slots) {
@@ -2466,10 +2481,131 @@ test('slotCandidates agrees with the ladder pick across every slot, tier, family
           } else {
             assert.equal(enumerated.basis, '', `fixture ${fi} slot ${slot}: no pick carries no basis`)
           }
+          basisSeen[enumerated.basis] = true
           checked += 1
         }
       }
     }
   }
-  assert.ok(checked >= 288, `the matrix ran (${checked} slot/tier/family/fixture combinations)`)
+  assert.ok(basisSeen.hash === true, 'the matrix exercised the hash rung (a hash fixture resolved on byte evidence)')
+  assert.ok(basisSeen.anchored === true && basisSeen.fallback === true, 'the name bases still fire — the ladders remain the fallback')
+  assert.ok(checked >= 432, `the matrix ran (${checked} slot/tier/family/fixture combinations)`)
+})
+
+// ---------------------------------------------------------------------------
+// THE CONSUMERS (to7xpa7, Task 5 of the catalog-build wave, 2026-10-20):
+// hash evidence enters the surfaces. The hash catalog's sha256 verdicts are
+// STRONGER evidence than any filename pattern — names lie (renames, community
+// repacks), bytes do not. H-M1: the resolution ladder GAINS a top rung (a
+// hash-confirmed identity outranks every name rule; the name ladders stay as
+// the fallback). H-M2: deterministic tie-break for duplicate bytes. AC-2:
+// the class guards read the artifact when the bytes are hash-confirmed. The
+// stack report's isCanonical upgrades by sha-equality — DISPLAY only, never
+// a gate. None of it re-encodes the catalog: every consumer reads the one
+// slot→artifact vocabulary beside the ladders (modelSelection.ts).
+// ---------------------------------------------------------------------------
+test('the hash rung (to7xpa7 H-M1): a hash-confirmed file resolves its slot though its name matches nothing', () => {
+  const { inferSelections, slotCandidates } = load('src/lib/modelSelection.ts')
+  const renamed = { name: 'my_checkpoint.safetensors', kind: 'diffusion_models', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'fl2va' } }
+  assert.equal(inferSelections([renamed], 'off').fl2va, 'my_checkpoint.safetensors', 'byte evidence outranks the name rules: the renamed FL2VA resolves')
+  const anonymous = { name: 'my_checkpoint.safetensors', kind: 'diffusion_models', bytes: 0 }
+  assert.equal(inferSelections([anonymous], 'off').fl2va, '', 'null-catalog parity: the same name without byte evidence stays invisible — the rung is the ONLY difference')
+  const suspected = { name: anonymous.name, kind: anonymous.kind, bytes: 0, identity: { verdict: 'name-suspected', family: 'minimax-h3', artifact: 'fl2va' } }
+  assert.equal(inferSelections([suspected], 'off').fl2va, '', 'a name-suspected block earns no rung — byte evidence only')
+  const wrongArtifact = { name: anonymous.name, kind: anonymous.kind, bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'ref2va' } }
+  assert.equal(inferSelections([wrongArtifact], 'off').fl2va, '', 'a different artifact never resolves the slot')
+  const wrongFamily = { name: 'encoder.safetensors', kind: 'text_encoders', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'qwen-image', artifact: 'text-encoder' } }
+  assert.equal(inferSelections([wrongFamily], 'off').textEncoder, '', 'the artifact match is family-pinned (qwen-image text-encoder rows are not the H3 TE)')
+  const renamedTe = { name: 'totally_not_a_text_encoder.safetensors', kind: 'text_encoders', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'text-encoder' } }
+  assert.equal(inferSelections([renamedTe], 'off').textEncoder, 'totally_not_a_text_encoder.safetensors', 'the TE slot rides the same rung')
+
+  // The tier-shaped turbo slots: byte evidence is not a wrong-TIER pick
+  // (plan ruling), but the catalog's turbo ids are lane-agnostic — the
+  // LANE token still rides the filename/aliases, exactly the ladders' own
+  // discipline.
+  const turbo8 = { name: 'renamed_speed_lora.safetensors', kind: 'loras', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'turbo-8' } }
+  assert.equal(inferSelections([turbo8], '8').fl2vLora, 'renamed_speed_lora.safetensors', 'a hash-confirmed tier-8 LoRA resolves the 8-step slot under any name')
+  assert.equal(inferSelections([turbo8], '4').fl2vLora, '', 'tier-8 bytes never resolve the 4-step slot')
+  assert.equal(inferSelections([turbo8], 'off').fl2vLora, 'renamed_speed_lora.safetensors', "the 'off' auto tier admits either step tier (the off-patterns' union)")
+  const ref2vTurbo8 = { name: 'renamed_speed_lora.safetensors', kind: 'loras', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'turbo-8', aliases: ['minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors'] } }
+  assert.equal(inferSelections([ref2vTurbo8], '8').fl2vLora, '', 'a ref2v-lane LoRA never enters the fl2v lane (the lane token rides the alias)')
+  assert.equal(inferSelections([ref2vTurbo8], '8').ref2vLora, 'renamed_speed_lora.safetensors', 'the same bytes resolve their OWN lane')
+
+  // THE MERGED EXCEPTION: the hybrid artifact maps to NO slot — community
+  // merges are name-invisible BY DESIGN (spec §4); the wizard's offer is
+  // the only road in.
+  const hybrid = { name: 'merged_thing.safetensors', kind: 'diffusion_models', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'hybrid' } }
+  assert.equal(inferSelections([hybrid], 'off').fl2va, '', 'the hybrid artifact maps to NO inference slot (fl2va)')
+  assert.equal(inferSelections([hybrid], 'off').ref2va, '', 'the hybrid artifact maps to NO inference slot (ref2va)')
+
+  // N1 parity: where the rung has no claim the name ladder stays the truth.
+  const official = { name: 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', kind: 'diffusion_models', bytes: 0 }
+  assert.equal(inferSelections([hybrid, official], 'off').fl2va, official.name, 'the name ladder still resolves the lane when only name evidence exists')
+
+  // The enumerator mirrors the rung (no drift).
+  const set = slotCandidates([renamed], 'fl2va', 'off')
+  assert.equal(set.picked, 'my_checkpoint.safetensors', 'slotCandidates admits the rung — the enumerator cannot drift from the picker')
+  assert.equal(set.basis, 'hash', 'the hash basis is named')
+})
+
+test('the H-M2 tie-break prefers the canonically-named duplicate; the rest enumerate as other candidates', () => {
+  const { inferSelections, slotCandidates } = load('src/lib/modelSelection.ts')
+  const canonical = { name: 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', kind: 'diffusion_models', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'fl2va', aliases: ['minimax_h3_fl2va_pruned_int8_convrot.safetensors'] } }
+  const renamedCopy = { name: 'backups/my_fl2va_copy.safetensors', kind: 'diffusion_models', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'fl2va' } }
+  assert.equal(inferSelections([renamedCopy, canonical], 'off').fl2va, canonical.name, 'the aliased canonical name wins the tie-break')
+  assert.equal(inferSelections([canonical, renamedCopy], 'off').fl2va, canonical.name, '...registry-order independent')
+  const set = slotCandidates([renamedCopy, canonical], 'fl2va', 'off')
+  assert.equal(set.names.join('|'), canonical.name + '|' + renamedCopy.name, 'both confirming files enumerate — the picked narration names the other')
+  assert.equal(set.names.indexOf(renamedCopy.name) !== -1, true, 'the renamed duplicate renders as an other-candidate, never vanishes')
+  const shortName = { name: 'a.safetensors', kind: 'diffusion_models', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'fl2va' } }
+  const longName = { name: 'much_longer_name.safetensors', kind: 'diffusion_models', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'fl2va' } }
+  assert.equal(inferSelections([longName, shortName], 'off').fl2va, 'a.safetensors', 'no alias: the shorter basename (bestOfTier) wins — deterministic')
+})
+
+test("isCanonical upgrades by sha-equality and stays display-only (to7xpa7: readiness unchanged by identity fields)", () => {
+  const { h3StackReport, h3StackReady } = load('src/lib/h3Stack.ts')
+  const renamedFl2va = { name: 'my_checkpoint.safetensors', kind: 'diffusion_models', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'fl2va', aliases: ['minimax_h3_fl2va_pruned_int8_convrot.safetensors'] } }
+  const te = { name: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', kind: 'text_encoders', bytes: 0 }
+  const videoVae = { name: 'minimax_h3_video_vae_fp16.safetensors', kind: 'vae', bytes: 0 }
+  const audioVae = { name: 'minimax_h3_audio_vae_fp32.safetensors', kind: 'vae', bytes: 0 }
+  const report = h3StackReport([renamedFl2va, te, videoVae, audioVae])
+  assert.equal(report.rows[0].present, true, 'the renamed file still resolves (the rung underneath the report)')
+  assert.equal(report.rows[0].isCanonical, true, 'isCanonical upgrades: the sha match names the canonical artifact — display guidance only')
+  assert.equal(report.rows[0].identity && report.rows[0].identity.verdict, 'hash-confirmed', 'the row carries the resolved file identity block')
+  const officialFl2va = { name: 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', kind: 'diffusion_models', bytes: 0 }
+  const plainReport = h3StackReport([officialFl2va, te, videoVae, audioVae])
+  assert.equal(plainReport.rows[0].isCanonical, true, 'the canonically-named file stays canonical exactly as today (basename compare unchanged)')
+  assert.equal(plainReport.rows[0].identity, undefined, 'an absent block rides no identity (degraded mode)')
+  // THE NON-GATING SEAM: identity fields never block. A name-suspected
+  // everything reads ready EXACTLY as the no-block run.
+  const noBlocks = [officialFl2va, te, videoVae, audioVae]
+  const suspectedBlocks = noBlocks.map((file) => ({ name: file.name, kind: file.kind, bytes: file.bytes, identity: { verdict: 'name-suspected' } }))
+  assert.equal(
+    h3StackReady({ selection: h3StackReport(suspectedBlocks).selection, mode: 'text' }),
+    h3StackReady({ selection: h3StackReport(noBlocks).selection, mode: 'text' }),
+    'a name-suspected everything reads ready exactly as the no-block run — identity never gates',
+  )
+})
+
+test('the class guards read the artifact when hash-confirmed; the name markers stay the fallback (to7xpa7 AC-2)', () => {
+  const { resolveModelOverrides } = load('src/lib/modelOverrides.ts')
+  const { modelClassHint } = load('src/lib/modelOverrides.ts')
+  // THE BRIEF'S CASE: a T=1-NAMED file whose bytes hash-confirm the VIDEO VAE.
+  const lyingVae = { name: 'minimax_h3_t1_image_vae_step1597.safetensors', kind: 'vae', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'video-vae' } }
+  const applied = resolveModelOverrides('monoka', [lyingVae], { videoVae: lyingVae.name })
+  assert.equal(applied.slots.videoVae.state, 'applied', 'the videoVae slot accepts the T=1-NAMED file — the bytes are the video VAE (the name lie corrected)')
+  const suspectedSame = [{ name: lyingVae.name, kind: 'vae', bytes: 0, identity: { verdict: 'name-suspected' } }]
+  const refused = resolveModelOverrides('monoka', suspectedSame, { videoVae: lyingVae.name })
+  assert.equal(refused.slots.videoVae.state, 'refused', 'the same NAME name-suspected still refuses — the name markers remain the fallback')
+  // The TE dimension-class guard: a 4b-token name whose bytes hash-confirm
+  // the H3 text-encoder artifact (which IS the 32B class).
+  const lyingTe = { name: 'qwen3vl_4b_small.safetensors', kind: 'text_encoders', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'text-encoder' } }
+  const teApplied = resolveModelOverrides('monoka', [lyingTe], { textEncoder: lyingTe.name })
+  assert.equal(teApplied.slots.textEncoder.state, 'applied', 'the te-class guard reads the bytes: the H3 text-encoder artifact satisfies the 32B expectation whatever the filename says')
+  const teSuspected = resolveModelOverrides('monoka', [{ name: lyingTe.name, kind: 'text_encoders', bytes: 0, identity: { verdict: 'name-suspected' } }], { textEncoder: lyingTe.name })
+  assert.equal(teSuspected.slots.textEncoder.state, 'refused', 'the same name name-suspected refuses — the dimension guard unchanged for name-only evidence')
+  // The pick-time hint speaks the same truth.
+  assert.equal(modelClassHint('vae', lyingVae.name, lyingVae.identity), 'video decoder', 'the hint says video decoder — bytes, not the lying name')
+  assert.equal(modelClassHint('text_encoders', lyingTe.name, lyingTe.identity), '32B-class · H3', 'the TE hint reads the artifact')
+  assert.equal(modelClassHint('vae', 'minimax_h3_video_vae_fp16.safetensors'), 'video decoder', 'no block: the name heuristics answer exactly as today')
 })

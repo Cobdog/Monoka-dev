@@ -65,10 +65,10 @@
  * factory-level Mamad8 ban). Cross-class picks refuse at the seam (the
  * marker heuristics at VIDEO_VAE_MARKER document their own limits).
  */
-import type { ModelFile, ModelOverrideSlots } from '../types'
+import type { ModelFile, ModelFileIdentity, ModelOverrideSlots } from '../types'
 import { dbg } from './dbg'
 import { inferH3ImgSelection, T1_IMAGE_VAE_PATTERN } from './graph/h3image'
-import { inferSelections, teDimClassOf, teDimClassRefusal } from './modelSelection'
+import { GUARD_SLOT_ARTIFACT, identityConfirmsArtifact, inferSelections, teDimClassOf, teDimClassRefusal, teDimClassOfIdentity } from './modelSelection'
 import { inferMusic3Selection, MUSIC3_DAV_FILENAME } from './music3Workflow'
 
 export type ModelOverrideSlotName = 'checkpoint' | 'fl2va' | 'ref2va' | 'merged' | 'textEncoder' | 'vae' | 'videoVae' | 'audioVae' | 'imageVae'
@@ -398,15 +398,24 @@ const AUDIO_VAE_MARKER = /audio|dav/i
  *  labels every option AT the pick, reusing the same name heuristics the
  *  guards use (the VAE decoder markers + the TE dimension-class classifier),
  *  so the 4B TE in an H3 slot and the image VAE in a video slot carry their
- *  class BEFORE they are picked. Empty string = nothing to say. */
-export function modelClassHint(kind: ModelFile['kind'], name: string): string {
+ *  class BEFORE they are picked. Empty string = nothing to say.
+ *
+ *  (to7xpa7 AC-2) `identity` is read FIRST: hash-confirmed bytes ARE the
+ *  class — a T=1-named file whose bytes are the video VAE labels as a video
+ *  decoder. Name markers remain the fallback for name-only evidence. */
+export function modelClassHint(kind: ModelFile['kind'], name: string, identity?: ModelFileIdentity): string {
   if (kind === 'vae') {
+    if (identityConfirmsArtifact({ name, identity }, [GUARD_SLOT_ARTIFACT.imageVae])) return 'T=1 image decoder'
+    if (identityConfirmsArtifact({ name, identity }, [GUARD_SLOT_ARTIFACT.audioVae])) return 'audio decoder'
+    if (identityConfirmsArtifact({ name, identity }, [GUARD_SLOT_ARTIFACT.videoVae])) return 'video decoder'
     if (T1_IMAGE_VAE_PATTERN.test(name)) return 'T=1 image decoder'
     if (AUDIO_VAE_MARKER.test(name)) return 'audio decoder'
     if (VIDEO_VAE_MARKER.test(name)) return 'video decoder'
     return 'VAE (unclassified)'
   }
   if (kind === 'text_encoders') {
+    const identityClass = teDimClassOfIdentity(identity)
+    if (identityClass === '32b') return '32B-class · H3'
     const dimClass = teDimClassOf(name)
     if (dimClass === '32b') return '32B-class · H3'
     if (dimClass === '8b') return '8B-class companion'
@@ -428,8 +437,12 @@ function slotRefusal(family: ModelFamilyInfo, slot: ModelOverrideSlotName, file:
   // but the H3 token refiner cannot consume (the 2026-09-22 crash class).
   // The family-registry expectation does the refusing; the shared message
   // names what to make visible. Unclassifiable names pass (engine arbiter).
+  // (to7xpa7 AC-2) The guard reads the file's hash-confirmed identity FIRST
+  // — and only ever RELAXES on it (the identity class replaces the filename
+  // class solely when the family accepts it): byte evidence can correct a
+  // lying name, never add a refusal (N1).
   if (slot === 'textEncoder') {
-    const teReason = teDimClassRefusal(family.id, file.name)
+    const teReason = teDimClassRefusal(family.id, file.name, file.identity)
     if (teReason) return { check: 'te-class', reason: teReason }
   }
   // The decoder-class gate (epdvxd4): each VAE slot refuses picks whose
@@ -437,18 +450,24 @@ function slotRefusal(family: ModelFamilyInfo, slot: ModelOverrideSlotName, file:
   // extension of the factory-level Mamad8 ban (a T=1 decoder in a
   // multi-frame graph, or a video decoder decoding audio, is a doomed or
   // corrupting graph; refuse it at the pick, never at the engine).
+  // (to7xpa7 AC-2) A pick whose hash-confirmed identity names THIS slot's
+  // artifact skips the filename markers entirely — the bytes are the class.
+  // Any other verdict keeps the filename rules verbatim: the guards never
+  // GAIN a refusal from byte evidence (N1).
   if (slot === 'videoVae' || slot === 'audioVae' || slot === 'imageVae') {
-    if (slot !== 'imageVae' && T1_IMAGE_VAE_PATTERN.test(file.name)) {
-      return { check: 'vae', reason: `'${file.name}' is the Mamad8 T=1 image decoder — pinned to single-frame graphs; pick the video VAE for this slot.` }
-    }
-    if (slot === 'imageVae' && !T1_IMAGE_VAE_PATTERN.test(file.name)) {
-      return { check: 'vae', reason: `'${file.name}' is not a Mamad8-class T=1 image decoder (the minimax_h3_t1_image_vae* family) — the image VAE slot pins the T=1 Fast profile's decoder, and a video/audio decoder there is the same cross-class swap the factory guard bans in reverse.` }
-    }
-    if (slot === 'videoVae' && AUDIO_VAE_MARKER.test(file.name)) {
-      return { check: 'vae', reason: `'${file.name}' looks like an audio-class VAE by name — the video VAE slot decodes video frames; pick the audio VAE slot for audio decoders.` }
-    }
-    if (slot === 'audioVae' && VIDEO_VAE_MARKER.test(file.name)) {
-      return { check: 'vae', reason: `'${file.name}' looks like a video-class VAE by name — the audio VAE slot decodes audio latents; pick the video VAE slot for video decoders.` }
+    if (!identityConfirmsArtifact(file, [GUARD_SLOT_ARTIFACT[slot]])) {
+      if (slot !== 'imageVae' && T1_IMAGE_VAE_PATTERN.test(file.name)) {
+        return { check: 'vae', reason: `'${file.name}' is the Mamad8 T=1 image decoder — pinned to single-frame graphs; pick the video VAE for this slot.` }
+      }
+      if (slot === 'imageVae' && !T1_IMAGE_VAE_PATTERN.test(file.name)) {
+        return { check: 'vae', reason: `'${file.name}' is not a Mamad8-class T=1 image decoder (the minimax_h3_t1_image_vae* family) — the image VAE slot pins the T=1 Fast profile's decoder, and a video/audio decoder there is the same cross-class swap the factory guard bans in reverse.` }
+      }
+      if (slot === 'videoVae' && AUDIO_VAE_MARKER.test(file.name)) {
+        return { check: 'vae', reason: `'${file.name}' looks like an audio-class VAE by name — the video VAE slot decodes video frames; pick the audio VAE slot for audio decoders.` }
+      }
+      if (slot === 'audioVae' && VIDEO_VAE_MARKER.test(file.name)) {
+        return { check: 'vae', reason: `'${file.name}' looks like a video-class VAE by name — the audio VAE slot decodes audio latents; pick the video VAE slot for video decoders.` }
+      }
     }
   }
   return null

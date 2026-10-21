@@ -522,7 +522,7 @@ export function SettingsView({ settings, setSettings, info, infoEpoch = 0, model
                       the same heuristics the validate-time guards use, shown
                       before the pick instead of refusing after it. */}
                   {candidates.map((model) => {
-                    const hint = modelClassHint(kind, model.name)
+                    const hint = modelClassHint(kind, model.name, model.identity)
                     return <option key={model.name} value={model.name}>{hint ? `${model.name} · ${hint}` : model.name}</option>
                   })}
                 </StudioSelect>

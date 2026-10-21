@@ -1,4 +1,4 @@
-import type { ModelFile, ModelKind, ModelSelection } from '../types'
+import type { ModelFile, ModelFileIdentity, ModelKind, ModelSelection } from '../types'
 import { dbg } from './dbg'
 import { turboLoraPatterns } from './graph'
 
@@ -57,7 +57,9 @@ function bestOfTier(files: ModelFile[]) {
  *
  *  Exported as THE family inference engine (Wave 2): the video ladder here,
  *  the workbench's inferH3ImgSelection, and the audio engines' ladders all
- *  resolve registry rows through this one function — no drifted copies. */
+ *  resolve registry rows through this one function — no drifted copies.
+ *  (to7xpa7) Name-rules ONLY: the H3 slot resolution rides resolveSlot,
+ *  which layers the hash rung on top of this same walk. */
 export function findRegistryModel(files: ModelFile[], kind: ModelKind, expressions: RegExp | RegExp[], fallbackNeedle?: string) {
   const candidates = files.filter((file) => file.kind === kind)
   for (const expression of Array.isArray(expressions) ? expressions : [expressions]) {
@@ -79,10 +81,6 @@ export function findRegistryModel(files: ModelFile[], kind: ModelKind, expressio
   }
   dbg('inventory.infer', { kind, picked: '', tier: 'none', of: candidates.length })
   return ''
-}
-
-function findModel(files: ModelFile[], kind: ModelKind, expressions: RegExp | RegExp[], fallbackNeedle?: string) {
-  return findRegistryModel(files, kind, expressions, fallbackNeedle)
 }
 
 /** ---------------------------------------------------------------------------
@@ -186,16 +184,143 @@ export const FAMILY_TE_DIM_CLASS: Readonly<Partial<Record<'monoka' | 'h3image' |
  *  override seam, the video ladder's validate rung, and the workbench's
  *  detection): names the picked file, its class, the family's need, and the
  *  artifact to make visible. Null = proceed (no expectation for the family,
- *  no class token in the name, or the class is accepted). */
-export function teDimClassRefusal(familyKey: string, fileName: string): string | null {
+ *  no class token in the name, or the class is accepted).
+ *
+ *  (to7xpa7 AC-2) `identity` is the hash catalog's byte evidence: when the
+ *  bytes hash-confirm the H3 text-encoder artifact, THAT class replaces the
+ *  filename token — but only when the family ACCEPTS it, so byte evidence
+ *  can correct a lying name and can never ADD a refusal (N1: a family the
+ *  bytes cannot serve keeps today's name-only verdict, engine arbiter
+ *  included). */
+export function teDimClassRefusal(familyKey: string, fileName: string, identity?: ModelFileIdentity): string | null {
   const expectation = FAMILY_TE_DIM_CLASS[familyKey]
   if (!expectation || !fileName) return null
-  const classId = teDimClassOf(fileName)
+  const identityClass = teDimClassOfIdentity(identity)
+  const classId = identityClass && expectation.accepts.includes(identityClass) ? identityClass : teDimClassOf(fileName)
   if (!classId || expectation.accepts.includes(classId)) return null
   const picked = TE_DIM_CLASSES[classId]
   const needed = expectation.accepts.map((id) => TE_DIM_CLASSES[id].label).join(' or ')
   dbg('teclass', { verdict: 'refuse', family: familyKey, file: basenameOf(fileName), class: classId, accepts: expectation.accepts.join('|') })
   return `'${basenameOf(fileName)}' is a ${classId.toUpperCase()}-class text encoder (${picked.hiddenDim}-dim) — ${expectation.familyLabel} needs ${needed}, and a mismatched encoder crashes the render at the engine's text-embedding stage instead of failing cleanly. Make ${expectation.makeVisible} visible to the instance (or pick it for this family) instead.`
+}
+
+/** ---------------------------------------------------------------------------
+ *  THE HASH RUNG (to7xpa7, 2026-10-20) — the ladder's top rung. The hash
+ *  catalog's sha256 verdicts are STRONGER evidence than any filename
+ *  pattern: names lie (renames, community repacks), bytes do not. A file
+ *  whose hash-confirmed identity names the slot's catalog artifact resolves
+ *  the slot BEFORE any name rule runs (H-M1); the name ladders below stay
+ *  exactly as they are — the fallback, unchanged, for everything the
+ *  catalog cannot confirm (N1: the rung only ADDS resolutions).
+ *
+ *  The slot → artifact map is authored HERE, beside the ladders it extends —
+ *  one derivation home, so a slot's identity target cannot drift from its
+ *  name ladder. The artifact ids are the crawl's vocabulary
+ *  (scripts/lib/hash-catalog-identities.cjs; server/hashCatalog.json §2) —
+ *  the plan sketch's 'te-32b' shipped as 'text-encoder', which is why the
+ *  match is family-pinned (qwen-image rows share the id). The MERGED slot
+ *  stays the deliberate exception: `hybrid` maps to NO slot (community
+ *  merges are name-invisible BY DESIGN, spec §4) — MERGED_SLOT_ARTIFACT
+ *  exists for the wizard's one-click offer, never for a rung.
+ * ------------------------------------------------------------------------- */
+/** One slot's catalog-artifact target. `family` is pinned because artifact
+ *  ids are not globally unique. Turbo slots carry `laneExclude`: the
+ *  catalog's turbo ids are lane-AGNOSTIC (turbo-8 covers the fl2v, ref2v,
+ *  dmd and hyperflow LoRA families), so the lanes keep ONE rule of the
+ *  ladders' discipline — a file whose basename or canonical alias names the
+ *  OTHER lane never enters this lane. A lane-UNLABELED accelerator (dmd,
+ *  hyperflow) serves either lane, exactly as the 2026-09-15 bake-off
+ *  (muwufpp's v4_step600_ema promotion) blessed in practice. */
+export type SlotArtifact = { artifact: string; family: string; laneExclude?: RegExp }
+
+const H3_CATALOG_FAMILY = 'minimax-h3'
+
+const SLOT_ARTIFACT: Partial<Record<SelectionSlotKey, SlotArtifact>> = {
+  fl2va: { artifact: 'fl2va', family: H3_CATALOG_FAMILY },
+  ref2va: { artifact: 'ref2va', family: H3_CATALOG_FAMILY },
+  textEncoder: { artifact: 'text-encoder', family: H3_CATALOG_FAMILY },
+  videoVae: { artifact: 'video-vae', family: H3_CATALOG_FAMILY },
+  audioVae: { artifact: 'audio-vae', family: H3_CATALOG_FAMILY },
+  previewVae: { artifact: 'preview-decoder', family: H3_CATALOG_FAMILY },
+}
+
+/** The class guards' catalog targets (the override seam's guarded slots).
+ *  The TE/VAE targets are the shared inference slots' own; the imageVae pick
+ *  has NO inference slot (T=1 is pick-only), so its target is authored here
+ *  beside the map — still one vocabulary, never re-encoded at the guards. */
+export const GUARD_SLOT_ARTIFACT: Readonly<Record<'textEncoder' | 'videoVae' | 'audioVae' | 'imageVae', SlotArtifact>> = {
+  textEncoder: SLOT_ARTIFACT.textEncoder!,
+  videoVae: SLOT_ARTIFACT.videoVae!,
+  audioVae: SLOT_ARTIFACT.audioVae!,
+  imageVae: { artifact: 't1-image-vae', family: H3_CATALOG_FAMILY },
+}
+
+/** The merged slot's catalog artifact — `hybrid` maps to NO inference slot
+ *  (see the rung block above). Read only by the wizard's mergedPickOffer. */
+export const MERGED_SLOT_ARTIFACT: SlotArtifact = { artifact: 'hybrid', family: H3_CATALOG_FAMILY }
+
+/** The tier-shaped turbo slots' targets: the artifact id is the TIER's truth
+ *  (a hash-confirmed 8-step file is not a wrong-tier pick — plan ruling),
+ *  scoped to the lane exclusion. 'off' admits both step tiers, exactly like
+ *  the off-patterns' union. */
+export function slotArtifacts(slot: SelectionSlotKey, turbo: 'off' | '4' | '8' = 'off'): SlotArtifact[] {
+  const mapped = SLOT_ARTIFACT[slot]
+  if (mapped) return [mapped]
+  if (slot !== 'fl2vLora' && slot !== 'ref2vLora') return []
+  const ids = turbo === '4' ? ['turbo-4'] : turbo === '8' ? ['turbo-8'] : ['turbo-4', 'turbo-8']
+  const laneExclude: RegExp = slot === 'fl2vLora' ? /ref2v/i : /fl2v/i
+  const targets: SlotArtifact[] = []
+  for (const artifact of ids) targets.push({ artifact, family: H3_CATALOG_FAMILY, laneExclude })
+  return targets
+}
+
+/** H-M1's byte-evidence test — the ONE helper every consumer reads (the
+ *  rung, the stack report's isCanonical upgrade, the class guards, the
+ *  wizard's fetch suppression), never a re-encoding. True when the file
+ *  carries a hash-confirmed identity naming one of the targets
+ *  (family-pinned; lane-excluded targets additionally require that the
+ *  basename and aliases name no OTHER lane). */
+export function identityConfirmsArtifact(file: Pick<ModelFile, 'name' | 'identity'>, targets: readonly SlotArtifact[]): boolean {
+  const identity = file.identity
+  if (!identity || identity.verdict !== 'hash-confirmed') return false
+  for (const target of targets) {
+    if (identity.family !== target.family || identity.artifact !== target.artifact) continue
+    const exclude = target.laneExclude
+    if (!exclude) return true
+    if (exclude.test(basenameOf(file.name))) continue
+    const aliases = identity.aliases
+    if (aliases && aliases.some((alias) => exclude.test(alias))) continue
+    return true
+  }
+  return false
+}
+
+/** The identity-based sibling of teDimClassOf (AC-2's byte classifier):
+ *  hash-confirmed bytes classify DIRECTLY — the catalog's H3 text-encoder
+ *  artifact IS the 32B-class qwen3vl (every cataloged row; the
+ *  classification table owns the fact). Null when the block does not
+ *  confirm that artifact — callers keep the filename classifier, and the
+ *  class guards only ever RELAX on it (the guards never gain a refusal, N1). */
+export function teDimClassOfIdentity(identity?: ModelFileIdentity): TeDimClassId | null {
+  if (!identity || identity.verdict !== 'hash-confirmed') return null
+  if (identity.family === H3_CATALOG_FAMILY && identity.artifact === SLOT_ARTIFACT.textEncoder!.artifact) return '32b'
+  return null
+}
+
+/** H-M2's tie-break over a slot's hash-confirmed pool: (1) the canonically
+ *  aliased basename wins (a renamed copy of the SAME bytes yields to the
+ *  registry name the catalog knows); (2) the existing bestOfTier ranking;
+ *  (3) bestOfTier's sort is stable — full ties keep registry order. */
+function hashConfirmedPick(pool: ModelFile[]): ModelFile | null {
+  if (pool.length === 0) return null
+  const aliased = pool.filter((file) => {
+    const aliases = file.identity && file.identity.aliases
+    if (!aliases) return false
+    const base = basenameOf(file.name).toLowerCase()
+    for (const alias of aliases) if (alias.toLowerCase() === base) return true
+    return false
+  })
+  return bestOfTier(aliased.length > 0 ? aliased : pool)
 }
 
 /** ---------------------------------------------------------------------------
@@ -244,27 +369,39 @@ function slotLadder(slot: SelectionSlotKey, turbo: 'off' | '4' | '8', family?: s
   return STATIC_SLOT_LADDERS[slot]
 }
 
-/** The MODELS STEP'S ENUMERATOR (wizard rework task 5): every registry row a
- *  slot's ladder would admit — tier matches unioned with the fallback
- *  needle's matches — beside the ladder's own pick and HOW it was earned
- *  ('anchored' = a tier regex; 'fallback' = the loose needle; '' = nothing
- *  resolves). ONE derivation beside the ladders: `picked` runs the same
- *  first-tier-with-a-match-else-needle walk inferSelections runs, so the
- *  wizard's picked/ambiguous narration can never disagree with the picker
- *  (pinned in tests/workflows.test.js, the no-drift invariant). */
-export type SlotCandidateSet = {
-  slot: SelectionSlotKey
+/** ONE slot resolution (to7xpa7): the hash rung FIRST (H-M1 — byte evidence
+ *  outranks every name rule; the pool is the ladder kind's files whose
+ *  identity confirms the slot's artifact, tied off per H-M2), then the
+ *  ladder's tiers, then the fallback needle. inferSelections and
+ *  slotCandidates BOTH consume this walk, so the picker and the enumerator
+ *  cannot disagree (the no-drift invariant) — the rung cannot exist in one
+ *  and not the other. */
+type SlotResolution = {
   kind: ModelKind
-  /** Every admitting registry name (verbatim subpaths), tier order first. */
-  names: string[]
-  /** The ladder's pick — exactly inferSelections' answer for this slot. */
   picked: string
-  basis: 'anchored' | 'fallback' | ''
+  basis: 'hash' | 'anchored' | 'fallback' | ''
+  names: string[]
 }
 
-export function slotCandidates(files: ModelFile[], slot: SelectionSlotKey, turbo: 'off' | '4' | '8' = 'off', family?: string): SlotCandidateSet {
+function resolveSlot(files: ModelFile[], slot: SelectionSlotKey, turbo: 'off' | '4' | '8', family?: string): SlotResolution {
   const ladder = slotLadder(slot, turbo, family)
   const candidates = files.filter((file) => file.kind === ladder.kind)
+  const pool: ModelFile[] = []
+  for (const file of candidates) {
+    if (identityConfirmsArtifact(file, slotArtifacts(slot, turbo))) pool.push(file)
+  }
+  const hashPick = hashConfirmedPick(pool)
+  if (hashPick) {
+    dbg('inventory.infer', { slot, picked: hashPick.name, tier: 'hash', of: pool.length })
+    const names = [hashPick.name]
+    for (const file of pool) {
+      if (file.name !== hashPick.name && names.indexOf(file.name) === -1) names.push(file.name)
+    }
+    return { kind: ladder.kind, picked: hashPick.name, basis: 'hash', names }
+  }
+  // The name walk — the ladders' existing semantics, verbatim (first tier
+  // with a match wins, then the fallback needle), plus the enumerated names
+  // the wizard's narration reads.
   const names: string[] = []
   const admit = (test: (base: string) => boolean) => {
     for (const file of candidates) {
@@ -273,7 +410,7 @@ export function slotCandidates(files: ModelFile[], slot: SelectionSlotKey, turbo
     }
   }
   let picked = ''
-  let basis: 'anchored' | 'fallback' | '' = ''
+  let basis: SlotResolution['basis'] = ''
   for (const tier of ladder.tiers) {
     admit((base) => tier.test(base))
     if (!picked) {
@@ -293,14 +430,35 @@ export function slotCandidates(files: ModelFile[], slot: SelectionSlotKey, turbo
       basis = 'fallback'
     }
   }
-  return { slot, kind: ladder.kind, names, picked, basis }
+  return { kind: ladder.kind, picked, basis, names }
+}
+
+/** The MODELS STEP'S ENUMERATOR (wizard rework task 5): every registry row a
+ *  slot's resolution would admit — the hash pool, tier matches, or the
+ *  fallback needle's matches — beside the pick and HOW it was earned
+ *  ('hash' = byte evidence; 'anchored' = a tier regex; 'fallback' = the
+ *  loose needle; '' = nothing resolves). ONE derivation beside the ladders:
+ *  `picked` IS inferSelections' answer for this slot (both read resolveSlot),
+ *  so the wizard's picked/ambiguous narration can never disagree with the
+ *  picker (pinned in tests/workflows.test.js, the no-drift invariant). */
+export type SlotCandidateSet = {
+  slot: SelectionSlotKey
+  kind: ModelKind
+  /** Every admitting registry name (verbatim subpaths), pick first on a
+   *  hash basis, tier order first on a name basis. */
+  names: string[]
+  /** The resolution's pick — exactly inferSelections' answer for this slot. */
+  picked: string
+  basis: 'hash' | 'anchored' | 'fallback' | ''
+}
+
+export function slotCandidates(files: ModelFile[], slot: SelectionSlotKey, turbo: 'off' | '4' | '8' = 'off', family?: string): SlotCandidateSet {
+  const resolution = resolveSlot(files, slot, turbo, family)
+  return { slot, kind: resolution.kind, names: resolution.names, picked: resolution.picked, basis: resolution.basis }
 }
 
 export function inferSelections(files: ModelFile[], turbo: 'off' | '4' | '8', family?: string): ModelSelection {
-  const pick = (slot: SelectionSlotKey) => {
-    const ladder = slotLadder(slot, turbo, family)
-    return findModel(files, ladder.kind, ladder.tiers, ladder.fallbackNeedle)
-  }
+  const pick = (slot: SelectionSlotKey) => resolveSlot(files, slot, turbo, family).picked
   return {
     fl2va: pick('fl2va'),
     ref2va: pick('ref2va'),
