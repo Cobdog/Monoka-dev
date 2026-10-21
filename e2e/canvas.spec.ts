@@ -6158,6 +6158,14 @@ test('save status: the docked settings save surfaces failure inline with retry (
       await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'T20 settings save down' }) })
     })
     await dock.locator('#output-path').fill(path.join(os.tmpdir(), 't20-settings-definitely-missing'))
+    // (T8 gate fix, 2026-10-21) The fill's dirty flip re-renders the footer —
+    // the save button lives in that footer — and a click dispatched inside
+    // that re-render lands on a replaced node and never reaches the handler
+    // (the lost-click race; it failed 3 of 4 gate/verify runs under load).
+    // The settle is the app's own state marker (testing.md rule 3): the edit
+    // REGISTERING — dirty reads `unsaved` — implies the footer's re-render
+    // committed, so the click lands on a stable tree.
+    await expect(dock.locator('[data-settings-dirty]')).toHaveAttribute('data-settings-dirty', 'unsaved')
     await dock.locator('[data-save-settings]').click()
     const saving = dock.locator('[data-save-state="saving"]')
     await expect(saving).toBeVisible({ timeout: 10_000 })
@@ -6172,12 +6180,23 @@ test('save status: the docked settings save surfaces failure inline with retry (
     await expect(failed.locator('[data-save-retry]')).toBeVisible()
     await expect(dock.locator('[data-settings-dirty]')).toHaveCount(0)
 
-    // retry with the route healed: back through saving to the standing line.
-    await page.unroute('**/api/lan/settings')
+    // retry with the route healed (T8 gate fix, 2026-10-21): the retry POST
+    // answers in single-digit ms against the local server, so the `saving`
+    // render flashes shorter than a locator poll — a visibility assert on it
+    // is a coin flip under load (missed twice in tonight's diagnosis). The
+    // retry's truth moves to the WIRE — exactly one re-submission — plus the
+    // settled outcome; strictly stronger than the DOM flash it replaces
+    // (a lost retry click now reads as zero posts, not a lucky green).
+    const retryPosts: unknown[] = []
+    await page.route('**/api/lan/settings', async (route) => {
+      if (route.request().method() === 'POST') retryPosts.push(route.request().postDataJSON())
+      await route.continue()
+    })
     await failed.locator('[data-save-retry]').click()
-    await expect(dock.locator('[data-save-state="saving"]')).toBeVisible({ timeout: 10_000 })
     await expect(dock.locator('[data-save-state]')).toHaveCount(0, { timeout: 30_000 })
     await expect(dock.locator('[data-settings-dirty]')).toHaveAttribute('data-settings-dirty', 'saved')
+    expect(retryPosts.length, 'the retry re-submitted the save exactly once').toBe(1)
+    await page.unroute('**/api/lan/settings')
     expect(problems.filter((entry) => !environmental(entry))).toEqual([])
   } finally {
     await page.unroute('**/api/lan/settings').catch(() => undefined)
