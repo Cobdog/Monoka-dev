@@ -852,15 +852,16 @@ function scanHexLiterals(files) {
   return hits
 }
 
-/** Every import/require whose specifier names server/hashCatalog (the
- *  client-ban: any form — relative, aliased, dynamic). */
+/** Every quoted specifier naming server/hashCatalog (the client-ban: any
+ *  form — relative, aliased, dynamic, multiline-split, re-export). No
+ *  keyword gate: the specifier string is the contract, not the statement
+ *  shape it arrives in.) */
 function scanCatalogImports(files) {
   const fs = require('node:fs')
   const hits = []
   for (const file of files) {
     const lines = fs.readFileSync(file, 'utf8').split('\n')
     lines.forEach((line, index) => {
-      if (!/\b(import|require|import\()\b/.test(line)) return
       const specifiers = [...line.matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1])
       if (specifiers.some((specifier) => specifier.includes('server/hashCatalog'))) {
         hits.push({ file: rel(file), line: index + 1, text: line.trim().slice(0, 100) })
@@ -919,12 +920,18 @@ test('AC-6 guard: no surface re-encodes a sha→name table — the client carrie
   const canaryDir = makeScratchDir(path.join(require('node:os').tmpdir(), 'monoka-nongating-canary-'))
   require('node:fs').writeFileSync(path.join(canaryDir, 'canary.ts'), [
     "import { loadHashCatalog } from '../../server/hashCatalog'",
+    'import {',
+    '  bySha,',
+    '  byAlias,',
+    "  knownSizes,",
+    "} from '../../server/hashCatalog'",
+    "export { bySha } from '../../server/hashCatalog'",
     "export const PINNED = 'a629cfea8d89a071b140c6e1935dc9a23e72de6badc18975a2bb9e6d1423d76d'",
     '',
   ].join('\n'))
   const canaryFiles = listSourceFiles(canaryDir)
   eq(scanHexLiterals(canaryFiles).length, 1, 'canary: the scanner catches a planted 64-hex literal')
-  eq(scanCatalogImports(canaryFiles).length, 1, 'canary: the scanner catches a planted server/hashCatalog import')
+  eq(scanCatalogImports(canaryFiles).length, 3, 'canary: the scanner catches single-line, prettier-split multiline, and re-export imports of server/hashCatalog')
 
   // The real assertion over the client tree: a hardcoded sha anywhere in
   // src/ is a second truth table's seed (h3Stack's dead parallel table, the
