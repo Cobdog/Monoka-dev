@@ -127,3 +127,24 @@
   precedent).
 - Every fetchable thing is catalog DATA with sha/size pins; consent records
   match the CURRENT license and stale consent invalidates.
+
+## 2026-10-21 — The history rewrite (the gpu-review frames)
+
+The GPU experiment sprint committed its raw review frames to git; the
+maintainer's later untrack directive (dbe1f22) removed them from the tree
+but not from history — every clone carried ~1 GB of dead captures for a
+~40 MB project. Fixed by a `git filter-repo` path strip (blobs-only list:
+history paths under gpu-review/ absent from HEAD; the first attempt's list
+accidentally included TREE paths — directory entries from `rev-list
+--objects` — which stripped tracked manifests; the blobs-only rebuild
+verified HEAD's tree hash byte-identical). History: 1.1 GB → 97 MB packed;
+all three branches + the assets tag force-pushed 2026-10-21.
+
+**Consequences for agents:** every commit hash cited before 2026-10-21
+(Flux comments, docs, review evidence) is a PRE-REWRITE hash — it will
+not resolve on origin. Old↔new mapping is recoverable by commit subject
+(`git log --format='%H %s'`). The evidence frames remain on disk under
+gpu-review/ (untracked) and on GitHub via the read-only refs/pull/*
+(an invisible-to-cloners server-side retention). The standing rule:
+review/experiment EVIDENCE MEDIA never enters git — verdicts and manifests
+do; frames live on disk or the archive mount.
