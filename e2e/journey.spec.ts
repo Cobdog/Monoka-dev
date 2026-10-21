@@ -3066,10 +3066,13 @@ test('the take viewer: the R2 repro answered, the transport contract, the scoped
 
     // ---- ←/→ land on EXACT frame boundaries (§9.3). The fixture's clip is
     // exactly 72 real frames (3.000 s) while the job hint says more — the
-    // legs step INSIDE the media's true span, where the element's frame grid
-    // is its own (the container's timestamps sit ~0.4 ms above the model's
-    // n/24 — the epsilon is 5 ms, an order under one frame, not a fabricated
-    // exactness). The repro's frame 72 IS the media's real last frame.
+    // legs step INSIDE the media's true span. The element's own grid sits
+    // float-noise off the model's n/24 doubles, which the MODEL absorbs
+    // through its 50 µs alignment epsilon (STEP_BOUNDARY_EPSILON_SECONDS);
+    // the ASSERTIONS here carry a separate 5 ms tolerance (toBeCloseTo's
+    // digits=2) — an order under one frame (41.7 ms), the honest ceiling for
+    // "epsilon-exact" against a real element, never a fabricated identity.
+    // The repro's frame 72 IS the media's real last frame.
     await page.keyboard.press('ArrowLeft')
     await expect.poll(async () => (await viewerVideoState(page))?.currentTime ?? -1, { timeout: 5_000 })
       .toBeCloseTo(71 / 24, 2)
@@ -3081,24 +3084,28 @@ test('the take viewer: the R2 repro answered, the transport contract, the scoped
     // ---- THE DRIFTED ARM (the boundary rule on a REAL element): from a
     // settled boundary, play a beat, pause wherever the playhead physically
     // sits BETWEEN frame boundaries, and ← must land exactly on n/24 — the
-    // drift is killed, never carried (T2's ruling, e2e-visible).
+    // drift is killed, never carried (T2's ruling, e2e-visible). The sampler
+    // demands a phase PAST A QUARTER frame: the landing assertion tolerates
+    // ±5 ms, so a drift shallower than that would let a no-op ArrowLeft
+    // pass — the premise assertion below makes the non-vacuity explicit.
     await page.keyboard.press('Home')
     let drifted = 0
-    for (let attempt = 0; attempt < 4 && drifted === 0; attempt += 1) {
+    for (let attempt = 0; attempt < 6 && drifted === 0; attempt += 1) {
       await page.keyboard.press('Space') // play
       await page.waitForTimeout(250)
       await page.keyboard.press('Space') // pause
       const sample = (await viewerVideoState(page))!.currentTime
       const phase = (sample * 24) % 1
-      if (phase > 0.05 && phase < 0.95) drifted = sample
+      if (phase > 0.25 && phase < 0.95) drifted = sample
     }
-    expect(drifted, 'the playhead physically drifted to a fractional-frame position (the premise of the drift arm)').toBeGreaterThan(0)
+    expect(drifted, 'the playhead physically drifted past a quarter frame (the drift arm\'s premise — a shallower drift could hide a no-op)').toBeGreaterThan(0)
     // The boundary rule WITH its alignment epsilon mirrored from the model
     // (the element's own grid sits a hair off every n/24 — within the 50 µs
     // slack is ON the boundary).
     const driftedFrame = Math.floor((drifted + 0.00005) * 24)
     const driftedBoundary = driftedFrame / 24
     const expectedLanding = drifted > driftedBoundary + 0.00005 ? driftedBoundary : (driftedFrame - 1) / 24
+    expect(Math.abs(drifted - expectedLanding), 'the landing must be a REAL move: farther than the assertion tolerance, so a dropped ArrowLeft cannot pass').toBeGreaterThan(0.005)
     await page.keyboard.press('ArrowLeft')
     await expect.poll(async () => (await viewerVideoState(page))?.currentTime ?? -1, { timeout: 5_000 })
       .toBeCloseTo(expectedLanding, 2)
@@ -3340,6 +3347,11 @@ test('use this frame hands the fork the RIGHT frame; the used-by chips fly (foel
     // The naming convention holds across the two homes: the chip's title is
     // the bar's own title for the same chain (chainTitle, W9's one rule).
     await expect(bar.locator('.canvas-bar-title')).toHaveText(chipTitle, { timeout: 10_000 })
+    // The wire pin's trailing guard (review M4): the poll above proved ONE
+    // request at its first-true moment — this re-read at the LEG's end
+    // catches a second extraction fired late (after the first-true sample)
+    // by any later path.
+    expect(seamRequests.length, 'exactly one extraction ever fired on this path').toBe(1)
 
     expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
     expect(world.mirrorLog(), 'the mirror bound its port cleanly').not.toContain('EADDRINUSE')
@@ -3601,11 +3613,18 @@ test('compare: two panes, one clock, the hold note, the wrap (foelihc T7, spec �
     await expect(panes.nth(0)).toHaveAttribute('data-take-compare-focused', 'false')
     await expect(page.locator('[data-take-viewer-timecode]')).toHaveAttribute('title', 'the focused pane — take 1', { timeout: 5_000 })
 
-    // THE WRAP: loop back ON, the clock parked at 0 PAUSED (Home's
-    // pause-first is the normalizer — a seek across the master's true end
-    // fires the wrap MID-DRAG and flips playing on, so the rest state is
-    // earned, never assumed), then play at 2×: the clock master's real end
-    // wraps BOTH panes to 0 and keeps playing — the short pane re-joins.
+    // THE WRAP, observed in TWO PHASES (a stateful wait — the post-wrap
+    // predicate alone is satisfiable by playback's START state, exactly the
+    // vacuity the review caught): loop back ON, the clock parked at 0 PAUSED
+    // (Home's pause-first is the normalizer — a seek across the master's
+    // true end fires the wrap MID-DRAG and flips playing on, so the rest
+    // state is earned, never assumed), play at 2× — then PHASE A observes
+    // the TAIL (the clock crosses the short pane's end; the hold note
+    // renders — clock truth), and only after that does PHASE B accept the
+    // post-wrap state: from a clock past 2 s, both panes back under 0.3 s
+    // and still playing with the note gone is reachable ONLY through the
+    // master's wrap (seek 0 + keep playing). Delete the wrap wiring and
+    // phase B times out red.
     await page.keyboard.press('l')
     await expect(page.locator('[aria-label="Loop on"]')).toBeVisible({ timeout: 5_000 })
     await blurViewerChrome(page)
@@ -3617,11 +3636,17 @@ test('compare: two panes, one clock, the hold note, the wrap (foelihc T7, spec �
     await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Pause "]')).toBeVisible({ timeout: 5_000 })
     await page.locator('[aria-label="Playback speed"]').click() // 1× → 2×
     await expect(page.locator('[aria-label="Playback speed"]')).toHaveText('2×', { timeout: 5_000 })
+    // PHASE A — the tail: the clock runs past the short pane's end.
+    await expect(page.locator('[data-take-compare-hold]'), 'the tail observed before the wrap is claimed: the clock crossed the short pane\'s end').toHaveCount(1, { timeout: 15_000 })
+    // PHASE B — the wrap: both panes re-seeked to 0, still playing, the
+    // short pane re-joined (no hold at clock 0).
     await page.waitForFunction(() => {
       const panes = document.querySelectorAll('[data-take-compare-pane]')
       const a = panes[0]?.querySelector('video')
       const b = panes[1]?.querySelector('video')
-      return Boolean(a && b && (a as HTMLVideoElement).currentTime < 0.3 && (b as HTMLVideoElement).currentTime < 0.3
+      const hold = document.querySelector('[data-take-compare-hold]')
+      return Boolean(a && b && !hold
+        && (a as HTMLVideoElement).currentTime < 0.3 && (b as HTMLVideoElement).currentTime < 0.3
         && !(a as HTMLVideoElement).paused && !(b as HTMLVideoElement).paused)
     }, undefined, { timeout: 15_000 })
     await expect(page.locator('[data-take-compare-hold]'), 'the wrap re-joined the short pane under its duration — no hold at clock 0').toHaveCount(0)
