@@ -111,7 +111,7 @@ export function TakeViewerOverlay({ onUseFrame }: { onUseFrame?: (frameIndex: nu
             {header.resolutionLabel ? ` · ${header.resolutionLabel}` : ''}
           </p>
         </div>
-        <Button variant="ghost" className="canvas-take-viewer-close" onClick={() => setTakeViewer(null)}>Close</Button>
+        <Button variant="ghost" className="canvas-take-viewer-close" data-take-viewer-chrome onClick={() => setTakeViewer(null)}>Close</Button>
       </header>
 
       {/* §3's take-switching row: the takeNumberOf vocabulary, canonical

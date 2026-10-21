@@ -242,6 +242,16 @@ test('(e) the overlay\'s discipline — the layer, the selection, the remount, t
   ok(core.includes("{ type: 'pause' }"), 'scrub-start dispatches the pause intent (the core\'s own transport seam)')
   ok(core.includes("{ type: 'seek'"), 'scrub-move dispatches the seek intent')
   ok(core.includes('stripPreviewPath('), 'the core gates the strip\'s preview path on the resolved duration (M-1)')
+  // T4-review I-2: the release-resume CONDITIONAL is pinned string-exact —
+  // a regression to always-resume (dropping the `if (resume)` guard) must
+  // red here, not survive to T7's e2e.
+  ok(/onScrubEnd=\{\(resume\) => \{\s*if \(resume\)/.test(core), 'pin: scrub-end resumes ONLY through the resume guard (a drag begun paused stays paused)')
+  // T4-review I-1 secondary: the overlay's chrome marks are pinned — the
+  // Close button AND the chips carry data-take-viewer-chrome (the T-M3
+  // guard's DOM reachability is not just the model's predicate).
+  const chromeMarks = overlay.match(/data-take-viewer-chrome/g) ?? []
+  ok(chromeMarks.length >= 3, `pin: the overlay marks its chrome (close + chips ≥ 3 marks; found ${chromeMarks.length})`)
+  ok(overlay.includes('canvas-take-viewer-close" data-take-viewer-chrome'), 'pin: the Close button carries the chrome mark (Space on a focused Close closes, never double-fires the map)')
 
   // The use-frame dispatch is the pause intent — the I-1 fix, pinned at the
   // shell site (the branch must never go back to the toggle). The needles
