@@ -9,12 +9,13 @@
  * for the shell wiring; the rendered behavior is e2e-owned (T7's legs).
  *
  * Spec: docs/specs/2026-10-17-take-viewer.md §2 (open paths + the honest
- * absence ladder), §3 (the take-switching row), §6.2 (the used-by v1
- * minimal), §8 D5 (one transport — the bar's play chip becomes `review`).
+ * absence ladder), §3 (the take-switching row), §6.1 (the compare
+ * candidates the picker offers), §6.2 (the used-by v1 minimal), §8 D5
+ * (one transport — the bar's play chip becomes `review`).
  *
  * CANVAS-side but store-free: derive.ts's projections in, decisions out.
  */
-import { chainTitle, takeNumberOf, usedBy, type CanvasDocument, type DocumentChain, type DocumentTake } from './derive'
+import { chainTitle, compareCandidates, takeNumberOf, usedBy, type CanvasDocument, type CompareCandidate, type DocumentChain, type DocumentTake } from './derive'
 
 // ---------------------------------------------------------- the open contract
 
@@ -136,4 +137,77 @@ export function viewerTakeChips(takes: DocumentTake[], activeTakeId: string | nu
     canonical: take.supersededBy === null,
     active: take.id === activeTakeId,
   }))
+}
+
+// ------------------------------------------- §6.1's compare (foelihc T6)
+
+/** The pane one compare candidate resolves to (spec §6.1): a take
+ *  candidate IS that take; a chain candidate (parent/fork) is its
+ *  CANONICAL take — the first supersededBy-null take across its outputs,
+ *  deriveTiles' own rule (one rule, two homes). Null when nothing
+ *  reviewable resolves — the caller DROPS the candidate, never renders an
+ *  empty pane. */
+export function candidatePaneTake(document: Pick<CanvasDocument, 'chains'>, candidate: CompareCandidate): DocumentTake | null {
+  if (candidate.kind === 'take') {
+    for (const chain of document.chains) {
+      for (const output of chain.outputs) {
+        for (const take of output.takes) {
+          if (take.id === candidate.takeId) return take
+        }
+      }
+    }
+    return null
+  }
+  const chain = document.chains.find((entry) => entry.id === candidate.id)
+  if (!chain) return null
+  for (const output of chain.outputs) {
+    for (const take of output.takes) {
+      if (take.supersededBy === null) return take
+    }
+  }
+  return null
+}
+
+function takeIsVideo(take: DocumentTake | null): boolean {
+  return take !== null && take.metrics?.kind === 'video'
+}
+
+/** The picker's honest list (spec §6.1: "Candidates list this chain's
+ *  other takes first, then the fork neighborhood"): T1's
+ *  compareCandidates output — THE walk, never re-walked — filtered to
+ *  candidates that can actually fill a compare pane. The honest drops: a
+ *  takeless or image-canonical chain is not a candidate (an empty pane is
+ *  not a comparison), and v1's compare is the VIDEO A/B surface — the
+ *  shared transport is meaningless over a still (§2's own image rule). */
+export function pickableCompareCandidates(document: Pick<CanvasDocument, 'chains'>, chain: DocumentChain, currentTakeId?: string | null): CompareCandidate[] {
+  const candidates = compareCandidates(document, chain, currentTakeId)
+  return candidates.filter((candidate) => takeIsVideo(candidatePaneTake(document, candidate)))
+}
+
+/** The pane identity a mount keys on: take:<id> / chain:<id> — stable,
+ *  unique within a pair (the watched take is excluded from the list). */
+export function candidateKey(candidate: CompareCandidate): string {
+  return candidate.kind === 'take' ? `take:${candidate.takeId}` : `chain:${candidate.id}`
+}
+
+export function findCandidate(candidates: CompareCandidate[], key: string | null): CompareCandidate | null {
+  if (!key) return null
+  for (const candidate of candidates) {
+    if (candidateKey(candidate) === key) return candidate
+  }
+  return null
+}
+
+/** The compare chip's gate (the honest-state discipline): the chip exists
+ *  ONLY where a second candidate exists AND the watched take is video (an
+ *  image has no transport to share). No dead chip, anywhere. */
+export function compareGate(input: { watchedKind: 'video' | 'image'; candidates: CompareCandidate[] }): boolean {
+  return input.watchedKind === 'video' && input.candidates.length > 0
+}
+
+/** Entering compare auto-picks the FIRST candidate: this chain's other
+ *  takes lead T1's list, so the A/B fork case — the comparison the chip
+ *  promises — is one click, with the picker row offering the rest. */
+export function enterComparePick(candidates: CompareCandidate[]): string | null {
+  return candidates.length > 0 ? candidateKey(candidates[0]) : null
 }

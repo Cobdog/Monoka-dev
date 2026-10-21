@@ -111,6 +111,7 @@ const SUITES = {
   storage: { build: 'full', windows: false, python: false, ffmpeg: false },
   statusToken: { build: null, windows: false, python: false, ffmpeg: false },
   'stylelint-guard': { build: null, windows: false, python: false, ffmpeg: false },
+  takecompare: { build: null, windows: false, python: false, ffmpeg: false },
   takemath: { build: null, windows: false, python: false, ffmpeg: false },
   takefilmstrip: { build: 'server', windows: false, python: false, ffmpeg: true },
   takeviewer: { build: null, windows: false, python: false, ffmpeg: false },
@@ -132,7 +133,7 @@ const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
 
 /** The suites that load client TS through the VM harness (scripts/lib/ts-vm.cjs). */
-const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'identitywire', 'nongating', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'takefilmstrip', 'takemath', 'takeviewer', 'takeviewerfork', 'takevieweroverlay', 'vdn', 'wizard', 'workflows']
+const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'identitywire', 'nongating', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'takecompare', 'takefilmstrip', 'takemath', 'takeviewer', 'takeviewerfork', 'takevieweroverlay', 'vdn', 'wizard', 'workflows']
 
 /** Every vitest suite — the FULL fallback set. */
 const ALL_SUITES = Object.keys(SUITES).sort()
@@ -382,8 +383,8 @@ const RULES = [
   },
   {
     match: ['src/canvas/camera.ts', 'src/canvas/derive.ts', 'src/canvas/generation.ts', 'src/canvas/loraTimeline.ts', 'src/canvas/ops.ts', 'src/canvas/options.ts', 'src/canvas/plan.ts', 'src/canvas/stillIntent.ts', 'src/canvas/BottomBar.tsx'],
-    suites: ['canvas', 'takemath', 'takeviewerfork', 'takevieweroverlay'],
-    reason: "the canvas logic modules the canvas suite loads through the VM harness; derive.ts additionally feeds the takemath suite's walk + compare-candidates legs (foelihc T1), and BottomBar.tsx — the walk's call site since the same task — carries the canvas suite's vocabulary grep-pins (et8hu1l), so its diffs run the suite that reads it; since foelihc T4 derive.ts also feeds the take-viewer overlay model (the per-take source walkers + the usedBy walk the overlay chips render) and BottomBar.tsx carries the overlay suite's D5 grep-pins (the review chip's pin, the DOM-querying transport's absence), so their diffs run that suite too. Since foelihc T5 generation.ts owns the fork handoff's pure decisions (forkExtractionPosition — the T-C1 frames→seconds conversion — plus forkFrameRowNote) and options.ts owns the F7-hint retirement, both loaded/pinned by the takeviewerfork suite, so their diffs run that suite too.",
+    suites: ['canvas', 'takecompare', 'takemath', 'takeviewerfork', 'takevieweroverlay'],
+    reason: "the canvas logic modules the canvas suite loads through the VM harness; derive.ts additionally feeds the takemath suite's walk + compare-candidates legs (foelihc T1), and BottomBar.tsx — the walk's call site since the same task — carries the canvas suite's vocabulary grep-pins (et8hu1l), so its diffs run the suite that reads it; since foelihc T4 derive.ts also feeds the take-viewer overlay model (the per-take source walkers + the usedBy walk the overlay chips render) and BottomBar.tsx carries the overlay suite's D5 grep-pins (the review chip's pin, the DOM-querying transport's absence), so their diffs run that suite too. Since foelihc T5 generation.ts owns the fork handoff's pure decisions (forkExtractionPosition — the T-C1 frames→seconds conversion — plus forkFrameRowNote) and options.ts owns the F7-hint retirement, both loaded/pinned by the takeviewerfork suite, so their diffs run that suite too. Since foelihc T6 derive.ts's compareCandidates also feeds the compare suite's candidates legs (the picker's consumed walk, loaded directly), so its diffs run that suite too.",
   },
   {
     match: ['src/canvas/wizardWalk.ts'],
@@ -401,9 +402,14 @@ const RULES = [
     reason: "the take viewer core (foelihc T2): the takeViewerModel spine — the transport machine, the scoped keymap with the T-M3 focusable-chrome guard, the source fallback, the surface gates, the zoom math — is loaded through the VM harness by the takeviewer suite. The React shell + sheet ride the same rule deliberately (no unit suite executes React — the repo's posture): their diffs re-prove the model contract the shell must not drift from, while the rendered behavior is e2e-owned (T7's journey legs) and the shell's own net stays typecheck + scoped lint. Since foelihc T4 the overlay suite also reads TakeViewerCore.tsx as text (the strip's seam wiring + the use-frame pause dispatch pins) and loads the model through the VM (the stripPreviewPath gate rides the takeviewer suite's own legs). Since foelihc T5 the takeviewerfork suite loads the model too (the §4 frameHandoff legs: pause-first, the ROUND pick lens vs the step lens's floor, the T-M1 clamp) and reads the core as text (the branch-rides-the-model pin), so their diffs run that suite too.",
   },
   {
+    match: ['src/media/takeCompareModel.ts', 'src/media/TakeCompare.tsx', 'src/media/takecompare.css', 'src/media/videoPool.ts', 'src/media/usePooledVideo.ts'],
+    suites: ['takecompare'],
+    reason: "the side-by-side take comparison (foelihc T6, spec §6.1): the takeCompareModel spine — the ONE shared clock (the command fan-out to both panes), the hold rule + its note, the clock master, the wrap, the focus contract, the aspect split — is loaded through the VM harness by the takecompare suite, which also EXECUTES src/media/videoPool.ts itself in the VM under a stub DOM for the exclusive:false coexisting-leases leg (the pool has NO dedicated unit suite, so this suite is that contract's one execution home — previously the pool rode the UI-surface catch-all with no suites) and pins the shells as text (TakeCompare passes exclusive:false on both panes; usePooledVideo forwards the flag — the T2 posture: no unit suite executes React, the rendered behavior is e2e-owned by T7's journey legs).",
+  },
+  {
     match: ['src/canvas/takeViewerOverlayModel.ts', 'src/canvas/TakeViewerOverlay.tsx', 'src/canvas/takevieweroverlay.css', 'src/components/PooledVideoCard.tsx'],
-    suites: ['takeviewerfork', 'takevieweroverlay'],
-    reason: "the take viewer overlay (foelihc T4, spec §2/§6.2): the takeViewerOverlayModel spine — the open gate (the affordance ladder every open path consults), the header fields, the used-by chips, the take-chip ladder — is loaded through the VM harness by the takevieweroverlay suite, which also grep-pins the shells as text (the StudioDialogLayered mount, the key-remount discipline, D5's death in the bar, PooledVideoCard's leaseVideo absence — the canvas suite's (v) idiom). Rendered behavior is e2e-owned (T7's journey legs); the shells' own net stays typecheck + scoped lint. Since foelihc T5 the takeviewerfork suite also reads TakeViewerOverlay.tsx as text (the §4 default-handoff pin: U closes the viewer and opens the pre-anchored fork menu on the watched take), so its diffs run that suite too.",
+    suites: ['takecompare', 'takeviewerfork', 'takevieweroverlay'],
+    reason: "the take viewer overlay (foelihc T4, spec §2/§6.2): the takeViewerOverlayModel spine — the open gate (the affordance ladder every open path consults), the header fields, the used-by chips, the take-chip ladder — is loaded through the VM harness by the takevieweroverlay suite, which also grep-pins the shells as text (the StudioDialogLayered mount, the key-remount discipline, D5's death in the bar, PooledVideoCard's leaseVideo absence — the canvas suite's (v) idiom). Rendered behavior is e2e-owned (T7's journey legs); the shells' own net stays typecheck + scoped lint. Since foelihc T5 the takeviewerfork suite also reads TakeViewerOverlay.tsx as text (the §4 default-handoff pin: U closes the viewer and opens the pre-anchored fork menu on the watched take), so its diffs run that suite too. Since foelihc T6 the model also owns §6.1's compare picker (pickableCompareCandidates over T1's walk — loaded by the takecompare suite) and TakeViewerOverlay.tsx carries that suite's mount-swap + handoff pins, so their diffs run it too.",
   },
   {
     match: ['src/media/takeFilmstripModel.ts', 'src/media/TakeFilmstrip.tsx', 'src/media/takefilmstrip.css'],

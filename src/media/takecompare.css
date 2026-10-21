@@ -1,0 +1,39 @@
+/* The side-by-side take comparison's sheet (foelihc T6, spec §6.1) — the
+   split stage, the panes, the focus ring, the on-strip hold note, and the
+   ONE shared transport row. Per-surface sheet in the takeviewer.css
+   tradition: imported by TakeCompare.tsx, dies with it (the modularity
+   contract). */
+
+.take-compare { display: flex; flex-direction: column; min-height: 0; min-width: 0; flex: 1; gap: 8px; }
+
+/* The split: side-by-side by default, STACKED for portrait aspects (the
+   focused pane's media aspect decides — the model's rule; the stacked
+   modifier rides the root). */
+.take-compare-split { display: flex; gap: 8px; flex: 1; min-height: 0; min-width: 0; }
+.take-compare-stacked .take-compare-split { flex-direction: column; }
+
+/* One pane: its letterboxed stage over its strip. */
+.take-compare-pane { position: relative; display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; gap: 6px; }
+.take-compare-stage { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; background: var(--color-surface-abyss); border-radius: var(--radius); }
+.take-compare-video video { display: block; max-width: 100%; max-height: 100%; }
+
+/* The focused pane carries the ring (§6.1: click to focus). */
+.take-compare-pane.focused .take-compare-stage { outline: 2px solid color-mix(in srgb, var(--accent) 62%, transparent); outline-offset: -2px; }
+
+/* The on-strip hold note: over the holding pane's strip, non-interactive —
+   the strip's scrub stays live beneath it. */
+.take-compare-strip { position: relative; flex: 0 0 auto; }
+.take-compare-hold { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 12px; color: var(--warning); font-size: var(--text-sm); background: color-mix(in srgb, var(--surface) 72%, transparent); border-radius: var(--radius); text-align: center; pointer-events: none; }
+
+/* A pane whose media never resolved: the failure vocabulary's own words,
+   small — the honest state, never a spinner. */
+.take-compare-missing { display: grid; place-content: center; gap: 6px; padding: 16px; text-align: center; }
+.take-compare-missing-title { margin: 0; font-weight: 700; color: var(--warning); font-size: var(--text-sm); }
+.take-compare-missing-body { margin: 0; color: var(--muted); font-size: var(--text-sm); line-height: 1.4; }
+
+/* The ONE shared transport row (§3's shape): every control drives both
+   panes; the controls carry the focusable-chrome mark. */
+.take-compare-transport { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 10px; flex: 0 0 auto; }
+.take-compare-btn { padding: 4px; }
+.take-compare-chip { padding: 3px 8px; }
+.take-compare-timecode { font-variant-numeric: tabular-nums; color: var(--muted); font-size: var(--text-sm); padding: 0 6px; white-space: nowrap; }

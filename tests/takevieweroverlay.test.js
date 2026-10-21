@@ -30,6 +30,11 @@
 //       selection preserved (no select(null)), the KEY-REMOUNT per take,
 //       the core's seam exposure (the strip wired through the transport
 //       intents, the use-frame pause dispatch)
+//   (f) §6.1's compare (foelihc T6) — the compare chip at the take strip's
+//       end (gated by the model: no dead chip), the picker row, the mount
+//       swap (compare renders INSTEAD of the single core — one shared
+//       transport owns both panes, so the core's one-element transport
+//       cannot serve it), and the focused-pane U handoff
 import { test } from 'vitest'
 import { createRequire } from 'node:module'
 
@@ -278,5 +283,49 @@ test('(e) the overlay\'s discipline — the layer, the selection, the remount, t
 
   // The store seam exists (the open state is app state, not tile state).
   ok(read('src/canvas/store.ts').includes('takeViewer'), 'the store carries the viewer\'s open state')
+})
+
+test('(f) §6.1 compare — the chip at the strip\'s end, the picker, the mount swap, the handoff', () => {
+  console.log('viewer-overlay: compare')
+  const overlay = read('src/canvas/TakeViewerOverlay.tsx')
+
+  // The chip rides the take strip's END (spec §6.1's entry point): inside
+  // the takes row's region, after the take chips themselves.
+  const takesStart = overlay.indexOf('canvas-take-viewer-takes')
+  const usedByStart = overlay.indexOf('canvas-take-viewer-usedby')
+  const takesRegion = overlay.slice(takesStart, usedByStart)
+  ok(takesStart >= 0 && usedByStart > takesStart, 'the takes row region found')
+  ok(takesRegion.includes('.map('), 'fixture: the take chips render inside the region')
+  ok(takesRegion.indexOf('canvas-take-viewer-compare') > takesRegion.indexOf('.map('), 'the compare chip mounts at the take strip\'s END — after the take chips')
+  ok(overlay.includes('data-canvas-take-viewer-compare'), 'the chip carries its e2e pin')
+  ok(overlay.includes('compareGate('), 'the chip\'s visibility derives from the model\'s gate (never an ad-hoc conditional)')
+  ok(overlay.includes('aria-pressed'), 'the chip is a toggle (pressed = comparing)')
+
+  // The picker: T1's candidates through the model's honest filter, keyed
+  // by the model's candidate keys; entering auto-picks the first.
+  ok(overlay.includes('pickableCompareCandidates('), 'the picker lists the model\'s pickable candidates (T1\'s walk, honestly filtered)')
+  ok(overlay.includes('candidateKey(') && overlay.includes('enterComparePick('), 'the picker keys and the auto-pick ride the model')
+
+  // THE MOUNT SHAPE (stated): compare renders INSTEAD of the single core —
+  // the overlay swaps the two mounts on the compare state. The shared
+  // transport decides it: ONE transport drives BOTH panes through the
+  // fan-out seam, and the core's transport owns exactly one lease; sharing
+  // the row would weld a second pane into the core (the modularity
+  // contract's "pulling out a tool" test says swap at the mount instead).
+  ok(overlay.includes('TakeCompare'), 'the compare stage mounts from the overlay')
+  ok(overlay.includes('compareLive && comparePanes'), 'the swap is a conditional on the compare state (one stage at a time)')
+  ok(overlay.includes("compare.active && kind === 'video'"), 'pin: a watched-take switch onto an IMAGE take collapses compare (the split needs a video watched pane — §2\'s image rule)')
+  ok(overlay.includes('key={`${take.id}:${comparePanes[1].id}`}'), 'the compare mount is KEY-REMOUNTED per pane pair (a pane swap = fresh leases + fresh clock)')
+  ok(/<TakeViewerCore/.test(overlay), 'the single core still mounts in the other arm (exiting compare returns to single view)')
+
+  // The focused-pane handoff (§6.1: U in compare applies to the FOCUSED
+  // pane): the default handler closes the viewer and opens the fork menu
+  // anchored on THE PANE the model handed up — its own chain and take.
+  ok(overlay.includes('setForkMenu({ chainId: pane.chainId, takeId: pane.takeId, frameIndex })'), 'compare\'s U hands the FOCUSED pane\'s chain + take to the fork flow')
+
+  // The retarget reset rides the existing re-seat effect: a new target
+  // under an open viewer drops a stale compare session (never a zombie
+  // split rendering a gone take).
+  ok(overlay.includes('setCompare({ active: false, secondKey: null })'), 'a retarget resets the compare session with the watched take')
   console.log(`\ntest-takevieweroverlay: ${passed} assertions passed`)
 })

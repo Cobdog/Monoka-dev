@@ -19,9 +19,18 @@
 .canvas-take-viewer-close { flex: 0 0 auto; }
 
 /* §3's take-switching row — the tile's take strip rendered once more where
-   the takes are actually watched. */
+   the takes are actually watched. §6.1's compare chip rides its END. */
 .canvas-take-viewer-takes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 16px 8px; }
 .canvas-take-viewer-take.active { border-color: color-mix(in srgb, var(--accent) 62%, transparent); }
+
+/* §6.1's compare (foelihc T6) — the chip (a toggle into the split stage)
+   and the second pane's picker row. The split stage's own sheet is the
+   compare component's (src/media/takecompare.css). */
+.canvas-take-viewer-compare { cursor: pointer; }
+.canvas-take-viewer-compare-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 16px 8px; }
+.canvas-take-viewer-compare-picker-label { color: var(--muted-2); font-size: var(--text-sm); }
+.canvas-take-viewer-compare-candidate { cursor: pointer; }
+.canvas-take-viewer-compare-candidate.active { border-color: color-mix(in srgb, var(--accent) 62%, transparent); }
 
 /* §6.2's reverse view — the `used by →` line under the header facts. */
 .canvas-take-viewer-usedby { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 16px 10px; }

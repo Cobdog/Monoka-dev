@@ -13,6 +13,7 @@ export type PooledVideoCallbacks = {
   onLoadedMetadata?(video: HTMLVideoElement): void
   onTimeUpdate?(video: HTMLVideoElement): void
   onPlay?(video: HTMLVideoElement): void
+  onEnded?(video: HTMLVideoElement): void
   onError?(video: HTMLVideoElement): void
   onPreempted?(): void
 }
@@ -24,6 +25,11 @@ export function usePooledVideo(options: {
   muted?: boolean
   loop?: boolean
   autoPlay?: boolean
+  /** Passed through to leaseVideo: false = the coexisting-inspectors lease
+   *  (the pool's explicitly supported case — the take viewer's compare
+   *  panes, foelihc T6). Default (undefined) = exclusive, the pool's
+   *  playback-posture default. */
+  exclusive?: boolean
   idleTimeoutMs?: number
 } & PooledVideoCallbacks): { containerRef: RefObject<HTMLDivElement | null>; live: boolean; resume(): void } {
   const { src, active = true } = options
@@ -44,6 +50,7 @@ export function usePooledVideo(options: {
       muted: callbacks.muted,
       loop: callbacks.loop,
       autoPlay: callbacks.autoPlay ?? true,
+      exclusive: callbacks.exclusive,
       idleTimeoutMs: callbacks.idleTimeoutMs,
       onPreempted: () => {
         setLive(false)
@@ -60,6 +67,7 @@ export function usePooledVideo(options: {
     wire('onLoadedMetadata', 'loadedmetadata')
     wire('onTimeUpdate', 'timeupdate')
     wire('onPlay', 'play')
+    wire('onEnded', 'ended')
     wire('onError', 'error')
     container.appendChild(lease.video)
     setLive(true)
