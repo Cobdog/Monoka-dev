@@ -111,6 +111,7 @@ const SUITES = {
   storage: { build: 'full', windows: false, python: false, ffmpeg: false },
   statusToken: { build: null, windows: false, python: false, ffmpeg: false },
   'stylelint-guard': { build: null, windows: false, python: false, ffmpeg: false },
+  takemath: { build: null, windows: false, python: false, ffmpeg: false },
   vdn: { build: null, windows: false, python: false, ffmpeg: false },
   wizard: { build: null, windows: false, python: false, ffmpeg: false },
   workflows: { build: null, windows: false, python: false, ffmpeg: false },
@@ -127,7 +128,7 @@ const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
 
 /** The suites that load client TS through the VM harness (scripts/lib/ts-vm.cjs). */
-const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'identitywire', 'nongating', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'vdn', 'wizard', 'workflows']
+const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'identitywire', 'nongating', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'takemath', 'vdn', 'wizard', 'workflows']
 
 /** Every vitest suite — the FULL fallback set. */
 const ALL_SUITES = Object.keys(SUITES).sort()
@@ -376,14 +377,19 @@ const RULES = [
     reason: 'SEAM — the app kernel. HONEST LIMIT: no unit suite executes store.ts directly (the canvas VM modules are its projections); the PR leg forces e2e as the behavioral net, local depth + the main gate own the rest.',
   },
   {
-    match: ['src/canvas/camera.ts', 'src/canvas/derive.ts', 'src/canvas/generation.ts', 'src/canvas/loraTimeline.ts', 'src/canvas/ops.ts', 'src/canvas/options.ts', 'src/canvas/plan.ts', 'src/canvas/stillIntent.ts'],
-    suites: ['canvas'],
-    reason: 'the canvas logic modules the canvas suite loads through the VM harness.',
+    match: ['src/canvas/camera.ts', 'src/canvas/derive.ts', 'src/canvas/generation.ts', 'src/canvas/loraTimeline.ts', 'src/canvas/ops.ts', 'src/canvas/options.ts', 'src/canvas/plan.ts', 'src/canvas/stillIntent.ts', 'src/canvas/BottomBar.tsx'],
+    suites: ['canvas', 'takemath'],
+    reason: "the canvas logic modules the canvas suite loads through the VM harness; derive.ts additionally feeds the takemath suite's walk + compare-candidates legs (foelihc T1), and BottomBar.tsx — the walk's call site since the same task — carries the canvas suite's vocabulary grep-pins (et8hu1l), so its diffs run the suite that reads it.",
   },
   {
     match: ['src/canvas/wizardWalk.ts'],
     suites: ['wizard'],
     reason: 'the first-run walk\'s pure module (wizard rework 3p14abm: destination designations D7, the candidate spine) — its own suite loads it through the VM harness.',
+  },
+  {
+    match: ['src/media/takeMath.ts', 'src/media/filmstripLayout.ts'],
+    suites: ['takemath'],
+    reason: "the take viewer's pure math (foelihc T1: frame/time arithmetic with the T-C1 two-hop contract, the T-M1 clamp, timecode, the strip mapping) — the takemath suite loads it through the VM harness; filmstripLayout rides along as the ONE fps constant the math consumes, so a layout diff re-proves the convention end to end.",
   },
   { match: ['src/lib/camera/**'], suites: ['camera'], reason: 'camera path model + parity goldens.' },
   { match: ['src/poserig/**'], suites: ['poserig'], reason: 'pose rig domain (logic modules; PoseRigApp.tsx rides the dir).' },

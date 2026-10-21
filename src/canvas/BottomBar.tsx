@@ -13,7 +13,7 @@
  */
 import { useState } from 'react'
 import { ChevronUp, FileVideo, GitFork, ImagePlus, Layers, Lock, LockOpen, Pause, Play, Plus } from 'lucide-react'
-import { collectOutputRefs, STATUS_LABEL, takeNumberOf } from './derive'
+import { forkNeighborhood, STATUS_LABEL, takeNumberOf } from './derive'
 import { modeLabelFor, readChainSettings } from './generation'
 import { opKindsFor } from './ops'
 import { Chip, ChipGroup } from '../ui/Chip'
@@ -97,21 +97,11 @@ export function BottomBar() {
     for (const tile of selectedTiles) await store.setChainLock(tile!.id, lock)
   }
 
-  // Fork history: parents = chains whose outputs this chain consumes; forks =
-  // chains consuming this chain's outputs (both via the §2.1 outputRef walk).
-  const forkHistory = (() => {
-    if (!primary || !doc) return { parents: [] as string[], forks: [] as string[] }
-    const owned = new Set((primaryChain?.outputs ?? []).map((output) => output.id))
-    const parents = doc.chains.filter((chain) => chain.id !== primary.id && chain.outputs.some((output) => primary.refOutputs.includes(output.id))).map((chain) => chain.id)
-    const forks: string[] = []
-    for (const chain of doc.chains) {
-      if (chain.id === primary.id) continue
-      const refs = new Set<string>()
-      collectOutputRefs(chain.inputSpec, refs)
-      if ([...refs].some((outputId) => owned.has(outputId))) forks.push(chain.id)
-    }
-    return { parents, forks }
-  })()
+  // Fork history (§6.2's walk, extracted to derive.ts — take viewer T1):
+  // parents = chains whose outputs this chain consumes; forks = chains
+  // consuming this chain's outputs. The bar renders the counts; the viewer's
+  // `used by` line renders the same walk's fork arm — one inverse, two homes.
+  const forkHistory = primaryChain && doc ? forkNeighborhood(doc, primaryChain) : { parents: [], forks: [] }
 
   // Type-directed op offering (§3): the same kind list the modal's add menu
   // derives for the tile's media kind.

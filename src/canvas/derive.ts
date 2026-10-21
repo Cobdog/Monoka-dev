@@ -305,6 +305,64 @@ export function chainTitle(document: Pick<CanvasDocument, 'chains'>, chain: Docu
   return titleFor(document as CanvasDocument, chain, index)
 }
 
+// ---- the fork neighborhood / used-by walk (take viewer T1, spec §6) ---------
+
+/** A chain the walk names — the ONE naming convention (W9's chainTitle). */
+export type ChainCard = { id: string; title: string }
+
+/** The §2.1 outputRef walk in both directions — BottomBar's forkHistory
+ *  computation, extracted so the bar's counts and the viewer's `used by`
+ *  line render ONE walk (spec §6.2: "one inverse, two homes"):
+ *    parents = chains whose outputs THIS chain consumes;
+ *    forks   = chains consuming THIS chain's outputs.
+ *  Pure over the document; document order (stable); self never listed. */
+export function forkNeighborhood(document: Pick<CanvasDocument, 'chains'>, chain: DocumentChain): { parents: ChainCard[]; forks: ChainCard[] } {
+  const refs = new Set<string>()
+  collectOutputRefs(chain.inputSpec, refs)
+  const owned = new Set<string>()
+  for (const output of chain.outputs) owned.add(output.id)
+  const parents: ChainCard[] = []
+  const forks: ChainCard[] = []
+  for (const other of document.chains) {
+    if (other.id === chain.id) continue
+    if (other.outputs.some((output) => refs.has(output.id))) parents.push({ id: other.id, title: chainTitle(document, other) })
+    const otherRefs = new Set<string>()
+    collectOutputRefs(other.inputSpec, otherRefs)
+    if (Array.from(otherRefs).some((outputId) => owned.has(outputId))) forks.push({ id: other.id, title: chainTitle(document, other) })
+  }
+  return { parents, forks }
+}
+
+/** The `used by →` inverse (spec §6.2): the chains consuming this chain's
+ *  outputs — the walk's fork arm, named for the viewer's header chips. */
+export function usedBy(document: Pick<CanvasDocument, 'chains'>, chain: DocumentChain): ChainCard[] {
+  return forkNeighborhood(document, chain).forks
+}
+
+/** A compare candidate (spec §6.1, D3's blessed cutline): a sibling take of
+ *  this chain, or a chain in the fork neighborhood. */
+export type CompareCandidate = { kind: 'take'; takeId: string; number: number; title: string } | { kind: 'parent' | 'fork'; id: string; title: string }
+
+/** The compare-candidates ordering (spec §6.1): this chain's OTHER takes
+ *  first (the A/B fork case — the takeNumberOf ladder, oldest = take 1,
+ *  equal createdAt ties by id, numbered against the FULL take list), then
+ *  the fork neighborhood (parents, then forks, document order). Pure over
+ *  the take list + the ref edges; deterministic by construction. */
+export function compareCandidates(document: Pick<CanvasDocument, 'chains'>, chain: DocumentChain, currentTakeId?: string | null): CompareCandidate[] {
+  const takes = chain.outputs.flatMap((output) => output.takes)
+  takes.sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+  const candidates: CompareCandidate[] = []
+  for (const take of takes) {
+    if (currentTakeId && take.id === currentTakeId) continue
+    const number = takeNumberOf(takes, take)
+    candidates.push({ kind: 'take', takeId: take.id, number, title: `take ${number}` })
+  }
+  const neighborhood = forkNeighborhood(document, chain)
+  for (const parent of neighborhood.parents) candidates.push({ kind: 'parent', id: parent.id, title: parent.title })
+  for (const fork of neighborhood.forks) candidates.push({ kind: 'fork', id: fork.id, title: fork.title })
+  return candidates
+}
+
 // ---- chain→job links (R-25, audit B P2-1) -------------------------------------
 
 /** The job facts the link rebuild needs — GenerationJob is structural here so
