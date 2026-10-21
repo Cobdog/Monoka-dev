@@ -216,6 +216,11 @@ export function TakeViewerCore({ sources, kind, meta, landingError = null, label
     dragRef.current = null
     if (drag && !drag.moved && kind === 'video') dispatchRef.current('toggle-play')
   }, [kind])
+  // A canceled press is not a click (T2 review M-1): the browser aborted the
+  // gesture — only clear the drag, never toggle play off it.
+  const onPointerCancel = useCallback(() => {
+    dragRef.current = null
+  }, [])
 
   // A landing-errored take: the humanized verdict, nothing else.
   if (liveSurface.verdictOnly) {
@@ -239,7 +244,7 @@ export function TakeViewerCore({ sources, kind, meta, landingError = null, label
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={onPointerCancel}
       data-take-viewer-stage
     >
       <div
