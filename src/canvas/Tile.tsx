@@ -16,7 +16,7 @@
  * is the live-update contract).
  */
 import { memo, useEffect, useRef, useState } from 'react'
-import { Database, Film, GitFork, Lock, Star } from 'lucide-react'
+import { Database, Eye, Film, GitFork, Lock, Star } from 'lucide-react'
 import { FilmstripPoster } from '../components/PooledVideoCard'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { useFilmstrip } from '../media/useFilmstrip'
@@ -27,6 +27,7 @@ import { documentsApi } from './api'
 import { opPreviewStyle } from './ops'
 import type { ZoomBand } from './camera'
 import { STATUS_LABEL, takeNumberOf, type Tile } from './derive'
+import { opensViewer, reviewAffordance } from './takeViewerOverlayModel'
 import { liveReadoutVars, tileToneVars } from '../ui/statusToken'
 import { ProgressBar } from '../ui/ProgressBar'
 import { useCanvasStore } from './store'
@@ -147,7 +148,7 @@ function TileLiveProgress({ jobId }: { jobId: string }) {
   </div>
 }
 
-function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure, onEndpoint, onFork, onOpenOps, onSwitchTake, onTileMenu }: {
+function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure, onEndpoint, onFork, onOpenOps, onSwitchTake, onTileMenu, onOpenViewer }: {
   tile: Tile
   band: ZoomBand
   selected: boolean
@@ -159,9 +160,14 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
   onOpenOps(chainId: string): void
   onSwitchTake(chainId: string, takeId: string): void
   onTileMenu(chainId: string, x: number, y: number): void
+  onOpenViewer(chainId: string): void
 }) {
   const priorTakes = tile.takes.filter((take) => take.supersededBy !== null)
   const [askSendDatasets, setAskSendDatasets] = useState(false)
+  // The open gate (foelihc T4, spec §2): ONE decision every tile-side path
+  // consults — only an enabled gate opens (a gated/absent gate is no dead
+  // click), and the gate is band-free (any zoom opens).
+  const reviewable = opensViewer(reviewAffordance(tile))
   return <div
     className={`canvas-tile ${selected ? 'selected' : ''}`}
     data-canvas-tile={tile.id}
@@ -173,6 +179,17 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
     onClick={(event) => {
       event.stopPropagation()
       onSelect(tile.id, { toggle: event.shiftKey || event.metaKey || event.ctrlKey })
+    }}
+    onDoubleClick={(event) => {
+      // (foelihc T4, spec §2) Double-click opens the viewer at ANY zoom band
+      // — the first click selected (the handler above), the second opens.
+      // Bound on the ROOT, outside every band conditional; interactive
+      // children (chips, endpoints, buttons) keep their own double-clicks —
+      // the open is the media's gesture.
+      event.stopPropagation()
+      if ((event.target as HTMLElement).closest('button, a, input, textarea, [role="button"]')) return
+      if (!reviewable) return
+      onOpenViewer(tile.id)
     }}
     onContextMenu={(event) => {
       // (wzt73ob R2 F10) The object menu at the pointer — the desktop
@@ -205,7 +222,23 @@ function TileBase({ tile, band, selected, previewUrl, onSelect, onDismissFailure
 
     <div className="canvas-tile-media" style={tileToneVars(tile.status)}>
       <TilePreview tile={tile} previewUrl={previewUrl} />
-      {/* F6 live progress: percent + label + in-progress sampler frames on
+      {/* (foelihc T4, T-I2) The hover affordance in the PooledVideoCard
+          overlay pattern — it OPENS the viewer; nothing plays inline (the
+          pattern supplies the look, not a second play path). Rendered only
+          where the gate is enabled: no affordance on a seed tile, a running
+          takeless chain, or an audio take — no dead click. */}
+      {reviewable && (
+        <button
+          type="button"
+          className="canvas-tile-review"
+          data-canvas-tile-review
+          aria-label={`Review ${tile.title}`}
+          title="Open the take viewer — double-click works too"
+          onClick={(event) => { event.stopPropagation(); onOpenViewer(tile.id) }}
+        >
+          <Eye size={16} />
+        </button>
+      )}      {/* F6 live progress: percent + label + in-progress sampler frames on
           the generating tile (nothing when the linked job is terminal). */}
       {tile.jobId && (tile.status === 'running' || tile.status === 'queued-gpu') ? <TileLiveProgress jobId={tile.jobId} /> : null}
       {/* the status ring — on-object state, always visible in every band */}

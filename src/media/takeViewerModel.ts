@@ -193,6 +193,20 @@ export function transportCommand(state: TransportState, intent: TransportIntent)
   return { state: { ...state, speedIndex: (state.speedIndex + 1) % SPEED_STEPS.length }, seekTo: null }
 }
 
+// ------------------------------------------------- the strip's resolved inputs
+
+/** T3-review M-1: the strip's preview path, resolved against the take's OWN
+ *  duration. The duration is maybe-metadata — unprobed takes carry 0 (or
+ *  NaN), the filmstrip loader never fetches for duration <= 0, and the
+ *  route samples duration×24 frames — so an unresolved duration can never
+ *  grow a sheet. It must read as sheet-IMPOSSIBLE (the plain honest state),
+ *  never a second door into forever-generating. */
+export function stripPreviewPath(previewPath: string | null, duration: number): string | null {
+  if (!previewPath) return null
+  if (!Number.isFinite(duration) || !(duration > 0)) return null
+  return previewPath
+}
+
 // --------------------------------------------------------- the scoped keymap
 
 export type ViewerKeySeed = {

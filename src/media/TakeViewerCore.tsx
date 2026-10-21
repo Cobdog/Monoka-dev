@@ -24,11 +24,12 @@ import { ChevronsLeft, ChevronsRight, Pause, Play, Repeat, SkipBack, SkipForward
 import { Button } from '../ui/Button'
 import { Chip } from '../ui/Chip'
 import { usePooledVideo } from './usePooledVideo'
-import { clampToFrames, frameCountFromDuration, frameIndexFromTime, timecodeLabel } from './takeMath'
+import { TakeFilmstrip } from './TakeFilmstrip'
+import { clampToFrames, frameCountFromDuration, frameIndexFromTime, positionFromFrame, timecodeLabel } from './takeMath'
 import {
   MISSING_FILE_BODY, MISSING_FILE_TITLE, SPEED_STEPS,
   actionEnabled, bindViewerKeymap, clampViewerPan, isPanGesture, initialMediaResolution, initialTransport,
-  mediaResolutionAfterError, transportCommand, viewerSurface, viewerZoomAfterWheel,
+  mediaResolutionAfterError, stripPreviewPath, transportCommand, viewerSurface, viewerZoomAfterWheel,
   type TransportCommand, type ViewerAction, type ViewerMediaSource,
 } from './takeViewerModel'
 import './takeviewer.css'
@@ -45,13 +46,25 @@ export type TakeViewerCoreProps = {
   landingError?: string | null
   /** The take's name, for the accessible labels. */
   label: string
+  /** §5's strip (foelihc T4): the output-contained preview path a sheet can
+   *  exist for (null = blob-only — the plain honest state). The CORE mounts
+   *  the strip so the scrub stays on the transport seam (the mount never
+   *  touches the video element): scrub-start PAUSES (the pause-only intent),
+   *  scrub-move SEEKS without touching playing, release resumes only when
+   *  the drag began playing. */
+  filmstrip?: { previewPath: string | null }
   /** §4's handoff (the key is bound now; T5 wires the fork path). Receives
    *  the clamped frame anchor in FRAMES. */
   onUseFrame?: (frameIndex: number) => void
   className?: string
 }
 
-export function TakeViewerCore({ sources, kind, meta, landingError = null, label, onUseFrame, className = '' }: TakeViewerCoreProps) {
+/** MOUNT DISCIPLINE (T2-review M-2): a sources-prop change never re-resolves
+ *  the fallback — the mount KEYS the core per take (`key={take.id}`, the
+ *  overlay's contract), so a take switch is a fresh resolution + a fresh
+ *  lease + a fresh strip in one unmount/mount. Never reuse an open core for
+ *  a different take. */
+export function TakeViewerCore({ sources, kind, meta, landingError = null, label, filmstrip, onUseFrame, className = '' }: TakeViewerCoreProps) {
   const frameCount = useMemo(() => frameCountFromDuration(meta.duration), [meta.duration])
 
   const [resolution, setResolution] = useState(() => initialMediaResolution(sources))
@@ -260,6 +273,25 @@ export function TakeViewerCore({ sources, kind, meta, landingError = null, label
           : resolution.source && <img className="take-viewer-image" src={resolution.source.url} alt={label} draggable={false} onError={advanceAfterError} />}
       </div>
     </div>
+    {/* §5's strip, under the stage and above the transport row — video takes
+        only (an image has nothing to scrub; the verdict/missing states never
+        reach here). The scrub rides the transport intents: pause, seek,
+        resume-only-through-toggle — the converged intent shape. */}
+    {liveSurface.transport && filmstrip && (
+      <TakeFilmstrip
+        previewPath={stripPreviewPath(filmstrip.previewPath ?? null, meta.duration)}
+        duration={meta.duration}
+        currentTime={positionFromFrame(frame)}
+        playing={transport.playing}
+        mediaPresent={resolution.state === 'present'}
+        onScrubStart={() => applyCommand(transportCommand(transportRef.current, { type: 'pause' }))}
+        onScrub={(time) => applyCommand(transportCommand(transportRef.current, { type: 'seek', time }))}
+        onScrubEnd={(resume) => {
+          if (resume) applyCommand(transportCommand(transportRef.current, { type: 'toggle-play' }))
+        }}
+        label={label}
+      />
+    )}
     {liveSurface.transport && <div className="take-viewer-transport" data-take-viewer-transport>
       <Button variant="icon" className="take-viewer-btn" data-take-viewer-chrome aria-label={transport.playing ? `Pause ${label}` : `Play ${label}`} onClick={() => dispatch('toggle-play')}>
         {transport.playing ? <Pause size={16} /> : <Play size={16} />}

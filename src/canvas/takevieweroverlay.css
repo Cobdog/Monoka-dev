@@ -1,0 +1,33 @@
+/* The take viewer overlay's sheet (foelihc T4, spec §2) — the layered
+   dialog's chrome: header, take chips, the used-by line, and the core's
+   flex slot. Per-surface sheet in the datasets.css / takeviewer.css
+   tradition: imported by TakeViewerOverlay.tsx, dies with it (the
+   modularity contract). The stage/transport/strip visuals are the CORE's
+   own sheet (src/media/takeviewer.css + takefilmstrip.css). */
+
+.modal-backdrop.canvas-take-viewer-backdrop { inset: 0; background: color-mix(in srgb, var(--color-surface-abyss) 74%, transparent); }
+.ui-dialog-center.canvas-take-viewer-center { inset: 0; }
+
+/* The dialog sizes to the viewport minus margins; the stage letterboxes
+   within it (the core's own grid). */
+.canvas-take-viewer { width: min(1280px, 100%); max-height: calc(100vh - 64px); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; }
+.canvas-take-viewer-flow { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+
+.canvas-take-viewer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px 8px; }
+.canvas-take-viewer-head h2 { margin: 0; font-size: var(--text-lg); }
+.canvas-take-viewer-sub { margin: 3px 0 0; color: var(--muted); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.canvas-take-viewer-close { flex: 0 0 auto; }
+
+/* §3's take-switching row — the tile's take strip rendered once more where
+   the takes are actually watched. */
+.canvas-take-viewer-takes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 16px 8px; }
+.canvas-take-viewer-take.active { border-color: color-mix(in srgb, var(--accent) 62%, transparent); }
+
+/* §6.2's reverse view — the `used by →` line under the header facts. */
+.canvas-take-viewer-usedby { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 16px 10px; }
+.canvas-take-viewer-usedby-label { color: var(--muted-2); font-size: var(--text-sm); }
+.canvas-take-viewer-usedby-none { color: var(--muted-2); font-size: var(--text-sm); font-style: italic; }
+.canvas-take-viewer-usedby-chip { cursor: pointer; }
+
+/* The core fills what remains: stage (letterboxed) → strip → transport. */
+.canvas-take-viewer-core { min-height: 320px; }

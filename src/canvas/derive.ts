@@ -241,6 +241,13 @@ function blobArtifactOf(take: DocumentTake | null): string | null {
   return null
 }
 
+/** The per-take source walkers, exported for the take viewer's mount
+ *  (foelihc T4): the viewer opens ANY of the chain's takes (the chip row
+ *  switches them), so it walks the active take's own artifacts — the same
+ *  two walkers deriveTiles applies to the canonical pointer. */
+export const takePreviewArtifact = previewArtifactOf
+export const takeBlobArtifact = blobArtifactOf
+
 function takeMediaKind(take: DocumentTake | null): 'image' | 'video' | 'audio' | null {
   const kind = take?.metrics?.kind
   return kind === 'image' || kind === 'video' || kind === 'audio' ? kind : null

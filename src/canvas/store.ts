@@ -266,6 +266,12 @@ type CanvasState = {
   /** Phase 3 (§5.1): the op modal's target chain — L8 DECIDED: modal-only
    *  v1 (no inline chip controls). */
   opEditor: { chainId: string } | null
+  /** The take viewer overlay's target chain (foelihc T4, spec §2): null =
+   *  closed. The overlay resolves the take itself (the canonical pointer at
+   *  open — the gate only opens where one exists) and tracks take switching
+   *  locally; the selection is NEVER touched by open/close (spec: the canvas
+   *  stays selected behind the dim). */
+  takeViewer: { chainId: string } | null
   /** Phase 3 (§5.2): the pose-rig dock's target chain (control-track export). */
   poseRig: { chainId: string } | null
   /** Phase 4 (§7 V): the library projection overlay (library-as-projection). */
@@ -444,6 +450,8 @@ type CanvasActions = {
   setInspectorOpen(open: boolean): void
   setIndexOpen(open: boolean): void
   setOpEditor(editor: { chainId: string } | null): void
+  /** Opens/closes the take viewer overlay on a chain (foelihc T4). */
+  setTakeViewer(viewer: { chainId: string } | null): void
   setPoseRig(panel: { chainId: string } | null): void
   /** §5.1 op-stack edits — each lands in the document store then recomputes
    *  (the tile's preview LIVE-UPDATES: L3 decided live-update). */
@@ -793,6 +801,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     forkMenu: null,
     tileMenu: null,
     opEditor: null,
+    takeViewer: null,
     poseRig: null,
     libraryOpen: false,
     timelineOpen: false,
@@ -2302,6 +2311,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
     setInspectorOpen: (open) => set({ inspectorOpen: open }),
     setIndexOpen: (open) => set({ indexOpen: open }),
     setOpEditor: (editor) => set({ opEditor: editor, endpointMenu: null, forkMenu: null, tileMenu: null }),
+    setTakeViewer: (viewer) => set({ takeViewer: viewer }),
     setPoseRig: (panel) => set({ poseRig: panel, endpointMenu: null, forkMenu: null, tileMenu: null }),
     setEngineFacts: (facts) => set({ engine: facts }),
     setWizardPresenting: (wizardPresenting) => set({ wizardPresenting }),

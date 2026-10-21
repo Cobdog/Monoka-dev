@@ -235,6 +235,7 @@ function SubstrateBase() {
             onOpenOps={(chainId) => useCanvasStore.getState().setOpEditor({ chainId })}
             onSwitchTake={(chainId, takeId) => void useCanvasStore.getState().switchCanonical(chainId, takeId)}
             onTileMenu={(chainId, x, y) => useCanvasStore.getState().setTileMenu({ chainId, x, y })}
+            onOpenViewer={(chainId) => useCanvasStore.getState().setTakeViewer({ chainId })}
           />
         ))}
       </div>

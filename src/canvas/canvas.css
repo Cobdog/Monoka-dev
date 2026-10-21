@@ -63,6 +63,12 @@
 .canvas-tile:hover { border-color: var(--line-strong); }
 .canvas-tile.selected { border-color: color-mix(in srgb, var(--accent) 62%, transparent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 26%, transparent), 0 12px 38px rgba(0,0,0,.55); }
 .canvas-tile-media { position: relative; }
+/* (foelihc T4, T-I2) The tile's hover review affordance — the
+   PooledVideoCard overlay pattern's look; it OPENS the viewer, nothing
+   plays inline. Rendered only where the open gate is enabled. */
+.canvas-tile-review { position: absolute; left: 50%; top: 50%; z-index: 4; translate: -50% -50%; display: grid; place-items: center; width: 42px; height: 42px; padding: 0; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--color-surface-abyss) 72%, transparent); color: var(--accent); cursor: pointer; opacity: 0; transition: opacity .12s ease, scale .12s ease; }
+.canvas-tile-media:hover .canvas-tile-review { opacity: 1; }
+.canvas-tile-review:hover { scale: 1.06; }
 .canvas-tile-poster { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; object-fit: cover; background: var(--color-surface-abyss); }
 .canvas-tile-poster-empty { display: grid; place-items: center; align-content: center; gap: 5px; border: 1px dashed var(--line); color: var(--muted-2); font-size: var(--text-sm); }
 .canvas-tile-poster-seed { display: grid; place-items: center; align-content: center; gap: 8px; padding: var(--space-3); border: 1px dashed color-mix(in srgb, var(--accent) 30%, transparent); color: var(--muted); font-size: var(--text-sm); }

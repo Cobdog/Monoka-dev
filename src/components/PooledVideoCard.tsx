@@ -1,16 +1,20 @@
 /**
  * Shared media-preview widgets over the wave-2d seams (PreviewSource /
  * videoPool / OPFS blob cache): one implementation instead of three per-view
- * thumbnail mounts. Everything here is STATIC by default — a card, queue
- * row, or bin item renders a filmstrip poster (one small PNG per clip) and
- * only ever mounts a <video> element through the pool, so the app holds at
- * most a handful of video elements no matter how many renders are listed.
- * The hooks live in src/media/ (useFilmstrip / usePooledVideo).
+ * thumbnail mounts. Everything here is STATIC — a card, queue row, or bin
+ * item renders a filmstrip poster (one small PNG per clip) and NEVER mounts
+ * a <video> element. The hooks live in src/media/ (useFilmstrip /
+ * usePooledVideo).
+ *
+ * (foelihc T4, audit T-I2 / spec §8 D5) The card's overlay affordance OPENS
+ * THE TAKE VIEWER — nothing plays inline. The pattern supplies the LOOK
+ * (the circular play-overlay chrome), not a second play path: after the
+ * viewer landed there is ONE transport, and it lives in the viewer. The old
+ * pooled-video lease this component used to take is gone with it.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Play } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { Eye } from 'lucide-react'
 import type { Filmstrip } from '../media/PreviewSource'
-import { leaseVideo } from '../media/videoPool'
 import { useFilmstrip } from '../media/useFilmstrip'
 
 /** Static filmstrip poster. mode="sheet" shows the whole contact sheet (an
@@ -36,55 +40,18 @@ export function FilmstripPoster({ filmstrip, mode = 'sheet', label, children, cl
     : <div className={`filmstrip-poster filmstrip-poster-empty ${className}`} aria-label={label}>{children}</div>
 }
 
-/** The Library-card media area: static filmstrip sheet + play overlay; a
- *  click leases a pooled <video> (controls, exclusive) into the card.
- *  Release happens on click-away, unmount, or any other lease taking the
- *  element (pool exclusivity) — the poster returns in every case. */
-export function PooledVideoCard({ src, path, duration, label }: { src: string | undefined; path: string | null; duration: number; label: string }) {
+/** The card media area: static filmstrip poster + the review affordance.
+ *  The button renders only where a viewer can open (`onReview` supplied) —
+ *  the caller owns the gate (the canvas tile consults the same
+ *  reviewAffordance model for its own hover affordance). */
+export function PooledVideoCard({ path, duration, label, onReview, className = '' }: { path: string | null; duration: number; label: string; onReview?: () => void; className?: string }) {
   const filmstrip = useFilmstrip(path, duration)
-  const [playing, setPlaying] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const leaseRef = useRef<{ release(): void } | null>(null)
-
-  const stop = useCallback(() => {
-    leaseRef.current?.release()
-    leaseRef.current = null
-    setPlaying(false)
-  }, [])
-
-  const play = useCallback(() => {
-    const container = containerRef.current
-    if (!container || !src) return
-    leaseRef.current?.release()
-    const lease = leaseVideo({
-      src,
-      controls: true,
-      autoPlay: true,
-      onPreempted: () => {
-        leaseRef.current = null
-        setPlaying(false)
-      },
-    })
-    if (!lease) return
-    leaseRef.current = lease
-    container.appendChild(lease.video)
-    setPlaying(true)
-  }, [src])
-
-  useEffect(() => () => stop(), [stop])
-
-  // Click-away releases: any pointerdown outside this card stops playback.
-  useEffect(() => {
-    if (!playing) return undefined
-    const onPointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) stop()
-    }
-    document.addEventListener('pointerdown', onPointerDown)
-    return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [playing, stop])
-
-  return <div className="pooled-video-card" ref={containerRef}>
-    {!playing && <FilmstripPoster filmstrip={filmstrip} label={label} />}
-    {!playing && <button className="play-overlay" aria-label={`Play ${label}`} onClick={play}><Play size={20} /></button>}
+  return <div className={`pooled-video-card ${className}`.trim()} data-pooled-video-card>
+    <FilmstripPoster filmstrip={filmstrip} label={label} />
+    {onReview && (
+      <button type="button" className="play-overlay" data-pooled-review aria-label={`Review ${label}`} title="Open the take viewer" onClick={onReview}>
+        <Eye size={20} />
+      </button>
+    )}
   </div>
 }

@@ -27,6 +27,7 @@ import { IndexOverlay } from './IndexOverlay'
 import { LibraryOverlay } from './LibraryOverlay'
 import { TimelineOverlay } from './TimelineOverlay'
 import { OpEditor } from './OpEditor'
+import { TakeViewerOverlay } from './TakeViewerOverlay'
 import { PoseRigDock } from './PoseRigDock'
 import { PropertiesPanel } from './PropertiesPanel'
 import { Launcher } from './Launcher'
@@ -241,6 +242,7 @@ export function CanvasApp() {
       <ForkMenu />
       <TileMenu />
       <OpEditor />
+      <TakeViewerOverlay />
       <PoseRigDock />
       <AudioDock />
       <SettingsDock />

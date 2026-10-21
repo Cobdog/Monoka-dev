@@ -336,5 +336,54 @@ test('(i) the pause-only intent — pausing never resumes (the I-1 fix)', () => 
   // two intents stay distinct (a pause-shaped gesture can never resume).
   const resumed = model.transportCommand(nowPaused.state, { type: 'toggle-play' })
   ok(resumed.state.playing === true, 'toggle-play from paused resumes (the intents stay distinct)')
+})
+
+test('(j) the seek intent + the strip wiring — a bare seek never touches playing', () => {
+  console.log('viewer: the seek intent')
+  const playing = model.initialTransport()
+  const paused = { ...playing, playing: false }
+
+  // The strip's continuous scrub: seeking while playing KEEPS playing.
+  const fromPlaying = model.transportCommand(playing, { type: 'seek', time: 3.5 })
+  ok(fromPlaying.state.playing === true, 'a seek while playing keeps playing (never touches it)')
+  ok(fromPlaying.state.speedIndex === playing.speedIndex && fromPlaying.state.loop === playing.loop && fromPlaying.state.muted === playing.muted, 'a seek touches NOTHING but the playhead')
+  ok(fromPlaying.seekTo === 3.5, 'the seek carries the exact time')
+
+  // Seeking while paused keeps it paused — the press = pause + seek as
+  // SEPARATE transactions, exactly as the strip wires them.
+  const fromPaused = model.transportCommand(paused, { type: 'seek', time: 1.25 })
+  ok(fromPaused.state.playing === false, 'a seek while paused keeps it paused')
+  ok(fromPaused.seekTo === 1.25, 'the paused seek still carries the time')
+
+  // The strip's press composition: pause then seek (two transactions).
+  const afterPress = model.transportCommand(
+    model.transportCommand(playing, { type: 'pause' }).state,
+    { type: 'seek', time: 2 },
+  )
+  ok(afterPress.state.playing === false && afterPress.seekTo === 2, 'the scrub press composes: pause first, then the seek (separate transactions)')
+
+  // The strip's release composition: resume === false → NOTHING (the drag
+  // begun paused stays paused); resume === true → toggle-play (the only
+  // resume path). T3's stripDragRelease computes the boolean; the intent
+  // shape here is what the core dispatches off it.
+  const releasedCold = model.transportCommand(afterPress.state, { type: 'seek', time: 2.5 })
+  ok(releasedCold.state.playing === false, 'release(resume=false) dispatches nothing play-shaped — the take stays paused')
+  const releasedWarm = model.transportCommand(afterPress.state, { type: 'toggle-play' })
+  ok(releasedWarm.state.playing === true, 'release(resume=true) is the toggle-play dispatch — the take resumes')
+})
+
+test('(k) the strip\'s resolved-duration gate (T3-review M-1) — never a second door into forever-generating', () => {
+  console.log('viewer: the strip duration gate')
+  // The take\'s duration is maybe-metadata: unprobed takes carry 0 (or worse,
+  // NaN). The filmstrip loader never fetches for duration <= 0, so a
+  // previewPath take with an unresolved duration would sit in the
+  // \'generating\' state FOREVER (the sheet can never land). The gate: an
+  // unresolved duration reads as sheet-IMPOSSIBLE — the plain honest state.
+  ok(model.stripPreviewPath('/outputs/clip.mp4', 6) === '/outputs/clip.mp4', 'a resolved duration passes the preview path through (the sheet can exist)')
+  ok(model.stripPreviewPath('/outputs/clip.mp4', 0) === null, 'duration 0 → null (the plain state — never forever-generating)')
+  ok(model.stripPreviewPath('/outputs/clip.mp4', -1) === null, 'a negative duration → null too')
+  ok(model.stripPreviewPath('/outputs/clip.mp4', Number.NaN) === null, 'a NaN duration → null, never a NaN-driven load')
+  ok(model.stripPreviewPath(null, 6) === null, 'no preview path stays null (the blob-only shape)')
+  ok(model.stripPreviewPath('/outputs/clip.mp4', Number.POSITIVE_INFINITY) === null, 'an infinite duration is not a resolved one')
   console.log(`\ntest-takeviewer: ${passed} assertions passed`)
 })

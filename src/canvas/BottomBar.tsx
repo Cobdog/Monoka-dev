@@ -12,10 +12,11 @@
  *     multi-lock; Phase 3 lands the ops the Phase-2 stub promised).
  */
 import { useState } from 'react'
-import { ChevronUp, FileVideo, GitFork, ImagePlus, Layers, Lock, LockOpen, Pause, Play, Plus } from 'lucide-react'
+import { ChevronUp, Eye, FileVideo, GitFork, ImagePlus, Layers, Lock, LockOpen, Play, Plus } from 'lucide-react'
 import { forkNeighborhood, STATUS_LABEL, takeNumberOf } from './derive'
 import { modeLabelFor, readChainSettings } from './generation'
 import { opKindsFor } from './ops'
+import { reviewAffordance } from './takeViewerOverlayModel'
 import { Chip, ChipGroup } from '../ui/Chip'
 import { engineToneVars, tileToneVars, type ConnectionStatus } from '../ui/statusToken'
 import { useCanvasStore } from './store'
@@ -31,6 +32,7 @@ export function BottomBar() {
   const wizardPresenting = useCanvasStore((state) => state.wizardPresenting)
   const select = useCanvasStore((state) => state.select)
   const setForkMenu = useCanvasStore((state) => state.setForkMenu)
+  const setTakeViewer = useCanvasStore((state) => state.setTakeViewer)
   const submitPrompt = useCanvasStore((state) => state.submitPrompt)
   const requestCamera = useCanvasStore((state) => state.requestCamera)
   const toast = useCanvasStore((state) => state.toast)
@@ -55,17 +57,26 @@ export function BottomBar() {
     await submitPrompt(trimmed, barLane)
   }
 
-  // Transport (media context): the tile's own preview element is the player —
-  // playing is temporary tile state (L1's lean), the bar toggles it.
-  const toggleTransport = () => {
-    const element = globalThis.document.querySelector<HTMLVideoElement>(`[data-canvas-tile="${primary?.id}"] video`)
-    if (!element) {
-      toast('neutral', 'This object has no playable surface yet.')
-      return
-    }
-    if (element.paused) void element.play()
-    else element.pause()
-  }
+  // Review (foelihc T4, spec §2 + §8 D5): the old play chip is now `review`
+  // — it OPENS the take viewer, and the bar's DOM-querying play/pause toggle
+  // is gone with it (one transport, the viewer's; nothing plays inline on a
+  // tile). The gate is the one ladder every open path consults: enabled
+  // where a reviewable canonical take exists (mid-render WITH a prior take
+  // included — audit T-M4), disabled WITH ITS REASON on takeless (the R-22
+  // gate idiom — enforce + teach), absent for audio takes (§7). Rendered in
+  // BOTH single-selection contexts — the media context's affordance and the
+  // chain context's takeless mirror (T-M4) are the same chip.
+  const reviewGate = primary ? reviewAffordance(primary) : null
+  const reviewChip = reviewGate && reviewGate.state !== 'absent' ? (
+    <button
+      type="button"
+      className="chip canvas-chip"
+      data-canvas-bar-review
+      disabled={reviewGate.state === 'gated'}
+      title={reviewGate.state === 'gated' ? reviewGate.reason : 'Open the take viewer — double-click the tile works too'}
+      onClick={() => setTakeViewer({ chainId: primary!.id })}
+    ><Eye size={11} /> review</button>
+  ) : null
 
   // Op entry (media context): the modal is the ONLY editor (L8) — the menu
   // adds the first op and opens the editor on it.
@@ -173,6 +184,10 @@ export function BottomBar() {
           {forkHistory.forks.length ? `${forkHistory.forks.length} fork${forkHistory.forks.length === 1 ? '' : 's'} ↓` : ''}
           {!forkHistory.parents.length && !forkHistory.forks.length ? 'no forks yet' : ''}
         </span>
+        {/* The takeless mirror (T-M4): a chain context holds no canonical
+            take, so the review chip renders DISABLED with its reason — the
+            R-22 idiom, never a dead click and never a vanishing mystery. */}
+        {reviewChip}
         {/* The lock is an INDEPENDENT toggle — a pressed button (aria-pressed
             via Space/Enter), never aria-checked (exclusive-group territory).
             Hotkeys live in the tooltips, never the labels (et8hu1l). */}
@@ -194,7 +209,7 @@ export function BottomBar() {
     {context === 'media' && primary && (
       <>
         <span className="canvas-bar-title">{primary.title}</span>
-        <button type="button" className="chip canvas-chip" data-canvas-bar-transport onClick={toggleTransport} disabled={primary.mediaKind !== 'video'}><Play size={11} /> / <Pause size={11} /> play</button>
+        {reviewChip}
         <div className="canvas-bar-opmenu">
           <button type="button" className="chip canvas-chip" data-canvas-bar-ops onClick={() => setOpMenuOpen((value) => !value)}><Plus size={11} /> op <ChevronUp size={10} /></button>
           {opMenuOpen && (
