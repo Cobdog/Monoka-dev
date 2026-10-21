@@ -12,6 +12,7 @@
  * dismissal idiom (registry Escape + Base UI outside-press). Pre-migration
  * this menu had NO Escape of its own (backdrop-click only).
  */
+import { useLayoutEffect, useState } from 'react'
 import { useCanvasStore } from './store'
 import { takeNumberOf } from './derive'
 import { SUBSTRATE_LABEL, forkFrameRowNote, substratesForTake, type ForkSubstrate } from './generation'
@@ -23,6 +24,23 @@ export function ForkMenu() {
   const tiles = useCanvasStore((state) => state.tiles)
   const setForkMenu = useCanvasStore((state) => state.setForkMenu)
   const fork = useCanvasStore((state) => state.fork)
+  // (foelihc T8, the T5-review I-1 rider) A handed frame preselects the
+  // extracted-frame row — that row owns the OPENING FOCUS. PopoverMenu's
+  // attach-time focusOnOpen seats focus on the panel (no entry field here)
+  // and the arrow walk enters at the FIRST row ('decoded'), so U → ↓ → Enter
+  // forked decoded and silently dropped the picked frame. The row is tracked
+  // as STATE (PopoverMenu's own portal-commit lesson: the popup can attach a
+  // commit after open, so an open-keyed effect alone can miss the node) and
+  // this effect runs after the attach-time focus call in every commit
+  // ordering — focus lands on the marked row, Enter accepts the anchor, the
+  // walk steps FROM it. The accent (canvas.css, keyed on the same data mark)
+  // keeps the row identified after focus travels. Without a handed frame the
+  // default stands: panel focus, arrows enter at the first row.
+  const [preselectedRow, setPreselectedRow] = useState<HTMLButtonElement | null>(null)
+  const handedFrame = menu?.frameIndex
+  useLayoutEffect(() => {
+    if (handedFrame != null) preselectedRow?.focus()
+  }, [handedFrame, preselectedRow])
   if (!menu) return null
 
   const tile = tiles.find((entry) => entry.id === menu.chainId)
@@ -61,6 +79,7 @@ export function ForkMenu() {
           type="button"
           key={substrate}
           className="canvas-menu-row"
+          ref={substrate === 'extracted-frame' ? setPreselectedRow : undefined}
           data-canvas-fork-substrate={substrate}
           data-canvas-fork-preselected={menu.frameIndex != null && substrate === 'extracted-frame' ? 'true' : undefined}
           onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, takeId: menu.takeId ?? undefined, substrate, frameIndex: menu.frameIndex ?? undefined })}

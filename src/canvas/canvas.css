@@ -366,6 +366,13 @@ details.canvas-properties-disclosure[open] > summary::after { content: '−'; }
 .canvas-menu-row { display: grid; gap: 1px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2); cursor: pointer; text-align: left; }
 .canvas-menu-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .canvas-menu-row.unavailable { opacity: .55; cursor: not-allowed; }
+/* (foelihc T8, the T5-review I-1 rider) The fork menu's preselected row —
+   the handed frame's home — carries the house selected accent (the
+   chip--selected idiom: accent border over accent-soft, label in accent),
+   so the keyboard flow's opening focus sits on the row the eye is told to
+   accept, and the mark survives focus traveling away. */
+.canvas-menu-row[data-canvas-fork-preselected] { border-color: color-mix(in srgb, var(--accent) 48%, transparent); background: var(--accent-soft); }
+.canvas-menu-row[data-canvas-fork-preselected] .canvas-menu-row-label { color: var(--accent); }
 .canvas-menu-row-label { font-size: var(--text-md); font-weight: 650; }
 .canvas-menu-row-note { color: var(--muted); font-size: var(--text-2xs); line-height: 1.35; }
 .canvas-menu-row-hint { margin-top: 2px; color: var(--accent); font-family: ui-monospace, Consolas, monospace; font-size: var(--text-2xs); }

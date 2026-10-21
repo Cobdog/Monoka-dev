@@ -3285,12 +3285,24 @@ test('use this frame hands the fork the RIGHT frame; the used-by chips fly (foel
     expect(menuText.includes('× 24'), 'no arithmetic teaching anywhere in the menu').toBe(false)
     expect(menuText.includes('frame index'), 'F7\'s retired hint stays retired').toBe(false)
 
-    // Click the PRESELECTED row BY ITS DATA MARK — never by label position
-    // (the keyboard flow would fork decoded and silently drop the frame).
+    // The PRESELECTED row, BY ITS DATA MARK — never by label position. The
+    // T8 rider closes the keyboard trap around it: the row carries the
+    // ACCENT (computed style, so the pin is the paint, not the selector)
+    // and the OPENING FOCUS, so U → Enter accepts the anchor. Before the
+    // rider, focus sat on the panel and ↓ entered the walk at 'decoded' —
+    // Enter forked decoded and silently dropped the picked frame.
     const preselected = page.locator('[data-canvas-fork-preselected="true"]')
     await expect(preselected).toBeVisible({ timeout: 5_000 })
     expect(await preselected.count(), 'exactly one preselected row — the extracted-frame substrate').toBe(1)
-    await preselected.click()
+    const accentPaint = await preselected.evaluate((row) => ({ background: getComputedStyle(row).backgroundColor, border: getComputedStyle(row).borderColor }))
+    const plainPaint = await page.locator('[data-canvas-fork-substrate="decoded"]').evaluate((row) => ({ background: getComputedStyle(row).backgroundColor, border: getComputedStyle(row).borderColor }))
+    expect(accentPaint.background !== plainPaint.background || accentPaint.border !== plainPaint.border, 'the preselected row paints the house accent (distinct from the plain decoded row)').toBe(true)
+    // The opening focus is seated ON the marked row (the settle: ForkMenu's
+    // layout effect runs after PopoverMenu's attach-time focusOnOpen — a
+    // genuine regression fails this poll, not the leg's later asserts).
+    await expect.poll(() => page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.matches('[data-canvas-fork-preselected="true"]')), { timeout: 3_000 }).toBe(true)
+    // THE KEYBOARD ACCEPT — the rider's own flow, no click anywhere.
+    await page.keyboard.press('Enter')
     await expect(forkMenu).toHaveCount(0, { timeout: 5_000 })
 
     // The fork lands: a media chain for the extracted still + a generation

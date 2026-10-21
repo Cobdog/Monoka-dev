@@ -43,6 +43,12 @@
 //       store rides the pure conversion (never a raw frame number), the
 //       overlay's default handoff opens the anchored menu, the ForkMenu
 //       passes the frame through
+//   (g) the preselected row's accent + opening focus (T8, T5-review I-1) —
+//       the keyboard flow U → Enter forks the PICKED frame: text pins prove
+//       the accent rule and the focus wiring exist; the BEHAVIOR (focus
+//       seated, Enter accepts, the accent paints) is e2e-owned — the journey
+//       leg's focus poll + keyboard accept + computed-style check are the
+//       ceiling this unit pin states and does not reach
 import { test } from 'vitest'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -230,5 +236,28 @@ test('(f) the wiring — every seam rides the pure decisions (text pins)', () =>
   ok(forkMenu.includes('forkFrameRowNote(menu.frameIndex)'), 'the extracted-frame row\'s note rides the human-anchor template')
   ok(forkMenu.includes('frameIndex: menu.frameIndex ?? undefined'), 'the row\'s fork call carries the handed frame')
   ok(forkMenu.includes('takeId: menu.takeId ?? undefined'), 'the row\'s fork call pins the watched take')
+})
+
+test('(g) the preselected row\'s accent + opening focus (T8, T5-review I-1)', () => {
+  console.log('viewer-fork: the preselected row is the accept target')
+  // The trap this closes: the fork menu opens with focus on the PANEL and
+  // the arrow walk enters at row 0 ('decoded'), so U → ↓ → Enter forked
+  // decoded and silently dropped the picked frame. The fix is BOTH the
+  // visual accent (which row carries the anchor) and the opening FOCUS
+  // (Enter accepts it) — an accent alone leaves the keyboard trap, a focus
+  // alone loses the mark when focus travels.
+  const css = read('src/canvas/canvas.css')
+  ok(css.includes('.canvas-menu-row[data-canvas-fork-preselected] {'), 'the accent rule exists, keyed on the preselected data mark (no parallel class to drift)')
+  ok(/\.canvas-menu-row\[data-canvas-fork-preselected\] \{[^}]*var\(--accent\)[^}]*var\(--accent-soft\)[^}]*\}/.test(css), 'the accent is the house selected idiom (chip--selected: accent border over accent-soft)')
+  ok(/\.canvas-menu-row\[data-canvas-fork-preselected\] \.canvas-menu-row-label \{[^}]*var\(--accent\)/.test(css), 'the row label reads in accent (the marked row is identifiable at a glance)')
+
+  const forkMenu = read('src/canvas/ForkMenu.tsx')
+  ok(forkMenu.includes('if (handedFrame != null) preselectedRow?.focus()'), 'the ForkMenu seats opening focus on the preselected row when a frame is handed')
+  ok(forkMenu.includes('const [preselectedRow, setPreselectedRow] = useState'), 'the row is tracked as STATE (the portal-commit lesson — an open-keyed effect alone can miss the node)')
+  ok(forkMenu.includes("ref={substrate === 'extracted-frame' ? setPreselectedRow : undefined}"), 'the tracked row IS the extracted-frame substrate row (the anchor\'s home)')
+  // The default arm needs no separate pin: the guard in the focus pin above
+  // IS the default-arm contract (no handed frame → no row focus; the B
+  // gesture / bar chip keep focusOnOpen's panel seat and today's
+  // arrow-entry behavior).
   console.log(`\ntest-takeviewerfork: ${passed} assertions passed`)
 })
