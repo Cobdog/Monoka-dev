@@ -91,6 +91,13 @@ export function attachCamera(viewport: HTMLElement, world: HTMLElement, store: C
     .scaleExtent([CAMERA_MIN_K, CAMERA_MAX_K])
     .on('zoom', onZoom as (event: unknown) => void)
   selection.call(behavior)
+  // (foelihc T7, the e2e's find) d3-zoom's own `dblclick.zoom` listener
+  // ("double-click to zoom") calls noevent() — stopImmediatePropagation at
+  // the viewport — so the tile-root's double-click open (spec §2's PRIMARY
+  // open path) never received one: every double-click zoomed the camera
+  // instead. The listener comes off; wheel/pinch/pan and the zoom buttons
+  // keep the camera, and double-click is the review gesture now.
+  selection.on('dblclick.zoom', null)
 
   // Jump-to on open (camera restore): rewrite the zoom behavior's transform
   // without a gesture, then apply once through the normal pipeline.

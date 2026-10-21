@@ -113,11 +113,28 @@ export function initialTransport(): TransportState {
 /** The frame whose span CONTAINS a playhead position — the step lens. This
  *  is floor, deliberately NOT T1's round: round is the PICK anchor (the
  *  nearest frame, "use this frame"), floor is the frame ON SCREEN (the one
- *  a step must not skip past). Both lens the same 24 fps convention. */
+ *  a step must not skip past). Both lens the same 24 fps convention. The
+ *  boundary epsilon rides INSIDE the floor too (foelihc T7): a real
+ *  container's frame timestamps sit a hair BELOW the model's n/24 doubles
+ *  (measured: the mirror clip's frame-71 timestamp reads 2.9583332 <
+ *  71/24), so a bare floor framed them one low and → re-sought the same
+ *  frame — the forward twin of the stuck-press trap. A playhead within the
+ *  slack of a boundary is ON that boundary's frame. */
 function containingFrame(currentTime: number, frameCount: number): number {
   if (!Number.isFinite(currentTime) || currentTime <= 0) return 0
-  return clampToFrames(Math.floor(currentTime * FILMSTRIP_FPS), frameCount)
+  return clampToFrames(Math.floor((currentTime + STEP_BOUNDARY_EPSILON_SECONDS) * FILMSTRIP_FPS), frameCount)
 }
+
+/** The boundary rule's alignment epsilon (foelihc T7, the e2e's find): a
+ *  REAL element reports its frame timestamps a hair off the model's n/24
+ *  doubles — the container's rational timestamps plus the media clock's
+ *  tick quantization (measured on the mirror's committed clip: the element
+ *  reads frame 71 as a value fractionally BELOW 71/24, so a bare floor
+ *  framed it one low and → re-sought the same frame; a bare `>` in the
+ *  backward rule is the mirror trap). The slack sits BETWEEN the noise
+ *  (µs-class) and a measurable drift (the suite's "just below" pin is
+ *  0.1 ms — still a real drift at 50 µs), 800× under one frame. */
+export const STEP_BOUNDARY_EPSILON_SECONDS = 0.00005
 
 /** One frame-step's seek target (spec §3): the EXACT boundary n/24, never a
  *  fractional drift. The boundary rule: a playhead drifted past its frame's
@@ -127,7 +144,7 @@ export function frameStepTarget(currentTime: number, frameCount: number, directi
   const frame = containingFrame(currentTime, frameCount)
   if (direction < 0) {
     const boundary = positionFromFrame(frame)
-    if (currentTime > boundary) return boundary
+    if (currentTime > boundary + STEP_BOUNDARY_EPSILON_SECONDS) return boundary
     return positionFromFrame(clampToFrames(frame - 1, frameCount))
   }
   return positionFromFrame(clampToFrames(frame + 1, frameCount))

@@ -4,6 +4,7 @@ import type { AddressInfo } from 'node:net'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import zlib from 'node:zlib'
 import { expect, test, type Page } from '@playwright/test'
 // Scratch-dir ledger + teardown (the wave-4 hygiene contract — per-run
 // scratch never accumulates; the fresh-engine leg's designated models root
@@ -2780,4 +2781,862 @@ test('--setup re-runs the walk from any terminal (task 9, spec §4)', async ({ p
     for (const child of children) await stopStudio(child)
     removeAllScratchDirs()
   }
+})
+
+// ---------------------------------------------------------------------------
+// The take viewer's journey legs (foelihc T7 — spec §9.1–§9.8's e2e evidence
+// shape; the wave's reviews' accumulated bindings ride every leg):
+//   §9.1  the R2 repro answered in one gesture (double-click → drag to 3 s →
+//         the frame on screen, the timecode reading `3.00 · frame 72`, a
+//         screenshot at the paused frame).
+//   §9.3  the transport contract: scrub seeks, the timecode format, ←/→ on
+//         EXACT frame boundaries (incl. the drifted arm on a real element),
+//         Shift = 1 s, Home/End PAUSE-FIRST, loop, mute, every speed step,
+//         and the keymap scope BOTH ways (the canvas map inert while open,
+//         one gesture answering again once closed).
+//   §9.4  "use this frame" hands the fork the RIGHT frame: the seam
+//         request's position ≡ frameIndex / 24 asserted ON THE CAPTURED
+//         REQUEST (audit T-C1 — the leg the plan made mandatory), the
+//         ForkMenu's human words, the preselected row clicked BY ITS data
+//         mark, no frame arithmetic anywhere on the path.
+//   §9.5  the filmstrip renders (0 → present), the route's generations
+//         counter NEVER bumps on viewer open, the playhead continuous, the
+//         blob-only plain-bar state.
+//   §9.6  honest states, no dead clicks: seed tile, takeless chip + its
+//         reason, the missing-file state in the taxonomy's OWN words, an
+//         image take zoomable with no transport, an audio take offering
+//         nothing.
+//   §9.7  compare: two panes, one clock, the same seconds after seeks, the
+//         hold note, the wrap re-seek, both leases coexisting.
+//   §9.8  the used-by chips = the walk's output; a click closes, selects,
+//         and flies.
+//   bind  the open→playing (muted) default + the Close-button posture
+//         (Space on a focused Close CLOSES, never plays).
+// One boot shape for all four tests: a standalone studio on a scratch home +
+// the STANDING mirror (the maintainer-instance profile — NO profile
+// extension was needed: the mirror's one real 3.0 s clip serves every
+// engine-driven leg, and every extra take SHAPE — blob-only, missing,
+// image, audio, the short-duration compare pane — is a document-store shape
+// driven through the app's own documents API, never the engine).
+// ---------------------------------------------------------------------------
+
+type ViewerWorld = {
+  studioPort: number
+  mirrorPort: number
+  home: string
+  mirror: ChildProcess
+  studio: ChildProcess
+  mirrorLog: () => string
+  stop: () => Promise<void>
+}
+
+/** Boots the take-viewer world: the standing mirror + a standalone studio on
+ *  a scratch home, the engine pointed at the mirror BEFORE any page opens,
+ *  the walk latched shut, and ONE real render landed (the clip every leg
+ *  reviews). */
+async function bootViewerWorld(page: Page, prompt: string): Promise<ViewerWorld> {
+  const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-e2e-takeviewer-'))
+  const reservePort = async () => {
+    const holder = http.createServer(() => undefined)
+    const port = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+    await new Promise<void>((resolve) => holder.close(() => resolve()))
+    return port
+  }
+  const studioPort = await reservePort()
+  const mirrorPort = await reservePort()
+  const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', MIRROR_PROFILE], { stdio: ['ignore', 'pipe', 'pipe'] })
+  let mirrorLog = ''
+  mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+  const studio: ChildProcess = spawn('node', ['dist-server/server/index.js'], {
+    env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(studioPort), MONOKA_NO_HTTPS: '1' },
+    stdio: ['ignore', 'ignore', 'ignore'],
+  })
+  const stop = async () => {
+    if (studio.exitCode === null && studio.signalCode === null) {
+      studio.kill('SIGTERM') // the recorded PID only
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => { studio.kill('SIGKILL'); resolve() }, 5_000)
+        studio.once('exit', () => { clearTimeout(timer); resolve() })
+      })
+    }
+    mirror.kill('SIGINT')
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+      mirror.once('exit', () => { clearTimeout(timer); resolve() })
+    })
+    removeAllScratchDirs()
+  }
+  await expect.poll(async () => {
+    try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+  }, { timeout: 15_000 }).toBe(true)
+  await expect.poll(async () => {
+    try { return (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).ok } catch { return false }
+  }, { timeout: 30_000 }).toBe(true)
+  const seeded = (await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).json()) as { settings: Record<string, unknown> }
+  await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ settings: { ...seeded.settings, comfyUrl: `http://127.0.0.1:${mirrorPort}`, testedComfyVersion: 'mirror-profile', engine: { ...(seeded.settings.engine as Record<string, unknown>), mode: 'external' } } }),
+  })
+  await seedWalkDone(page)
+  await page.goto(`http://127.0.0.1:${studioPort}/?canvas=1`)
+  await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+  await expect(page.locator('[data-canvas-engine]')).toHaveAttribute('data-engine-connected', 'true', { timeout: 20_000 })
+  await page.locator('[data-canvas-prompt]').fill(prompt)
+  await page.locator('[data-canvas-submit]').click()
+  await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 15_000 })
+  await expect(page.locator('[data-canvas-tile]').first()).toHaveAttribute('data-tile-status', 'idle', { timeout: 60_000 })
+  return { studioPort, mirrorPort, home, mirror, studio, mirrorLog: () => mirrorLog, stop }
+}
+
+type ViewerTake = { id: string; artifacts: string[]; metrics: Record<string, unknown>; supersededBy?: string | null }
+type ViewerChain = { id: string; kind: string; inputSpec: Record<string, unknown>; settings: Record<string, unknown>; outputs: Array<{ id: string; takes: ViewerTake[] }> }
+
+async function readViewerDocument(studioPort: number): Promise<{ projectId: string; chains: ViewerChain[] }> {
+  const session = (await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/documents/session`)).json()) as { session: { activeProject: string | null } }
+  if (!session.session.activeProject) throw new Error('the studio has no active project')
+  const document = (await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/documents/project?id=${encodeURIComponent(session.session.activeProject)}`)).json()) as { chains: ViewerChain[] }
+  return { projectId: session.session.activeProject, chains: document.chains }
+}
+
+async function viewerPost<T>(studioPort: number, route: string, body: unknown): Promise<T> {
+  const response = await fetch(`http://127.0.0.1:${studioPort}${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  if (!response.ok) throw new Error(`POST ${route} answered ${response.status}: ${await response.text()}`)
+  return (await response.json()) as T
+}
+
+/** A minimal valid PNG (8-bit RGB, flat rows) — the image-take fixture needs
+ *  real decodable bytes for the viewer's <img>; the mirror's pngGradient is
+ *  not exported, so the same hand-rolled container lives here. */
+function tinyPngBytes(width: number, height: number, rgb: [number, number, number]): Buffer {
+  const crcTable: number[] = []
+  for (let n = 0; n < 256; n += 1) {
+    let c = n
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    crcTable[n] = c >>> 0
+  }
+  const crc32 = (buf: Buffer) => {
+    let c = 0xffffffff
+    for (const b of buf) c = crcTable[(c ^ b) & 0xff]! ^ (c >>> 8)
+    return (c ^ 0xffffffff) >>> 0
+  }
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4)
+    len.writeUInt32BE(data.length)
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+    const crc = Buffer.alloc(4)
+    crc.writeUInt32BE(crc32(body))
+    return Buffer.concat([len, body, crc])
+  }
+  const raw = Buffer.alloc(height * (1 + width * 3))
+  for (let y = 0; y < height; y += 1) {
+    const row = y * (1 + width * 3)
+    raw[row] = 0 // filter none
+    for (let x = 0; x < width; x += 1) {
+      const i = row + 1 + x * 3
+      raw[i] = rgb[0]
+      raw[i + 1] = rgb[1]
+      raw[i + 2] = rgb[2]
+    }
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr[8] = 8
+  ihdr[9] = 2
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
+/** Click a tile at a point clear of the CENTERED review affordance (the
+ *  hover button sits at the media's middle — a center click would hit the
+ *  button: one click OPENS the viewer, and a following click would land on
+ *  the dialog's backdrop and dismiss it). The tile's box is sampled to a
+ *  motion settle first — the landing fly (d3) can still be mid-transition
+ *  when the take lands, and a click computed against a moving box is a
+ *  click somewhere else (testing.md item 5's animation-settle window). */
+async function clickTile(page: Page, tileId: string, double = false): Promise<void> {
+  const tile = page.locator(`[data-canvas-tile="${tileId}"]`)
+  let box = await tile.boundingBox()
+  if (!box) throw new Error(`tile ${tileId} never rendered a box`)
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    await page.waitForTimeout(250)
+    const next = await tile.boundingBox()
+    if (!next) throw new Error(`tile ${tileId} lost its box mid-settle`)
+    if (Math.abs(next.x - box.x) < 1 && Math.abs(next.y - box.y) < 1 && Math.abs(next.width - box.width) < 1) { box = next; break }
+    box = next
+  }
+  const x = box.x + box.width * 0.22
+  const y = box.y + box.height * 0.24
+  if (double) await page.mouse.dblclick(x, y)
+  else await page.mouse.click(x, y)
+}
+
+/** Keys pressed while focus sits on one of the viewer's own buttons belong
+ *  to that button (the T-M3 focusable-chrome guard) — the transport legs
+ *  need the MAP's keys, so focus moves off the chrome first. */
+const blurViewerChrome = (page: Page) => page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur?.() })
+
+/** The stage video's live facts, read from the element itself. */
+const viewerVideoState = (page: Page) => page.evaluate(() => {
+  const video = document.querySelector('[data-take-viewer-stage] video')
+  return video ? { currentTime: video.currentTime, paused: video.paused, muted: video.muted, loop: video.loop, playbackRate: video.playbackRate } : null
+})
+
+/** Drag the filmstrip strip to a fraction of its width (the §5 scrub
+ *  gesture — press, move, release). */
+async function dragStrip(page: Page, strip: ReturnType<Page['locator']>, fromFraction: number, toFraction: number): Promise<void> {
+  const box = await strip.boundingBox()
+  if (!box) throw new Error('the strip never rendered a box')
+  const y = box.y + box.height / 2
+  await page.mouse.move(box.x + box.width * fromFraction, y)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width * toFraction, y, { steps: 6 })
+  await page.mouse.up()
+}
+
+/** The playhead marker's x-fraction of its strip, from the live rects — the
+ *  continuity the strip promises (a fraction, whatever CSS units compute
+ *  to). */
+const playheadFraction = (page: Page) => page.evaluate(() => {
+  const strip = document.querySelector('[data-take-filmstrip]')
+  const playhead = document.querySelector('[data-take-filmstrip-playhead]')
+  if (!strip || !playhead) return null
+  const stripRect = strip.getBoundingClientRect()
+  const headRect = playhead.getBoundingClientRect()
+  const center = headRect.left + headRect.width / 2
+  return (center - stripRect.left) / stripRect.width
+})
+
+/** The R2 repro + the transport contract + the scoped keymap + the two
+ *  postures (open→playing, Close-button Space). */
+test('the take viewer: the R2 repro answered, the transport contract, the scoped keymap (foelihc T7, spec §9.1/§9.3)', async ({ page }) => {
+  await seedWalkDone(page)
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+  const world = await bootViewerWorld(page, 'a lighthouse over a black sea, review me at second three')
+  try {
+    // Codec honesty guard (the app.spec poster-leg pattern): the transport
+    // legs decode and seek a real mp4 — distro Chromium builds ship without
+    // proprietary codecs.
+    const h264Capable = await page.evaluate(() => document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"') !== '')
+    test.skip(!h264Capable, 'this system browser cannot decode H.264 — the take-viewer transport legs need a codec-complete browser')
+
+    const document = await readViewerDocument(world.studioPort)
+    const renderChain = document.chains.find((chain) => chain.kind === 'generation')!
+    const canonical = renderChain.outputs[0]!.takes.find((take) => take.supersededBy == null) ?? renderChain.outputs[0]!.takes[0]!
+    const duration = Number(canonical.metrics.duration)
+    expect(duration, 'the landed take carries a probed-or-hinted duration (the fixture premise: the mirror clip is 3.0 s and the job hint keeps 3 s mid-strip)').toBeGreaterThanOrEqual(3)
+    const frameCount = Math.round(duration * 24)
+
+    // ---- OPEN → PLAYING (muted) — the autoplay review posture (binding) --
+    await clickTile(page, renderChain.id, true)
+    const viewer = page.locator('[data-canvas-take-viewer]')
+    await expect(viewer).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Pause "]')).toBeVisible({ timeout: 10_000 })
+    await page.waitForFunction(() => {
+      const video = document.querySelector('[data-take-viewer-stage] video')
+      return Boolean(video && video.readyState >= 2 && !video.paused)
+    }, undefined, { timeout: 10_000 })
+    expect((await viewerVideoState(page))!.muted, 'the posture is MUTED autoplay — the audio check is deliberate').toBe(true)
+
+    // ---- THE R2 REPRO (§9.1): pause, then ONE drag of the strip to 3 s ---
+    await blurViewerChrome(page)
+    await page.keyboard.press('Space') // pause — the repro inspects, it does not play
+    await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Play "]')).toBeVisible({ timeout: 5_000 })
+    await dragStrip(page, page.locator('[data-take-filmstrip]'), 0.3, 3 / duration)
+    await expect(page.locator('[data-take-viewer-timecode]')).toHaveText(`3.00 · frame 72 of ${frameCount}`, { timeout: 5_000 })
+    // The drag's mouse events hand focus to the dialog's trap (which seats it
+    // on the chrome) — the map's keys need focus off the chrome again.
+    await blurViewerChrome(page)
+    const atThree = await viewerVideoState(page)
+    expect(atThree!.paused, 'the repro frame is PAUSED on screen').toBe(true)
+    // The playhead is continuous across the strip: the seek to 3 s parks it
+    // at 3/duration of the strip's width (the live x-fraction, not the CSS
+    // unit it computes to).
+    await expect.poll(() => playheadFraction(page), { timeout: 5_000 }).toBeCloseTo(3 / duration, 1)
+    fs.mkdirSync(path.join(process.cwd(), 'test-results', 'shots'), { recursive: true })
+    await viewer.screenshot({ path: path.join(process.cwd(), 'test-results', 'shots', 'take-viewer-r2-repro-3s.png') })
+
+    // ---- ←/→ land on EXACT frame boundaries (§9.3). The fixture's clip is
+    // exactly 72 real frames (3.000 s) while the job hint says more — the
+    // legs step INSIDE the media's true span, where the element's frame grid
+    // is its own (the container's timestamps sit ~0.4 ms above the model's
+    // n/24 — the epsilon is 5 ms, an order under one frame, not a fabricated
+    // exactness). The repro's frame 72 IS the media's real last frame.
+    await page.keyboard.press('ArrowLeft')
+    await expect.poll(async () => (await viewerVideoState(page))?.currentTime ?? -1, { timeout: 5_000 })
+      .toBeCloseTo(71 / 24, 2)
+    await expect(page.locator('[data-take-viewer-timecode]')).toHaveText(`2.23 · frame 71 of ${frameCount}`)
+    await page.keyboard.press('ArrowRight')
+    await expect.poll(async () => (await viewerVideoState(page))?.currentTime ?? -1, { timeout: 5_000 })
+      .toBeCloseTo(72 / 24, 2)
+
+    // ---- THE DRIFTED ARM (the boundary rule on a REAL element): from a
+    // settled boundary, play a beat, pause wherever the playhead physically
+    // sits BETWEEN frame boundaries, and ← must land exactly on n/24 — the
+    // drift is killed, never carried (T2's ruling, e2e-visible).
+    await page.keyboard.press('Home')
+    let drifted = 0
+    for (let attempt = 0; attempt < 4 && drifted === 0; attempt += 1) {
+      await page.keyboard.press('Space') // play
+      await page.waitForTimeout(250)
+      await page.keyboard.press('Space') // pause
+      const sample = (await viewerVideoState(page))!.currentTime
+      const phase = (sample * 24) % 1
+      if (phase > 0.05 && phase < 0.95) drifted = sample
+    }
+    expect(drifted, 'the playhead physically drifted to a fractional-frame position (the premise of the drift arm)').toBeGreaterThan(0)
+    // The boundary rule WITH its alignment epsilon mirrored from the model
+    // (the element's own grid sits a hair off every n/24 — within the 50 µs
+    // slack is ON the boundary).
+    const driftedFrame = Math.floor((drifted + 0.00005) * 24)
+    const driftedBoundary = driftedFrame / 24
+    const expectedLanding = drifted > driftedBoundary + 0.00005 ? driftedBoundary : (driftedFrame - 1) / 24
+    await page.keyboard.press('ArrowLeft')
+    await expect.poll(async () => (await viewerVideoState(page))?.currentTime ?? -1, { timeout: 5_000 })
+      .toBeCloseTo(expectedLanding, 2)
+
+    // ---- Shift = 1 s; Home/End PAUSE-FIRST (bindings) ----------------------
+    await page.keyboard.press('Home')
+    await expect.poll(async () => (await viewerVideoState(page))?.currentTime ?? -1, { timeout: 5_000 }).toBeCloseTo(0, 2)
+    await expect(page.locator('[data-take-viewer-timecode]')).toHaveText(`0.00 · frame 0 of ${frameCount}`)
+    await page.keyboard.press('Shift+ArrowRight')
+    await expect.poll(async () => (await viewerVideoState(page))?.currentTime ?? -1, { timeout: 5_000 }).toBeCloseTo(1, 2)
+    await page.keyboard.press('Shift+ArrowRight')
+    await expect.poll(async () => (await viewerVideoState(page))?.currentTime ?? -1, { timeout: 5_000 }).toBeCloseTo(2, 2)
+
+    // Home/End pause-first, pinned test-visible (T2-M-3): the key PAUSES a
+    // playing take, then seeks. End's N−1 boundary exceeds the mirror's real
+    // 3.0 s clip, so the element honestly clamps at its true end — the pin is
+    // the pause + the honest clamp, never a fabricated boundary (stated: the
+    // fixture's clip is shorter than the job's hint; loop is OFF for this
+    // press so the clamp's end is final, never a wrap).
+    await page.keyboard.press('l') // loop OFF for the End arm
+    await expect(page.locator('[aria-label="Loop off"]')).toBeVisible({ timeout: 5_000 })
+    await page.keyboard.press('Space')
+    await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Pause "]')).toBeVisible({ timeout: 5_000 })
+    await page.keyboard.press('Home')
+    await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Play "]'), 'Home paused the playing take first').toBeVisible({ timeout: 5_000 })
+    await expect.poll(async () => (await viewerVideoState(page))?.currentTime ?? -1, { timeout: 5_000 }).toBeCloseTo(0, 2)
+    await page.keyboard.press('Space')
+    // Human-paced (the harness's back-to-back keydowns can land within one
+    // frame of the play command — a real reviewer never does), and focus
+    // re-seated off the chrome so End belongs to the map.
+    await blurViewerChrome(page)
+    await page.waitForTimeout(150)
+    await page.keyboard.press('End')
+    await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Play "]'), 'End paused the playing take first').toBeVisible({ timeout: 5_000 })
+    const atEnd = await viewerVideoState(page)
+    expect(atEnd!.paused).toBe(true)
+    expect(atEnd!.currentTime, 'End lands at the media\'s true last frame (the hint outlives the fixture clip — honest clamp)').toBeGreaterThan(2.9)
+    await page.keyboard.press('l') // loop back ON — the default posture
+    await expect(page.locator('[aria-label="Loop on"]')).toBeVisible({ timeout: 5_000 })
+
+    // ---- loop + mute + every speed step (§9.3) -----------------------------
+    const loopChip = page.locator('[aria-label="Loop on"]')
+    await expect(loopChip, 'loop defaults ON — "watch it again" is the norm').toBeVisible()
+    expect((await viewerVideoState(page))!.loop).toBe(true)
+    await page.keyboard.press('l')
+    await expect(page.locator('[aria-label="Loop off"]')).toBeVisible({ timeout: 5_000 })
+    expect((await viewerVideoState(page))!.loop).toBe(false)
+    await page.keyboard.press('l')
+    await expect(loopChip).toBeVisible({ timeout: 5_000 })
+
+    const soundChip = page.locator('[aria-label="Sound off"]')
+    await expect(soundChip, 'mute is the default — autoplay-safe, the audio check deliberate').toBeVisible()
+    expect((await viewerVideoState(page))!.muted).toBe(true)
+    await page.keyboard.press('m')
+    await expect(page.locator('[aria-label="Sound on"]')).toBeVisible({ timeout: 5_000 })
+    expect((await viewerVideoState(page))!.muted).toBe(false)
+    await page.keyboard.press('m')
+    await expect(soundChip).toBeVisible({ timeout: 5_000 })
+
+    const speedChip = page.locator('[aria-label="Playback speed"]')
+    await expect(speedChip).toHaveText('1×')
+    // The cycle from 1×: 2× → 0.25× → 0.5× → 1× → 2× (every step lands, the
+    // wrap completes the cycle), then back to the 1× default.
+    for (const [label, rate] of [['2×', 2], ['0.25×', 0.25], ['0.5×', 0.5], ['1×', 1], ['2×', 2]] as const) {
+      await speedChip.click()
+      await expect(speedChip).toHaveText(label, { timeout: 5_000 })
+      expect((await viewerVideoState(page))!.playbackRate, `the ${label} step drives the element's playbackRate`).toBe(rate)
+    }
+    await speedChip.click()
+    await speedChip.click()
+    await speedChip.click()
+    await expect(speedChip).toHaveText('1×', { timeout: 5_000 })
+
+    // ---- The keymap scope, BOTH directions (§9.3) ---------------------------
+    // While open: the canvas map is INERT (the registered layer suspends the
+    // background chain) — 'v' flips no projection, 'b' forks nothing.
+    await page.keyboard.press('v')
+    await page.keyboard.press('b')
+    await page.waitForTimeout(500) // the negative window IS the assertion
+    expect(await page.locator('[data-canvas-timeline]').count(), "'v' never reached the canvas map while the viewer holds the keyboard").toBe(0)
+    expect(await page.locator('[data-canvas-fork-menu]').count(), "'b' never reached the canvas map while the viewer holds the keyboard").toBe(0)
+    await page.keyboard.press('Escape')
+    await expect(viewer).toHaveCount(0, { timeout: 5_000 })
+    // Closed: the canvas map answers again, byte-identically — one gesture
+    // ('v' → timeline → library, the flip family's own cycle; while an
+    // overlay is open its LOCAL panel owns V, so Escape closes it).
+    await page.keyboard.press('v')
+    await expect(page.locator('[data-canvas-timeline]')).toBeVisible({ timeout: 5_000 })
+    await page.keyboard.press('v')
+    await expect(page.locator('[data-canvas-library]')).toBeVisible({ timeout: 5_000 })
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-canvas-library]')).toHaveCount(0, { timeout: 5_000 })
+
+    // ---- THE CLOSE POSTURE (binding): Space on a focused Close CLOSES the
+    // dialog — the chrome guard gives the button its key, never the map.
+    await clickTile(page, renderChain.id, true)
+    await expect(viewer).toBeVisible({ timeout: 10_000 })
+    await page.locator('button.canvas-take-viewer-close').focus()
+    await page.keyboard.press('Space')
+    await expect(viewer, 'Space on the focused Close closes the dialog (never plays)').toHaveCount(0, { timeout: 5_000 })
+
+    // ---- The chrome guard's OTHER side: Space on a focused transport button
+    // activates the BUTTON once — a double-firing map would toggle twice and
+    // land back where it started.
+    await clickTile(page, renderChain.id, true)
+    await expect(viewer).toBeVisible({ timeout: 10_000 })
+    await blurViewerChrome(page)
+    await page.keyboard.press('Space') // pause
+    await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Play "]')).toBeVisible({ timeout: 5_000 })
+    await page.locator('[data-take-viewer-transport] button[aria-label^="Play "]').focus()
+    await page.keyboard.press('Space')
+    await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Pause "]'), 'ONE toggle: the button took its Space, the map stayed silent (T-M3)').toBeVisible({ timeout: 5_000 })
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+    expect(world.mirrorLog(), 'the mirror bound its port cleanly').not.toContain('EADDRINUSE')
+  } finally {
+    await world.stop()
+  }
+  expect(world.mirror.exitCode !== null || world.mirror.signalCode !== null).toBe(true)
+})
+
+/** "Use this frame" end to end — the RIGHT frame at the seam (T-C1's wire
+ *  pin), the human words, the preselected row by its data mark — and the
+ *  used-by reverse view riding the same world. */
+test('use this frame hands the fork the RIGHT frame; the used-by chips fly (foelihc T7, spec §9.4/§9.8)', async ({ page }) => {
+  await seedWalkDone(page)
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+  const world = await bootViewerWorld(page, 'a lighthouse over a black sea, fork me at the right frame')
+  try {
+    const h264Capable = await page.evaluate(() => document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"') !== '')
+    test.skip(!h264Capable, 'this system browser cannot decode H.264 — the use-this-frame leg reviews a real clip')
+
+    const document = await readViewerDocument(world.studioPort)
+    const renderChain = document.chains.find((chain) => chain.kind === 'generation')!
+    const sourceOutputId = renderChain.outputs[0]!.id
+    const canonical = renderChain.outputs[0]!.takes.find((take) => take.supersededBy == null) ?? renderChain.outputs[0]!.takes[0]!
+    const duration = Number(canonical.metrics.duration)
+    const frameCount = Math.round(duration * 24)
+    // The seam's source is the take's VERIFIED blob artifact (mediaForOutput
+    // prefers canvas-blobs/ — the m3 wrong-file guard), so the expected wire
+    // body is read from the document, never guessed.
+    const blobArtifact = canonical.artifacts.find((artifact) => artifact.startsWith('canvas-blobs/')) ?? null
+    expect(blobArtifact, 'the landed take carries a registered blob artifact (the extraction source)').toBeTruthy()
+
+    // THE WIRE CAPTURE (T-C1's central pin — never dropped): the seam's
+    // request is recorded as it leaves the page.
+    const seamRequests: Array<{ source: unknown; position: unknown }> = []
+    await page.route('**/api/lan/video/frame', async (route) => {
+      if (route.request().method() === 'POST') {
+        seamRequests.push(route.request().postDataJSON() as { source: unknown; position: unknown })
+      }
+      await route.continue()
+    })
+
+    // Scrub to a mid-clip frame: pause, drag the strip to 2 s (frame 48).
+    await clickTile(page, renderChain.id, true)
+    const viewer = page.locator('[data-canvas-take-viewer]')
+    await expect(viewer).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Use this frame"]'), 'the §3 transport row carries the Use this frame button (T5\'s rider)').toBeVisible({ timeout: 10_000 })
+    await blurViewerChrome(page)
+    await page.keyboard.press('Space')
+    await dragStrip(page, page.locator('[data-take-filmstrip]'), 0.2, 2 / duration)
+    await expect(page.locator('[data-take-viewer-timecode]')).toHaveText(`2.00 · frame 48 of ${frameCount}`, { timeout: 5_000 })
+
+    // U — the one-gesture anchor.
+    await page.keyboard.press('u')
+    await expect(viewer, 'U closes the viewer and hands off to the fork flow').toHaveCount(0, { timeout: 5_000 })
+    const forkMenu = page.locator('[data-canvas-fork-menu]')
+    await expect(forkMenu).toBeVisible({ timeout: 10_000 })
+    await expect(forkMenu).toHaveAttribute('data-canvas-fork-frame', '48')
+    // The human words (§4): the anchor stated as frame + seconds, and NO
+    // frame-index arithmetic anywhere on the path (F7's hint is dead).
+    await expect(forkMenu).toContainText('Continue from frame 48 — 2 s (the paused frame)')
+    const menuText = (await forkMenu.innerText())
+    expect(menuText.includes('× 24'), 'no arithmetic teaching anywhere in the menu').toBe(false)
+    expect(menuText.includes('frame index'), 'F7\'s retired hint stays retired').toBe(false)
+
+    // Click the PRESELECTED row BY ITS DATA MARK — never by label position
+    // (the keyboard flow would fork decoded and silently drop the frame).
+    const preselected = page.locator('[data-canvas-fork-preselected="true"]')
+    await expect(preselected).toBeVisible({ timeout: 5_000 })
+    expect(await preselected.count(), 'exactly one preselected row — the extracted-frame substrate').toBe(1)
+    await preselected.click()
+    await expect(forkMenu).toHaveCount(0, { timeout: 5_000 })
+
+    // The fork lands: a media chain for the extracted still + a generation
+    // chain whose inputSpec carries the frame anchor IN FRAMES.
+    let forkChain: ViewerChain | null = null
+    await expect.poll(async () => {
+      const after = await readViewerDocument(world.studioPort)
+      forkChain = after.chains.find((chain) => chain.kind === 'generation'
+        && (chain.inputSpec.outputRef as { outputId?: string } | undefined)?.outputId === sourceOutputId) ?? null
+      return forkChain !== null
+    }, { timeout: 30_000 }).toBe(true)
+    const ref = (forkChain!.inputSpec.outputRef as { substrate?: string; frameIndex?: number; extractedPath?: string })
+    expect(ref.substrate).toBe('extracted-frame')
+    expect(ref.frameIndex, 'the fork chain\'s inputSpec keeps the anchor in FRAMES (the record\'s unit)').toBe(48)
+    expect(ref.extractedPath, 'the extraction provenance rides the inputSpec').toBeTruthy()
+    expect(fs.existsSync(ref.extractedPath!), 'the extracted frame is a real file on disk').toBe(true)
+
+    // THE WIRE PIN (binding 1 — NEVER DROP): exactly one extraction request
+    // left the page, its position is frameIndex/24 IN SECONDS (48/24 = 2),
+    // and its source names the take's blob artifact. The wrong-frame trap —
+    // correct-looking assertions while extracting second 48 of a 3 s clip —
+    // dies here.
+    await expect.poll(() => seamRequests.length, { timeout: 10_000 }).toBe(1)
+    const seam = seamRequests[0]!
+    expect(seam.position, 'the seam request\'s position ≡ frameIndex / 24 — SECONDS, never the raw frame (T-C1)').toBe(48 / 24)
+    expect((seam.source as { output?: string }).output).toBe(blobArtifact)
+
+    // ---- §9.8 THE REVERSE VIEW, riding the same world ----------------------
+    // The walk's output on the source chain: select it, open the viewer
+    // through the BAR's review affordance (the second open path), and the
+    // used-by chips equal the walk computed over the document.
+    await clickTile(page, renderChain.id)
+    const bar = page.locator('[data-canvas-bottombar]')
+    await expect(bar).toHaveAttribute('data-canvas-bar-context', 'media', { timeout: 10_000 })
+    await bar.locator('[data-canvas-bar-review]').click()
+    await expect(viewer).toBeVisible({ timeout: 10_000 })
+    const usedByChips = page.locator('[data-canvas-take-viewer-usedby-chip]')
+    await expect(usedByChips).toHaveCount(1, { timeout: 5_000 })
+    await expect(usedByChips.first()).toHaveAttribute('data-canvas-take-viewer-usedby-chip', forkChain!.id)
+    const chipTitle = (await usedByChips.first().innerText()).trim()
+
+    // The click: closes, selects, flies — the fork chain's tile selected and
+    // in the viewport (the fly's arrival; the fork spawned adjacent to its
+    // source, so a fly to it is the honest in-viewport condition).
+    await usedByChips.first().click()
+    await expect(viewer, 'the used-by click closes the viewer first').toHaveCount(0, { timeout: 5_000 })
+    await expect(page.locator(`[data-canvas-tile="${forkChain!.id}"].selected`), 'the click selects the consuming chain').toHaveClass(/selected/, { timeout: 10_000 })
+    await page.waitForFunction((tileId) => {
+      const tile = document.querySelector(`[data-canvas-tile="${tileId}"]`)
+      if (!tile) return false
+      const rect = tile.getBoundingClientRect()
+      return rect.left >= 0 && rect.top >= 0 && rect.right <= window.innerWidth && rect.bottom <= window.innerHeight
+    }, forkChain!.id, { timeout: 10_000 })
+    // The naming convention holds across the two homes: the chip's title is
+    // the bar's own title for the same chain (chainTitle, W9's one rule).
+    await expect(bar.locator('.canvas-bar-title')).toHaveText(chipTitle, { timeout: 10_000 })
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+    expect(world.mirrorLog(), 'the mirror bound its port cleanly').not.toContain('EADDRINUSE')
+  } finally {
+    await world.stop()
+  }
+  expect(world.mirror.exitCode !== null || world.mirror.signalCode !== null).toBe(true)
+})
+
+/** The filmstrip's no-bump + the honest-state ladder: the sheet world, the
+ *  plain blob-only bar, the missing-file taxonomy words, the zoomable still,
+ *  the audio absence, the takeless gate. */
+test('the honest states: the sheet, the plain bar, the missing words, the still, the audio absence, the gate (foelihc T7, spec §9.5/§9.6)', async ({ page }) => {
+  await seedWalkDone(page)
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+  const world = await bootViewerWorld(page, 'a lighthouse over a black sea, honest states')
+  try {
+    const document = await readViewerDocument(world.studioPort)
+    const renderChain = document.chains.find((chain) => chain.kind === 'generation')!
+    const canonical = renderChain.outputs[0]!.takes.find((take) => take.supersededBy == null) ?? renderChain.outputs[0]!.takes[0]!
+    const duration = Number(canonical.metrics.duration)
+    const frameCount = Math.round(duration * 24)
+    const previewPath = String(canonical.metrics.sourcePath ?? canonical.artifacts.find((artifact) => artifact.startsWith('/')) ?? '')
+    expect(previewPath, 'the landed take carries an output-contained preview path (the sheet world\'s premise)').toBeTruthy()
+    const expectedCells = Math.max(12, Math.min(30, Math.round(duration * 2)))
+
+    // ---- §9.5 THE NO-BUMP: the tile already fetched the sheet; the viewer's
+    // opens ride the SAME cached sheet and the route's generations counter
+    // never moves. (Whichever GET generated first — tile or this probe — the
+    // invariant is the count ACROSS the viewer's opens.)
+    const generationsHeader = async () => {
+      const response = await page.request.get(`http://127.0.0.1:${world.studioPort}/api/lan/assets/filmstrip?path=${encodeURIComponent(previewPath)}&duration=${duration}`)
+      return Number(response.headers()['x-monoka-filmstrip-generations'])
+    }
+    await expect.poll(generationsHeader, { timeout: 30_000, message: 'the sheet exists (the tile poster path generated it)' }).toBeGreaterThanOrEqual(1)
+    const beforeOpen = await generationsHeader()
+
+    const viewer = page.locator('[data-canvas-take-viewer]')
+    const strip = page.locator('[data-take-filmstrip]')
+    const cells = page.locator('[data-take-filmstrip-cell]')
+    for (let open = 0; open < 2; open += 1) {
+      await clickTile(page, renderChain.id, true)
+      await expect(viewer).toBeVisible({ timeout: 10_000 })
+      await expect(strip).toHaveAttribute('data-take-filmstrip', 'sheet', { timeout: 15_000 })
+      // 0 → present: the strip's cells are in the DOM, the shared layout's
+      // own count.
+      await expect(cells).toHaveCount(expectedCells, { timeout: 15_000 })
+      if (open === 0) {
+        // The playhead is continuous across the strip: a scrub to 1/4 width
+        // parks it at 25 % (the linear map, never cell-quantized).
+        await blurViewerChrome(page)
+        await page.keyboard.press('Space')
+        await dragStrip(page, strip, 0.05, 0.25)
+        await expect(page.locator('[data-take-viewer-timecode]')).toContainText(`frame ${Math.round(duration * 0.25 * 24)} of ${frameCount}`, { timeout: 5_000 })
+        await expect.poll(() => playheadFraction(page), { timeout: 5_000 }).toBeCloseTo(0.25, 1)
+        await page.keyboard.press('Escape')
+        await expect(viewer).toHaveCount(0, { timeout: 5_000 })
+      }
+    }
+    await page.keyboard.press('Escape')
+    await expect(viewer).toHaveCount(0, { timeout: 5_000 })
+    expect(await generationsHeader(), 'the viewer\'s opens NEVER bumped the generations counter (the same cached sheet)').toBe(beforeOpen)
+
+    // ---- The fixture takes: document-store shapes through the app's own
+    // documents API (the honest-harness seam; no engine involvement).
+    const clipBytes = fs.readFileSync(path.join(process.cwd(), 'e2e', 'fixtures', 'sample-clip.mp4'))
+    const ingestedBlob = await viewerPost<{ path: string; blob: { relPath: string } }>(world.studioPort, '/api/lan/documents/blobs/ingest', { data: clipBytes.toString('base64'), name: 'blob-only-clip.mp4', kind: 'video' })
+    const ingestedStill = await viewerPost<{ path: string; blob: { relPath: string } }>(world.studioPort, '/api/lan/documents/blobs/ingest', { data: tinyPngBytes(48, 32, [0x2b, 0x3a, 0x55]).toString('base64'), name: 'a-still-study.png', kind: 'image' })
+    const fixtureChain = async (name: string, mediaKind: 'video' | 'image' | 'audio', metrics: Record<string, unknown>, artifacts: string[]) => {
+      const chain = await viewerPost<{ chain: { id: string } }>(world.studioPort, '/api/lan/documents/chains', {
+        projectId: document.projectId,
+        kind: 'media',
+        inputSpec: { fresh: { media: { name, kind: mediaKind, path: artifacts[0] ?? '' } } },
+        settings: { name, mediaType: mediaKind },
+      })
+      const output = await viewerPost<{ output: { id: string } }>(world.studioPort, '/api/lan/documents/outputs', { chainId: chain.chain.id, substrates: ['decoded'] })
+      await viewerPost(world.studioPort, '/api/lan/documents/takes', { outputId: output.output.id, artifacts, metrics })
+      return chain.chain.id
+    }
+    const blobOnlyChain = await fixtureChain('blob only clip', 'video', { kind: 'video', duration: 3, sourcePath: null }, [ingestedBlob.path])
+    const missingChain = await fixtureChain('the vanished clip', 'video', { kind: 'video', duration: 3 }, [])
+    const imageChain = await fixtureChain('a still study', 'image', { kind: 'image', sourcePath: ingestedStill.path, width: 48, height: 32 }, [ingestedStill.path])
+    const audioChain = await fixtureChain('voiceover mock', 'audio', { kind: 'audio' }, [])
+    const seedChain = (await viewerPost<{ chain: { id: string } }>(world.studioPort, '/api/lan/documents/chains', {
+      projectId: document.projectId,
+      kind: 'generation',
+      inputSpec: {},
+      settings: { prompt: 'a seed with no takes yet' },
+    })).chain.id
+
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    await page.keyboard.press('f') // fit — every fixture tile reachable
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(6, { timeout: 15_000 })
+
+    // ---- §9.5 state 2: the BLOB-ONLY plain bar — media present, sheet
+    // impossible: the honest note, never a forever-generating placeholder,
+    // and the plain bar still scrubs.
+    await clickTile(page, blobOnlyChain, true)
+    await expect(viewer).toBeVisible({ timeout: 10_000 })
+    await expect(strip).toHaveAttribute('data-take-filmstrip', 'plain', { timeout: 10_000 })
+    await expect(page.locator('[data-take-filmstrip-note]')).toHaveText('no filmstrip for this take')
+    await expect(page.locator('[data-take-filmstrip-placeholder]')).toHaveCount(0)
+    await blurViewerChrome(page)
+    await page.keyboard.press('Space')
+    await dragStrip(page, strip, 0.1, 0.5)
+    await expect(page.locator('[data-take-viewer-timecode]')).toHaveText(`1.12 · frame 36 of 72`, { timeout: 5_000 })
+    await page.keyboard.press('Escape')
+    await expect(viewer).toHaveCount(0, { timeout: 5_000 })
+
+    // ---- §9.6 the MISSING artifact: the failure taxonomy's OWN words at the
+    // rendered layer (the identity pin — output-missing's label + cause).
+    await clickTile(page, missingChain, true)
+    await expect(page.locator('[data-take-viewer="missing"]')).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('.take-viewer-missing-title')).toHaveText('Output never appeared')
+    await expect(page.locator('.take-viewer-missing-body')).toContainText('The render reported completion but its file never landed in the output directory')
+    await expect(page.locator('[data-take-filmstrip]')).toHaveCount(0)
+    await expect(page.locator('[data-take-viewer-transport]')).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    await expect(viewer).toHaveCount(0, { timeout: 5_000 })
+
+    // ---- §9.6 the IMAGE take: zoomable, NO transport chrome (a still has
+    // nothing to scrub — a disabled transport would be the dishonest shape).
+    await clickTile(page, imageChain, true)
+    await expect(page.locator('[data-take-viewer="image"]')).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('[data-take-viewer-transport]')).toHaveCount(0)
+    await expect(page.locator('[data-take-filmstrip]')).toHaveCount(0)
+    await expect(page.locator('[data-take-viewer-media] img')).toBeVisible({ timeout: 10_000 })
+    const stage = page.locator('[data-take-viewer-stage]')
+    const stageBox = await stage.boundingBox()
+    if (!stageBox) throw new Error('the image stage never rendered a box')
+    await page.mouse.move(stageBox.x + stageBox.width / 2, stageBox.y + stageBox.height / 2)
+    await page.mouse.wheel(0, -120)
+    await expect(stage).toHaveClass(/zoomed/, { timeout: 5_000 })
+    await expect(page.locator('[data-take-viewer-media]')).toHaveCSS('transform', /matrix\(1\./, { timeout: 5_000 })
+    await page.keyboard.press('Escape')
+    await expect(viewer).toHaveCount(0, { timeout: 5_000 })
+
+    // ---- §9.6 the AUDIO take: no viewer in v1 — no tile affordance, no bar
+    // chip, nothing offered (the honest absence, not a disabled dead end).
+    await expect(page.locator(`[data-canvas-tile="${audioChain}"] [data-canvas-tile-review]`)).toHaveCount(0)
+    await clickTile(page, audioChain)
+    await expect(page.locator('[data-canvas-bottombar]')).toHaveAttribute('data-canvas-bar-context', 'media', { timeout: 10_000 })
+    await expect(page.locator('[data-canvas-bar-review]'), 'an audio take renders NO review chip anywhere').toHaveCount(0)
+
+    // ---- §9.6 the SEED tile + the takeless gate: no affordance on the tile,
+    // the bar's chip DISABLED WITH ITS REASON (the R-22 gate idiom).
+    await expect(page.locator(`[data-canvas-tile="${seedChain}"] [data-canvas-tile-review]`)).toHaveCount(0)
+    await clickTile(page, seedChain)
+    await expect(page.locator('[data-canvas-bottombar]')).toHaveAttribute('data-canvas-bar-context', 'chain', { timeout: 10_000 })
+    const gatedChip = page.locator('[data-canvas-bar-review]')
+    await expect(gatedChip).toBeVisible({ timeout: 5_000 })
+    await expect(gatedChip).toBeDisabled()
+    await expect(gatedChip).toHaveAttribute('title', 'No take to review yet — this object has nothing to watch.')
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+    expect(world.mirrorLog(), 'the mirror bound its port cleanly').not.toContain('EADDRINUSE')
+  } finally {
+    await world.stop()
+  }
+  expect(world.mirror.exitCode !== null || world.mirror.signalCode !== null).toBe(true)
+})
+
+/** §6.1's comparison: two panes under ONE shared clock — the same seconds
+ *  after a seek, the shorter pane's hold note, the wrap re-seek, both leases
+ *  coexisting (the same-chain A/B; cross-chain is a stretch, per the wave's
+ *  ruling). */
+test('compare: two panes, one clock, the hold note, the wrap (foelihc T7, spec §9.7)', async ({ page }) => {
+  await seedWalkDone(page)
+  test.setTimeout(240_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+  const world = await bootViewerWorld(page, 'a lighthouse over a black sea, compare me')
+  try {
+    const h264Capable = await page.evaluate(() => document.createElement('video').canPlayType('video/mp4; codecs="avc1.42E01E"') !== '')
+    test.skip(!h264Capable, 'this system browser cannot decode H.264 — the compare legs review real clips')
+
+    // The A/B pair, one chain: the landed take (6 s hint) + a SHORT second
+    // take (2 s) over the same clip — the new take becomes canonical (the
+    // append pointer switch), so the watched pane is the SHORT one and the
+    // candidate is the long original.
+    const document = await readViewerDocument(world.studioPort)
+    const renderChain = document.chains.find((chain) => chain.kind === 'generation')!
+    const outputId = renderChain.outputs[0]!.id
+    const longTake = renderChain.outputs[0]!.takes.find((take) => take.supersededBy == null) ?? renderChain.outputs[0]!.takes[0]!
+    const longDuration = Number(longTake.metrics.duration)
+    await viewerPost(world.studioPort, '/api/lan/documents/takes', {
+      outputId,
+      artifacts: longTake.artifacts.filter((artifact) => artifact.startsWith('canvas-blobs/')),
+      metrics: { kind: 'video', duration: 2, sourcePath: longTake.metrics.sourcePath },
+    })
+    await page.reload()
+    await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+    await expect(page.locator('[data-canvas-tile]')).toHaveCount(1, { timeout: 15_000 })
+
+    const viewer = page.locator('[data-canvas-take-viewer]')
+    await clickTile(page, renderChain.id, true)
+    await expect(viewer).toBeVisible({ timeout: 10_000 })
+    const compareChip = page.locator('[data-canvas-take-viewer-compare]')
+    await expect(compareChip, 'the compare chip exists where a second candidate does (the gate)').toBeVisible({ timeout: 5_000 })
+    await compareChip.click()
+    await expect(compareChip).toHaveAttribute('data-canvas-take-viewer-compare', 'on', { timeout: 5_000 })
+    const compare = page.locator('[data-take-compare]')
+    await expect(compare).toBeVisible({ timeout: 10_000 })
+    await expect(compare).toHaveAttribute('data-take-compare', 'side-by-side')
+    // Both leases coexist (the pool's exclusive:false case): two live video
+    // elements, one per pane, at the same time.
+    const panes = page.locator('[data-take-compare-pane]')
+    await expect(panes).toHaveCount(2, { timeout: 10_000 })
+    await expect(panes.nth(0).locator('video')).toBeVisible({ timeout: 10_000 })
+    await expect(panes.nth(1).locator('video')).toBeVisible({ timeout: 10_000 })
+    const paneVideo = (index: number) => page.evaluate((nth) => {
+      const pane = document.querySelectorAll('[data-take-compare-pane]')[nth]
+      const video = pane?.querySelector('video')
+      return video ? { currentTime: (video as HTMLVideoElement).currentTime, paused: (video as HTMLVideoElement).paused } : null
+    }, index)
+
+    // ONE transport drives both: Space pauses both panes at once.
+    await blurViewerChrome(page)
+    await page.keyboard.press('Space')
+    await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Play "]')).toBeVisible({ timeout: 5_000 })
+    await expect.poll(async () => (await paneVideo(0))?.paused && (await paneVideo(1))?.paused, { timeout: 5_000 }).toBe(true)
+
+    // The same seconds after a seek (second-granularity equality, never frame
+    // identity during playback): pane B's strip (the LONG pane — the clock
+    // master) scrubbed to a quarter lands both panes at the same seconds.
+    const longStrip = panes.nth(1).locator('[data-take-filmstrip]')
+    await expect(longStrip).toHaveAttribute('data-take-filmstrip', 'sheet', { timeout: 15_000 })
+    await dragStrip(page, longStrip, 0.1, 0.25)
+    await blurViewerChrome(page)
+    await expect.poll(async () => {
+      const a = await paneVideo(0)
+      const b = await paneVideo(1)
+      return a && b ? Math.abs(a.currentTime - b.currentTime) : 9
+    }, { timeout: 5_000 }).toBeLessThan(0.05)
+    await expect.poll(async () => (await paneVideo(1))?.currentTime ?? -1, { timeout: 5_000 }).toBeCloseTo(longDuration * 0.25, 1)
+
+    // THE HOLD RULE — with loop OFF first: the clock past the short pane's
+    // end holds its last frame with the spec's own sentence on its strip.
+    // (Loop OFF because the clock master's REAL media ends at 3.0 s while
+    // its meta duration is ${longDuration} — with loop ON the master's
+    // 'ended' wraps the clock the moment a seek crosses its true end, and
+    // the hold state can never settle. Stated: the fixture clip is shorter
+    // than the hint; the hold itself is meta-driven and honest.)
+    await page.keyboard.press('l')
+    await expect(page.locator('[aria-label="Loop off"]')).toBeVisible({ timeout: 5_000 })
+    await dragStrip(page, longStrip, 0.25, 5 / 6)
+    await blurViewerChrome(page)
+    await expect(page.locator('[data-take-compare-hold]')).toHaveText('take 2 ended — holding its last frame', { timeout: 5_000 })
+    await expect.poll(async () => (await paneVideo(0))?.currentTime ?? -1, { timeout: 5_000 }).toBeCloseTo(2, 1)
+    await expect(page.locator('[data-take-compare-hold]')).toHaveCount(1)
+
+    // The focused pane (§6.1's U target): click pane B — the ring follows,
+    // the timecode's title names the focused grid.
+    await panes.nth(1).click()
+    await expect(panes.nth(1)).toHaveAttribute('data-take-compare-focused', 'true', { timeout: 5_000 })
+    await expect(panes.nth(0)).toHaveAttribute('data-take-compare-focused', 'false')
+    await expect(page.locator('[data-take-viewer-timecode]')).toHaveAttribute('title', 'the focused pane — take 1', { timeout: 5_000 })
+
+    // THE WRAP: loop back ON, the clock parked at 0 PAUSED (Home's
+    // pause-first is the normalizer — a seek across the master's true end
+    // fires the wrap MID-DRAG and flips playing on, so the rest state is
+    // earned, never assumed), then play at 2×: the clock master's real end
+    // wraps BOTH panes to 0 and keeps playing — the short pane re-joins.
+    await page.keyboard.press('l')
+    await expect(page.locator('[aria-label="Loop on"]')).toBeVisible({ timeout: 5_000 })
+    await blurViewerChrome(page)
+    await page.keyboard.press('Home')
+    await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Play "]'), 'Home parked the clock at 0, paused').toBeVisible({ timeout: 5_000 })
+    await expect.poll(async () => (await paneVideo(0))?.currentTime ?? -1, { timeout: 5_000 }).toBeLessThan(0.1)
+    await expect(page.locator('[data-take-compare-hold]')).toHaveCount(0)
+    await page.keyboard.press('Space') // play
+    await expect(page.locator('[data-take-viewer-transport] button[aria-label^="Pause "]')).toBeVisible({ timeout: 5_000 })
+    await page.locator('[aria-label="Playback speed"]').click() // 1× → 2×
+    await expect(page.locator('[aria-label="Playback speed"]')).toHaveText('2×', { timeout: 5_000 })
+    await page.waitForFunction(() => {
+      const panes = document.querySelectorAll('[data-take-compare-pane]')
+      const a = panes[0]?.querySelector('video')
+      const b = panes[1]?.querySelector('video')
+      return Boolean(a && b && (a as HTMLVideoElement).currentTime < 0.3 && (b as HTMLVideoElement).currentTime < 0.3
+        && !(a as HTMLVideoElement).paused && !(b as HTMLVideoElement).paused)
+    }, undefined, { timeout: 15_000 })
+    await expect(page.locator('[data-take-compare-hold]'), 'the wrap re-joined the short pane under its duration — no hold at clock 0').toHaveCount(0)
+
+    // Leaving compare returns the single core (the mount swap, one lease).
+    await compareChip.click()
+    await expect(compareChip).toHaveAttribute('data-canvas-take-viewer-compare', 'off', { timeout: 5_000 })
+    await expect(compare).toHaveCount(0, { timeout: 5_000 })
+    await expect(page.locator('[data-take-viewer="video"]')).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('[data-take-viewer-stage] video')).toHaveCount(1)
+
+    expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+    expect(world.mirrorLog(), 'the mirror bound its port cleanly').not.toContain('EADDRINUSE')
+  } finally {
+    await world.stop()
+  }
+  expect(world.mirror.exitCode !== null || world.mirror.signalCode !== null).toBe(true)
 })
