@@ -152,7 +152,12 @@ export function endpointOptions(direction: EndpointDirection, sourceKinds: Reado
     rows.push({
       id: 'produce:fork-frame', group: 'fork', label: 'Fork — extracted frame', description: 'Extract one frame (ffmpeg, server-side) and continue from the still.',
       action: { kind: 'fork', substrate: 'extracted-frame' }, available: true,
-      hint: 'frame index = seconds × 24 · negative counts from the end',
+      // (foelihc T5, spec §4) F7's hint — "frame index = seconds × 24 ·
+      // negative counts from the end" — is RETIRED from this row, the path
+      // the viewer serves (R2's measured before-path, §9.2: "produce menu +
+      // fork + frame arithmetic in the head"). Frame picking is the viewer's
+      // U now; no surface teaches the arithmetic. This row's own anchor is
+      // the machine-picked last frame — no arithmetic asked of anyone.
     })
   }
   // Phase 4: latent continuation RENDERS — the Motion-Context machinery

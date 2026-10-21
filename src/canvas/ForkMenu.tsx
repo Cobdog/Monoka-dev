@@ -14,7 +14,7 @@
  */
 import { useCanvasStore } from './store'
 import { takeNumberOf } from './derive'
-import { SUBSTRATE_LABEL, substratesForTake, type ForkSubstrate } from './generation'
+import { SUBSTRATE_LABEL, forkFrameRowNote, substratesForTake, type ForkSubstrate } from './generation'
 import { PopoverMenu } from '../ui/PopoverMenu'
 import type { MediaFile } from '../types'
 
@@ -46,6 +46,7 @@ export function ForkMenu() {
     className="canvas-endpoint-menu canvas-fork-menu"
     backdrop
     data-canvas-fork-menu
+    data-canvas-fork-frame={menu.frameIndex ?? undefined}
     role="dialog"
     aria-label="Fork"
   >
@@ -61,11 +62,16 @@ export function ForkMenu() {
           key={substrate}
           className="canvas-menu-row"
           data-canvas-fork-substrate={substrate}
-          onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, substrate })}
+          data-canvas-fork-preselected={menu.frameIndex != null && substrate === 'extracted-frame' ? 'true' : undefined}
+          onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, takeId: menu.takeId ?? undefined, substrate, frameIndex: menu.frameIndex ?? undefined })}
         >
           <span className="canvas-menu-row-label">{SUBSTRATE_LABEL[substrate]}</span>
           <span className="canvas-menu-row-note">
-            {substrate === 'decoded' ? 'A new chain consuming this take’s artifact.' : substrate === 'extracted-frame' ? 'Extract frame 0 server-side; continue from the still.' : 'Motion-Context continuation — the saved clip pins never-denoised conditioning, no re-encode.'}
+            {/* (foelihc T5, spec §4) With a frame handed in from the viewer's
+                "use this frame", the row states the anchor in human words —
+                the frame + its seconds, never arithmetic teaching. Without
+                one, today's default copy. */}
+            {substrate === 'decoded' ? 'A new chain consuming this take’s artifact.' : substrate === 'extracted-frame' ? forkFrameRowNote(menu.frameIndex) : 'Motion-Context continuation — the saved clip pins never-denoised conditioning, no re-encode.'}
           </span>
         </button>
       ))}
@@ -75,7 +81,7 @@ export function ForkMenu() {
         type="button"
         className="canvas-menu-row"
         data-canvas-fork-upscale
-        onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, substrate: 'decoded', withUpscale: true })}
+        onClick={() => chainOutputId && void fork({ chainId: tile.id, outputId: chainOutputId, takeId: menu.takeId ?? undefined, substrate: 'decoded', withUpscale: true })}
       >
         <span className="canvas-menu-row-label">Fork — upscaled</span>
         <span className="canvas-menu-row-note">A new chain with the engine upscale preset (switchable in its properties).</span>

@@ -700,9 +700,10 @@ test('(n) typed-hole option menus (§3 filtering + hints)', () => {
 // continuation gesture) anchored frame 0, so every "fork and continue" silently
 // restarted from the opening frame. The contract now: the tail endpoint's
 // default is the LAST frame (−1, the negative-counts-from-the-end convention
-// the menu hint already documents); every other entry point (the B gesture,
-// the bar's fork chip) keeps the opening frame. The frame PICKER itself is a
-// separate design item (foelihc) — the default is all this fixes.
+// the code seam documents); every other entry point (the B gesture,
+// the bar's fork chip) keeps the opening frame. The frame PICKER landed with
+// the take viewer (foelihc T5) — the default anchor is the fallback seam it
+// hands into, unchanged.
 test('(n3) extracted-frame fork default — the tail endpoint anchors the LAST frame (wzt73ob R2 F7)', () => {
   eq(generation.forkFrameDefault(true), -1, 'fork(tail endpoint): the default frame is the LAST one (−1 — counts from the end)')
   eq(generation.forkFrameDefault(false), 0, 'fork(other entries — the B gesture, the bar chip): the opening frame stays the default')
@@ -712,7 +713,14 @@ test('(n3) extracted-frame fork default — the tail endpoint anchors the LAST f
   eq(spec.outputRef.frameIndex, -1, 'fork: the fork chain records the last-frame anchor (−1) in its outputRef provenance')
   const ready = { connected: true, h3Ready: true, motionContextReady: true, music3: { available: true, missing: [] } }
   const row = options.endpointOptions('produce', ['video'], ready).find((entry) => entry.id === 'produce:fork-frame')
-  ok(row.hint.includes('negative counts from the end'), 'fork: the menu hint still documents the counts-from-the-end convention')
+  // (foelihc T5, spec §4) F7's hint ("frame index = seconds × 24 · negative
+  // counts from the end") is RETIRED from every path the viewer serves —
+  // this produce row was R2's measured before-path (§9.2: "produce menu +
+  // fork + frame arithmetic in the head"). The viewer picks frames now; the
+  // arithmetic teaching dies. The row itself stays (its default anchor is
+  // the last frame — the machine picks it, no arithmetic asked of anyone).
+  ok(row != null && row.available === true, 'fork: the produce row still exists (the retirement kills the hint, not the row)')
+  ok(!String(row?.hint ?? '').includes('seconds × 24') && !String(row?.hint ?? '').includes('negative counts from the end'), 'fork: F7\'s frame-arithmetic hint is retired from the produce row (foelihc T5)')
 })
 
 // (n2) the fetch deep-link mapping test was removed with LTX (Phase 0,

@@ -75,7 +75,10 @@ test('(3) seam honesty — declared fan-outs are what the resolver produces', ()
   eq(resolve(['server/index.ts']).suites, BOOTING, 'server/index.ts is the same seam')
   eq(resolve(['src/lib/workflow.ts']).suites, ['canvas', 'h3img', 'poserig', 'registry', 'workflows'], 'src/lib/workflow.ts fans out to every client suite that loads it')
   const store = resolve(['src/canvas/store.ts'])
-  eq(store.suites, ['canvas'], 'src/canvas/store.ts runs the canvas suite')
+  // (foelihc T5) takeviewerfork rides the kernel's diff as a TEXT reader (the
+  // T-C1 seam-call pin over the fork path) — still no unit EXECUTION of the
+  // kernel, so the e2e force stands.
+  eq(store.suites, ['canvas', 'takeviewerfork'], 'src/canvas/store.ts runs the canvas suite + the fork-handoff text pins (takeviewerfork)')
   ok(store.runE2e === true, 'src/canvas/store.ts forces e2e on the PR leg (the kernel has no direct unit execution)')
 })
 

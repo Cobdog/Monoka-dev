@@ -259,7 +259,11 @@ test('(e) the overlay\'s discipline — the layer, the selection, the remount, t
   // toggle-play never trip them (the canvas (v) suite's own discipline).
   const useFrameBranch = /if \(action === 'use-frame'\) \{([\s\S]*?)\n\x20{4}\}/.exec(core)
   ok(useFrameBranch !== null, 'the use-frame branch found in the core')
-  ok((useFrameBranch?.[1] ?? '').includes("transportCommand(transportRef.current, { type: 'pause' })"), 'use-frame dispatches the PAUSE intent (U while paused never resumes)')
+  // (foelihc T5) the branch rides the MODEL's combined pause+anchor
+  // transaction (frameHandoff) — the pause-first property is pinned at
+  // the model level by the takeviewerfork suite; here the pin is that the
+  // shell delegates and never re-derives.
+  ok((useFrameBranch?.[1] ?? '').includes('frameHandoff('), 'use-frame rides the model\'s combined pause+anchor transaction (the shell never re-derives the anchor)')
   ok(!(useFrameBranch?.[1] ?? '').includes("transportCommand(transportRef.current, { type: 'toggle-play' })"), 'pin: the use-frame branch never dispatches the toggle (the I-1 regression pin)')
 
   // T-I2: the shared card OPENS the viewer — nothing plays inline.

@@ -55,7 +55,7 @@ import {
   effectiveMode,
   emptyLibraries,
   forkFrameDefault,
-  forkFrameIsEndSeek,
+  forkExtractionPosition,
   forkInputSpec,
   mediaForOutput,
   modeLabelFor,
@@ -258,7 +258,14 @@ type CanvasState = {
   inspectorOpen: boolean
   indexOpen: boolean
   endpointMenu: { chainId: string; direction: EndpointDirection } | null
-  forkMenu: { chainId: string } | null
+  /** The fork menu's open state. The optional anchor fields (foelihc T5,
+   *  spec §4) ride only a viewer-originated open: `frameIndex` is the
+   *  "use this frame" pick in FRAMES (the extracted-frame row states it in
+   *  human words and forks with it — the extraction seam takes
+   *  position = frameIndex / 24, T-C1), `takeId` pins the WATCHED take the
+   *  frame was picked from. Absent both, the menu is the plain B-gesture
+   *  shape (default anchors, today's copy). */
+  forkMenu: { chainId: string; frameIndex?: number | null; takeId?: string | null } | null
   /** The tile context menu (wzt73ob R2 F10): the object-level actions at the
    *  pointer (viewport coordinates). Mutually exclusive with the endpoint
    *  and fork menus — one dismissal idiom, one open menu. */
@@ -431,10 +438,14 @@ type CanvasActions = {
   runEndpointAction(chainId: string, direction: EndpointDirection, option: EndpointOption, sourceChainId?: string): Promise<void>
   /** Fork a chain's output on a substrate (§2 outputRef). A fork made from
    *  the TAIL endpoint (`fromTailEndpoint` — wzt73ob R2 F7) defaults its
-   *  extracted frame to the clip's LAST frame; other entries keep frame 0. */
-  fork(source: { chainId: string; outputId: string; takeId?: string | null; substrate: ForkSubstrate; withUpscale?: boolean; fromTailEndpoint?: boolean }): Promise<void>
+   *  extracted frame to the clip's LAST frame; other entries keep frame 0.
+   *  A frame picked in the take viewer (foelihc T5, spec §4) travels as
+   *  `frameIndex` — FRAMES — and wins over the default; the extraction seam
+   *  takes the converted SECONDS (T-C1: position = frameIndex / 24), while
+   *  the chain's inputSpec keeps the frame anchor. */
+  fork(source: { chainId: string; outputId: string; takeId?: string | null; substrate: ForkSubstrate; withUpscale?: boolean; fromTailEndpoint?: boolean; frameIndex?: number }): Promise<void>
   setEndpointMenu(menu: { chainId: string; direction: EndpointDirection } | null): void
-  setForkMenu(menu: { chainId: string } | null): void
+  setForkMenu(menu: { chainId: string; frameIndex?: number | null; takeId?: string | null } | null): void
   setTileMenu(menu: { chainId: string; x: number; y: number } | null): void
   /** The tile delete (wzt73ob R2 F10): trash the given chains through the
    *  EXISTING tombstone machinery (deleteScene — NEVER a hard delete) and
@@ -2046,8 +2057,14 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()((set, get) =
           // frame — the continuation gesture. The −1 travels as the
           // extraction API's 'last' position (the end seek): raw negative
           // seconds clamp to 0 server-side, which would re-extract frame 0.
-          const frameIndex = forkFrameDefault(source.fromTailEndpoint)
-          const extractedFile = await window.monoka.extractVideoFrame(media.media.path, forkFrameIsEndSeek(frameIndex) ? 'last' : frameIndex, session.settings.outputDirectory, session.settings.ffmpegPath)
+          // (foelihc T5, spec §4 / audit T-C1) A frame picked in the viewer
+          // (`frameIndex`, FRAMES) wins over the default; the seam call
+          // takes the CONVERTED seconds through the pure helper — never the
+          // raw frame number, which would seek to second 84 of a 5-second
+          // clip. inputSpec keeps the frame anchor; extractedPath carries
+          // the provenance.
+          const frameIndex = source.frameIndex ?? forkFrameDefault(source.fromTailEndpoint)
+          const extractedFile = await window.monoka.extractVideoFrame(media.media.path, forkExtractionPosition(frameIndex), session.settings.outputDirectory, session.settings.ffmpegPath)
           const frameChain = await documentsApi.createChain({
             projectId: doc.project.id,
             kind: 'media',

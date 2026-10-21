@@ -36,6 +36,7 @@ export function TakeViewerOverlay({ onUseFrame }: { onUseFrame?: (frameIndex: nu
   const documents = useCanvasStore((state) => state.documents)
   const activeProjectId = useCanvasStore((state) => state.activeProjectId)
   const setTakeViewer = useCanvasStore((state) => state.setTakeViewer)
+  const setForkMenu = useCanvasStore((state) => state.setForkMenu)
   const select = useCanvasStore((state) => state.select)
   const requestCamera = useCanvasStore((state) => state.requestCamera)
   // The watched take: the canonical pointer at open, then whatever the chip
@@ -91,6 +92,16 @@ export function TakeViewerOverlay({ onUseFrame }: { onUseFrame?: (frameIndex: nu
   const landingError = typeof metrics.landingError === 'string' ? metrics.landingError : null
 
   const chips = viewerTakeChips(tile.takes, take.id)
+
+  // §4's handoff default (foelihc T5): U closes the viewer and opens the
+  // fork flow PRE-ANCHORED on the watched take — the menu states the anchor
+  // in human words and its extracted-frame row forks with the frame (the
+  // seam takes seconds, the record keeps frames). A mount can override the
+  // destination through the prop; the core stays canvas-agnostic.
+  const handleUseFrame = onUseFrame ?? ((frameIndex: number) => {
+    setTakeViewer(null)
+    setForkMenu({ chainId: tile.id, takeId: take.id, frameIndex })
+  })
 
   return <StudioDialogLayered
     layerId="canvas-take-viewer"
@@ -176,7 +187,7 @@ export function TakeViewerOverlay({ onUseFrame }: { onUseFrame?: (frameIndex: nu
         landingError={landingError}
         label={`${header.title} — ${header.takeLabel}`}
         filmstrip={{ previewPath }}
-        onUseFrame={onUseFrame}
+        onUseFrame={handleUseFrame}
         className="canvas-take-viewer-core"
       />
     </div>

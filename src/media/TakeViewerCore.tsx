@@ -29,7 +29,7 @@ import { clampToFrames, frameCountFromDuration, frameIndexFromTime, positionFrom
 import {
   MISSING_FILE_BODY, MISSING_FILE_TITLE, SPEED_STEPS,
   actionEnabled, bindViewerKeymap, clampViewerPan, isPanGesture, initialMediaResolution, initialTransport,
-  mediaResolutionAfterError, stripPreviewPath, transportCommand, viewerSurface, viewerZoomAfterWheel,
+  mediaResolutionAfterError, stripPreviewPath, transportCommand, frameHandoff, viewerSurface, viewerZoomAfterWheel,
   type TransportCommand, type ViewerAction, type ViewerMediaSource,
 } from './takeViewerModel'
 import './takeviewer.css'
@@ -150,12 +150,14 @@ export function TakeViewerCore({ sources, kind, meta, landingError = null, label
   const dispatch = useCallback((action: ViewerAction) => {
     if (!actionEnabled(action, liveSurface)) return
     if (action === 'use-frame') {
-      // §4: the handoff pauses first (the PAUSE-ONLY intent — the I-1 fix:
-      // U while paused must never resume, and toggle-play did), then hands
-      // the clamped frame anchor.
-      applyCommand(transportCommand(transportRef.current, { type: 'pause' }))
-      const currentTime = videoElement()?.currentTime ?? 0
-      onUseFrame?.(clampToFrames(frameIndexFromTime(currentTime), frameCount))
+      // §4 (foelihc T5): the combined transaction decided in the model —
+      // the PAUSE-ONLY intent (the I-1 fix: U while paused must never
+      // resume, and toggle-play did) plus the clamped ROUND-lens frame
+      // anchor — applied and handed up together. The shell never re-derives
+      // the anchor.
+      const handoff = frameHandoff(transportRef.current, videoElement()?.currentTime ?? 0, frameCount)
+      applyCommand(handoff.command)
+      onUseFrame?.(handoff.frameIndex)
       return
     }
     if (action === 'toggle-play' && !live && videoActive) {

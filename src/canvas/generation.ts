@@ -21,6 +21,7 @@ import { characterReferences } from '../lib/characterLibrary'
 import { locationReferences } from '../lib/locationLibrary'
 import { composeH3Prompt, resolveRenderReferenceImages } from '../lib/promptPolicies'
 import { isRenderableResolution } from '../lib/aspectResolutions'
+import { positionFromFrame } from '../media/takeMath'
 import { readStructuredDraft, type StructuredPromptDraft } from '../lib/structuredPrompt'
 import type { H3RenderRequest } from '../lib/h3Submit'
 import type { DocumentChain, DocumentTake } from './derive'
@@ -593,10 +594,12 @@ export function substratesForTake(take: DocumentTake | null, mediaKind: MediaFil
  * a clip's TAIL endpoint (the produce menu — the continuation gesture) means
  * "keep going from where the clip ended", so its default is the LAST frame;
  * every other entry (the B gesture, the bar's fork chip) keeps the opening
- * frame. The −1 is the counts-from-the-end convention the menu hint documents;
+ * frame. The −1 is the counts-from-the-end convention (the code-level seam
+ * docs carry it now — the menu hint that taught it is retired, foelihc T5);
  * `forkFrameIsEndSeek` maps it onto the extraction API's 'last' position (the
  * server clamps raw negative seconds to 0 — a raw −1 would extract frame 0
- * again, the exact bug). The frame PICKER itself is foelihc, not this.
+ * again, the exact bug). The frame PICKER is the take viewer's U handoff
+ * (foelihc §4) — a picked frame always wins over this default.
  */
 export function forkFrameDefault(fromTailEndpoint: boolean | null | undefined): number {
   return fromTailEndpoint ? -1 : 0
@@ -606,6 +609,38 @@ export function forkFrameDefault(fromTailEndpoint: boolean | null | undefined): 
  *  position (the ffmpeg end seek) rather than a raw numeric seek. */
 export function forkFrameIsEndSeek(frameIndex: number): boolean {
   return frameIndex < 0
+}
+
+/**
+ * The position handed to the extraction seam for a frame anchor (foelihc T5,
+ * spec §4 / audit T-C1 — the two-hop contract): the seam's numeric position
+ * is SECONDS (`monoka.extractVideoFrame` → POST /api/lan/video/frame feeds
+ * ffmpeg's `-ss` verbatim), while `frameIndex` is FRAMES (the
+ * `inputSpec.frameIndex` anchor downstream). The two units must never be
+ * collapsed — before the viewer the sole numeric ever passed was 0 (frame 0 ≡
+ * second 0, the ambiguity that hid the unit), and a literal implementation of
+ * the picker would have sought to second 84 of a 5-second clip. The −1
+ * default still travels as 'last' (the end seek).
+ */
+export function forkExtractionPosition(frameIndex: number): number | 'last' {
+  return forkFrameIsEndSeek(frameIndex) ? 'last' : positionFromFrame(frameIndex)
+}
+
+/**
+ * The ForkMenu's extracted-frame row note (foelihc T5, spec §4): with a
+ * frame handed in from the viewer's "use this frame", the row states the
+ * anchor in human words — the frame number and its seconds (T1's math), the
+ * spec's template — instead of today's frame-0 copy. No arithmetic teaching:
+ * F7's hint ("frame index = seconds × 24 · negative counts from the end") is
+ * retired from every path the viewer serves; picking frames is the viewer's
+ * job now.
+ */
+export function forkFrameRowNote(frameIndex: number | null | undefined): string {
+  if (typeof frameIndex !== 'number' || !Number.isFinite(frameIndex)) {
+    return 'Extract frame 0 server-side; continue from the still.'
+  }
+  const seconds = Math.round(positionFromFrame(frameIndex) * 100) / 100
+  return `Continue from frame ${frameIndex} — ${seconds} s (the paused frame)`
 }
 
 /**

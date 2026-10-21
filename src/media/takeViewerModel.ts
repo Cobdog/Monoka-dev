@@ -14,7 +14,7 @@
  * math, the UI kit's pure disciplines, and the failure taxonomy — never
  * src/canvas.
  */
-import { FILMSTRIP_FPS, clampToFrames, positionFromFrame } from './takeMath'
+import { FILMSTRIP_FPS, clampToFrames, frameIndexFromTime, positionFromFrame } from './takeMath'
 import { FAILURE_BUCKETS } from '../lib/failureTaxonomy'
 import { isChromeChord, isTypingTarget } from '../ui/overlayBehavior'
 
@@ -191,6 +191,23 @@ export function transportCommand(state: TransportState, intent: TransportIntent)
   if (intent.type === 'toggle-loop') return { state: { ...state, loop: !state.loop }, seekTo: null }
   if (intent.type === 'toggle-mute') return { state: { ...state, muted: !state.muted }, seekTo: null }
   return { state: { ...state, speedIndex: (state.speedIndex + 1) % SPEED_STEPS.length }, seekTo: null }
+}
+
+/** §4's "use this frame" transaction (foelihc T5): ONE decision covering
+ *  both halves of the handoff — the pause-first command (the pause-ONLY
+ *  intent: U while paused holds, never resumes — the T4/I-1 fix) and the
+ *  clamped frame anchor handed up. The PICK lens is ROUND (the spec §4
+ *  literal, round(currentTime × 24) — the NEAREST frame), deliberately NOT
+ *  the step lens's floor (containingFrame — the frame whose span CONTAINS
+ *  the playhead): picking answers "which frame is nearest what I see",
+ *  stepping answers "which frame am I inside"; each lens breaks the other's
+ *  contract if unified (the T2-review ruling). (Pure model fn — NOT a hook,
+ *  despite the gesture's name.) */
+export function frameHandoff(state: TransportState, currentTime: number, frameCount: number): { command: TransportCommand; frameIndex: number } {
+  return {
+    command: transportCommand(state, { type: 'pause' }),
+    frameIndex: clampToFrames(frameIndexFromTime(currentTime), frameCount),
+  }
 }
 
 // ------------------------------------------------- the strip's resolved inputs
