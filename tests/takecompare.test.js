@@ -434,7 +434,8 @@ test('(g) the shell\'s wiring — the fan-out seam, the wrap, the keymap, the ch
   ok(shell.includes('TakeFilmstrip'), 'pin: each pane renders its own strip (the scrub stays on the strip surface)')
   ok(shell.includes('compareUseFrame('), 'pin: U rides the model\'s focused-pane handoff (the shell never re-derives the anchor)')
   ok(shell.includes('compareLayout('), 'pin: the split direction rides the model\'s aspect rule')
-  ok(shell.includes('frameHandoff') === false || true, '(the §4 transaction itself lives in takeViewerModel — compare composes it)')
+  // (the §4 transaction itself lives in takeViewerModel — compare composes it;
+  // T6's review caught this line as a tautological `=== false || true` assertion)
   ok(!shell.includes('video.loop = true'), 'pin: no pane element ever loops itself (the wrap is the clock\'s, T-M2)')
   console.log(`\ntest-takecompare: ${passed} assertions passed`)
 })
