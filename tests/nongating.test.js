@@ -277,20 +277,23 @@ function servedCatalog() {
     licenseSpdx: 'Apache-2.0',
     licenseNote: 'Apache-2.0',
     sizeClass: 'medium',
+    source: { kind: 'hf', repo: 'lightx2v/Minimax-h3-Turbo', revision: { kind: 'sha', value: '9bc1f3c0407805b00da9f762639cb435c644b2dc' } },
     destination: { kind: 'model-root', root: 'loras' },
+    files: [{ path: 'minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors' }],
     state: 'absent',
     inFlight: false,
   }]
 }
 
-/** The wizard Models step's fetch-view ids under the arm's files (the served
- *  catalog carries the one mapped row). Spread into a host array — the rows
- *  are built in the VM realm and their map/filter chain stays there, which
- *  deepEqual would otherwise reject on Array prototype alone. */
-function fetchViews(files, options) {
+/** The wizard Models step's download-LINK view ids under the arm's files
+ *  (the served catalog carries the one mapped row). Spread into a host
+ *  array — the rows are built in the VM realm and their map/filter chain
+ *  stays there, which deepEqual would otherwise reject on Array prototype
+ *  alone. */
+function linkViews(files) {
   const report = h3StackVm.h3StackReport(files)
-  return [...wizardModelsVm.modelsStepRows(files, report, servedCatalog(), options)
-    .map((row) => row.fetch && row.fetch.entryId).filter(Boolean)]
+  return [...wizardModelsVm.modelsStepRows(files, report, servedCatalog())
+    .map((row) => row.link && row.link.entryId).filter(Boolean)]
 }
 
 // ---------------------------------------------------------------------------
@@ -495,49 +498,50 @@ test('N1 arm 3: the uncataloged file\'s outputs are deep-equal under both catalo
 })
 
 // ---------------------------------------------------------------------------
-// arm 4 — N1: fetch suggestions are one-directionally removable
+// arm 4 — N1: the download-link surface is one-directional
+// (friction 2026-10-21: the fetch suggestions DIED with the studio-side
+// download — the mapped row now renders a manual download LINK, and only a
+// MISSING component renders one. Presence — at any evidence — retires it.)
 // ---------------------------------------------------------------------------
 
-test('N1 arm 4: the primed fetch set is a subset of the null set; removals are hash-confirmed; nothing is added or mandated', () => {
-  const nullViews = fetchViews(nullFiles, { designated: true })
-  const primedViews = fetchViews(primedFiles, { designated: true })
-  eq(nullViews, [REPORT], 'null: the served catalog offers exactly the turbo-8 fetch')
-  eq(primedViews, [], 'one-directional: primed offers NOTHING (the turbo-8 artifact is hash-confirmed present)')
+test('N1 arm 4: every arm offers nothing (presence retires the link); a missing component is the only link; nothing is mandated', () => {
+  // All three worlds LIST a turbo-shaped file (name-suspected at the
+  // weakest) — detection is the whole truth now, so no arm offers a link.
+  const nullViews = linkViews(nullFiles)
+  const primedViews = linkViews(primedFiles)
+  const capViews = linkViews(capFiles)
+  eq(nullViews, [], 'null: the detected turbo renders NO download link (presence retires the offer at name-only evidence)')
+  eq(primedViews, [], 'one-directional stands: primed offers nothing (hash-confirmed presence)')
+  eq(capViews, [], 'the cap arm offers nothing either — the three arms stay equal, nothing added')
 
-  const removed = nullViews.filter((id) => primedViews.indexOf(id) === -1)
-  for (const id of removed) {
-    const confirmed = primedFiles.some((file) => selection.identityConfirmsArtifact(file, selection.slotArtifacts('fl2vLora', '8')))
-    ok(confirmed, `removal justified: ${id} vanished because a hash-confirmed turbo-8 file is present under any name`)
-  }
-  const added = primedViews.filter((id) => nullViews.indexOf(id) === -1)
-  eq(added, [], 'one-directional: NOTHING is added')
-
-  // The negative control: name-suspected evidence must NOT remove the view —
-  // only hash confirmation does (the cap arm's files carry name-only blocks).
-  eq(fetchViews(capFiles, { designated: true }), nullViews, 'negative control: under the cap (name-suspected only) the fetch view survives')
-
-  // Nothing is mandated: undesignated, the view is gated (no click), and the
-  // primed arm adds no view that could demand anything.
-  eq(fetchViews(nullFiles, { designated: false }).length, 1, 'nothing mandated: the null view still renders undesignated (gated)')
-  const gatedRows = wizardModelsVm.modelsStepRows(nullFiles, h3StackVm.h3StackReport(nullFiles), servedCatalog(), { designated: false })
-    .filter((row) => row.fetch)
-  ok(gatedRows.every((row) => row.fetch.gated === true), 'nothing mandated: undesignated views are gated, never clickable')
+  // The positive control (the link's whole reason): a MISSING component —
+  // an engine that lists nothing — renders the one manual link, pointed at
+  // the pinned source. This is the surface's floor and its ceiling: one
+  // link per missing mapped component, no click, no consent, no gate.
+  const emptyRows = wizardModelsVm.modelsStepRows([], h3StackVm.h3StackReport([]), servedCatalog(), { engineMode: 'external' })
+  const emptyLinks = [...emptyRows.map((row) => row.link && row.link.entryId).filter(Boolean)]
+  eq(emptyLinks, [REPORT], 'a missing mapped component renders exactly the one manual download link')
+  const emptyLink = emptyRows.find((row) => row.link).link
+  ok(emptyLink.files[0].url.indexOf('https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/') === 0, 'the link points at the pinned source (the user fetches it themselves)')
+  ok(emptyLink.files[0].placeAt === 'models/loras/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors', 'the placement spells the ComfyUI-relative path')
+  ok(!('gated' in emptyLink), 'the link view carries no gate — there is no studio-side download to gate')
 
   // The turbo remediation strings: tier 4 has no bytes in EITHER arm — the
   // same single truthful remediation, naming the fetch row it has always
-  // named. Tier 8 resolves in both. Equal, added nothing, mandated nothing.
+  // named (the LIBRARY's consent-gated fetch — a different surface, alive).
+  // Tier 8 resolves in both. Equal, added nothing, mandated nothing.
   const nullTiers = h3StackVm.turboTierStates(nullFiles, 'text')
   const primedTiers = h3StackVm.turboTierStates(primedFiles, 'text')
   eq(JSON.stringify(primedTiers), JSON.stringify(nullTiers), 'turbo remediations: byte-identical between the arms')
   ok(nullTiers['4'].remediation.indexOf('fetch lightx2v-fl2v-turbo-4 through the library (consent-gated)') !== -1, 'nothing mandated: the tier-4 remediation keeps its consent-gated fetch naming')
 
-  // The sanctioned OFFER surface (not a fetch suggestion): the hash-confirmed
+  // The sanctioned OFFER surface (not a download): the hash-confirmed
   // hybrid names itself on the fl2va row — click-gated, never auto-applied;
   // and under the cap (bytes unknowable) the offer is absent.
-  const primedRows = wizardModelsVm.modelsStepRows(primedFiles, h3StackVm.h3StackReport(primedFiles), servedCatalog(), { designated: true })
+  const primedRows = wizardModelsVm.modelsStepRows(primedFiles, h3StackVm.h3StackReport(primedFiles), servedCatalog())
   const fl2vaRow = primedRows.find((row) => row.slot === 'fl2va')
   eq(fl2vaRow.mergedPickOffer && fl2vaRow.mergedPickOffer.name, MASTER_DELTA, 'sanctioned offer: the hash-confirmed hybrid names itself on the fl2va row (primed only)')
-  const capRows = wizardModelsVm.modelsStepRows(capFiles, h3StackVm.h3StackReport(capFiles), servedCatalog(), { designated: true })
+  const capRows = wizardModelsVm.modelsStepRows(capFiles, h3StackVm.h3StackReport(capFiles), servedCatalog())
   eq(capRows.find((row) => row.slot === 'fl2va').mergedPickOffer, undefined, 'sanctioned offer: absent under the cap — no bytes, no offer')
 })
 
@@ -563,15 +567,16 @@ test('N2 arm 5: unconfigured roots — every verdict degrades honestly and the s
   }
 
   const projectRow = (row) => ({
-    label: row.label, name: row.name, present: row.present, source: row.source,
+    label: row.label, selectedName: row.selectedName, present: row.present, source: row.source,
     canonical: row.canonical, isCanonical: row.isCanonical, refusal: row.refusal ?? '',
     makeVisible: row.makeVisible, identity: row.identity, interim: row.interim,
     narration: row.narration, overrideSlot: row.overrideSlot,
-    fetch: row.fetch ? { entryId: row.fetch.entryId, gated: row.fetch.gated, inFlight: row.fetch.inFlight, catalogState: row.fetch.catalogState } : null,
+    alternates: row.alternates.map((alt) => alt.name),
+    link: row.link ? { entryId: row.link.entryId, placeKind: row.link.placeKind } : null,
     mergedPickOffer: row.mergedPickOffer ?? null,
   })
-  const nullProjected = wizardModelsVm.modelsStepRows(nullFiles, h3StackVm.h3StackReport(nullFiles), servedCatalog(), { designated: true }).map(projectRow)
-  const capProjected = wizardModelsVm.modelsStepRows(capFiles, h3StackVm.h3StackReport(capFiles), servedCatalog(), { designated: true }).map(projectRow)
+  const nullProjected = wizardModelsVm.modelsStepRows(nullFiles, h3StackVm.h3StackReport(nullFiles), servedCatalog()).map(projectRow)
+  const capProjected = wizardModelsVm.modelsStepRows(capFiles, h3StackVm.h3StackReport(capFiles), servedCatalog()).map(projectRow)
   // The rendered identity LABEL: a present row reads name-suspected either
   // way — via the block under the cap, via the no-block fallback under null
   // (the two roads, one label — the N2 equivalence the e2e A/B also rides).
@@ -615,7 +620,7 @@ test('H-I3 arm 6: the whole resolution surface under unconfigured roots equals t
 
   // The fetch views: equal to null (the arm-4 negative control, asserted as
   // full equality here so the cap cannot silently shrink the affordance).
-  eq(fetchViews(capFiles, { designated: true }), fetchViews(nullFiles, { designated: true }), 'cap: the fetch affordance survives the designation cap unchanged')
+  eq(linkViews(capFiles), linkViews(nullFiles), 'cap: the download-link surface survives the designation cap unchanged (both empty — presence retires links)')
 
   // And the refusal string surface: equal both directions (no flip at all).
   const nullStrings = allRefusals(nullFiles)
@@ -667,19 +672,19 @@ test('AC-1: the quartet resolves by hash — named verdicts, both lanes live, th
 
   // The hybrid is NAMED with the merged-pick affordance and is NOT the
   // resolved lane checkpoint — never silently loaded.
-  const fl2vaRow = wizardModelsVm.modelsStepRows(acPrimed, h3StackVm.h3StackReport(acPrimed), servedCatalog(), { designated: true })
+  const fl2vaRow = wizardModelsVm.modelsStepRows(acPrimed, h3StackVm.h3StackReport(acPrimed), servedCatalog())
     .find((row) => row.slot === 'fl2va')
   eq(JSON.stringify(fl2vaRow.mergedPickOffer), JSON.stringify({ name: QS_DELTA, summary: 'minimax-h3 · hybrid · smhfacct-b25-49 · int8' }), 'AC-1: the hybrid names itself on the fl2va row — family + artifact + variant + quant, one sentence')
-  ok(fl2vaRow.name === QS_AURORA && fl2vaRow.name !== QS_DELTA, 'AC-1: the lane checkpoint stays the FL2VA master, never the hybrid')
-  eq(wizardModelsVm.modelsStepRows(acNull, h3StackVm.h3StackReport(acNull), servedCatalog(), { designated: true })
+  ok(fl2vaRow.selectedName === QS_AURORA && fl2vaRow.selectedName !== QS_DELTA, 'AC-1: the lane checkpoint stays the FL2VA master, never the hybrid')
+  eq(wizardModelsVm.modelsStepRows(acNull, h3StackVm.h3StackReport(acNull), servedCatalog())
     .find((row) => row.slot === 'fl2va').mergedPickOffer, undefined, 'AC-1 contrast: no bytes, no offer (the null catalog cannot name the hybrid)')
 
   // No fetch suggestion for any present file: with every component present
   // and byte-confirmed the step offers NOTHING — the one mapped row
   // (turbo-8) is suppressed by hash-confirmed presence, and the null world
   // still offers it (removal rides byte evidence only).
-  eq(fetchViews(acPrimed, { designated: true }), [], 'AC-1: zero fetch views — no "download X" about present files')
-  eq(fetchViews(acNull, { designated: true }), [REPORT], 'AC-1 contrast: the null world still offers the turbo-8 fetch (name-only presence never removes it)')
+  eq(linkViews(acPrimed), [], 'AC-1: zero download links — no "download X" about present files')
+  eq(linkViews(acNull), [], 'AC-1 contrast: the null world lists a turbo-shaped file too — name-only presence retires the link the same way')
 })
 
 test('AC-2: the soup collapses — one named identity across identical shas, decoder classes from identity rows, the T=1-named liar named as the video VAE', () => {
@@ -705,7 +710,7 @@ test('AC-2: the soup collapses — one named identity across identical shas, dec
   const set = selection.slotCandidates(acPrimed, 'videoVae', 'off')
   eq([set.basis, set.picked], ['hash', QS_VVAE], 'AC-2: the soup resolves on byte evidence with the official basename winning the tie-break')
   eq(set.names.slice().sort().join('|'), soup.slice().sort().join('|'), "AC-2: the candidates are exactly the soup — one artifact's candidate list, not five artifacts")
-  const vvaeRow = wizardModelsVm.modelsStepRows(acPrimed, h3StackVm.h3StackReport(acPrimed), servedCatalog(), { designated: true })
+  const vvaeRow = wizardModelsVm.modelsStepRows(acPrimed, h3StackVm.h3StackReport(acPrimed), servedCatalog())
     .find((row) => row.slot === 'videoVae')
   eq(vvaeRow.narration, 'picked', 'AC-2: the row narrates the duplicate candidates (picked among several)')
   eq(vvaeRow.candidates.others.length, 4, "AC-2: all four other soup files render as this row's other candidates")
@@ -737,7 +742,7 @@ test('AC-4: remote honesty — unconfigured roots cap every verdict at name-susp
   for (const [label, serialized] of [
     ['the payload blocks', JSON.stringify(acCap)],
     ['the stack report', JSON.stringify(h3StackVm.h3StackReport(acCap))],
-    ['the wizard rows', JSON.stringify(wizardModelsVm.modelsStepRows(acCap, h3StackVm.h3StackReport(acCap), servedCatalog(), { designated: true }))],
+    ['the wizard rows', JSON.stringify(wizardModelsVm.modelsStepRows(acCap, h3StackVm.h3StackReport(acCap), servedCatalog()))],
     ['the tier states', JSON.stringify(h3StackVm.turboTierStates(acCap, 'text'))],
   ]) {
     eq(serialized.indexOf('hash-confirmed'), -1, `AC-4: ${label} never claims hash-confirmed`)
@@ -771,8 +776,8 @@ test('N2 rider (CT6 review Important-2): an orphaned catalog row obligates nothi
     strings.add(h3StackVm.stackVerdictText(stackReportOf(files), 'text').text)
     strings.add(h3StackVm.stackVerdictText(stackReportOf(files), 'reference').text)
     for (const tier of ['4', '8']) strings.add(h3StackVm.turboTierStates(files, 'text')[tier].remediation)
-    strings.add(JSON.stringify(wizardModelsVm.modelsStepRows(files, stackReportOf(files), servedCatalog(), { designated: true })))
-    strings.add(JSON.stringify(fetchViews(files, { designated: true })))
+    strings.add(JSON.stringify(wizardModelsVm.modelsStepRows(files, stackReportOf(files), servedCatalog())))
+    strings.add(JSON.stringify(linkViews(files)))
     return strings
   }
   for (const [label, files] of [['null', acNull], ['primed', acPrimed], ['cap', acCap]]) {
@@ -791,12 +796,12 @@ test('N2 rider (CT6 review Important-2): an orphaned catalog row obligates nothi
   eq(h3StackVm.turboTierStates(acPrimed, 'text')['4'].remediation, h3StackVm.turboTierStates(acNull, 'text')['4'].remediation, 'rider: the tier-4 remediation is unchanged by the orphaned turbo-4 row')
   ok(h3StackVm.turboTierStates(acNull, 'text')['4'].remediation.indexOf('fetch lightx2v-fl2v-turbo-4 through the library (consent-gated)') !== -1, "rider: the remediation names the fetch row it always named (the orphan's alias never joins it)")
 
-  // And the fetch views: the orphan never adds one under any arm — primed
-  // offers nothing (turbo-8 byte-confirmed present), null and cap offer
-  // exactly the one row the null world always offered.
-  eq(fetchViews(acPrimed, { designated: true }), [], 'rider: primed offers no fetch view')
-  eq(fetchViews(acNull, { designated: true }), [REPORT], 'rider: null offers exactly the turbo-8 row (the orphan adds nothing)')
-  eq(fetchViews(acCap, { designated: true }), [REPORT], 'rider: the cap arm equals null (the orphan adds nothing there either)')
+  // And the download links: the orphan never adds one under any arm — all
+  // three worlds DETECT a turbo-shaped file, and presence retires the link
+  // (friction 2026-10-21); the orphan's alias joins nothing.
+  eq(linkViews(acPrimed), [], 'rider: primed offers no download link (everything is detected)')
+  eq(linkViews(acNull), [], 'rider: null offers no link either — its turbo-shaped listing retires the mapped row (the orphan adds nothing)')
+  eq(linkViews(acCap), [], 'rider: the cap arm equals null (the orphan adds nothing there either)')
 
   // The whole refusal surface stays flip-only-via-hash for the AC world
   // too: zero ADDED strings primed-over-null (the removed set is the

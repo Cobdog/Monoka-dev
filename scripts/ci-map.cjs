@@ -392,6 +392,11 @@ const RULES = [
     reason: 'the first-run walk\'s pure module (wizard rework 3p14abm: destination designations D7, the candidate spine) — its own suite loads it through the VM harness.',
   },
   {
+    match: ['src/canvas/wizardModels.ts'],
+    suites: ['wizard', 'nongating'],
+    reason: 'the Models step\'s view builder (friction 2026-10-21: the two-axis row grammar + the manual download link): the wizard suite pins its rows directly, and the nongating suite (to7xpa7) drives the same builder null-vs-primed-vs-cap — both load it through the VM harness. Without this rule the UI-surface catch-all below would run neither on a diff that changes executed code (the gap the friction rework hit).',
+  },
+  {
     match: ['src/media/takeMath.ts', 'src/media/filmstripLayout.ts'],
     suites: ['takemath'],
     reason: "the take viewer's pure math (foelihc T1: frame/time arithmetic with the T-C1 two-hop contract, the T-M1 clamp, timecode, the strip mapping) — the takemath suite loads it through the VM harness; filmstripLayout rides along as the ONE fps constant the math consumes, so a layout diff re-proves the convention end to end.",

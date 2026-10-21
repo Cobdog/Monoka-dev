@@ -316,13 +316,18 @@ const LANE_FILES = [
 ]
 // The catalog row D9 landed (server/fetchCatalog.ts, commit c9cc631) — the
 // view builder reads this SHAPE from the served catalog (FetchEntryStatus).
+// The source/files fields are the friction-2026-10-21 additions the LINK
+// rows read: the direct download URL derives from the pinned source, the
+// placement path from the destination root + the file path.
 const CATALOG_TURBO_8 = {
   id: 'lightx2v-fl2v-turbo-8',
   name: 'lightx2v FL2V turbo 8-step LoRA',
   licenseSpdx: 'Apache-2.0',
   licenseNote: 'upstream ModelTC lightx2v; repackaged for the H3 FL2V lane',
   sizeClass: 'medium',
+  source: { kind: 'hf', repo: 'lightx2v/Minimax-h3-Turbo', revision: { kind: 'sha', value: '9bc1f3c0407805b00da9f762639cb435c644b2dc' } },
   destination: { kind: 'model-root', root: 'loras' },
+  files: [{ path: 'minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors', sizeBytes: 1956193000 }],
   state: 'absent',
   inFlight: false,
 }
@@ -330,7 +335,7 @@ const CATALOG_TURBO_8 = {
 test('every component renders named truth — counts alone never render (§2.2)', () => {
   console.log('wizard: the Models step — named truth')
   const report = h3.h3StackReport(LANE_FILES, undefined, STOCK_CLASSES)
-  const rows = wizardModels.modelsStepRows(LANE_FILES, report, [], { designated: true })
+  const rows = wizardModels.modelsStepRows(LANE_FILES, report, [])
 
   ok(rows.length === 5, `five component rows render (got ${rows.length})`)
   ok(rows.map((row) => row.label).join('|') === 'FL2VA|Text encoder|Video VAE|Audio VAE|Turbo 8', 'the rows carry the five component labels in stack order')
@@ -338,7 +343,7 @@ test('every component renders named truth — counts alone never render (§2.2)'
   // A present row names the RESOLVED file — registry subpath verbatim, the
   // exact string the graph loader accepts — with its source layer.
   const fl2va = rows[0]
-  ok(fl2va.name === 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', `a present row names the resolved file verbatim (got ${JSON.stringify(fl2va.name)})`)
+  ok(fl2va.selectedName === 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', `a present row names the resolved file verbatim (got ${JSON.stringify(fl2va.selectedName)})`)
   ok(fl2va.present === true, 'the present row states presence truth')
   ok(fl2va.source === 'inferred', `the row attributes its layer (got ${JSON.stringify(fl2va.source)})`)
   ok(fl2va.isCanonical === true, 'the official artifact is named as canonical (display guidance, not a gate)')
@@ -346,10 +351,130 @@ test('every component renders named truth — counts alone never render (§2.2)'
   // A missing row states absence + ONE truthful remediation (what naming
   // makes it visible) — never a bare count.
   const turbo = rows[4]
-  ok(turbo.name === '' && turbo.present === false, 'the missing row states its absence')
+  ok(turbo.selectedName === '' && turbo.present === false, 'the missing row states its absence')
   ok(/turbo/i.test(turbo.makeVisible), `the missing row carries its make-visible guidance (got ${JSON.stringify(turbo.makeVisible)})`)
   ok(turbo.refusal === '', 'an absent component owes no refusal (absence is not a refusal)')
-  ok(rows.every((row) => typeof row.name === 'string'), 'every row carries string truth (name or empty) — the bare-count shape is dead')
+  ok(rows.every((row) => typeof row.selectedName === 'string'), 'every row carries string truth (the selected name or empty) — the bare-count shape is dead')
+})
+
+// ---------------------------------------------------------------------------
+// (friction 2026-10-21) The maintainer's two rulings on this step, unit-pinned:
+//   1. "the comfy instance should be the model management" — EXTERNAL
+//      engines get NO studio-side download at all: a missing component the
+//      catalog covers renders a DOWNLOAD LINK the user fetches themselves,
+//      with the placement path spelled; managed keeps the standing models
+//      root designation (the studio owns that checkout).
+//   2. "How do I know which have been detected, which are selected" — the
+//      two-axis row grammar: DETECTED vs MISSING, and SELECTED (the resolved
+//      pick) vs ALTERNATES (detected but not the pick).
+// ---------------------------------------------------------------------------
+
+test('a missing component renders a download link the user fetches themselves — the studio never downloads (friction 2026-10-21)', () => {
+  console.log('wizard: the Models step — the manual download link')
+  const fresh = [] // the fresh-clone engine: nothing listed
+  const report = h3.h3StackReport(fresh, undefined, STOCK_CLASSES)
+
+  // The map lives in the walk's spine module (walk configuration, like the
+  // designation rules) — renamed with the flow it now drives.
+  ok(walk.COMPONENT_LINK_ROWS['Turbo 8'] === 'lightx2v-fl2v-turbo-8', 'the component→catalog map is the spine\'s (Turbo 8 → the catalog row)')
+  ok(walk.COMPONENT_LINK_ROWS['FL2VA'] === undefined, 'publisher-direct components map to nothing')
+
+  const offered = wizardModels.modelsStepRows(fresh, report, [CATALOG_TURBO_8], { engineMode: 'external' })
+  const turbo = offered[4]
+  ok(turbo.link !== null, 'the missing mapped component carries a link view')
+  ok(turbo.link.entryId === 'lightx2v-fl2v-turbo-8', `the link view names the catalog entry (got ${JSON.stringify(turbo.link && turbo.link.entryId)})`)
+  ok(turbo.link.placeKind === 'comfy-relative', `an external engine gets the ComfyUI-relative placement — never a guessed absolute landing spot (got ${JSON.stringify(turbo.link && turbo.link.placeKind)})`)
+  const file = turbo.link.files[0]
+  ok(file.url === 'https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/9bc1f3c0407805b00da9f762639cb435c644b2dc/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors',
+  `the direct URL is the pinned revision's HF resolve URL (got ${JSON.stringify(file && file.url)})`)
+  ok(file.placeAt === 'models/loras/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors',
+  `the placement names the ComfyUI-relative path (got ${JSON.stringify(file && file.placeAt)})`)
+  ok(turbo.link.licenseSpdx === 'Apache-2.0' && /ModelTC/.test(turbo.link.licenseNote ?? ''), 'the license verdict rides the link row')
+  ok(turbo.link.sizeClass === 'medium', 'the size class rides the link row')
+  // THE ANTI-REGRESSION on the dead flow: the view carries NO fetch-click
+  // state — no gate, no consent, no in-flight — the studio-side download is
+  // gone, not merely disabled.
+  ok(!('gated' in turbo.link) && !('inFlight' in turbo.link) && !('catalogState' in turbo.link), 'the link view carries no fetch-click state (the studio-side download is dead)')
+
+  // The copy states the ruling's truth (user-facing; pinned verbatim).
+  ok(/does not download/i.test(wizardModels.LINK_ROW_NOTE_COPY), `the link note says the studio does not download (got ${JSON.stringify(wizardModels.LINK_ROW_NOTE_COPY)})`)
+  ok(/engine instance manages|engine manages/i.test(wizardModels.LINK_ROW_NOTE_COPY), 'the link note names the engine instance as the model management')
+  ok(/relative to your ComfyUI folder/i.test(wizardModels.LINK_PLACE_RELATIVE_COPY), 'the relative placement label says what it is relative to')
+
+  // MANAGED: the placement can spell the ABSOLUTE path — the studio owns
+  // that checkout and knows where it reads.
+  const managedRows = wizardModels.modelsStepRows(fresh, report, [CATALOG_TURBO_8], { engineMode: 'managed', modelsRoot: '/opt/ComfyUI/models' })
+  ok(managedRows[4].link.placeKind === 'absolute', `a managed engine with a known checkout names the absolute path (got ${JSON.stringify(managedRows[4].link && managedRows[4].link.placeKind)})`)
+  ok(managedRows[4].link.files[0].placeAt === '/opt/ComfyUI/models/loras/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors',
+  `the managed placement joins the checkout's models dir (got ${JSON.stringify(managedRows[4].link && managedRows[4].link.files[0] && managedRows[4].link.files[0].placeAt)})`)
+
+  // A component with no catalog row carries NO link — the remediation stays
+  // publisher-direct + makeVisible (never a download promise, R-19/F10).
+  ok(offered[0].link === null, 'a component with no catalog row carries no link (publisher-direct)')
+
+  // The R-19 pin survives inverted: a mapped id absent from the SERVED
+  // catalog promises no link either.
+  const bare = wizardModels.modelsStepRows(fresh, report, [], { engineMode: 'external' })
+  ok(bare[4].link === null, 'a mapped component with the entry absent from the served catalog promises no link')
+})
+
+test('a PRESENT component never renders a download link — detection retires the offer at any evidence (friction 2026-10-21)', () => {
+  console.log('wizard: the Models step — presence retires the download offer')
+  // Name-suspected presence (the engine lists the OFFICIAL turbo name; no
+  // byte evidence): the row is DETECTED — no download nags beside a listed
+  // file.
+  const suspected = LANE_FILES.concat([
+    { name: 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors', kind: 'loras', bytes: 0 },
+  ])
+  const suspectedRows = wizardModels.modelsStepRows(suspected, h3.h3StackReport(suspected, undefined, STOCK_CLASSES), [CATALOG_TURBO_8], { engineMode: 'external' })
+  ok(suspectedRows[4].present === true, `fixture sanity: the turbo row is detected (got ${JSON.stringify(suspectedRows[4].present)})`)
+  ok(suspectedRows[4].identity === 'name-suspected', 'fixture sanity: the detection is name-only evidence')
+  ok(suspectedRows[4].link === null, `a detected turbo (name-only evidence) renders no download link (got ${JSON.stringify(suspectedRows[4].link)})`)
+  // Hash-confirmed presence: same answer — the to7xpa7 H-I1 suppression is
+  // subsumed; the engine's listing is the whole truth now.
+  const confirmed = LANE_FILES.concat([
+    { name: 'H3/ssd/my_renamed_speed_lora.safetensors', kind: 'loras', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'turbo-8', aliases: ['minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'] } },
+  ])
+  const confirmedRows = wizardModels.modelsStepRows(confirmed, h3.h3StackReport(confirmed, undefined, STOCK_CLASSES), [CATALOG_TURBO_8], { engineMode: 'external' })
+  ok(confirmedRows[4].present === true, 'fixture sanity: the renamed turbo is detected through its bytes')
+  ok(confirmedRows[4].link === null, 'a hash-confirmed turbo renders no download either (presence is the truth at any evidence)')
+})
+
+test('the two-axis grammar: every row answers detected? and selected? at a glance (friction 2026-10-21)', () => {
+  console.log('wizard: the Models step — the two-axis row grammar')
+  // THREE anchored candidates: one SELECTED, two ALTERNATES.
+  const quartet = [
+    M('H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors', 'diffusion_models'),
+    M('H3/ssd/minimax_h3_fl2va_fp8.safetensors', 'diffusion_models'),
+    M('H3/ssd/minimax_h3_fl2va_lite_experimental.safetensors', 'diffusion_models'),
+    M('H3/ssd/minimax_h3_ref2va_pruned_int8_convrot.safetensors', 'diffusion_models'),
+    M('qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', 'text_encoders'),
+    M('minimax_h3_video_vae_fp16.safetensors', 'vae'),
+    M('minimax_h3_audio_vae_fp32.safetensors', 'vae'),
+  ]
+  const rows = wizardModels.modelsStepRows(quartet, h3.h3StackReport(quartet, undefined, STOCK_CLASSES), [])
+  const fl2va = rows[0]
+  ok(fl2va.present === true && fl2va.selectedName === 'H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors',
+  `a detected row names its SELECTED file — the pick generation will use (got ${JSON.stringify(fl2va.selectedName)})`)
+  ok(fl2va.alternates.length === 2, `the alternates are exactly the detected non-picks (got ${fl2va.alternates.length})`)
+  ok(fl2va.alternates.every((alt) => alt.name !== fl2va.selectedName), 'the selected file never appears among its own alternates')
+  ok(fl2va.alternates.some((alt) => alt.basename === 'minimax_h3_fl2va_fp8.safetensors'), 'the alternates carry display basenames (the subpath stripped)')
+  // A single-candidate row has no alternates — nothing secondary to say.
+  ok(rows[3].present === true && rows[3].alternates.length === 0, 'a single-candidate row carries no alternates')
+  // A MISSING row answers both axes negatively: not detected, nothing
+  // selected, no alternates — and the guide carries the remediation.
+  const freshRows = wizardModels.modelsStepRows([], h3.h3StackReport([], undefined, STOCK_CLASSES), [])
+  ok(freshRows.every((row) => row.present === false && row.selectedName === '' && row.alternates.length === 0), 'every missing row answers not-detected, nothing-selected, no alternates')
+  ok(freshRows.every((row) => typeof row.makeVisible === 'string' && row.makeVisible.length > 0), 'every missing row carries its make-visible guidance')
+})
+
+test('the Models gate never required a models-root designation — the registry truth is the step\'s verdict (friction 2026-10-21, pinned)', () => {
+  console.log('wizard: the Models gate — the designation is not the verdict')
+  const verified = walk.markEngineVerified(walk.emptyWalkCandidate('http://127.0.0.1:8188'), 'http://127.0.0.1:8188', true)
+  const bare = { ...verified, modelsRoot: walk.emptyDestination() }
+  ok(walk.modelsGate(bare).verdict === 'verified', 'a verified engine passes the Models step with NO models root designated — the engine\'s own registry is the step\'s verdict')
+  const designated = { ...verified, modelsRoot: { value: '/engine/comfy/models', verdict: { designated: true, exists: true } } }
+  ok(walk.modelsGate(designated).verdict === 'verified', 'a designation changes nothing about the gate (fetch-target-only, either way)')
 })
 
 test('ONE verdict in one voice — a text-lane-complete stack reads Ready to render with no incomplete wording (R1)', () => {
@@ -372,42 +497,6 @@ test('ONE verdict in one voice — a text-lane-complete stack reads Ready to ren
   const partial = h3.h3StackReport(LANE_FILES.slice(0, 3), undefined, STOCK_CLASSES)
   const blocked = h3.stackVerdictText(partial)
   ok(blocked.ready === false && /Audio VAE/.test(blocked.text), `a missing member is named by the verdict (got ${JSON.stringify(blocked.text)})`)
-})
-
-test('a missing component with a catalog row offers a one-click fetch carrying the license verdict; without one, publisher-direct (W-I6/R-19)', () => {
-  console.log('wizard: the fetch rows')
-  const fresh = [] // the fresh-clone engine: nothing listed
-  const report = h3.h3StackReport(fresh, undefined, STOCK_CLASSES)
-
-  // The map lives in the walk's spine module (walk configuration, like the
-  // designation rules).
-  ok(walk.COMPONENT_FETCH_ROWS['Turbo 8'] === 'lightx2v-fl2v-turbo-8', 'the component→catalog map is the spine’s (Turbo 8 → lightx2v-fl2v-turbo-8)')
-  ok(walk.COMPONENT_FETCH_ROWS['FL2VA'] === undefined, 'publisher-direct components map to nothing')
-
-  // With the served catalog row: the turbo row offers THE fetch, license on
-  // the row (the click IS the consent — W-I6).
-  const offered = wizardModels.modelsStepRows(fresh, report, [CATALOG_TURBO_8], { designated: true })
-  const turbo = offered[4]
-  ok(turbo.fetch !== null, 'the mapped component carries a fetch view')
-  ok(turbo.fetch.entryId === 'lightx2v-fl2v-turbo-8', `the fetch view names the catalog entry (got ${JSON.stringify(turbo.fetch && turbo.fetch.entryId)})`)
-  ok(turbo.fetch.licenseSpdx === 'Apache-2.0', 'the license verdict rides the row')
-  ok(/ModelTC/.test(turbo.fetch.licenseNote ?? ''), 'the provenance note rides the row')
-  ok(turbo.fetch.destRoot === 'loras', 'the placement root rides the row (model-root destination)')
-  ok(turbo.fetch.gated === false, 'with a verified destination the fetch is offered ungated')
-
-  // A component with no catalog row carries NO fetch view — the remediation
-  // stays publisher-direct + makeVisible (never a fetch promise, R-19/F10).
-  ok(offered[0].fetch === null, 'a component with no catalog row carries no fetch view (publisher-direct)')
-
-  // The R-19 pin survives inverted: a mapped id absent from the SERVED
-  // catalog promises no fetch either.
-  const bare = wizardModels.modelsStepRows(fresh, report, [], { designated: true })
-  ok(bare[4].fetch === null, 'a mapped component with the entry absent from the served catalog promises no fetch')
-
-  // D7's honest downgrade: before the models root verifies, the fetch stays
-  // gated — the row says why, never fake remediation.
-  const gated = wizardModels.modelsStepRows(fresh, report, [CATALOG_TURBO_8], { designated: false })
-  ok(gated[4].fetch.gated === true, 'before the destination verifies the fetch stays gated')
 })
 
 test('identity labels come from the closed vocabulary; the interim word renders only when a digest is in flight (to7xpa7)', () => {
@@ -450,25 +539,6 @@ test('the labels read the payload: per-file verdicts, per-row interim precedence
   ok(plain.map((row) => row.identity).join('|') === 'name-suspected|name-suspected|name-suspected|name-suspected|', 'degraded mode (no blocks) renders today\'s labels bit-for-bit')
 })
 
-test('a hash-confirmed present artifact removes its fetch row; name-suspected presence never does (to7xpa7 H-I1)', () => {
-  console.log('wizard: the fetch-suggestion removal')
-  const confirmed = LANE_FILES.concat([
-    { name: 'H3/ssd/my_renamed_speed_lora.safetensors', kind: 'loras', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'turbo-8', aliases: ['minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'] } },
-  ])
-  const confirmedRows = wizardModels.modelsStepRows(confirmed, h3.h3StackReport(confirmed, undefined, STOCK_CLASSES), [CATALOG_TURBO_8], { designated: true })
-  ok(confirmedRows[4].fetch === null, `the hash-confirmed turbo-8 present under ANY name removes the fetch row (got ${JSON.stringify(confirmedRows[4].fetch && confirmedRows[4].fetch.entryId)})`)
-  const wrongLane = LANE_FILES.concat([
-    { name: 'H3/ssd/ref_lane_speed.safetensors', kind: 'loras', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'turbo-8', aliases: ['minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors'] } },
-  ])
-  const wrongLaneRows = wizardModels.modelsStepRows(wrongLane, h3.h3StackReport(wrongLane, undefined, STOCK_CLASSES), [CATALOG_TURBO_8], { designated: true })
-  ok(wrongLaneRows[4].fetch !== null, 'the ref2v lane\'s turbo-8 does not remove the fl2v fetch row (the suppression is lane-scoped)')
-  const suspected = LANE_FILES.concat([
-    { name: 'H3/ssd/my_renamed_speed_lora.safetensors', kind: 'loras', bytes: 0 },
-  ])
-  const suspectedRows = wizardModels.modelsStepRows(suspected, h3.h3StackReport(suspected, undefined, STOCK_CLASSES), [CATALOG_TURBO_8], { designated: true })
-  ok(suspectedRows[4].fetch !== null, 'a name-suspected present LoRA keeps the fetch view — removal ONLY on byte evidence')
-})
-
 test('the merged hybrid is named, offered, never auto-loaded (to7xpa7 §4 + rq0lsax)', () => {
   console.log('wizard: the merged-pick offer')
   const hybridFile = { name: 'H3/ssd/minimax_h3_hybrid_fl2va_ref2va_b30-49-int8.safetensors', kind: 'diffusion_models', bytes: 0, identity: { verdict: 'hash-confirmed', family: 'minimax-h3', artifact: 'hybrid', aliases: ['minimax_h3_hybrid_fl2va_ref2va_b30-49-int8.safetensors'] } }
@@ -476,7 +546,7 @@ test('the merged hybrid is named, offered, never auto-loaded (to7xpa7 §4 + rq0l
   const files = [realFl2va, hybridFile].concat(LANE_FILES.slice(1))
   const report = h3.h3StackReport(files, undefined, STOCK_CLASSES)
   const rows = wizardModels.modelsStepRows(files, report, [], {})
-  ok(rows[0].name === realFl2va.name, `the fl2va lane picks the REAL fl2va — the hybrid never auto-loads (got ${JSON.stringify(rows[0].name)})`)
+  ok(rows[0].selectedName === realFl2va.name, `the fl2va lane picks the REAL fl2va — the hybrid never auto-loads (got ${JSON.stringify(rows[0].selectedName)})`)
   ok(selection.inferSelections(files, 'off').merged === undefined, 'inference never fills the merged slot (the deliberate exception)')
   const offer = rows[0].mergedPickOffer
   ok(offer && offer.name === hybridFile.name, `the fl2va row carries the one-click merged-pick offer naming the hybrid (got ${JSON.stringify(offer)})`)
@@ -567,12 +637,11 @@ test('fetchLanded derives from the catalog state, not component memory — place
   ok(wizardModels.fetchLanded(view('cached')) === false, "state 'cached' (bytes in the cache, not yet placed) has NOT landed")
   ok(wizardModels.fetchLanded(view('absent')) === false, "state 'absent' (nothing on disk) has NOT landed")
 
-  // The rows' views pass straight through: the same view the builder emits
-  // answers fetchLanded — the JSX derives from THIS, never component-local
-  // started memory (which a mid-walk scan remount destroys).
-  const report = h3.h3StackReport([], undefined, STOCK_CLASSES)
-  const landed = wizardModels.modelsStepRows([], report, [{ ...CATALOG_TURBO_8, state: 'placed' }], { designated: true })
-  ok(wizardModels.fetchLanded(landed[4].fetch) === true, 'a builder-emitted view with a placed entry reads as landed')
+  // (friction 2026-10-21) The Models step no longer emits fetch views — the
+  // PACKS step is the bare-catalog consumer now: its entries pass the same
+  // structural minimum ({ catalogState }), so the rule stays one seam.
+  const packsShapedEntry = { id: 'pack:minimax-h3-turbo', state: 'placed' }
+  ok(wizardModels.fetchLanded({ catalogState: packsShapedEntry.state }) === true, 'the packs step\'s bare catalog entry reads the SAME rule — never a re-encoding beside it')
 })
 
 // ---------------------------------------------------------------------------

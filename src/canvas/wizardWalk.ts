@@ -189,16 +189,25 @@ export function customNodesPrefill(settings: DesignationSettings): string {
  *  these verbatim, `data-wizard-step` indexes 0–4). */
 export const WALK_STEPS = ['Engine', 'Models', 'Node packs', 'LAN prep', 'First prompt']
 
-/** (Task 5, spec §2.2/W-I6) The component → catalog-entry map behind the
- *  Models step's one-click fetch rows. Keys are the stack report's row
- *  labels; values ARE server/fetchCatalog.ts entry ids. Only the FL2V turbo
- *  tier has a row today (D9, commit c9cc631) — the diffusion lane, the text
- *  encoder, and both VAEs are publisher-direct, so they map to nothing and
- *  their rows state that truth plus the make-visible guidance (never a
- *  fetch promise over an empty catalog — R-19/F10). The view builder in
- *  wizardModels.ts consumes this map beside the SERVED catalog: a mapped id
- *  the catalog does not list offers no fetch either. */
-export const COMPONENT_FETCH_ROWS: Record<string, string> = {
+/** (friction 2026-10-21) The component → catalog-entry map behind the
+ *  Models step's MANUAL DOWNLOAD LINK rows — the studio-side one-click
+ *  fetch is DEAD (the maintainer's ruling: "we at least for now just give
+ *  the user the download link, they manually fetch the model themselves,
+ *  and are told where to place it"). Keys are the stack report's row
+ *  labels; values ARE server/fetchCatalog.ts entry ids. Only the FL2V
+ *  turbo tier has a row today (D9, commit c9cc631) — the diffusion lane,
+ *  the text encoder, and both VAEs are publisher-direct, so they map to
+ *  nothing and their rows state that truth plus the make-visible guidance
+ *  (never a link promise over an empty catalog — R-19/F10). The view
+ *  builder in wizardModels.ts consumes this map beside the SERVED catalog:
+ *  a mapped id the catalog does not list offers no link either.
+ *
+ *  THE FUTURE the ruling names: downloads route THROUGH the ComfyUI
+ *  instance (its own model machinery fetches into its own correct folders)
+ *  — "more hands off, more better". When that lands, this map points the
+ *  row at the instance's download path instead of a manual URL; until then
+ *  the link row is the honest now. */
+export const COMPONENT_LINK_ROWS: Record<string, string> = {
   'Turbo 8': 'lightx2v-fl2v-turbo-8',
 }
 
@@ -349,9 +358,12 @@ function engineFloor(candidate: WalkCandidate): StepGate | null {
 
 /** The Models step's gate: the engine floor, and nothing more (task 5's
  *  final shape). The rows' presence truth and the models-root designation
- *  speak through the step's ONE verdict line and the fetch rows' own gate —
+ *  speak through the step's ONE verdict line and the rows' own affordances —
  *  §2.2's one-verdict rule means a second gate verdict here would be a
- *  second voice contradicting the first. */
+ *  second voice contradicting the first. (friction 2026-10-21, pinned) The
+ *  gate NEVER consulted the models-root designation — the engine's own
+ *  registry is the step's verdict, and the designation is fetch-target-only
+ *  (managed engines), so exiting the step owes nothing to it. */
 export function modelsGate(candidate: WalkCandidate): StepGate {
   const floor = engineFloor(candidate)
   if (floor) return floor

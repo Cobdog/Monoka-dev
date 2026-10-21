@@ -1177,21 +1177,20 @@ test('the reworked walk: typing never saves, the candidate Test verifies, the fo
   expect(mirrorLog).not.toContain('EADDRINUSE')
 })
 
-/** (3p14abm task 5) THE MODELS STEP ON A FRESH ENGINE: the walk against a
- *  stock v0.34.0 with ZERO weights (the fresh-clone profile). Counts are
- *  dead — five named rows, each missing WITH the one artifact to make
- *  visible; the turbo row is the catalog's one-click lift, gated on a
- *  verified models-root designation (D7); the click IS the consent (W-I6);
- *  the engine's listing swap + the step's own Refresh flip the row to
- *  named-and-present with the honest name-suspected identity. Between the
- *  click and that flip sits the review-F1 arm: weights at the CONFIGURED
- *  models root while the engine still lists nothing — the catalog's own
- *  'present' state must kill the fetch affordance and carry the re-scan/
- *  restart truth across the scan's remount. A real HuggingFace download
- *  must never start — only /api/lan/fetch/start is route-sabotaged; the
- *  consent POST passes through to the studio server (the §3-sanctioned
- *  mid-walk ledger write, wiped by the settings restore). */
-test('the Models step on a fresh engine: named truth, one verdict, the one-click fetch (3p14abm task 5)', async ({ page, request }) => {
+/** (3p14abm task 5; reshaped by the friction rulings of 2026-10-21) THE
+ *  MODELS STEP ON A FRESH ENGINE: the walk against a stock v0.34.0 with
+ *  ZERO weights (the fresh-clone profile). Counts are dead — five named
+ *  rows on the two-axis grammar (detected/missing, selected/alternate),
+ *  each missing WITH the one artifact to make visible; the turbo row —
+ *  the one component the catalog covers — renders the MANUAL DOWNLOAD
+ *  LINK (the direct URL plus the ComfyUI-relative placement) because the
+ *  studio does NOT download models: no fetch button, no consent, and NO
+ *  models-root designation field at all (the external instance is the
+ *  model management). The engine's listing swap + the step's own Refresh
+ *  flip the row to detected-and-selected with the honest name-suspected
+ *  identity — and detection retires the link. A real HuggingFace download
+ *  can never start from this step: nothing on it can start one. */
+test('the Models step on a fresh engine: named truth, one verdict, the manual download link (3p14abm task 5; friction 2026-10-21)', async ({ page, request }) => {
   test.setTimeout(240_000)
   const problems: string[] = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
@@ -1203,12 +1202,10 @@ test('the Models step on a fresh engine: named truth, one verdict, the one-click
   let mirrorLog = ''
   mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
   mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
-  const scratchRoot = makeScratchDir(path.join(os.tmpdir(), 'monoka-wizard-models-'))
-  // The studio's CONFIGURED models root — a second scratch dir, distinct
-  // from the walk's designation (scratchRoot): the catalog's presence check
-  // reads settings.modelRoot, so the review-F1 arm plants the weights HERE.
-  const configuredRoot = makeScratchDir(path.join(os.tmpdir(), 'monoka-wizard-models-'))
-  const turboFile = 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'
+  // The engine's models-root stand-in — where the USER's manual download
+  // lands (the link row's placement path points inside exactly this shape).
+  const engineModelsRoot = makeScratchDir(path.join(os.tmpdir(), 'monoka-wizard-models-'))
+  const turboFile = 'minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors'
   try {
     await expect.poll(async () => {
       try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
@@ -1219,7 +1216,6 @@ test('the Models step on a fresh engine: named truth, one verdict, the one-click
       ...originalSettings,
       comfyUrl: `http://127.0.0.1:${mirrorPort}`,
       engine: { ...(originalSettings.engine as Record<string, unknown>), mode: 'external' },
-      modelRoot: configuredRoot,
     } } })
     await resetSession(page)
 
@@ -1235,92 +1231,54 @@ test('the Models step on a fresh engine: named truth, one verdict, the one-click
     await expect(wizard).toHaveAttribute('data-wizard-step', '1')
 
     // NAMED TRUTH, NOT COUNTS: five rows on the empty registry, every one
-    // missing WITH its make-visible guidance — and the pills quiet while
-    // the step presents its own blocked verdict.
+    // missing WITH its make-visible guidance — and the pills quiet while the
+    // step presents its own blocked verdict.
     const componentRows = page.locator('[data-wizard-components] [data-wizard-model-row]')
     await expect(componentRows).toHaveCount(5, { timeout: 20_000 })
     await expect(page.locator('[data-canvas-engine]')).toHaveCount(0)
     await expect(page.locator('[data-canvas-bar-engine]')).toHaveCount(0)
     await expect(page.locator('[data-wizard-model-row="FL2VA"]')).toHaveAttribute('data-row-present', 'false')
+    await expect(page.locator('[data-wizard-model-row="FL2VA"]')).toHaveAttribute('data-row-selected', 'false')
+    await expect(page.locator('[data-wizard-model-row="FL2VA"] [data-wizard-row-guide]')).toContainText('Not detected')
     await expect(page.locator('[data-wizard-model-row="FL2VA"] [data-wizard-row-guide]')).toContainText('fl2va')
     await expect(page.locator('[data-wizard-model-row="Turbo 8"] [data-wizard-row-guide]')).toContainText('lightx2v')
     // The fresh stack is blocked, and the verdict names the missing members.
     await expect(page.locator('[data-wizard-verdict="blocked"]')).toContainText('FL2VA', { timeout: 10_000 })
-    // The catalog delivers exactly ONE component: the turbo row's one-click
-    // lift. The publisher-direct four say so per row (no silent nothing).
-    await expect(page.locator('[data-wizard-fetch="lightx2v-fl2v-turbo-8"]')).toHaveCount(1, { timeout: 10_000 })
-    await expect(page.locator('[data-wizard-fetch-license]')).toContainText('Apache-2.0')
+    // (friction 2026-10-21) THE INSTANCE IS THE MODEL MANAGEMENT: external
+    // engines render NO models-root designation field at all.
+    await expect(page.locator('[data-wizard-designation="wizard-models-root"]')).toHaveCount(0)
+    // The catalog delivers exactly ONE component's download link: the turbo
+    // row's manual lift — the direct URL, the placement path, the license
+    // verdict. The publisher-direct four say so per row (no silent nothing).
+    const turboLink = page.locator('[data-wizard-link="lightx2v-fl2v-turbo-8"]')
+    await expect(turboLink).toHaveCount(1, { timeout: 10_000 })
+    await expect(turboLink.locator('[data-wizard-link-license]')).toContainText('Apache-2.0')
+    await expect(turboLink.locator('[data-wizard-link-url]')).toHaveAttribute('href', 'https://huggingface.co/lightx2v/Minimax-h3-Turbo/resolve/9bc1f3c0407805b00da9f762639cb435c644b2dc/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors')
+    await expect(turboLink.locator('[data-wizard-link-place]')).toContainText('models/loras/minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors')
+    await expect(turboLink.locator('[data-wizard-link-place]')).toContainText('relative to your ComfyUI folder')
+    await expect(turboLink.locator('[data-wizard-link-note]')).toContainText('does not download')
+    // NO studio-side download exists anywhere on the step: no fetch start,
+    // no consent click — the ruling's "for now" is structural.
+    await expect(page.locator('[data-wizard-fetch-start]')).toHaveCount(0)
     await expect(page.locator('[data-wizard-row-direct]')).toHaveCount(4)
 
-    // D7: the fetch is GATED until a models root verifies.
-    const turboFetch = page.locator('[data-wizard-fetch="lightx2v-fl2v-turbo-8"]')
-    await expect(turboFetch).toHaveAttribute('data-fetch-gated', 'true')
-    await expect(page.locator('[data-wizard-fetch-gated-copy]')).toBeVisible()
-
-    // Designate a scratch models root; the field verifies EXISTENCE (the
-    // studio's own fs/check against the real dir) and the gate opens.
-    await page.locator('[data-wizard-designation-input="wizard-models-root"]').fill(scratchRoot)
-    await page.locator('[data-wizard-designation-verify="wizard-models-root"]').click()
-    await expect(page.locator('[data-wizard-designation-verdict="wizard-models-root"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 10_000 })
-    await expect(turboFetch).toHaveAttribute('data-fetch-gated', 'false')
-    await expect(page.locator('[data-wizard-fetch-gated-copy]')).toHaveCount(0)
-
-    // W-I6: THE CLICK IS THE CONSENT — one click records the license
-    // acknowledgement (through to the real ledger) AND starts the fetch.
-    // The start itself is sabotaged: a real HuggingFace download must never
-    // begin from a journey.
-    let fetchStarts = 0
-    await page.route('**/api/lan/fetch/start', async (route) => {
-      fetchStarts += 1
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ started: true, id: 'lightx2v-fl2v-turbo-8' }) })
-    })
-    await page.locator('[data-wizard-fetch-start]').click()
-    // The click resolves on DISPATCH; the route fires when the request is
-    // actually issued (one consent round-trip later) — poll, never read.
-    await expect.poll(() => fetchStarts, { timeout: 10_000 })
-      .toBe(1)
-    await expect.poll(async () => {
-      const read = (await (await request.get('/api/lan/settings')).json()) as { settings: { fetch?: { consents?: Record<string, unknown> } } }
-      return read.settings.fetch?.consents?.['lightx2v-fl2v-turbo-8'] ? 'recorded' : null
-    }, { timeout: 10_000 }).toBe('recorded')
-    // The honest settling copy: the studio cannot make the engine see the
-    // file — it names where weights land and what must happen next.
-    await expect(page.locator('[data-wizard-fetch-settling]')).toBeVisible()
-
-    // REVIEW F1, arm one — PLACED BUT NOT LISTED: the weights appear at the
-    // CONFIGURED models root (the entry's exact path; the engine still lists
-    // nothing). The catalog's own 'present' state arrives on its next poll —
-    // no refresh clicked — and must kill the fetch affordance (GONE, not
-    // disabled: a re-arm invites a second consent) while the settling truth
-    // holds.
-    const studioFile = 'minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors'
-    fs.mkdirSync(path.join(configuredRoot, 'loras'), { recursive: true })
-    fs.writeFileSync(path.join(configuredRoot, 'loras', studioFile), 'journey placeholder — never a real download\n')
-    await expect(turboFetch.locator('[data-wizard-fetch-start]')).toHaveCount(0, { timeout: 10_000 })
-    await expect(page.locator('[data-wizard-fetch-settling]')).toBeVisible()
-
-    // REVIEW F1, arm two — THE REMOUNT: the refresh's scan unmounts this
-    // step and destroys every piece of component-local memory (the started
-    // map included). The catalog-derived landed state survives it by
-    // construction — the button stays gone and the truth stays visible.
-    await page.locator('[data-wizard-refresh]').click()
-    await expect(componentRows).toHaveCount(5, { timeout: 20_000 })
-    await expect(turboFetch.locator('[data-wizard-fetch-start]')).toHaveCount(0)
-    await expect(page.locator('[data-wizard-fetch-settling]')).toBeVisible()
-
-    // The engine "sees" the weight: pre-placed in the designated root's
-    // loras folder, the mirror's listing swapped (the real engine's folder
-    // re-scan), then the STEP'S OWN refresh re-reads the engine.
-    fs.mkdirSync(path.join(scratchRoot, 'loras'), { recursive: true })
-    fs.writeFileSync(path.join(scratchRoot, 'loras', turboFile), 'journey placeholder — never a real download\n')
+    // The user follows the link themselves: the weight lands where the
+    // engine reads it (the placement path's folder shape), the engine's own
+    // listing swaps (the real engine's folder re-scan), and the STEP'S OWN
+    // refresh re-reads the engine — the row flips to detected-and-selected
+    // and DETECTION RETIRES THE LINK.
+    fs.mkdirSync(path.join(engineModelsRoot, 'loras'), { recursive: true })
+    fs.writeFileSync(path.join(engineModelsRoot, 'loras', turboFile), 'journey placeholder — never a real download\n')
     await mirrorJson(mirrorPort, '/__control', { method: 'POST', body: JSON.stringify({ modelListings: { loras: [turboFile] } }) })
     await page.locator('[data-wizard-refresh]').click()
     const turboRow = page.locator('[data-wizard-model-row="Turbo 8"]')
     await expect(turboRow).toHaveAttribute('data-row-present', 'true', { timeout: 20_000 })
+    await expect(turboRow).toHaveAttribute('data-row-selected', 'true')
+    await expect(turboRow.locator('[data-wizard-row-selected]')).toContainText('Selected')
     await expect(turboRow.locator('[data-wizard-row-name]')).toHaveText(turboFile)
-    // The identity vocabulary: no digest is served, so name-suspected —
-    // and the interim word stays reserved for an in-flight digest (always
-    // false today; to7xpa7).
+    await expect(page.locator('[data-wizard-link="lightx2v-fl2v-turbo-8"]')).toHaveCount(0, { timeout: 10_000 })
+    // The identity vocabulary: no digest is served and no root can be
+    // designated on an external engine, so name-suspected — the honest cap.
     await expect(turboRow.locator('[data-wizard-row-identity]')).toContainText('name-suspected')
     await expect(turboRow.locator('[data-wizard-row-identity]')).not.toContainText('verifying bytes')
     // …and the ONE verdict re-names what STILL blocks the fresh stack.
@@ -1839,6 +1797,10 @@ test('the reworked walkthrough: the five-step walk, wizard-only, from a fresh ho
     // That finding is recorded in the task ledger; the walkthrough legs
     // hold the deterministic baseline.
     const seeded = (await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).json()) as { settings: Record<string, unknown> }
+    // (friction 2026-10-21) The models root the walk STARTS from — the
+    // external-engine walk never designates one, so the exit write must
+    // leave this value untouched (asserted at the close).
+    const seededModelRoot = String(seeded.settings.modelRoot)
     await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -1861,12 +1823,12 @@ test('the reworked walkthrough: the five-step walk, wizard-only, from a fresh ho
       if (route.request().method() === 'POST') { promptPosts += 1; order.push('prompt') }
       await route.continue()
     })
+    // (friction 2026-10-21) The fetch-consent counter stays as a NEGATIVE
+    // instrument: with no studio-side download on the Models step, the
+    // whole page life must record ZERO model-fetch consents.
     await page.route('**/api/lan/fetch/consent', async (route) => {
       if (route.request().method() === 'POST') fetchConsents += 1
       await route.continue()
-    })
-    await page.route('**/api/lan/fetch/start', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ started: true, id: 'lightx2v-fl2v-turbo-8' }) })
     })
 
     await page.goto(`http://127.0.0.1:${studioPort}/?canvas=1`)
@@ -1894,43 +1856,40 @@ test('the reworked walkthrough: the five-step walk, wizard-only, from a fresh ho
     await page.locator('[data-wizard-next]').click()
     await expect(wizard).toHaveAttribute('data-wizard-step', '1')
 
-    // ---- STEP 2 — Models (row 1): five NAMED rows, all missing with the
-    // one artifact each; the ONE blocked verdict in one voice; the turbo
-    // row's one-click fetch gated on D7.
+    // ---- STEP 2 — Models (row 1; friction 2026-10-21): five NAMED rows on
+    // the two-axis grammar, all missing with the one artifact each; the ONE
+    // blocked verdict in one voice; NO models-root designation field (the
+    // external instance is the model management) and NO fetch button — the
+    // turbo row carries the MANUAL DOWNLOAD LINK instead.
     const componentRows = page.locator('[data-wizard-components] [data-wizard-model-row]')
     await expect(componentRows).toHaveCount(5, { timeout: 20_000 })
     await expect(page.locator('[data-wizard-model-row="FL2VA"]')).toHaveAttribute('data-row-present', 'false')
+    await expect(page.locator('[data-wizard-model-row="FL2VA"] [data-wizard-row-guide]')).toContainText('Not detected')
     await expect(page.locator('[data-wizard-model-row="FL2VA"] [data-wizard-row-guide]')).toContainText('fl2va')
     await expect(page.locator('[data-wizard-verdict="blocked"]')).toContainText('FL2VA', { timeout: 10_000 })
     await expect(page.locator('[data-wizard-verdict]')).toHaveCount(1)
     await expect(page.locator('[data-wizard-row-direct]')).toHaveCount(4)
-    const turboFetch = page.locator('[data-wizard-fetch="lightx2v-fl2v-turbo-8"]')
-    await expect(turboFetch).toHaveAttribute('data-fetch-gated', 'true')
-    await expect(page.locator('[data-wizard-fetch-gated-copy]')).toBeVisible()
-    // D7, models root: the virgin home prefills EMPTY (the studio-home
-    // default never poses as engine-visible — W-C1's dead end), the
-    // designation is existence-verified, and the gate opens.
-    await expect(page.locator('[data-wizard-designation-input="wizard-models-root"]')).toHaveValue('')
-    await page.locator('[data-wizard-designation-input="wizard-models-root"]').fill(modelsRoot)
-    await page.locator('[data-wizard-designation-verify="wizard-models-root"]').click()
-    await expect(page.locator('[data-wizard-designation-verdict="wizard-models-root"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 10_000 })
-    await expect(turboFetch).toHaveAttribute('data-fetch-gated', 'false')
-    // W-I6: the click IS the consent — the ledger write passes through (its
-    // own route, never a settings POST), the start is sabotaged.
-    await page.locator('[data-wizard-fetch-start]').click()
-    await expect.poll(() => fetchConsents, { timeout: 10_000 }).toBe(1)
-    await expect(page.locator('[data-wizard-fetch-settling]')).toBeVisible()
-    // The engine "sees" the weight: the file planted in the DESIGNATED
-    // root's loras folder, the mirror's listing swapped (the real engine's
-    // folder re-scan), the step's own refresh re-reads the engine.
+    await expect(page.locator('[data-wizard-designation="wizard-models-root"]')).toHaveCount(0)
+    const turboLink = page.locator('[data-wizard-link="lightx2v-fl2v-turbo-8"]')
+    await expect(turboLink).toHaveCount(1, { timeout: 10_000 })
+    await expect(turboLink.locator('[data-wizard-link-url]')).toHaveAttribute('href', /huggingface\.co\/lightx2v\/Minimax-h3-Turbo\/resolve\//)
+    await expect(turboLink.locator('[data-wizard-link-place]')).toContainText('models/loras/')
+    await expect(page.locator('[data-wizard-fetch-start]')).toHaveCount(0)
+    // The user fetches it themselves (the link's own instruction): the file
+    // planted where the engine reads, the mirror's listing swapped (the
+    // real engine's folder re-scan), the step's own refresh re-reads the
+    // engine — the row flips to detected-and-selected and the link retires.
     fs.mkdirSync(path.join(modelsRoot, 'loras'), { recursive: true })
     fs.writeFileSync(path.join(modelsRoot, 'loras', turboFile), 'journey placeholder — never a real download\n')
     await mirrorJson(mirrorPort, '/__control', { method: 'POST', body: JSON.stringify({ modelListings: { loras: [turboFile] } }) })
     await page.locator('[data-wizard-refresh]').click()
     const turboRow = page.locator('[data-wizard-model-row="Turbo 8"]')
     await expect(turboRow).toHaveAttribute('data-row-present', 'true', { timeout: 20_000 })
+    await expect(turboRow).toHaveAttribute('data-row-selected', 'true')
+    await expect(turboRow.locator('[data-wizard-row-selected]')).toContainText('Selected')
     await expect(turboRow.locator('[data-wizard-row-name]')).toHaveText(turboFile)
     await expect(turboRow.locator('[data-wizard-row-identity]')).toContainText('name-suspected')
+    await expect(page.locator('[data-wizard-link="lightx2v-fl2v-turbo-8"]')).toHaveCount(0)
     // The verdict re-names what STILL blocks (FL2VA is publisher-direct) —
     // still exactly one, still one voice.
     await expect(page.locator('[data-wizard-verdict="blocked"]')).toContainText('FL2VA', { timeout: 10_000 })
@@ -1988,16 +1947,18 @@ test('the reworked walkthrough: the five-step walk, wizard-only, from a fresh ho
     await page.locator('[data-wizard-next]').click()
     await expect(wizard).toHaveAttribute('data-wizard-step', '4')
 
-    // ---- STEP 5 — First prompt (rows 5/6): the fetch flip made the tier
-    // REAL — the cost preview reads minutes-class; the exit summary speaks
-    // exactly what the one-motion write will carry.
+    // ---- STEP 5 — First prompt (rows 5/6): the manual placement made the
+    // tier REAL — the cost preview reads minutes-class; the exit summary
+    // speaks exactly what the one-motion write will carry (the models root
+    // is NOT carried: an external engine designates no root in the walk —
+    // friction 2026-10-21).
     const preview = page.locator('[data-wizard-cost-preview]')
     await expect(preview).toContainText('Fast · 8-step')
     await expect(preview).toContainText('8 steps')
     await expect(preview).toContainText('minutes-class')
     await expect(page.locator('[data-wizard-exit-item="comfyUrl"]')).toHaveAttribute('data-carried', 'true')
     await expect(page.locator('[data-wizard-exit-item="comfyUrl"]')).toContainText(mirrorUrl)
-    await expect(page.locator('[data-wizard-exit-item="modelRoot"]')).toHaveAttribute('data-carried', 'true')
+    await expect(page.locator('[data-wizard-exit-item="modelRoot"]')).toHaveAttribute('data-carried', 'false')
     await expect(page.locator('[data-wizard-exit-item="customNodesDir"]')).toHaveAttribute('data-carried', 'true')
     await expect(page.locator('[data-wizard-exit-item="lanKeys"]')).toHaveAttribute('data-carried', 'true')
     await expect(page.locator('[data-wizard-exit-item="lanKeys"]')).toContainText(String(freeLanPort))
@@ -2071,11 +2032,11 @@ test('the reworked walkthrough: the five-step walk, wizard-only, from a fresh ho
     await expect(page.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
     await page.locator('[data-wizard-next]').click()
     await expect(wizard).toHaveAttribute('data-wizard-step', '1')
-    // The models-root designation is prefilled from the exit's write and
-    // re-verifies (verification is re-earned, never presumed).
-    await expect(page.locator('[data-wizard-designation-input="wizard-models-root"]')).toHaveValue(modelsRoot, { timeout: 15_000 })
-    await page.locator('[data-wizard-designation-verify="wizard-models-root"]').click()
-    await expect(page.locator('[data-wizard-designation-verdict="wizard-models-root"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 10_000 })
+    // (friction 2026-10-21) The external engine renders NO models-root
+    // designation — the turbo row the pass-1 placement flipped reads
+    // detected-and-selected, FL2VA still blocks, and the verdict is one.
+    await expect(page.locator('[data-wizard-designation="wizard-models-root"]')).toHaveCount(0)
+    await expect(page.locator('[data-wizard-model-row="Turbo 8"]')).toHaveAttribute('data-row-present', 'true', { timeout: 15_000 })
     await expect(page.locator('[data-wizard-verdict="blocked"]')).toContainText('FL2VA', { timeout: 10_000 })
     await expect(page.locator('[data-wizard-verdict]')).toHaveCount(1)
     await page.locator('[data-wizard-next]').click()
@@ -2115,8 +2076,12 @@ test('the reworked walkthrough: the five-step walk, wizard-only, from a fresh ho
     // counters show the whole page life never made a second settings POST.
     const afterSkip = (await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).json()) as { settings: Record<string, unknown> }
     expect(afterSkip.settings.comfyUrl).toBe(mirrorUrl)
-    expect(afterSkip.settings.modelRoot).toBe(modelsRoot)
+    // (friction 2026-10-21) The external-engine walk designates NO models
+    // root — the exit write leaves the seeded root untouched (the engine
+    // instance manages its models).
+    expect(String(afterSkip.settings.modelRoot)).toBe(seededModelRoot)
     expect((afterSkip.settings.engine as Record<string, unknown>).externalCustomNodesDir).toBe(customNodesDir)
+    expect(fetchConsents, 'the whole two-pass walk: ZERO model-fetch consents — no studio-side download exists').toBe(0)
     expect(settingsSaves, 'the whole two-pass walk: still exactly ONE settings POST').toBe(1)
     expect(launcherWrites, 'the whole two-pass walk: still exactly ONE launcher write').toBe(1)
     // And the skip latch holds across reload — the walk never nags. (The
@@ -2409,11 +2374,8 @@ test('the uncataloged extra: wizard → submit unchanged, the catalog ABSENT vs 
           name: row.querySelector('[data-wizard-row-name]')?.textContent ?? '',
           identity: row.querySelector('[data-wizard-row-identity]')?.textContent ?? '',
           guide: row.querySelector('[data-wizard-row-guide]')?.textContent ?? '',
-          fetch: row.querySelector('[data-wizard-fetch]')
-            ? {
-                id: row.querySelector('[data-wizard-fetch]')!.getAttribute('data-wizard-fetch'),
-                gated: row.querySelector('[data-wizard-fetch]')!.getAttribute('data-fetch-gated'),
-              }
+          link: row.querySelector('[data-wizard-link]')
+            ? { id: row.querySelector('[data-wizard-link]')!.getAttribute('data-wizard-link') }
             : null,
         }))
         return { rows, verdict: document.querySelector('[data-wizard-verdict]')?.textContent ?? '' }
@@ -2473,28 +2435,31 @@ test('the uncataloged extra: wizard → submit unchanged, the catalog ABSENT vs 
   expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
 })
 
-/** (to7xpa7, task CT7, spec §7 AC-1/AC-2/AC-4) THE HEADLINE WALK — the
- *  quartet and the soup on the mirror, one boot, three phases:
+/** (to7xpa7, task CT7, spec §7 AC-1/AC-2/AC-4; phase B re-homed by the
+ *  friction ruling of 2026-10-21) THE HEADLINE WALK — the quartet and the
+ *  soup on the mirror, one boot, three phases:
  *
- *  A. AC-4 (the cap, BEFORE any designation): the quartet-renamed profile
- *     lists the four renamed checkpoints; the studio's configured root IS
- *     the scratch models root (bytes readable), but no digest can ever
- *     start pre-designation — attachIdentities never enqueues (settled-
- *     cache lookups only, server/modelIdentity.ts) and the wizard's
- *     identify ask is designation-gated (FirstRunWizard.tsx) — so every
- *     present row reads name-suspected, the FL2VA row reads MISSING (the
- *     renamed name is invisible to the ladder), and over a bounded negative
- *     window no 'hash-confirmed' ever appears. The turbo fetch view renders
- *     GATED — the cap keeps the affordance (N1: removal rides byte evidence
- *     only).
- *  B. AC-1 (the designation turns hashing on): designate the scratch models
- *     root through the landed D7 field; the step's identify trigger hashes
- *     what the engine lists; the rows FLIP to hash-confirmed (expect.poll —
- *     the named condition is the digest settle + the store merge), the
- *     verdict line reads Ready, the merged-pick offer names the hybrid, and
- *     NO fetch row renders for any present component.
- *  C. AC-2 (the soup): the video-VAE row names the official artifact and
- *     narrates the duplicate candidates; the T=1-NAMED liar's label — the
+ *  A. AC-4 (the cap, with NO designation possible): the quartet-renamed
+ *     profile lists the four renamed checkpoints; the studio's configured
+ *     root IS the scratch models root (bytes readable), but no digest can
+ *     ever start unasked — attachIdentities never enqueues (settled-cache
+ *     lookups only, server/modelIdentity.ts) and the wizard's identify ask
+ *     is designation-gated while the external-engine walk renders NO
+ *     designation field at all (friction 2026-10-21: the instance is the
+ *     model management) — so every present row reads name-suspected, the
+ *     FL2VA row reads MISSING (the renamed name is invisible to the
+ *     ladder), the PRESENT turbo row renders no download link (detection
+ *     retires it at any evidence), and over a bounded negative window no
+ *     'hash-confirmed' ever appears.
+ *  B. AC-1 (the ASK turns hashing on — re-homed off the dead designation):
+ *     POST the identify route directly for the listed files (any surface
+ *     may ask; the wizard's own trigger is managed-only now), wait for the
+ *     digests to settle, then Refresh — the scan attaches the settled
+ *     verdicts and the rows FLIP to hash-confirmed, the verdict line reads
+ *     Ready, the merged-pick offer names the hybrid, and NO download link
+ *     renders for any present component.
+ *  C. AC-2 (the soup): the video-VAE row names the official artifact with
+ *     its alternates clearly secondary; the T=1-NAMED liar's label — the
  *     identity block every per-file surface renders — names the VIDEO VAE
  *     (the wizard renders per-SLOT labels only, so the liar's own label is
  *     asserted at the identify route, the payload the labels derive from;
@@ -2581,8 +2546,11 @@ test('the quartet resolves by hash, the soup collapses, remote stays honest (to7
       await expect(identity, `AC-4: ${label} reads name-suspected pre-designation`).toContainText('name-suspected', { timeout: 20_000 })
       await expect(identity, `AC-4: ${label} carries no interim marker (nothing is in flight)`).not.toContainText('verifying bytes')
     }
-    await expect(page.locator('[data-wizard-fetch="lightx2v-fl2v-turbo-8"]')).toHaveCount(1, { timeout: 10_000 })
-    await expect(page.locator('[data-wizard-fetch="lightx2v-fl2v-turbo-8"]')).toHaveAttribute('data-fetch-gated', 'true')
+    // (friction 2026-10-21) The turbo row is DETECTED (name-suspected) —
+    // detection retires the download link at any evidence, and the external
+    // engine renders NO models-root designation field at all.
+    await expect(page.locator('[data-wizard-link]')).toHaveCount(0, { timeout: 10_000 })
+    await expect(page.locator('[data-wizard-designation="wizard-models-root"]')).toHaveCount(0)
     await expect(page.locator('[data-wizard-verdict]')).toHaveAttribute('data-wizard-verdict', 'blocked', { timeout: 10_000 })
     // The negative window IS the assertion (the settle-or-poll convention):
     // three samples across the step's own 2s poll cadence — no surface may
@@ -2593,17 +2561,28 @@ test('the quartet resolves by hash, the soup collapses, remote stays honest (to7
       await page.waitForTimeout(2_000)
     }
 
-    // ---- PHASE B (AC-1): designate through the landed D7 field; the rows
-    // flip as the digests settle and the store re-derives (the named
-    // condition of the poll below); the verdict reads Ready; the hybrid
-    // names itself; no fetch row survives for a present component.
-    const designation = page.locator('[data-wizard-designation-input="wizard-models-root"]')
-    await expect(designation).toHaveValue(engineModelsRoot, { timeout: 15_000 })
-    await page.locator('[data-wizard-designation-verify="wizard-models-root"]').click()
-    await expect(page.locator('[data-wizard-designation-verdict="wizard-models-root"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 15_000 })
-    // The named condition: the digest settle through the identify route +
-    // mergeModelIdentities — the FL2VA row can only read hash-confirmed
-    // once the renamed master's BYTES identify it (no name rule sees it).
+    // ---- PHASE B (AC-1, re-homed 2026-10-21): the wizard can no longer
+    // designate a models root on an external engine (the field is gone —
+    // the instance is the model management), so the ASK is the trigger:
+    // POST the identify route directly for the listed files (any surface
+    // may), let the digests settle, then Refresh — the scan attaches the
+    // settled verdicts and the rows flip. The first ask answers the interim
+    // vocabulary (verifying rides name-suspected); the poll's named
+    // condition is the SETTLED answer (no verifying marker anywhere).
+    const askIdentify = async () => (await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/models/identify`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ files: world.files.map((file) => ({ kind: file.kind, name: file.name })) }),
+    })).json()) as { results?: Array<{ identity?: { verifying?: boolean } }> }
+    await expect.poll(async () => {
+      const answer = await askIdentify()
+      const results = answer.results ?? []
+      return results.length > 0 && results.every((result) => result.identity?.verifying !== true) ? 'settled' : null
+    }, { timeout: 60_000 }).toBe('settled')
+    await page.locator('[data-wizard-refresh]').click()
+    // The named condition: the scan's attachment of the settled digests —
+    // the FL2VA row can only read hash-confirmed once the renamed master's
+    // BYTES identify it (no name rule sees it).
     await expect.poll(async () => {
       const present = await fl2vaRow.getAttribute('data-row-present')
       const identity = await fl2vaRow.locator('[data-wizard-row-identity]').textContent().catch(() => null)
@@ -2621,19 +2600,20 @@ test('the quartet resolves by hash, the soup collapses, remote stays honest (to7
     await expect(mergedOffer, 'AC-1: the offer carries the human sentence — family + artifact + variant + quant').toContainText('minimax-h3 · hybrid · smhfacct-b25-49 · int8')
     await expect(page.locator(`[data-wizard-merged-pick="${HYBRID}"]`)).toBeVisible()
     await expect(fl2vaRow.locator('[data-wizard-row-name]'), 'AC-1: the lane checkpoint is the renamed FL2VA master, never the hybrid').toContainText('aurora_master')
-    // No fetch suggestion for any present file: the one mapped row
-    // (turbo-8) is suppressed by hash-confirmed presence — zero fetch rows.
-    await expect(page.locator('[data-wizard-fetch]'), 'AC-1: no fetch row renders for any present component').toHaveCount(0, { timeout: 10_000 })
+    // No download link for any present file: every component is detected
+    // (FL2VA through its bytes) — zero link rows on the whole step.
+    await expect(page.locator('[data-wizard-link]'), 'AC-1: no download link renders for any present component').toHaveCount(0, { timeout: 10_000 })
 
     // ---- PHASE C (AC-2): the soup. The video-VAE row names the official
-    // artifact and narrates its duplicate candidates; the T=1-named liar's
-    // own label names the VIDEO VAE — asserted at the identify route (the
+    // artifact with its duplicates as alternates; the T=1-named liar's own
+    // label names the VIDEO VAE — asserted at the identify route (the
     // payload every per-file label derives from; the digests settled in
     // phase B, so the route answers from the cache).
     const vvaeRow = page.locator('[data-wizard-model-row="Video VAE"]')
     await expect(vvaeRow.locator('[data-wizard-row-name]')).toContainText('minimax_h3_video_vae_fp16.safetensors')
     await expect(vvaeRow.locator('[data-wizard-row-identity]')).toContainText('hash-confirmed')
-    await expect(vvaeRow.locator('[data-wizard-row-narration]'), 'AC-2: the row narrates the duplicate candidates').toContainText('4 other candidates')
+    await expect(vvaeRow.locator('[data-wizard-row-alternates]'), 'AC-2: the row carries its duplicate candidates as clearly-secondary alternates').toContainText('Also detected (not selected)')
+    await expect(vvaeRow.locator('[data-wizard-alternate]'), 'AC-2: all four other soup files render as alternates').toHaveCount(4)
     await expect.poll(async () => {
       try {
         const answer = await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/models/identify`, {
@@ -2751,9 +2731,10 @@ test('--setup re-runs the walk from any terminal (task 9, spec §4)', async ({ p
     await expect(wizard).toBeVisible({ timeout: 30_000 })
     await page.locator('[data-wizard-next]').click()
     await expect(wizard).toHaveAttribute('data-wizard-step', '1')
-    await expect(page.locator('[data-wizard-designation-input="wizard-models-root"]')).toHaveValue(modelsRoot, { timeout: 15_000 })
-    await page.locator('[data-wizard-designation-verify="wizard-models-root"]').click()
-    await expect(page.locator('[data-wizard-designation-verdict="wizard-models-root"]')).toHaveAttribute('data-verdict', 'exists', { timeout: 15_000 })
+    // (friction 2026-10-21) The external engine renders NO models-root
+    // designation field — the re-opened walk's Models step is registry
+    // truth only.
+    await expect(page.locator('[data-wizard-designation="wizard-models-root"]')).toHaveCount(0)
     // Mid-walk the request still stands — only a terminal state acks it (a
     // background tab that merely SHOWS the walk must not eat the request).
     expect((await setupRead(portB)).setupRequested).toBe(true)

@@ -41,7 +41,19 @@ import { CanvasSessionContext } from './sessionContext'
 import { WIZARD_REOPEN_EVENT } from './FirstRunNotice'
 import { DesignationField } from './DesignationField'
 import { chainSettingsDefaults } from './generation'
-import { DIGEST_INTERIM_COPY, fetchLanded, modelsStepRows, type ComponentFetchView, type ModelsStepRow } from './wizardModels'
+import {
+  ALTERNATES_LEAD_COPY,
+  ALTERNATE_SELECT_COPY,
+  DIGEST_INTERIM_COPY,
+  LINK_PLACE_ABSOLUTE_COPY,
+  LINK_PLACE_RELATIVE_COPY,
+  LINK_ROW_NOTE_COPY,
+  MISSING_LEAD_COPY,
+  SELECTED_CHIP_COPY,
+  fetchLanded,
+  modelsStepRows,
+  type ModelsStepRow,
+} from './wizardModels'
 import {
   LAN_HOST_LAN_COPY,
   LAN_HOST_LOCAL_COPY,
@@ -262,7 +274,6 @@ export function FirstRunWizard({ scrim = false }: { scrim?: boolean }) {
       stack={stack}
       gate={modelsGate(walk)}
       settings={settings}
-      modelRootIsDefault={modelRootIsDefault}
       modelsRoot={walk.modelsRoot}
       onModelsRoot={(next) => updateWalk((current) => ({ ...current, modelsRoot: next }))}
       onOverridePick={pickOverride}
@@ -428,23 +439,28 @@ function EngineStep(props: {
   </div>
 }
 
-/** Step 2 — the Models step (spec §2.2, task 5). The bare counts are dead:
- *  every component renders NAMED truth (the resolved file verbatim, its
- *  source layer, presence, the canonical hint, any refusal, the make-visible
- *  guidance), the step carries ONE verdict in one voice (h3Stack's
- *  stackVerdictText — the same predicate the engine chip reads, at the text
- *  lane; the pills themselves are quiet while this step speaks), the
- *  models-root designation rides Task 3's DesignationField seam, and a
- *  component the fetch catalog can deliver renders a ONE-CLICK fetch row —
- *  license verdict ON the row, the click IS the consent (W-I6). Identity
- *  labels come from the closed vocabulary and flip LIVE (to7xpa7): on
- *  step-entry with a verified models root the step asks the identify route
- *  for every named file AND every registry file of the rows' kinds (CT7's
- *  name-invisible widening — a renamed checkpoint no ladder can name is
- *  the rung's whole reason), merges the verdicts through the session
- *  store, and re-asks while any block still wears `verifying` — the
- *  reserved interim word rides the per-row marker first, the whole-step
- *  flag as the degraded fallback. A hash-confirmed hybrid renders the
+/** Step 2 — the Models step (spec §2.2, task 5; reshaped by the friction
+ *  rulings of 2026-10-21). The bare counts are dead: every component
+ *  renders NAMED truth on TWO axes the maintainer asked to read at a
+ *  glance — DETECTED vs MISSING (the engine's own registry), and inside a
+ *  detected row the SELECTED pick (what generation will use) vs its
+ *  ALTERNATES (clearly secondary, one click to select instead where the
+ *  override seam exists). The step carries ONE verdict in one voice
+ *  (h3Stack's stackVerdictText; the pills are quiet while this step
+ *  speaks). A MISSING component the fetch catalog covers renders a MANUAL
+ *  DOWNLOAD LINK — the direct URL plus the placement path — because the
+ *  studio does NOT download models ("the comfy instance should be the
+ *  model management"): no click, no consent, no gate, and NO models-root
+ *  designation field at all on an external engine. Managed engines keep
+ *  the standing designation (the studio owns that checkout; its absolute
+ *  path also spells the link rows' placement). Identity labels come from
+ *  the closed vocabulary and flip LIVE (to7xpa7): with a verified models
+ *  root (managed) the step asks the identify route for every named file
+ *  AND every registry file of the rows' kinds (CT7's name-invisible
+ *  widening), merges the verdicts through the session store, and re-asks
+ *  while any block still wears `verifying` — on an EXTERNAL engine no root
+ *  is ever designated, so the honest name-suspected cap (AC-4) is the
+ *  step's whole vocabulary there. A hash-confirmed hybrid renders the
  *  merged-pick affordance (one click sets ONLY the merged override). */
 function ModelsStep(props: {
   models: ReturnType<typeof useSessionStore.getState>['models']
@@ -452,39 +468,25 @@ function ModelsStep(props: {
   stack: ReturnType<typeof h3StackReport> | null
   gate: StepGate
   settings: AppSettings
-  modelRootIsDefault: boolean
   modelsRoot: DestinationState
   onModelsRoot(next: DestinationState): void
   onOverridePick(slot: string, name: string): void
   onRefresh(): void
 }) {
-  const { models, scanning, stack, gate, settings, modelRootIsDefault, modelsRoot, onModelsRoot, onOverridePick, onRefresh } = props
-  // The served fetch catalog, polled while the step shows — the rows read
-  // live state (license, in-flight, present). OUR clicks are tracked
-  // separately: the fetched-but-not-yet-listed copy rides that truth.
+  const { models, scanning, stack, gate, settings, modelsRoot, onModelsRoot, onOverridePick, onRefresh } = props
+  // The engine mode decides the step's shape (friction 2026-10-21): an
+  // external instance IS the model management — registry rows + link
+  // pointers, nothing else; the managed checkout keeps the designation.
+  const managed = settings.engine.mode === 'managed'
+  // The served fetch catalog, polled while the step shows — the LINK rows
+  // read their download URLs and placement roots from it (no click state:
+  // nothing on this step can start a download).
   const [catalog, setCatalog] = useState<FetchEntryStatus[] | null>(null)
-  const [started, setStarted] = useState<Record<string, boolean>>({})
-  const [fetchErrors, setFetchErrors] = useState<Record<string, string>>({})
-  const seenInFlight = useRef<Record<string, boolean>>({})
-  const settled = useRef<Record<string, boolean>>({})
-  const refreshRef = useRef(onRefresh)
-  useEffect(() => { refreshRef.current = onRefresh })
   useEffect(() => {
     let cancelled = false
     const poll = () => window.monoka.listFetchCatalog().then((answer) => {
       if (cancelled) return
       setCatalog(answer.entries)
-      // The settled flip: an in-flight entry that stopped being in-flight
-      // has landed (or failed) — ONE engine re-scan so the row can flip
-      // named-and-present. Bounded once per entry; the refresh itself
-      // unmounts this step (the scanning guard) and the poll dies with it.
-      for (const entry of answer.entries) {
-        if (seenInFlight.current[entry.id] && entry.inFlight !== true && !settled.current[entry.id]) {
-          settled.current[entry.id] = true
-          refreshRef.current()
-        }
-        seenInFlight.current[entry.id] = entry.inFlight === true
-      }
     }).catch(() => { if (!cancelled) setCatalog(null) })
     void poll()
     const timer = window.setInterval(() => { void poll() }, 2000)
@@ -497,8 +499,8 @@ function ModelsStep(props: {
   // flag only covers present rows the payload carried no block for.
   const digestInFlight = useMemo(() => models.some((model) => model.identity?.verifying === true), [models])
   const rows = useMemo(
-    () => (stack ? modelsStepRows(models, stack, catalog ?? [], { designated, digestInFlight }) : []),
-    [models, stack, catalog, designated, digestInFlight],
+    () => (stack ? modelsStepRows(models, stack, catalog ?? [], { digestInFlight, engineMode: settings.engine.mode, modelsRoot: modelsRoot.value }) : []),
+    [models, stack, catalog, digestInFlight, settings, modelsRoot],
   )
   // The identify ask: every file the rows name (resolved + candidates) PLUS
   // every registry file of the rows' KINDS (CT7, 2026-10-20 — the
@@ -525,7 +527,7 @@ function ModelsStep(props: {
       parts.push(key)
     }
     for (const row of rows) {
-      for (const name of [row.name, ...row.candidates.names]) admit(row.kind, name)
+      for (const name of [row.selectedName, ...row.candidates.names]) admit(row.kind, name)
     }
     const rowKinds = new Set(rows.map((row) => row.kind))
     for (const model of models) {
@@ -571,45 +573,33 @@ function ModelsStep(props: {
     return () => { cancelled = true }
   }, [designated, digestKey])
 
-  // W-I6: ONE click = the consent ledger record (the same ledger the
-  // library writes) + the start. Failures render on the row — never a
-  // silent success.
-  const startFetch = async (view: ComponentFetchView) => {
-    setFetchErrors((current) => ({ ...current, [view.entryId]: '' }))
-    try {
-      await window.monoka.setFetchConsent(view.entryId, true)
-      const answer = await window.monoka.startFetch(view.entryId)
-      if (!answer.started) throw new Error('The fetch could not be started.')
-      setStarted((current) => ({ ...current, [view.entryId]: true }))
-      dbg('wizard.models.fetch', { id: view.entryId, started: true })
-    } catch (error) {
-      setFetchErrors((current) => ({ ...current, [view.entryId]: error instanceof Error ? error.message : String(error) }))
-    }
-  }
-
+  // (friction 2026-10-21) The models-root designation is MANAGED-ONLY on
+  // this step: an external engine instance is its own model management, so
+  // no designation field renders for it at all — the registry rows and the
+  // manual link pointers are the whole step. The managed checkout keeps
+  // the standing designation (the studio owns that checkout's models
+  // directory; the link rows' placement spells its absolute path too).
   const designationHint = modelsRoot.value
     ? 'Prefilled from the walk\'s honest sources — verify it, or type the path your engine actually reads.'
-    : settings.engine.mode === 'managed'
-      ? 'No discoverable checkout — type the absolute path to the models directory the managed engine reads.'
-      : modelRootIsDefault
-        ? 'The shipped models root is the studio-home default, and it never prefills as engine-visible — fetched weights would land where an external engine never reads. Type the absolute path your engine reads; the studio verifies only disks it can see.'
-        : 'Type the absolute path to the models directory your engine reads — the studio can verify only disks it can see (same machine or shared storage).'
+    : 'No discoverable checkout — type the absolute path to the models directory the managed engine reads.'
 
   return <div className="canvas-wizard-step" data-wizard-registry>
-    <p className="canvas-wizard-lede">The engine's own inventory, named per component. Every row states what is present, what is missing, and the one fix — the step carries one verdict.</p>
+    <p className="canvas-wizard-lede">{managed
+      ? 'The engine\'s own inventory, named per component — the studio manages this checkout\'s models. Every row states what is detected, what is selected, and what is missing; the step carries one verdict.'
+      : 'The engine\'s own inventory, named per component — the instance manages its models; the studio reads the registry and points at downloads. Every row states what is detected, what is selected, and what is missing.'}</p>
     <GateLine gate={gate} />
     {gate.verdict === 'verified' && stack && <VerdictLine verdict={stackVerdictText(stack)} />}
-    <DesignationField
+    {managed && <DesignationField
       id="wizard-models-root"
       label="Models root"
-      question="Where should fetched weights land so your engine sees them?"
+      question="Where is the models directory the managed engine reads?"
       hint={designationHint}
       state={modelsRoot}
       onChange={onModelsRoot}
-    />
+    />}
     <ul className="canvas-wizard-components" data-wizard-components>
       {rows.map((row) => (
-        <ComponentRow key={row.label} row={row} started={started[row.fetch?.entryId ?? ''] === true} fetchError={row.fetch ? fetchErrors[row.fetch.entryId] : ''} designated={designated} modelsRootValue={modelsRoot.value} studioRoot={settings.modelRoot} onPick={onOverridePick} onFetch={() => { if (row.fetch) void startFetch(row.fetch) }} />
+        <ComponentRow key={row.label} row={row} onPick={onOverridePick} />
       ))}
     </ul>
     <div className="canvas-wizard-row">
@@ -628,62 +618,67 @@ function VerdictLine({ verdict }: { verdict: StackVerdict }) {
   </p>
 }
 
-/** One component row: the named truth, the identity label, the picked/
- *  ambiguous narration with the one-click designate, and (when the catalog
- *  delivers the component) the one-click fetch row. */
+/** One component row on the two-axis grammar (friction 2026-10-21): the
+ *  DETECTED/MISSING axis first (the engine's own listing answers it), then
+ *  inside a detected row the SELECTED pick vs its ALTERNATES (clearly
+ *  secondary; one click to select instead where the override seam exists).
+ *  A missing row the fetch catalog covers renders the MANUAL DOWNLOAD LINK
+ *  — the ruling's "give the user the download link, tell them where to
+ *  place it". There is no fetch button, no consent, no gate: the studio
+ *  does not download models, and the endgame is downloads routed THROUGH
+ *  the ComfyUI instance itself (its own model machinery fetches into its
+ *  own correct folders — "more hands off, more better"); until that lands,
+ *  this pointer is the honest now. */
 function ComponentRow(props: {
   row: ModelsStepRow
-  started: boolean
-  fetchError: string
-  designated: boolean
-  modelsRootValue: string
-  studioRoot: string
   onPick(slot: string, name: string): void
-  onFetch(): void
 }) {
-  const { row, started, fetchError, designated, modelsRootValue, studioRoot } = props
-  // The post-click truth derives from the CATALOG (fetchLanded: placed/
-  // present), not component memory — a mid-walk scan remounts this step and
-  // destroys `started`, but the catalog state survives and the re-scan/
-  // restart truth with it (review F1). `started` only bridges the ≤2s gap
-  // between the click and the next catalog poll.
-  const fetched = row.fetch !== null && (started || fetchLanded(row.fetch))
+  const { row } = props
   // (to7xpa7) The merged-pick affordance stands down once the hybrid IS the
   // row's resolution (the merged override applied through the stack report)
   // — the offer's job is done, the row already names it.
-  const mergedOffer = row.mergedPickOffer && row.name !== row.mergedPickOffer.name ? row.mergedPickOffer : null
-  return <li className="canvas-wizard-component" data-wizard-model-row={row.label} data-row-present={row.present ? 'true' : 'false'} data-row-narration={row.narration}>
+  const mergedOffer = row.mergedPickOffer && row.selectedName !== row.mergedPickOffer.name ? row.mergedPickOffer : null
+  return <li className="canvas-wizard-component" data-wizard-model-row={row.label} data-row-present={row.present ? 'true' : 'false'} data-row-selected={row.present ? 'true' : 'false'} data-row-narration={row.narration}>
     <strong>{row.label}</strong>
     {row.present
-      ? <span data-wizard-row-name>{basenameOf(row.name)}{row.source === 'override' ? ' — your pick' : ''}</span>
-      : <span className="canvas-wizard-warn" data-wizard-row-guide>{row.makeVisible}.</span>}
+      ? <>
+        <span className="canvas-wizard-ok" data-wizard-row-selected><Check size={13} /> {SELECTED_CHIP_COPY}</span>
+        <span data-wizard-row-name>{basenameOf(row.selectedName)}{row.source === 'override' ? ' — your pick' : ''}</span>
+      </>
+      : <span className="canvas-wizard-warn" data-wizard-row-guide>{MISSING_LEAD_COPY}{row.makeVisible}.</span>}
     {row.present && <span className="canvas-wizard-hint" data-wizard-row-identity>{row.identity}{row.interim ? ` — ${DIGEST_INTERIM_COPY}` : ''}</span>}
     {row.refusal && <p className="canvas-wizard-warn" data-wizard-row-refusal>{row.refusal}</p>}
-    {row.narration === 'picked' && <span className="canvas-wizard-hint" data-wizard-row-narration>Resolved to {basenameOf(row.name)} — {row.candidates.others.length} other candidate{row.candidates.others.length === 1 ? '' : 's'} matched{row.overrideSlot ? '; override in Settings if wrong.' : '.'}</span>}
-    {row.narration === 'ambiguous' && row.overrideSlot && <div data-wizard-row-picks>
-      <span className="canvas-wizard-hint">Several files match loosely — the studio picked {basenameOf(row.candidates.picked)}. Name the right one; the walk holds the pick and the exit persists it:</span>
-      <div className="canvas-wizard-picks">
-        {row.candidates.names.map((name) => (
-          <button key={name} type="button" className="chip canvas-chip" data-wizard-pick={name} disabled={name === row.candidates.picked} onClick={() => props.onPick(row.overrideSlot, name)}>{basenameOf(name)}</button>
-        ))}
-      </div>
+    {row.alternates.length > 0 && <div className="canvas-wizard-picks" data-wizard-row-alternates>
+      <span className="canvas-wizard-hint">{ALTERNATES_LEAD_COPY}</span>
+      {row.alternates.map((alternate) => (
+        <span key={alternate.name} className="canvas-wizard-hint" data-wizard-alternate={alternate.name}>
+          {alternate.basename}
+          {row.overrideSlot
+            ? <button type="button" className="chip canvas-chip" data-wizard-pick={alternate.name} onClick={() => props.onPick(row.overrideSlot, alternate.name)}>{ALTERNATE_SELECT_COPY}</button>
+            : null}
+        </span>
+      ))}
     </div>}
     {mergedOffer && <div className="canvas-wizard-picks" data-wizard-merged-offer={mergedOffer.name}>
       <span className="canvas-wizard-hint">Hash-confirmed hybrid present: {basenameOf(mergedOffer.name)} ({mergedOffer.summary}).</span>
       <button type="button" className="chip chip--accent canvas-chip" data-wizard-merged-pick={mergedOffer.name} onClick={() => props.onPick('merged', mergedOffer.name)}>Use as the merged pick — one click</button>
     </div>}
-    {row.fetch
-      ? <div className="canvas-wizard-fetch" data-wizard-fetch={row.fetch.entryId} data-fetch-gated={row.fetch.gated ? 'true' : 'false'}>
-        <span className="canvas-wizard-hint" data-wizard-fetch-license>License {row.fetch.licenseSpdx}{row.fetch.licenseNote ? ` — ${row.fetch.licenseNote}` : ''}{row.fetch.sizeClass ? ` · ${row.fetch.sizeClass} download` : ''}.</span>
-        {!fetched && <button type="button" className="chip chip--accent canvas-chip" data-wizard-fetch-start disabled={row.fetch.gated || row.fetch.inFlight} onClick={props.onFetch}>
-          {row.fetch.inFlight ? 'Fetching…' : 'Fetch and place — one click'}
-        </button>}
-        {row.fetch.gated && <span className="canvas-wizard-warn" data-wizard-fetch-gated-copy>Verify a models root above first — fetches need a verified destination.</span>}
-        {fetched && !row.present && <span className="canvas-wizard-hint" data-wizard-fetch-settling>The fetch is underway or landed — weights place into {studioRoot}{row.fetch.destRoot ? `/${row.fetch.destRoot}` : ''}. The engine lists new weights only after its own folder re-scan or a restart (v0.34.0 serves no /refresh); refresh here once it sees the file.</span>}
-        {fetched && designated && modelsRootValue !== studioRoot && <span className="canvas-wizard-hint">Your designation ({modelsRootValue}) becomes the studio's models root when the walk completes — until then fetched weights land in the configured root.</span>}
-        {fetchError && <span className="canvas-wizard-warn" data-wizard-fetch-error>{fetchError}</span>}
+    {(() => {
+      const link = row.link
+      if (!link) return !row.present
+        ? <span className="canvas-wizard-hint" data-wizard-row-direct>No catalog row delivers this component — place it from its publisher where the engine reads it, then refresh.</span>
+        : null
+      return <div className="canvas-wizard-fetch" data-wizard-link={link.entryId}>
+        <span className="canvas-wizard-hint" data-wizard-link-license>License {link.licenseSpdx}{link.licenseNote ? ` — ${link.licenseNote}` : ''}{link.sizeClass ? ` · ${link.sizeClass} download` : ''}.</span>
+        {link.files.map((file) => (
+          <div className="canvas-wizard-row" key={file.name} data-wizard-link-file={file.name}>
+            <a className="chip canvas-chip" data-wizard-link-url={file.url} href={file.url} target="_blank" rel="noreferrer">Download {file.name}</a>
+            <span className="canvas-wizard-hint" data-wizard-link-place>{link.placeKind === 'absolute' ? LINK_PLACE_ABSOLUTE_COPY : LINK_PLACE_RELATIVE_COPY} <code>{file.placeAt}</code></span>
+          </div>
+        ))}
+        <span className="canvas-wizard-hint" data-wizard-link-note>{LINK_ROW_NOTE_COPY}</span>
       </div>
-      : !row.present && <span className="canvas-wizard-hint" data-wizard-row-direct>No catalog row delivers this component — place it from its publisher where the engine reads it, then refresh.</span>}
+    })()}
   </li>
 }
 
