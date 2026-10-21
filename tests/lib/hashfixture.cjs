@@ -66,4 +66,93 @@ function fixtureBytes(label, size) {
   return Buffer.concat([head, Buffer.alloc(Math.max(0, size - head.length), 0x2f)])
 }
 
-module.exports = { sha256Of, writeFixtureFile, catalogRow, writeCatalogFile, fixtureBytes }
+// ---------------------------------------------------------------------------
+// the nongating suite's world (task to7xpa7, spec §5/§7): the §7 quartet +
+// the soup as small synthetic files, ONE inventory both arms share
+// ---------------------------------------------------------------------------
+
+/** The world's inventory: name → { kind, label, size, row }. `row` null = NO
+ *  catalog row describes the file (the uncataloged arms). Names are chosen
+ *  against the resolution ladders' rules on purpose:
+ *  - the quartet masters are NEEDLE-FREE (`master_*` matches no ladder tier
+ *    and no fallback needle) — the null catalog leaves their slots EMPTY and
+ *    only the hash rung can resolve them (the renamed-quartet flip arm);
+ *  - the soup carries a BYTE-IDENTICAL alias copy (same sha → the loader's
+ *    one-row-per-sha rule groups them into ONE row carrying both basenames)
+ *    plus a distinct-sha variant — the H-M2 tie-break's data;
+ *  - the liar TE's row exists but its aliases exclude its own basename —
+ *    hash confirmation upgrades it to the 32B class while its name still
+ *    says 4B (the byte-evidence-corrects-a-lying-name flip arm);
+ *  - the second turbo-8 row's aliases likewise exclude its own basename —
+ *    H-M2's aliased-basename tie-break must keep the official name the pick;
+ *  - `foreign_repack_9000` matches nothing anywhere (the uncataloged extra). */
+const NONGATING_INVENTORY = [
+  { name: 'masters/master_alpha.safetensors', kind: 'diffusion_models', label: 'nng-fl2va-alpha', size: 4096,
+    row: { artifact: 'fl2va', variant: 'pruned-int8-convrot', quant: 'int8', dtype: 'int8', aliases: ['minimax_h3_fl2va_pruned_int8_convrot.safetensors'] } },
+  { name: 'masters/master_beta.safetensors', kind: 'diffusion_models', label: 'nng-ref2va-beta', size: 4097,
+    row: { artifact: 'ref2va', variant: 'pruned-int8-convrot', quant: 'int8', dtype: 'int8', aliases: ['minimax_h3_ref2va_pruned_int8_convrot.safetensors'] } },
+  { name: 'masters/master_gamma.safetensors', kind: 'diffusion_models', label: 'nng-viggle-gamma', size: 4098,
+    row: { artifact: 'viggle', variant: 'motion', quant: 'bf16', dtype: 'bf16', aliases: ['minimax_h3_viggle_motion.safetensors'] } },
+  { name: 'masters/master_delta.safetensors', kind: 'diffusion_models', label: 'nng-hybrid-delta', size: 4099,
+    row: { artifact: 'hybrid', variant: 'merged', quant: 'int8', dtype: 'int8', aliases: ['minimax_h3_hybrid_merge.safetensors'] } },
+  { name: 'foreign_repack_9000.safetensors', kind: 'diffusion_models', label: 'nng-foreign', size: 4100, row: null },
+  { name: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors', kind: 'text_encoders', label: 'nng-te-official', size: 8192,
+    row: { artifact: 'text-encoder', variant: 'nvfp4-awq', quant: 'nvfp4', dtype: 'fp4', aliases: ['qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors'] } },
+  { name: 'qwen3vl_4b_vision_pack.safetensors', kind: 'text_encoders', label: 'nng-te-wrongclass', size: 2048, row: null },
+  { name: 'qwen3vl_4b_liar_master.safetensors', kind: 'text_encoders', label: 'nng-te-liar', size: 8193,
+    row: { artifact: 'text-encoder', variant: 'nvfp4-awq', quant: 'nvfp4', dtype: 'fp4', aliases: ['minimax_h3_qwen3vl_32b_nvfp4.safetensors'] } },
+  { name: 'minimax_h3_video_vae_fp16.safetensors', kind: 'vae', label: 'nng-vvae-official', size: 6144,
+    row: { artifact: 'video-vae', variant: 'fp16', quant: 'fp16', dtype: 'fp16', aliases: ['minimax_h3_video_vae_fp16.safetensors', 'minimax_h3_video_vae_fp16__cmb_alias.safetensors'] } },
+  { name: 'minimax_h3_video_vae_fp16__cmb_alias.safetensors', kind: 'vae', label: 'nng-vvae-official', size: 6144, row: 'shared' },
+  { name: 'minimax_h3_video_vae_q8.safetensors', kind: 'vae', label: 'nng-vvae-q8', size: 3072,
+    row: { artifact: 'video-vae', variant: 'q8', quant: 'q8', dtype: 'int8', aliases: ['minimax_h3_video_vae_q8.safetensors'] } },
+  { name: 'minimax_h3_audio_vae_fp32.safetensors', kind: 'vae', label: 'nng-avae', size: 2049,
+    row: { artifact: 'audio-vae', variant: 'fp32', quant: 'fp32', dtype: 'fp32', aliases: ['minimax_h3_audio_vae_fp32.safetensors'] } },
+  { name: 'minimax_h3_t1_image_vae_fp16.safetensors', kind: 'vae', label: 'nng-t1vae', size: 2050,
+    row: { artifact: 't1-image-vae', variant: 'fp16', quant: 'fp16', dtype: 'fp16', aliases: ['minimax_h3_t1_image_vae_fp16.safetensors'] } },
+  { name: 'taeh3_decoder.safetensors', kind: 'vae_approx', label: 'nng-taeh3', size: 1024,
+    row: { artifact: 'preview-decoder', variant: 'alpha', quant: 'fp16', dtype: 'fp16', aliases: ['taeh3_decoder.safetensors'] } },
+  { name: 'minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors', kind: 'loras', label: 'nng-turbo8-official', size: 5120,
+    row: { artifact: 'turbo-8', variant: 'comfyui-bf16', quant: 'bf16', dtype: 'bf16', aliases: ['minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors'] } },
+  { name: 'renamed_speed_rider.safetensors', kind: 'loras', label: 'nng-turbo8-renamed', size: 5121,
+    row: { artifact: 'turbo-8', variant: 'lightx2v-8step', quant: 'bf16', dtype: 'bf16', aliases: ['lightx2v_fl2v_turbo_8step_v1.0_comfyui.safetensors'] } },
+]
+
+/** Writes the whole world under `dir` (per-kind roots + real bytes + the
+ *  strict fixture catalog) and returns { roots, catalogPath, files } —
+ *  `files` is the inventory as ModelFile-shaped plain objects ({ name, kind,
+ *  bytes }), the SAME list the null arm feeds the seams raw and the primed
+ *  arm feeds through the identity engine. No env is touched; the catalog
+ *  PATH is returned for the caller to inject. */
+function nongatingWorld(dir) {
+  const roots = {
+    diffusion_models: path.join(dir, 'diffusion_models'),
+    text_encoders: path.join(dir, 'text_encoders'),
+    vae: path.join(dir, 'vae'),
+    vae_approx: path.join(dir, 'vae_approx'),
+    loras: path.join(dir, 'loras'),
+  }
+  const files = []
+  const rows = []
+  const byLabel = new Map()
+  for (const entry of NONGATING_INVENTORY) {
+    const content = fixtureBytes(entry.label, entry.size)
+    const written = writeFixtureFile(roots[entry.kind], entry.name, content)
+    files.push({ name: entry.name, kind: entry.kind, bytes: written.bytes })
+    byLabel.set(entry.label, written)
+    if (entry.row === 'shared') continue // the byte-identical soup alias: its twin's row already carries its basename
+    if (entry.row) {
+      rows.push(catalogRow({
+        sha256: written.sha,
+        sizeBytes: written.bytes,
+        kind: entry.kind,
+        identity: { family: 'minimax-h3', artifact: entry.row.artifact, variant: entry.row.variant, quant: entry.row.quant, dtype: entry.row.dtype },
+        aliases: entry.row.aliases,
+      }))
+    }
+  }
+  const catalogPath = writeCatalogFile(dir, rows)
+  return { roots, catalogPath, files }
+}
+
+module.exports = { sha256Of, writeFixtureFile, catalogRow, writeCatalogFile, fixtureBytes, nongatingWorld }

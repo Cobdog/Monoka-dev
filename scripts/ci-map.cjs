@@ -94,6 +94,7 @@ const SUITES = {
   llm: { build: 'full', windows: false, python: false, ffmpeg: false },
   'manager-install': { build: 'full', windows: false, python: false, ffmpeg: false },
   modelidentity: { build: 'server', windows: false, python: false, ffmpeg: false },
+  nongating: { build: 'server', windows: false, python: false, ffmpeg: false },
   'notice-classes': { build: null, windows: false, python: false, ffmpeg: false },
   'overlay-behavior': { build: null, windows: false, python: false, ffmpeg: false },
   poserig: { build: null, windows: false, python: false, ffmpeg: false },
@@ -126,7 +127,7 @@ const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
 
 /** The suites that load client TS through the VM harness (scripts/lib/ts-vm.cjs). */
-const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'identitywire', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'vdn', 'wizard', 'workflows']
+const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'identitywire', 'nongating', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'vdn', 'wizard', 'workflows']
 
 /** Every vitest suite — the FULL fallback set. */
 const ALL_SUITES = Object.keys(SUITES).sort()
@@ -353,8 +354,8 @@ const RULES = [
   },
   {
     match: ['tests/lib/hashfixture.cjs'],
-    suites: ['identitywire', 'fetcher'],
-    reason: 'the identity fixtures builder (to7xpa7): writes real bytes, computes real shas, emits fixture catalogs — the identitywire suite builds its engine listings + catalog from it, and the fetcher suite\'s catalog-stamp leg (f5) builds its row from it; a helper diff runs both consumers.',
+    suites: ['identitywire', 'fetcher', 'nongating'],
+    reason: 'the identity fixtures builder (to7xpa7): writes real bytes, computes real shas, emits fixture catalogs — the identitywire suite builds its engine listings + catalog from it, the fetcher suite\'s catalog-stamp leg (f5) builds its row from it, and the nongating suite builds its whole null-vs-primed world from it (the nongatingWorld preset); a helper diff runs all three consumers.',
   },
   {
     match: ['tests/**'],
@@ -429,8 +430,8 @@ const RULES = [
   },
   {
     match: ['src/lib/h3Stack.ts'],
-    suites: ['workflows', 'enginewatch'],
-    reason: 'the H3 stack report — the workflows suite\'s override-verdict legs plus the enginewatch mirror-shaped basename-truth section (sweep #1, 68e9k17).',
+    suites: ['workflows', 'enginewatch', 'nongating'],
+    reason: 'the H3 stack report — the workflows suite\'s override-verdict legs, the enginewatch mirror-shaped basename-truth section (sweep #1, 68e9k17), and the nongating suite\'s N1/N2 string-surface diffs (to7xpa7).',
   },
   {
     match: ['src/lib/nodePackRegistry.ts'],
@@ -448,8 +449,8 @@ const RULES = [
   { match: ['src/images/session.ts'], suites: ['h3img'], reason: 'image session model (h3img suite).' },
   {
     match: ['src/lib/modelSelection.ts'],
-    suites: ['registry', 'workflows'],
-    reason: 'selection inference — loaded directly by both suites.',
+    suites: ['registry', 'workflows', 'nongating'],
+    reason: 'selection inference — loaded directly by the registry and workflows suites, and the resolution seam the nongating suite drives null-vs-primed (to7xpa7).',
   },
   {
     match: ['src/ui/statusToken.ts'],
@@ -523,6 +524,11 @@ const RULES = [
     suites: ['gallery-matrices'],
     forceE2e: true,
     reason: 'the gallery\'s state-matrix DATA (component vocabulary task 23, Flux k2q0n9s): the kit\'s matrices as data with the JUSTIFIED N/A cells as first-class entries — the gallery-matrices suite loads matrices.ts through the VM harness and proves the cross-product completeness (no silently skipped cell), the non-empty N/A reasons, the closed-matrix lockstep against the kit\'s own class modules (buttonClasses/chipClasses/progressClasses/noticeClasses/saveStatusClasses/handoffClasses), the named component inventory, the T15 initial + T22 consumer-note homes, and the source pins (renderer arms, the registry append, the vision-scenario registration). HONEST LIMIT: the rendered cells, the real hover()/focus drivers, and the interactive demos only execute in a browser, so these diffs force the e2e leg (e2e/gallery.spec.ts owns the per-cell computed-style + DOM pins at ?gallery=1).',
+  },
+  {
+    match: ['src/lib/modelOverrides.ts'],
+    suites: ['workflows', 'effective-row-classes', 'nongating'],
+    reason: 'the override seam on its own line (first match wins over the module list below): the workflows suite\'s override legs, the effective-row-classes P08 resolver mapping, and the nongating suite\'s pick-survey arms (to7xpa7 — the seam N1 pins never gate).',
   },
   {
     match: [

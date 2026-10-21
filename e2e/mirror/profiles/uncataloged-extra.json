@@ -1,0 +1,31 @@
+{
+  "id": "uncataloged-extra",
+  "label": "Stock H3 stack plus one uncataloged file",
+  "description": "The non-gating leg's mirror (to7xpa7, spec §5 N2): the stock-h3 registry PLUS one extra diffusion model no catalog row describes (foreign_repack_9000 — needle-free name, no aliases). The walk must treat it exactly like its absence: it enters no row, no verdict, no graph — the A/B against a catalog-less boot pins that byte for byte.",
+  "systemStats": {
+    "system": { "comfyui_version": "v0.34.0", "python_version": "3.12.3", "os": "linux" },
+    "devices": [{ "name": "NVIDIA GeForce RTX 4090", "type": "cuda", "index": 0, "vram_total": 25757220864, "vram_free": 24000000000, "torch_version": "2.8.0+cu128" }]
+  },
+  "objectInfoExtras": {},
+  "modelListings": {
+    "diffusion_models": [
+      "H3/ssd/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "H3/ssd/minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "foreign_repack_9000.safetensors",
+      "music3_dit_int8.safetensors"
+    ],
+    "text_encoders": [
+      "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "music3_text_encoder_bf16.safetensors"
+    ],
+    "vae": [
+      "minimax_h3_video_vae_fp16.safetensors",
+      "minimax_h3_audio_vae_fp32.safetensors"
+    ],
+    "loras": [
+      "minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"
+    ]
+  },
+  "customNodeDirs": [],
+  "render": { "steps": 10, "stepDelayMs": 420, "outputKind": "video", "emitBinaryPreviews": true }
+}

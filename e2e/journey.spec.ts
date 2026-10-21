@@ -2290,6 +2290,185 @@ test('the walkthrough timing on the mirror: launch → submit → the landed cli
   expect(mirrorLog).not.toContain('EADDRINUSE')
 })
 
+/** Masks the graph's per-submit randomness so the A/B compares SHAPE: any
+ *  seed-class key collapses to a token (the wizard's submit draws seeds per
+ *  run), and any string embedding a UUID or an epoch-scale timestamp
+ *  collapses too (the chain id and the submit time ride filename_prefix
+ *  paths — per-instance identity, never graph shape). */
+function maskGraphVolatile(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(maskGraphVolatile)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, inner]) => [
+      key,
+      /seed/i.test(key) ? '<seed>' : maskGraphVolatile(inner),
+    ]))
+  }
+  if (typeof value === 'string' && (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(value) || /\d{12,}/.test(value))) return '<volatile>'
+  return value
+}
+
+/** (to7xpa7, spec §5 N2) THE UNCATALOGED EXTRA'S WALK — the strongest A/B
+ *  available in e2e. The same journey runs twice against the same mirror
+ *  inventory (the stock-h3 registry PLUS one diffusion model no catalog row
+ *  describes), differing ONLY in the catalog the studio boots with:
+ *  MONOKA_HASH_CATALOG pointed at a nonexistent path (the loader's
+ *  documented degradation — the EMPTY catalog) vs unset (the upward walk
+ *  finds the shipped catalog). The wizard's Models-step output and the
+ *  submitted graph must be byte-shape-identical and no surface may name the
+ *  foreign file. The equality is HONEST because the label roads converge:
+ *  a no-block payload (absent catalog) and a name-suspected block (present
+ *  catalog, unconfigured roots — name-shape verdicts only) render the SAME
+ *  'name-suspected' label; the unit suite pins that convergence, this leg
+ *  pins the whole walk riding it. */
+test('the uncataloged extra: wizard → submit unchanged, the catalog ABSENT vs PRESENT A/B (to7xpa7)', async ({ page }) => {
+  test.setTimeout(300_000)
+  const problems: string[] = []
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+  const FOREIGN = 'foreign_repack_9000.safetensors'
+
+  const reservePort = async () => {
+    const holder = http.createServer(() => undefined)
+    const port = await new Promise<number>((resolve) => holder.listen(0, '127.0.0.1', () => resolve((holder.address() as AddressInfo).port)))
+    await new Promise<void>((resolve) => holder.close(() => resolve()))
+    return port
+  }
+
+  let promptPosts = 0
+  const runArm = async (catalogEnv: Record<string, string>) => {
+    promptPosts = 0
+    const home = makeScratchDir(path.join(os.tmpdir(), 'monoka-e2e-nongating-'))
+    const studioPort = await reservePort()
+    const mirrorPort = await reservePort()
+    const mirror: ChildProcess = spawn('node', [path.join(process.cwd(), 'e2e/mirror/fakeEngineServer.mjs'), '--port', String(mirrorPort), '--profile', 'e2e/mirror/profiles/uncataloged-extra.json'], { stdio: ['ignore', 'pipe', 'pipe'] })
+    let mirrorLog = ''
+    mirror.stdout?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+    mirror.stderr?.on('data', (chunk: Buffer) => { mirrorLog += chunk.toString() })
+    const studio = spawn('node', ['dist-server/server/index.js'], {
+      env: { ...process.env, MONOKA_HOME: home, MONOKA_LAN_PORT: String(studioPort), MONOKA_NO_HTTPS: '1', ...catalogEnv },
+      stdio: ['ignore', 'ignore', 'ignore'],
+    })
+    const stopStudio = async () => {
+      if (studio.exitCode !== null || studio.signalCode !== null) return
+      studio.kill('SIGTERM')
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => { studio.kill('SIGKILL'); resolve() }, 5_000)
+        studio.once('exit', () => { clearTimeout(timer); resolve() })
+      })
+    }
+    const mirrorUrl = `http://127.0.0.1:${mirrorPort}`
+    try {
+      await expect.poll(async () => {
+        try { await mirrorJson(mirrorPort, '/system_stats'); return true } catch { return false }
+      }, { timeout: 15_000 }).toBe(true)
+      await expect.poll(async () => {
+        try { return (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).ok } catch { return false }
+      }, { timeout: 30_000 }).toBe(true)
+      const seeded = (await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`)).json()) as { settings: Record<string, unknown> }
+      await fetch(`http://127.0.0.1:${studioPort}/api/lan/settings`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ settings: { ...seeded.settings, comfyUrl: mirrorUrl, testedComfyVersion: 'mirror-profile', engine: { ...(seeded.settings.engine as Record<string, unknown>), mode: 'external' } } }),
+      })
+      await page.unroute('**/api/lan/prompt')
+      await page.route('**/api/lan/prompt', async (route) => {
+        if (route.request().method() === 'POST') promptPosts += 1
+        await route.continue()
+      })
+
+      await page.goto(`http://127.0.0.1:${studioPort}/?canvas=1`)
+      await expect(page.locator('[data-canvas-root]')).toHaveAttribute('data-phase', 'ready', { timeout: 30_000 })
+      const wizard = page.locator('[data-canvas-wizard]')
+      await expect(wizard).toBeVisible({ timeout: 30_000 })
+
+      // Engine step: the harness baseline's url, verified, through.
+      const urlField = page.locator('[data-wizard-comfy-url]')
+      await expect(urlField).toHaveValue(mirrorUrl)
+      await page.locator('[data-wizard-test]').click()
+      await expect(page.locator('[data-wizard-connected]')).toBeVisible({ timeout: 20_000 })
+      await page.locator('[data-wizard-next]').click()
+      await expect(wizard).toHaveAttribute('data-wizard-step', '1')
+
+      // Models step: five rows, the one verdict, and the settle marker that
+      // IS the A/B hinge — the identity label reads name-suspected on BOTH
+      // roads (the absent catalog's no-block fallback vs the present
+      // catalog's name-shape block). Then the step's whole output is
+      // serialized from the DOM, verbatim.
+      const componentRows = page.locator('[data-wizard-components] [data-wizard-model-row]')
+      await expect(componentRows).toHaveCount(5, { timeout: 20_000 })
+      await expect(page.locator('[data-wizard-model-row="FL2VA"]')).toHaveAttribute('data-row-present', 'true', { timeout: 20_000 })
+      await expect(page.locator('[data-wizard-model-row="FL2VA"] [data-wizard-row-identity]')).toContainText('name-suspected', { timeout: 20_000 })
+      await expect(page.locator('[data-wizard-verdict]')).toHaveCount(1, { timeout: 10_000 })
+      const step = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('[data-wizard-components] [data-wizard-model-row]')].map((row) => ({
+          label: row.getAttribute('data-wizard-model-row'),
+          present: row.getAttribute('data-row-present'),
+          name: row.querySelector('[data-wizard-row-name]')?.textContent ?? '',
+          identity: row.querySelector('[data-wizard-row-identity]')?.textContent ?? '',
+          guide: row.querySelector('[data-wizard-row-guide]')?.textContent ?? '',
+          fetch: row.querySelector('[data-wizard-fetch]')
+            ? {
+                id: row.querySelector('[data-wizard-fetch]')!.getAttribute('data-wizard-fetch'),
+                gated: row.querySelector('[data-wizard-fetch]')!.getAttribute('data-fetch-gated'),
+              }
+            : null,
+        }))
+        return { rows, verdict: document.querySelector('[data-wizard-verdict]')?.textContent ?? '' }
+      })
+      const wizardText = (await wizard.textContent()) ?? ''
+      expect(wizardText, 'no wizard surface names the uncataloged file').not.toContain(FOREIGN)
+
+      // The rest of the walk, unchanged: packs → LAN keep-current → prompt.
+      await page.locator('[data-wizard-next]').click()
+      await expect(wizard).toHaveAttribute('data-wizard-step', '2')
+      await expect(page.locator('[data-wizard-can-generate="yes"]')).toContainText('nothing to do here', { timeout: 10_000 })
+      await page.locator('[data-wizard-next]').click()
+      await expect(wizard).toHaveAttribute('data-wizard-step', '3')
+      await page.locator('[data-wizard-lan-keep-click]').click()
+      await page.locator('[data-wizard-next]').click()
+      await expect(wizard).toHaveAttribute('data-wizard-step', '4')
+      await page.locator('[data-wizard-prompt-input]').fill('a lighthouse over a black sea, the uncataloged extra walk')
+      await page.locator('[data-wizard-generate]').click()
+      await expect.poll(() => promptPosts, { timeout: 30_000 }).toBe(1)
+      await expect.poll(async () => {
+        const jobs = ((await (await fetch(`http://127.0.0.1:${studioPort}/api/lan/jobs`)).json()) as { jobs: Array<{ status: string }> }).jobs
+        return jobs.some((job) => job.status === 'completed')
+      }, { timeout: 90_000 }).toBe(true)
+
+      // The submitted graph, from the mirror's history (one prompt, one
+      // record; the graph rides prompt[2]).
+      const history = (await mirrorJson(mirrorPort, '/history')) as Record<string, MirrorHistoryEntry>
+      const records = Object.values(history)
+      expect(records.length, 'exactly one prompt reached the mirror').toBe(1)
+      const graph = records[0]?.prompt?.[2]
+      expect(graph, 'the mirror recorded the submitted graph').toBeTruthy()
+      return { step, graph, mirrorLog }
+    } finally {
+      await stopStudio()
+      mirror.kill('SIGINT')
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => { mirror.kill('SIGKILL'); resolve() }, 5_000)
+        mirror.once('exit', () => { clearTimeout(timer); resolve() })
+      })
+      removeAllScratchDirs()
+      await page.unroute('**/api/lan/prompt')
+    }
+  }
+
+  // THE ABSENT ARM first: a deliberately nonexistent catalog path — the
+  // degradation contract's EMPTY answer, one honest log line at boot.
+  const absentHome = makeScratchDir(path.join(os.tmpdir(), 'monoka-e2e-nongating-absent-'))
+  const absentCatalogPath = path.join(absentHome, 'absent-catalog.json')
+  const absent = await runArm({ MONOKA_HASH_CATALOG: absentCatalogPath })
+  const present = await runArm({})
+
+  // THE A/B: the Models step's output byte-shape-identical; the submitted
+  // graph byte-shape-identical past the per-submit seed.
+  expect(present.step).toEqual(absent.step)
+  expect(maskGraphVolatile(present.graph)).toEqual(maskGraphVolatile(absent.graph))
+  for (const arm of [absent, present]) expect(arm.mirrorLog, 'the mirror bound its port cleanly').not.toContain('EADDRINUSE')
+  expect(problems, `page errors: ${problems.join(' | ')}`).toEqual([])
+})
+
 /** (task 9, spec §4 — the D4 ruling) THE --setup RESET FROM ANY TERMINAL:
  *  a shell flag re-opens the walk server-owned — any terminal, any browser,
  *  any profile. Two standalone studio boots on ONE scratch home: boot A
