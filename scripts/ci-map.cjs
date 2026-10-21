@@ -112,6 +112,7 @@ const SUITES = {
   statusToken: { build: null, windows: false, python: false, ffmpeg: false },
   'stylelint-guard': { build: null, windows: false, python: false, ffmpeg: false },
   takemath: { build: null, windows: false, python: false, ffmpeg: false },
+  takefilmstrip: { build: 'server', windows: false, python: false, ffmpeg: true },
   takeviewer: { build: null, windows: false, python: false, ffmpeg: false },
   vdn: { build: null, windows: false, python: false, ffmpeg: false },
   wizard: { build: null, windows: false, python: false, ffmpeg: false },
@@ -120,16 +121,16 @@ const SUITES = {
 
 /** Every suite that boots dist-server/server/index.js directly (route-level
  *  integration): the honest fan-out for the server seams. */
-const BOOTING = ['animation-export', 'animation-routes', 'datasets', 'documents', 'fetcher', 'filmstrip', 'identitywire', 'instance', 'jobwatcher', 'lanprep', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const BOOTING = ['animation-export', 'animation-routes', 'datasets', 'documents', 'fetcher', 'filmstrip', 'identitywire', 'instance', 'jobwatcher', 'lanprep', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage', 'takefilmstrip']
 
 /** Every suite drawing scratch ports through tests/lib/ports.cjs. */
-const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'identitywire', 'instance', 'jobwatcher', 'lanprep', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage']
+const PORT_USERS = ['animation-export', 'animation-rendering', 'animation-routes', 'datasets', 'documents', 'engine-process', 'fetcher', 'filmstrip', 'identitywire', 'instance', 'jobwatcher', 'lanprep', 'launcher', 'llm', 'manager-install', 'realtime', 'resync', 'runtime', 'storage', 'takefilmstrip']
 /** Every kit suite reading src/styles.css through the shared sheet reader
  *  (tests/lib/styleSheet.cjs — the near-term-A parser consolidation). */
 const SHEET_USERS = ['button-classes', 'chip-classes', 'effective-row-classes', 'field-classes', 'handoff-classes', 'notice-classes', 'progressbar-classes', 'refusal-classes', 'save-status-classes', 'statusToken']
 
 /** The suites that load client TS through the VM harness (scripts/lib/ts-vm.cjs). */
-const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'identitywire', 'nongating', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'takemath', 'takeviewer', 'vdn', 'wizard', 'workflows']
+const VM_SUITES = ['camera', 'canvas', 'dockOrder', 'effective-row-classes', 'engine-families', 'enginewatch', 'gallery-matrices', 'h3img', 'handoff-classes', 'identitywire', 'nongating', 'poserig', 'refusal-classes', 'registry', 'resync', 'save-status-classes', 'takefilmstrip', 'takemath', 'takeviewer', 'vdn', 'wizard', 'workflows']
 
 /** Every vitest suite — the FULL fallback set. */
 const ALL_SUITES = Object.keys(SUITES).sort()
@@ -396,6 +397,11 @@ const RULES = [
     match: ['src/media/takeViewerModel.ts', 'src/media/TakeViewerCore.tsx', 'src/media/takeviewer.css'],
     suites: ['takeviewer'],
     reason: "the take viewer core (foelihc T2): the takeViewerModel spine — the transport machine, the scoped keymap with the T-M3 focusable-chrome guard, the source fallback, the surface gates, the zoom math — is loaded through the VM harness by the takeviewer suite. The React shell + sheet ride the same rule deliberately (no unit suite executes React — the repo's posture): their diffs re-prove the model contract the shell must not drift from, while the rendered behavior is e2e-owned (T7's journey legs) and the shell's own net stays typecheck + scoped lint.",
+  },
+  {
+    match: ['src/media/takeFilmstripModel.ts', 'src/media/TakeFilmstrip.tsx', 'src/media/takefilmstrip.css'],
+    suites: ['takefilmstrip'],
+    reason: "the filmstrip strip (foelihc T3, spec §5): the takeFilmstripModel spine — the three honest states with the spec's exact words, the linear scrub mapping (T1's pair re-exported), the press/drag/release machine, the cell tiling — is loaded through the VM harness by the takefilmstrip suite, which also pins the generation-counter no-bump at the LOADER (the real fetchFilmstrip under a stubbed OPFS: the viewer's same-key load issues no fetch) and at the ROUTE (the built server's x-monoka-filmstrip-generations stays flat across the viewer's open — hence the suite's server build + ffmpeg tiers). The React shell + sheet ride the same rule deliberately (T2's posture): rendered behavior is e2e-owned (T7).",
   },
   { match: ['src/lib/camera/**'], suites: ['camera'], reason: 'camera path model + parity goldens.' },
   { match: ['src/poserig/**'], suites: ['poserig'], reason: 'pose rig domain (logic modules; PoseRigApp.tsx rides the dir).' },

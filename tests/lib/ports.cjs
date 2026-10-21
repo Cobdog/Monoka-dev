@@ -36,6 +36,7 @@ const RANGES = {
   'animation-routes': [4640, 40],
   'animation-export': [4680, 40],
   jobwatcher: [4720, 40],
+  takefilmstrip: [4760, 40],
   instance: [6520, 40],
   resync: [6560, 40],
   lanprep: [6600, 40],

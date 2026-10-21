@@ -134,7 +134,7 @@ test('(5e) shared test infra fans out honestly', () => {
   eq(resolve(['tests/lib/ports.cjs']).suites, PORT_USERS, 'the port allocator maps to every suite that draws ranges')
   eq(resolve(['tests/lib/styleSheet.cjs']).suites, SHEET_USERS, 'the shared sheet reader maps to every kit suite that parses styles.css')
   eq(resolve(['scripts/lib/ts-vm.cjs']).suites, VM_SUITES, 'the VM harness maps to every client suite')
-  ok(PORT_USERS.length === 19, 'the port-suite inventory is the declared nineteen (manager-install joined, 0pktw5h; resync joined, 68e9k17; animation-rendering joined, k2q0n9s task 4; animation-routes joined, k2q0n9s task 5; animation-export joined, k2q0n9s task 14; jobwatcher joined, gfv5h0g; lanprep joined, 3p14abm task 7; identitywire joined, to7xpa7)')
+  ok(PORT_USERS.length === 20, 'the port-suite inventory is the declared twenty (manager-install joined, 0pktw5h; resync joined, 68e9k17; animation-rendering joined, k2q0n9s task 4; animation-routes joined, k2q0n9s task 5; animation-export joined, k2q0n9s task 14; jobwatcher joined, gfv5h0g; lanprep joined, 3p14abm task 7; identitywire joined, to7xpa7; takefilmstrip joined, foelihc T3)')
   ok(SHEET_USERS.length === 10, 'the sheet-reader inventory is the declared ten (statusToken + the nine *-classes kits, near-term A)')
 })
 

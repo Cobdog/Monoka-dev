@@ -1,0 +1,65 @@
+/* The filmstrip strip's sheet (foelihc T3, spec §5) — the sprite sheet as
+   the visual (cells tile the strip), the linear mapping as the scrub, the
+   three honest states. Per-surface sheet in the datasets.css / takeviewer.css
+   tradition: imported by TakeFilmstrip.tsx, dies with it (the modularity
+   contract). Pointer semantics live INSIDE .take-filmstrip only. */
+
+/* The strip: full width, one band of cells; the plain scrub bar IS this same
+   element in the generating/plain states (one surface, not two). */
+.take-filmstrip {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  height: 64px;
+  flex: 0 0 auto;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--color-surface-abyss);
+}
+
+/* One sheet frame per cell (the honest density — the sheet's own sample
+   count). Cells never catch the pointer: the STRIP is the scrub surface. */
+.take-filmstrip-cell {
+  flex: 1 1 0;
+  min-width: 0;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/* State 1's placeholder cell — pending, honestly labeled with the spec's
+   exact words. */
+.take-filmstrip-placeholder {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* State 2's note cell — settled, not pending (never animated, never
+   "generating"). */
+.take-filmstrip-note {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+/* The playhead: continuous across the full width (left is a % of the strip,
+   never snapped to a cell), above the cells, never a pointer target. */
+.take-filmstrip-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--warning);
+  pointer-events: none;
+}
