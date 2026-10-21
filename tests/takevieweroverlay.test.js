@@ -246,6 +246,10 @@ test('(e) the overlay\'s discipline — the layer, the selection, the remount, t
   // a regression to always-resume (dropping the `if (resume)` guard) must
   // red here, not survive to T7's e2e.
   ok(/onScrubEnd=\{\(resume\) => \{\s*if \(resume\)/.test(core), 'pin: scrub-end resumes ONLY through the resume guard (a drag begun paused stays paused)')
+  // T5-review I-2: §3's transport table lists Use this frame as a ROW control —
+  // the button must exist (U alone is not the spec's shape). Rendered only when
+  // the handoff is wired (onUseFrame), dispatching the same use-frame action.
+  ok(core.includes("dispatch('use-frame')") && core.includes('Use this frame'), 'pin: the transport row carries the Use this frame button (the keyboard map is not its only door)')
   // T4-review I-1 secondary: the overlay's chrome marks are pinned — the
   // Close button AND the chips carry data-take-viewer-chrome (the T-M3
   // guard's DOM reachability is not just the model's predicate).

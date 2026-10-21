@@ -20,7 +20,7 @@
  * missing media renders the failure vocabulary's own words.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronsLeft, ChevronsRight, Pause, Play, Repeat, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, Crosshair, Pause, Play, Repeat, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Chip } from '../ui/Chip'
 import { usePooledVideo } from './usePooledVideo'
@@ -312,6 +312,9 @@ export function TakeViewerCore({ sources, kind, meta, landingError = null, label
       <Chip variant="toggle" selected={transport.speedIndex !== 2} className="take-viewer-chip" data-take-viewer-chrome aria-label="Playback speed" onClick={() => dispatch('cycle-speed')}>
         {SPEED_STEPS[transport.speedIndex]}×
       </Chip>
+      {onUseFrame && <Button variant="icon" className="take-viewer-btn" data-take-viewer-chrome aria-label="Use this frame — fork from the paused frame (U)" title="Use this frame — fork from the paused frame (U)" onClick={() => dispatch('use-frame')}>
+        <Crosshair size={14} />
+      </Button>}
     </div>}
   </div>
 }
