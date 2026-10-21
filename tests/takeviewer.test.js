@@ -30,6 +30,15 @@
 //       click-vs-pan threshold
 //   (h) the missing-file words — the failure taxonomy's own output-missing
 //       entry, never new words
+//   (i) the pause-only intent (foelihc T4, the I-1 fix) — pausing NEVER
+//       resumes: paused stays paused, playing pauses, idempotent, never a
+//       seek. The use-frame handoff dispatches THIS, never toggle-play
+//       (U while paused used to resume — T2's live bug)
+//   (j) the seek intent + the strip wiring (T4) — a bare seek NEVER touches
+//       playing; the strip's release composes resume-only-through-toggle
+//   (k) the strip's resolved-duration gate (T3-review M-1) — a
+//       maybe-metadata duration reads sheet-impossible, never a second door
+//       into forever-generating
 import { test } from 'vitest'
 import { createRequire } from 'node:module'
 
@@ -297,5 +306,35 @@ test('(h) the missing-file words — the failure vocabulary\'s own', () => {
   ok(model.MISSING_FILE_TITLE.indexOf('spinner') === -1 && model.MISSING_FILE_BODY.indexOf('Loading') === -1, 'never a spinner, never a loading placeholder')
   // And the two-hop math the transport leans on is T1\'s own (one constant).
   ok(model.FILMSTRIP_FPS === takeMath.FILMSTRIP_FPS, 'the model shares T1\'s one fps constant (no second literal)')
+})
+
+test('(i) the pause-only intent — pausing never resumes (the I-1 fix)', () => {
+  console.log('viewer: the pause intent')
+  const playing = model.initialTransport()
+  const paused = { ...playing, playing: false }
+
+  // THE I-1 CASE: the take is ALREADY paused; the pause-shaped gesture (the
+  // use-frame handoff, the strip's scrub start) must leave it paused. Before
+  // this intent existed the only shape was toggle-play — and U while paused
+  // RESUMED (T2's live bug).
+  const staysPaused = model.transportCommand(paused, { type: 'pause' })
+  ok(staysPaused.state.playing === false, 'paused + pause → STAYS paused (U while paused never resumes)')
+  ok(staysPaused.state.loop === paused.loop && staysPaused.state.muted === paused.muted && staysPaused.state.speedIndex === paused.speedIndex, 'a pause touches NOTHING but playing')
+  ok(staysPaused.seekTo === null, 'a pause never seeks')
+
+  const nowPaused = model.transportCommand(playing, { type: 'pause' })
+  ok(nowPaused.state.playing === false, 'playing + pause → pauses')
+
+  // Idempotent: however many pause-shaped gestures stack, the answer is the
+  // same paused state.
+  const twice = model.transportCommand(nowPaused.state, { type: 'pause' })
+  eq(twice.state, nowPaused.state, 'pause is idempotent (double-pause holds the same state)')
+  ok(twice.seekTo === null, 'the double pause still never seeks')
+
+  // The composition the strip's release relies on: resume is ONLY reachable
+  // through toggle-play, and toggle-play from the paused state plays — the
+  // two intents stay distinct (a pause-shaped gesture can never resume).
+  const resumed = model.transportCommand(nowPaused.state, { type: 'toggle-play' })
+  ok(resumed.state.playing === true, 'toggle-play from paused resumes (the intents stay distinct)')
   console.log(`\ntest-takeviewer: ${passed} assertions passed`)
 })

@@ -146,6 +146,17 @@ export function endStepTarget(frameCount: number, which: 'first' | 'last'): numb
 
 export type TransportIntent =
   | { type: 'toggle-play' }
+  /** The pause-ONLY intent (foelihc T4, the I-1 fix): pause and nothing
+   *  else — idempotent (pausing while paused holds), never a seek. Every
+   *  pause-shaped gesture dispatches THIS, never toggle-play: the use-frame
+   *  handoff (§4 — U while paused must never resume) and the strip's
+   *  scrub-start (§5). Resume is reachable only through toggle-play. */
+  | { type: 'pause' }
+  /** A bare seek (the strip's continuous scrub, §5): moves the playhead and
+   *  NOTHING else — playing is never touched. A scrub press is pause + seek
+   *  as SEPARATE transactions; the release's resume decision belongs to the
+   *  drag's own wasPlaying fact, never to the seek. */
+  | { type: 'seek'; time: number }
   | { type: 'step'; direction: -1 | 1; coarse: boolean; currentTime: number; frameCount: number }
   | { type: 'seek-end'; which: 'first' | 'last'; frameCount: number }
   | { type: 'toggle-loop' }
@@ -161,6 +172,12 @@ export type TransportCommand = { state: TransportState; seekTo: number | null }
 export function transportCommand(state: TransportState, intent: TransportIntent): TransportCommand {
   if (intent.type === 'toggle-play') {
     return { state: { ...state, playing: !state.playing }, seekTo: null }
+  }
+  if (intent.type === 'pause') {
+    return { state: { ...state, playing: false }, seekTo: null }
+  }
+  if (intent.type === 'seek') {
+    return { state, seekTo: intent.time }
   }
   if (intent.type === 'step') {
     const seekTo = intent.coarse

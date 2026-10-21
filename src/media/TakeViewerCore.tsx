@@ -137,8 +137,10 @@ export function TakeViewerCore({ sources, kind, meta, landingError = null, label
   const dispatch = useCallback((action: ViewerAction) => {
     if (!actionEnabled(action, liveSurface)) return
     if (action === 'use-frame') {
-      // §4: the handoff pauses first, then hands the clamped frame anchor.
-      applyCommand(transportCommand(transportRef.current, { type: 'toggle-play' }))
+      // §4: the handoff pauses first (the PAUSE-ONLY intent — the I-1 fix:
+      // U while paused must never resume, and toggle-play did), then hands
+      // the clamped frame anchor.
+      applyCommand(transportCommand(transportRef.current, { type: 'pause' }))
       const currentTime = videoElement()?.currentTime ?? 0
       onUseFrame?.(clampToFrames(frameIndexFromTime(currentTime), frameCount))
       return
