@@ -143,6 +143,16 @@ failure. A failed `build` skips only its dependents (unit/smoke/e2e/vision).
   lying around — a stale-dist false-green hazard. A fresh build now always
   precedes them. The launcher suite (which needs dist for its real-boot
   leg) rides inside the unit phase for the same reason.
+- **A tree-mutating probe can bake a mutant dist** (foelihc T8,
+  2026-10-21): the launcher suite's real-boot leg drives `start.sh`, whose
+  `AUTO_ACT "pnpm build"` rebuilt the WEB dist mid-fan-out when a
+  modularity probe's `git checkout`s had left src mtimes fresher than dist
+  — the viewerless probe tree got baked into dist/ and the NEXT ad-hoc e2e
+  measured the wrong app until a rebuild. The gate's build-first ordering
+  covers the official path; the rule for ad-hoc work: after ANY
+  tree-mutating experiment (probes, checkouts, reverts), `pnpm build`
+  before running anything that boots dist — and treat a suddenly-alien app
+  shape in e2e as a stale-dist symptom before diagnosing the app.
 - `test:registry` proves the optimization-registry inertness contract
   against golden fixtures — regenerate deliberately
   (`pnpm test:registry:update` = `MONOKA_UPDATE_GOLDEN=1 vitest run
