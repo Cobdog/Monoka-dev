@@ -2476,13 +2476,16 @@ test('the uncataloged extra: wizard → submit unchanged, the catalog ABSENT vs 
  *  quartet and the soup on the mirror, one boot, three phases:
  *
  *  A. AC-4 (the cap, BEFORE any designation): the quartet-renamed profile
- *     lists the four renamed checkpoints, but the walk's models root is
- *     un-designated and the studio's configured root is the fresh home's
- *     default — no bytes readable, no digest enqueued, so every present row
- *     reads name-suspected, the FL2VA row reads MISSING (the renamed name
- *     is invisible to the ladder), and over a bounded negative window no
- *     'hash-confirmed' ever appears. The turbo fetch view renders GATED —
- *     the cap keeps the affordance (N1: removal rides byte evidence only).
+ *     lists the four renamed checkpoints; the studio's configured root IS
+ *     the scratch models root (bytes readable), but no digest can ever
+ *     start pre-designation — attachIdentities never enqueues (settled-
+ *     cache lookups only, server/modelIdentity.ts) and the wizard's
+ *     identify ask is designation-gated (FirstRunWizard.tsx) — so every
+ *     present row reads name-suspected, the FL2VA row reads MISSING (the
+ *     renamed name is invisible to the ladder), and over a bounded negative
+ *     window no 'hash-confirmed' ever appears. The turbo fetch view renders
+ *     GATED — the cap keeps the affordance (N1: removal rides byte evidence
+ *     only).
  *  B. AC-1 (the designation turns hashing on): designate the scratch models
  *     root through the landed D7 field; the step's identify trigger hashes
  *     what the engine lists; the rows FLIP to hash-confirmed (expect.poll —

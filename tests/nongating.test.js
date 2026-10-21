@@ -806,3 +806,169 @@ test('N2 rider (CT6 review Important-2): an orphaned catalog row obligates nothi
   const acPrimedStrings = allRefusals(acPrimed)
   eq([...acPrimedStrings].filter((string) => !acNullStrings.has(string)), [], 'rider: zero new refusal strings primed-over-null over the AC world')
 })
+
+// ---------------------------------------------------------------------------
+// task CT8 — the AC-6 guard section: the spec's grep-able invariants as
+// executable tests (one derivation, no second sha table, no raw rows on the
+// wire). Static scans + import-graph assertions, each with a CANARY arm
+// (anti-vacuity: a scanner that cannot catch a PLANTED violation proves
+// nothing about the tree — the same discipline as the arms above).
+// ---------------------------------------------------------------------------
+
+/** The CT8 scan helpers: source-tree walks with repo-relative reporting so a
+ *  failure names its file. Scope is deliberately the SOURCE trees (src/,
+ *  server/) — never dist/ or node_modules (build output mirrors whatever it
+ *  was built from; the invariant is about what is authored). */
+const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.cjs', '.mjs'])
+
+function listSourceFiles(dir) {
+  const fs = require('node:fs')
+  const found = []
+  const walk = (current) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (SOURCE_EXTENSIONS.has(path.extname(entry.name))) found.push(full)
+    }
+  }
+  walk(dir)
+  return found
+}
+
+const rel = (file) => path.relative(REPO, file)
+
+/** Every 64-hex substring (a sha256 literal in code or comment — either is a
+ *  second truth table's seed). */
+function scanHexLiterals(files) {
+  const fs = require('node:fs')
+  const hits = []
+  for (const file of files) {
+    const lines = fs.readFileSync(file, 'utf8').split('\n')
+    lines.forEach((line, index) => {
+      const match = line.match(/[0-9a-fA-F]{64}/)
+      if (match) hits.push({ file: rel(file), line: index + 1, text: line.trim().slice(0, 100) })
+    })
+  }
+  return hits
+}
+
+/** Every import/require whose specifier names server/hashCatalog (the
+ *  client-ban: any form — relative, aliased, dynamic). */
+function scanCatalogImports(files) {
+  const fs = require('node:fs')
+  const hits = []
+  for (const file of files) {
+    const lines = fs.readFileSync(file, 'utf8').split('\n')
+    lines.forEach((line, index) => {
+      if (!/\b(import|require|import\()\b/.test(line)) return
+      const specifiers = [...line.matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1])
+      if (specifiers.some((specifier) => specifier.includes('server/hashCatalog'))) {
+        hits.push({ file: rel(file), line: index + 1, text: line.trim().slice(0, 100) })
+      }
+    })
+  }
+  return hits
+}
+
+/** AC-6's wire clause, as a walk (T4's guard, re-asserted here as the clause
+ *  of record): no payload ever carries the raw catalog rows' keys. Returns
+ *  the offending trails (empty = clean). */
+function wireKeyTrails(value) {
+  const forbidden = ['sha256', 'source', 'repo', 'revision']
+  const hits = []
+  const visit = (node, trail) => {
+    if (Array.isArray(node)) {
+      node.forEach((item, index) => visit(item, `${trail}[${index}]`))
+      return
+    }
+    if (node && typeof node === 'object') {
+      for (const key of Object.keys(node)) {
+        if (forbidden.includes(key)) hits.push(`${trail}.${key}`)
+        else visit(node[key], `${trail}.${key}`)
+      }
+    }
+  }
+  visit(value, '$')
+  return hits
+}
+
+/** The files whose import/require graph names the LOCAL module (relative
+ *  specifiers only — the within-server graph). */
+function importersOf(files, moduleName) {
+  const fs = require('node:fs')
+  const importers = []
+  for (const file of files) {
+    const text = fs.readFileSync(file, 'utf8')
+    const specifiers = [...text.matchAll(/['"](\.[^'"]+)['"]/g)].map((match) => match[1])
+    if (specifiers.some((specifier) => specifier === `./${moduleName}` || specifier === `../${moduleName}` || specifier.endsWith(`/${moduleName}`))) {
+      importers.push(rel(file))
+    }
+  }
+  return importers.sort()
+}
+
+/** The files containing a literal substring (repo-relative, sorted). */
+function filesContaining(files, literal) {
+  const fs = require('node:fs')
+  return files.filter((file) => fs.readFileSync(file, 'utf8').includes(literal)).map(rel).sort()
+}
+
+test('AC-6 guard: no surface re-encodes a sha→name table — the client carries no shas and never imports the catalog', () => {
+  // The canary first: a planted 64-hex literal and a planted catalog import
+  // in a scratch source file MUST both be caught.
+  const canaryDir = makeScratchDir(path.join(require('node:os').tmpdir(), 'monoka-nongating-canary-'))
+  require('node:fs').writeFileSync(path.join(canaryDir, 'canary.ts'), [
+    "import { loadHashCatalog } from '../../server/hashCatalog'",
+    "export const PINNED = 'a629cfea8d89a071b140c6e1935dc9a23e72de6badc18975a2bb9e6d1423d76d'",
+    '',
+  ].join('\n'))
+  const canaryFiles = listSourceFiles(canaryDir)
+  eq(scanHexLiterals(canaryFiles).length, 1, 'canary: the scanner catches a planted 64-hex literal')
+  eq(scanCatalogImports(canaryFiles).length, 1, 'canary: the scanner catches a planted server/hashCatalog import')
+
+  // The real assertion over the client tree: a hardcoded sha anywhere in
+  // src/ is a second truth table's seed (h3Stack's dead parallel table, the
+  // module-head doctrine's own evidence), and an import of the catalog would
+  // route raw rows past the one seam.
+  const clientFiles = listSourceFiles(path.join(REPO, 'src'))
+  ok(clientFiles.length > 100, 'sanity: the client scan actually walked src/ (the guard is not scanning an empty tree)')
+  eq(scanHexLiterals(clientFiles), [], 'AC-6: src/ carries zero 64-hex literals — the client holds no shas at all (no second sha→name table\'s seed)')
+  eq(scanCatalogImports(clientFiles), [], 'AC-6: src/ never imports server/hashCatalog — the client-ban on the module-head doctrine, executable')
+})
+
+test('AC-6 guard: the only client transport is ModelFile.identity — no raw-row keys ride any payload, and every server identity decision flows through server/modelIdentity.ts', async () => {
+  // The wire clause of record (T4's guard re-asserted here as AC-6's): deep-
+  // walk every identity-bearing payload this suite can build for the raw row
+  // keys. The walker's canary: a planted source.repo MUST be caught.
+  eq(wireKeyTrails({ identity: { verdict: 'hash-confirmed', source: { repo: 'x/y' } } }), ['$.identity.source'], 'canary: the walker catches a planted raw-row key')
+
+  const engine = createModelIdentityEngine({
+    catalog: loadHashCatalog({ MONOKA_HASH_CATALOG: acWorld.catalogPath }),
+    hashCachePath: path.join(acScratch, 'cache', 'hash-cache-guard.json'),
+  })
+  const settings = settingsFor(acWorld.roots)
+  const routeAnswer = engine.requestIdentification(acWorld.files.map(({ name, kind }) => ({ kind, name })), settings)
+  await engine.drain()
+  const bootstrapPayload = await engine.attachIdentities(acWorld.files, settings)
+  for (const [label, payload] of [
+    ['the nongating primed payloads', primedFiles],
+    ['the nongating cap payloads', capFiles],
+    ['the AC primed payloads', acPrimed],
+    ['the AC cap payloads', acCap],
+    ['the identify route answer (designated roots)', routeAnswer.results],
+    ['the bootstrap payload (post-settle)', bootstrapPayload],
+  ]) {
+    eq(wireKeyTrails(payload), [], `AC-6 wire: ${label} carries no sha256/source/repo/revision key`)
+    ok(!/[0-9a-f]{64}/.test(JSON.stringify(payload)), `AC-6 wire: ${label} carries no sha VALUE anywhere either (aliases are basenames, verdicts are words)`)
+  }
+
+  // The one-derivation import graph, enumerated: the catalog's server
+  // importers are exactly the seam plus the fetcher's B3 install-record
+  // stamp; the seam's consumers are exactly core's routes and the animation
+  // delegation; the verdict vocabulary is CONSTRUCTED in one module alone.
+  const serverFiles = listSourceFiles(path.join(REPO, 'server'))
+  ok(serverFiles.length > 20, 'sanity: the server scan actually walked server/')
+  eq(importersOf(serverFiles, 'hashCatalog'), ['server/fetcher.ts', 'server/modelIdentity.ts'], 'AC-6 seam: the catalog is opened by exactly the identity seam + the fetcher\'s install-record stamp (B3) — nothing else')
+  eq(importersOf(serverFiles, 'modelIdentity'), ['server/animation/models.ts', 'server/core.ts'], 'AC-6 seam: every server consumer of the identity seam is enumerated (core\'s routes + the animation delegation) — every identity decision flows through server/modelIdentity.ts')
+  eq(filesContaining(serverFiles, "'hash-confirmed'"), ['server/modelIdentity.ts'], 'AC-6 one derivation: the verdict vocabulary is constructed in exactly one server module')
+})
