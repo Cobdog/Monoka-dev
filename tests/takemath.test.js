@@ -93,7 +93,7 @@ test('(c) THE TWO-HOP CONTRACT (T-C1) — the position is seconds, never frames'
 
 test('(d) timecode — `S.FF · frame n of N` at the 24 fps convention', () => {
   eq(takeMath.timecodeLabel(72, 121), '3.00 · frame 72 of 121', 'timecode: frame 72 of 121 renders 3.00 · frame 72 of 121')
-  eq(takeMath.timecodeLabel(0, 121), '0.00 · frame 0 of 121', 'timecode: frame 0 pads seconds to two digits')
+  eq(takeMath.timecodeLabel(0, 121), '0.00 · frame 0 of 121', 'timecode: frame 0 keeps bare integer seconds (the spec examples 3.00/0.00 govern — never 00.00)')
   eq(takeMath.timecodeLabel(84, 121), '3.12 · frame 84 of 121', 'timecode: the frames part is frame mod 24 (84 → .12)')
   eq(takeMath.timecodeLabel(73, 121), '3.01 · frame 73 of 121', 'timecode: single-digit frames pad to FF')
   eq(takeMath.timecodeLabel(264, 289), '11.00 · frame 264 of 289', 'timecode: seconds ≥ 10 render untruncated')
