@@ -554,3 +554,27 @@ corrections, W-I6's in-wizard consent gesture, W-M1's gate split, and
 CT-3/CT-4/CT-5 (§6, §9). Corrections arrive as dated addenda per
 convention; the blessing ruling flips the status line to BLESSED and
 settles §7.*
+
+---
+
+## DATED ADDENDUM (2026-10-21) — the maintainer's live-drive rulings on Step 2
+
+Recorded from the fresh-clone validation drive; landed in `edd50de`:
+
+1. **The instance is the model management.** For an external ComfyUI
+   instance, the Models step is pure registry truth — the models-root
+   designation field is GONE for externals (no DesignationField at all),
+   and the studio performs NO model downloads: a missing component renders
+   a manual download-link row (the pinned revision's HF resolve URL) plus
+   the placement path (ComfyUI-relative for externals; absolute under the
+   checkout for managed engines, which keep the standing designation).
+   The recorded endgame: downloads route THROUGH the ComfyUI instance
+   (its Manager downloads into its own correct model folders) — strictly
+   more hands-off than studio-side landing; the link row is the honest
+   now. ("More hands off, more better.")
+2. **The two-axis row grammar.** Every row leads with DETECTED vs MISSING;
+   within detected, the resolution's pick carries an explicit "Selected —
+   generation uses this file" mark and other present files render as
+   "Also detected (not selected)" alternates with a one-click select.
+   The list must answer both questions at a glance: what exists, what
+   will be used.
