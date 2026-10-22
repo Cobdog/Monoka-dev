@@ -330,19 +330,85 @@ guard_port_free() { # $1 port $2 what $3 config key for the fix hint
   return "$PROBE_STATUS"
 }
 
-# Pull-change detection (maintainer 2026-09-19: "should automatically install
-# and build if it detects that a pull has happened"): compare the newest
-# source mtime against the newest build-output mtime. If any source file
-# (src/ server/ scripts/ index.html vite.config.ts package.json
-# pnpm-lock.yaml) is NEWER than both dist/ and dist-server/ outputs, a pull
-# (or edit) landed after the last build. git-less checkouts work too — it is
-# pure mtimes. Cheap: a bounded find over the source roots.
-newest_mtime() { # $@ roots — prints the newest file mtime, empty if none
-  find "$@" -type f -newer "$SCRIPT_DIR/start.sh" -printf '%T@\n' 2>/dev/null | sort -rn | head -n 1
+# --- build freshness: commit-stamped invalidation ----------------------------
+# (2026-10-21, friction fix from the maintainer's live drive; the reference
+# shape is Marinara-Engine's start.sh.) The build stamps its outputs with the
+# source state they were built from — scripts/write-build-meta.cjs, the one
+# writer: build:web stamps dist/build-meta.json, build:server stamps
+# dist-server/build-meta.json, `pnpm build` runs both — each stamp holds
+# { commit, version, builtAt, dirty? }. Freshness is decided by CONTENT, not
+# mtimes: every stamp the boot serves must carry git HEAD's commit and
+# package.json's version. ANY mismatch → rebuild, NO prompt — a pull landing
+# means the user wants the new code (the diagnosed traps: the old mtime find
+# matched only *.ts/*.tsx/*.cjs, so a CSS-only commit was INVISIBLE and the
+# maintainer drove stale UI; and the rebuild rode an interactive prompt a
+# keypress could decline). The decision is logged every start — one line,
+# enough to diagnose remotely from the launcher output alone. mtimes survive
+# ONLY as the fallback for stamp-less outputs (the first boot after this
+# change rebuilds once, then stamps exist) and git-less checkouts; the
+# fallback find matches ALL source files, so CSS/asset/json changes are never
+# invisible again. (Maintainer 2026-09-19: "should automatically install and
+# build if it detects that a pull has happened" — this is that, by content.)
+
+stamp_field() { # $1 stamp file, $2 field — prints the value, empty when the stamp or field is absent/unreadable
+  [ -f "$1" ] || return 0
+  node -e 'try { const m = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const v = m[process.argv[2]]; if (typeof v === "string" && v !== "") process.stdout.write(v); } catch {}' "$1" "$2" 2>/dev/null
 }
-build_stale() {
-  [ -f dist/index.html ] && [ -f dist-server/server/index.js ] || return 0 # missing = the existing checks handle it
-  SRC_NEWEST=$(find "$SCRIPT_DIR/src" "$SCRIPT_DIR/server" "$SCRIPT_DIR/scripts" -type f \( -name '*.ts' -o -name '*.tsx' -o -name '*.cjs' \) -printf '%T@\n' 2>/dev/null | sort -rn | head -n 1)
+
+build_stale() { # $1 = "true" when booting the dev pipeline (dist-server-only refresh).
+  # Sets STALE_REASON (why a rebuild is needed) or FRESH_DESC (what is fresh);
+  # returns 0 = rebuild needed, nonzero = fresh. POSIX sh: positional only,
+  # no `local` — every variable here is global by necessity.
+  STALE_REASON=""; FRESH_DESC=""
+  [ -f "$SCRIPT_DIR/dist/index.html" ] && [ -f "$SCRIPT_DIR/dist-server/server/index.js" ] || return 0 # missing = the existing checks handle it
+  # Dev boots serve dist-server only (vite serves the UI from source), so dev
+  # freshness is the dist-server stamp alone; production serves both outputs
+  # and both stamps must match. set -- keeps the space-bearing repo path
+  # quoted (word-split lists would break it).
+  if [ "$1" = "true" ]; then
+    set -- "$SCRIPT_DIR/dist-server/build-meta.json"
+  else
+    set -- "$SCRIPT_DIR/dist/build-meta.json" "$SCRIPT_DIR/dist-server/build-meta.json"
+  fi
+  SOURCE_COMMIT=$(git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null) || SOURCE_COMMIT=""
+  SOURCE_VER=$(node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).version || ""))' "$SCRIPT_DIR/package.json" 2>/dev/null) || SOURCE_VER=""
+  ANY_STAMP=0
+  for STAMP in "$@"; do [ -f "$STAMP" ] && ANY_STAMP=1; done
+  if [ -n "$SOURCE_COMMIT" ] && [ "$ANY_STAMP" = 1 ]; then
+    # Primary path: content comparison against every stamp the boot serves.
+    FIRST_STAMP=1
+    for STAMP in "$@"; do
+      if [ ! -f "$STAMP" ]; then
+        STALE_REASON="no build stamp in $STAMP (the output predates commit-stamping, or the build was partial)"
+        return 0
+      fi
+      DIST_COMMIT=$(stamp_field "$STAMP" commit)
+      if [ -z "$DIST_COMMIT" ]; then
+        STALE_REASON="the build stamp in $STAMP is unreadable"
+        return 0
+      fi
+      if [ "$FIRST_STAMP" = 1 ]; then
+        FRESH_COMMIT=$DIST_COMMIT
+        FRESH_BUILT=$(stamp_field "$STAMP" builtAt)
+        FIRST_STAMP=0
+      fi
+      if [ "$SOURCE_COMMIT" != "$DIST_COMMIT" ]; then
+        STALE_REASON="dist was built at $DIST_COMMIT, sources are at $SOURCE_COMMIT"
+        return 0
+      fi
+      DIST_VER=$(stamp_field "$STAMP" version)
+      if [ -n "$SOURCE_VER" ] && [ -n "$DIST_VER" ] && [ "$SOURCE_VER" != "$DIST_VER" ]; then
+        STALE_REASON="dist was built as version $DIST_VER, package.json is $SOURCE_VER"
+        return 0
+      fi
+    done
+    FRESH_DESC="commit $(printf '%s' "$FRESH_COMMIT" | cut -c1-7), built ${FRESH_BUILT:-<unknown>}"
+    return 1
+  fi
+  # Fallback (no stamps yet, or a git-less checkout): pure mtimes. The find
+  # deliberately has NO name filter — ANY source file (CSS, assets, JSON)
+  # newer than the build outputs means a change landed after the last build.
+  SRC_NEWEST=$(find "$SCRIPT_DIR/src" "$SCRIPT_DIR/server" "$SCRIPT_DIR/scripts" -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -n 1)
   [ -z "$SRC_NEWEST" ] && return 1
   for marker in "$SCRIPT_DIR/index.html" "$SCRIPT_DIR/vite.config.ts" "$SCRIPT_DIR/package.json" "$SCRIPT_DIR/pnpm-lock.yaml"; do
     [ -f "$marker" ] || continue
@@ -351,8 +417,16 @@ build_stale() {
   done
   DIST_NEWEST=$(find "$SCRIPT_DIR/dist" "$SCRIPT_DIR/dist-server" -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -n 1)
   [ -z "$DIST_NEWEST" ] && return 0
-  # A source newer than the newest build output = stale build.
-  [ "${SRC_NEWEST%.*}" -gt "${DIST_NEWEST%.*}" ]
+  if [ "${SRC_NEWEST%.*}" -gt "${DIST_NEWEST%.*}" ]; then
+    if [ -n "$SOURCE_COMMIT" ]; then
+      STALE_REASON="sources are newer than the build outputs (mtime check — no build stamp yet; the first start after the stamping change rebuilds once)"
+    else
+      STALE_REASON="sources are newer than the build outputs (mtime check — git unavailable)"
+    fi
+    return 0
+  fi
+  FRESH_DESC="mtime check — sources not newer than the outputs (no usable build stamp)"
+  return 1
 }
 
 check_pull_freshness() { # $1 = "true" when booting the dev pipeline (server-only refresh)
@@ -366,18 +440,25 @@ check_pull_freshness() { # $1 = "true" when booting the dev pipeline (server-onl
       AUTO_ACT "pnpm install" "install the updated dependencies" || return 1
     fi
   fi
-  # Build staleness: sources newer than the built outputs = a pull landed.
-  # Dev boots node --watch against dist-server immediately, so a stale
-  # dist-server serves the PREVIOUS build through tsc --watch's initial
-  # compile window — refresh it first. Dev refreshes the server only (vite
-  # serves the UI from source); production does the full build.
-  if build_stale; then
-    echo "$PROG: sources changed since the last build (a pull or edit landed after dist/ was built)."
+  # Build staleness (2026-10-21): commit-stamped — a mismatch IS a pull that
+  # landed, so the rebuild is a DECISION, not a question: run it with no
+  # prompt, one line stating what and why (remote diagnosis reads the
+  # launcher output alone). Dev boots node --watch against dist-server
+  # immediately, so a stale dist-server serves the PREVIOUS build through
+  # tsc --watch's initial compile window — refresh it first. Dev refreshes
+  # the server only (vite serves the UI from source); production does the
+  # full build.
+  if build_stale "$FRESH_MODE"; then
     if [ "$FRESH_MODE" = "true" ]; then
-      AUTO_ACT "pnpm run build:server" "recompile the server (dev mode)" || return 1
+      REBUILD_CMD="pnpm run build:server"
     else
-      AUTO_ACT "pnpm build" "rebuild" || return 1
+      REBUILD_CMD="pnpm build"
     fi
+    echo "$PROG: rebuilding: $STALE_REASON"
+    command -v pnpm >/dev/null 2>&1 || die "pnpm is not on PATH — install it first (https://pnpm.io)"
+    (cd "$SCRIPT_DIR" && $REBUILD_CMD) || die "$REBUILD_CMD failed"
+  else
+    echo "$PROG: build fresh ($FRESH_DESC)"
   fi
   return 0
 }
@@ -784,14 +865,15 @@ check_node_and_deps || {
 
 # Pull freshness (maintainer 2026-09-19; amended 2026-09-20: "the start
 # script needs to rebuild even if I am in dev mode — it is starting based on
-# the previous build"): after deps exist and before any boot, detect a pulled
-# lockfile (re-install) and sources-newer-than-build (rebuild). Dev mode is
-# NO LONGER skipped — the watch pipeline boots node --watch against
-# dist-server IMMEDIATELY (tsc --watch's initial compile takes seconds), so
-# a stale dist serves the previous build through that window; refreshing
-# dist-server first closes it. In dev the refresh builds the SERVER only
-# (vite serves the UI from source); production does the full build. Dry
-# runs stay side-effect free.
+# the previous build"; 2026-10-21: the rebuild decision is commit-stamped,
+# see build_stale): after deps exist and before any boot, detect a pulled
+# lockfile (re-install) and a build-stamp/mtime mismatch (rebuild — no
+# prompt, one logged line). Dev mode is NO LONGER skipped — the watch
+# pipeline boots node --watch against dist-server IMMEDIATELY (tsc --watch's
+# initial compile takes seconds), so a stale dist serves the previous build
+# through that window; refreshing dist-server first closes it. In dev the
+# refresh builds the SERVER only (vite serves the UI from source);
+# production does the full build. Dry runs stay side-effect free.
 if [ "$DO_PRINT" != 1 ]; then
   check_pull_freshness "${CFG_DEV}" || {
     echo "$PROG: refresh declined — booting the EXISTING build/dependencies as-is." >&2

@@ -23,13 +23,22 @@
 //       the source-map flag toggle
 //   (j) real production boot through the launcher on a 7000–7099 port
 //       (recorded PID only, SIGTERM teardown, port re-probed free) — runs
-//       when the build exists (gate order: after build), NOTE-skips otherwise
+//       when the build exists (gate order: after build), NOTE-skips otherwise;
+//       the 2026-10-21 friction fix pins index.html's WIRE cache headers on
+//       this boot (no-store on / and on the SPA fallback, immutable assets)
 //   (k) the move-pending guard (rename-T5): a seeded legacy ~/.minimax-studio
 //       under a REDIRECTED HOME boots through the real launcher with no
 //       explicit MONOKA_HOME — the server performs the rename(2) and the boot
 //       reaches readiness. If the launcher ever pre-creates the default home
 //       while the move is pending, the server's target-exists refusal kills
 //       the boot and this section reds (the pre-rename-T2 every-boot refusal).
+//   (n) commit-stamped build invalidation (friction 2026-10-21): the REAL
+//       freshness block (extracted from start.sh between stamp_field() and
+//       AUTO_ACT()) executes against hermetic scratch trees — stamp match
+//       boots fresh, commit/version mismatch rebuilds with NO prompt (a fake
+//       pnpm records the argv), missing stamps fall back to mtimes with the
+//       widened find (a CSS file newer than dist = stale, the diagnosed
+//       miss), git-less trees stay on mtimes, dev consults dist-server only
 // POSIX-only: start.sh targets /bin/sh; the Windows engine leg does not run
 // this suite and a win32 invocation self-skips with a NOTE.
 //
@@ -386,6 +395,25 @@ maybe('(j) real production boot through the launcher (recorded PID only, SIGTERM
   }, 60_000, 'launcher-booted server to answer /api/lan/settings')
   ok(ready, 'the launcher boots the real server and it serves the API')
   ok(output.includes('Monoka launcher') && output.includes(`port=${port}`), 'the boot banner states the active config (Monoka launcher, renamed T2)')
+  // (2026-10-21 friction fix) The browser-cache class dies at the wire:
+  // index.html must arrive no-store on BOTH the / serve and the SPA-route
+  // fallback (which previously carried no cache-control at all — heuristic
+  // caching could pin a stale shell after a rebuild), while vite-hashed
+  // /assets/ keep their long immutable cache. Pinned on the real boot
+  // because these are wire headers, not source text.
+  const indexResponse = await fetch(`http://127.0.0.1:${port}/`)
+  ok(indexResponse.ok, 'the booted server serves the UI shell at /')
+  ok((indexResponse.headers.get('cache-control') ?? '') === 'no-store', `index.html is served no-store (got ${JSON.stringify(indexResponse.headers.get('cache-control'))})`)
+  const shellHtml = await indexResponse.text()
+  const deepRoute = await fetch(`http://127.0.0.1:${port}/some-deep-route`)
+  ok((deepRoute.headers.get('cache-control') ?? '') === 'no-store', `the SPA fallback serves index.html no-store too (got ${JSON.stringify(deepRoute.headers.get('cache-control'))})`)
+  const hashedAsset = shellHtml.match(/(?:src|href)="(\/assets\/[^"]+\.(?:js|css))"/)
+  if (hashedAsset) {
+    const assetResponse = await fetch(`http://127.0.0.1:${port}${hashedAsset[1]}`)
+    ok((assetResponse.headers.get('cache-control') ?? '').includes('immutable'), 'content-hashed assets keep their long immutable cache (only the shell needs busting)')
+  } else {
+    console.log('  NOTE: index.html references no hashed asset — the immutable-asset pin is skipped this run')
+  }
   child.kill('SIGTERM') // the recorded PID only — never anything else
   const exited = await new Promise((resolve) => {
     const timer = setTimeout(() => resolve(false), 30_000)
@@ -567,4 +595,190 @@ maybe('(m) --setup boots the server with the setup request surfaced (wizard task
   const plainBootstrap = await readBootstrap(plainBoot.port)
   ok(plainBootstrap.setupRequested === false, `a plain boot answers setupRequested:false (got ${JSON.stringify(plainBootstrap.setupRequested)})`)
   await stop(plainBoot.child, 'plain')
+})
+
+// --- (n) commit-stamped build invalidation (friction 2026-10-21) ------------
+// The live-drive diagnosis: start.sh's mtime stale-check matched only
+// *.ts/*.tsx/*.cjs, so a CSS-only pull was INVISIBLE (no rebuild — stale UI),
+// and the rebuild it did detect rode an interactive prompt. The fix is
+// content-stamped (the Marinara-Engine pattern): build:web/build:server stamp
+// their outputs (scripts/write-build-meta.cjs), start.sh compares
+// stamp.commit/stamp.version against git HEAD + package.json, ANY mismatch
+// rebuilds with NO prompt, and the decision is logged every start. These
+// cases execute the REAL block — extracted from start.sh between
+// stamp_field() and AUTO_ACT() — against hermetic scratch trees: a real
+// per-tree git init, mtimes pinned with utimesSync, and a FAKE pnpm on PATH
+// that records its argv (the real one would run a real build against scratch
+// and never terminate honestly). The extraction is itself a contract: if the
+// block moves out from between its markers, this reds loudly instead of
+// silently testing nothing.
+function shQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`
+}
+
+/** The freshness machinery straight out of start.sh: everything from the
+ *  stamp_field() definition up to (not including) AUTO_ACT(). */
+function extractFreshnessBlock() {
+  const text = fs.readFileSync(START_SH, 'utf8')
+  const start = text.search(/^stamp_field\(\) \{/m)
+  const end = text.search(/^AUTO_ACT\(\) \{/m)
+  assert.ok(start >= 0 && end > start, 'start.sh defines the freshness block between stamp_field() and AUTO_ACT() — the extraction markers moved')
+  const block = text.slice(start, end)
+  assert.ok(block.includes('build_stale') && block.includes('check_pull_freshness'), 'the extracted block carries build_stale and check_pull_freshness')
+  return block
+}
+
+/** A fake pnpm on PATH recording its argv — proves WHICH command the rebuild
+ *  path ran (and that it ran without asking) while keeping the run hermetic. */
+function installFakePnpm(scratchDir) {
+  const bin = path.join(scratchDir, 'bin')
+  fs.mkdirSync(bin, { recursive: true })
+  const log = path.join(bin, 'pnpm-calls.log')
+  fs.writeFileSync(path.join(bin, 'pnpm'), `#!/bin/sh\nprintf '%s\\n' "$*" >> ${shQuote(log)}\nexit 0\n`, { mode: 0o755 })
+  return { bin, log }
+}
+
+const T0 = new Date('2020-01-01T00:00:00Z')
+const T1 = new Date('2021-01-01T00:00:00Z')
+
+/** A checkout-shaped scratch tree: src/server/scripts + dist + dist-server +
+ *  package.json, every mtime pinned to T0 (deterministic fallback math).
+ *  options.git seeds a real repo (returns head); options.distStamp /
+ *  options.serverStamp write build-meta.json objects (or raw strings for the
+ *  corrupt case); options.cssNewer touches src/canvas/canvas.css to T1 —
+ *  NEWER than every dist file: the exact shape of the diagnosed miss. */
+function makeStampTree(options = {}) {
+  const dir = scratch()
+  for (const sub of ['src/canvas', 'server', 'scripts', 'dist', 'dist-server/server']) fs.mkdirSync(path.join(dir, sub), { recursive: true })
+  const files = {
+    'src/canvas/canvas.css': 'body{color:red}',
+    'src/main.tsx': 'export {}\n',
+    'server/core.ts': 'export {}\n',
+    'scripts/tool.cjs': "'use strict'\n",
+    'dist/index.html': '<!doctype html>\n',
+    'dist-server/server/index.js': 'console.log(1)\n',
+    'package.json': `${JSON.stringify({ name: 'scratch', version: options.version ?? '9.9.9' }, null, 2)}\n`,
+  }
+  for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), body)
+  for (const name of Object.keys(files)) fs.utimesSync(path.join(dir, name), T0, T0)
+  let head = ''
+  if (options.git !== false) {
+    const git = (args) => spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8' })
+    git(['-c', 'init.defaultBranch=main', 'init', '-q'])
+    git(['-c', 'user.email=launcher@test', '-c', 'user.name=launcher', 'add', '-A'])
+    git(['-c', 'user.email=launcher@test', '-c', 'user.name=launcher', 'commit', '-q', '-m', 'scratch'])
+    head = git(['rev-parse', 'HEAD']).stdout.trim()
+    assert.ok(/^[0-9a-f]{40}$/.test(head), `the scratch tree got a real git HEAD (got ${head})`)
+  }
+  const writeStamp = (name, stamp) => {
+    if (stamp === undefined || stamp === null) return
+    // The 'HEAD' placeholder resolves to this tree's real commit so tests
+    // never hand-build 40-hex shas they cannot know in advance. The stamp is
+    // backdated to T0 so the FALLBACK cases measure real outputs: a
+    // present-mtime stamp under dist/ would read as the newest build output
+    // and mask the cssNewer touch the git-less cases exist to prove.
+    const resolved = typeof stamp === 'string' ? stamp : { ...stamp, commit: stamp.commit === 'HEAD' ? head : stamp.commit }
+    const file = path.join(dir, name)
+    fs.writeFileSync(file, typeof resolved === 'string' ? resolved : `${JSON.stringify(resolved, null, 2)}\n`)
+    fs.utimesSync(file, T0, T0)
+  }
+  writeStamp('dist/build-meta.json', options.distStamp)
+  writeStamp('dist-server/build-meta.json', options.serverStamp)
+  if (options.cssNewer) fs.utimesSync(path.join(dir, 'src/canvas/canvas.css'), T1, T1)
+  return { dir, head }
+}
+
+/** Runs check_pull_freshness from the REAL start.sh block against a scratch
+ *  tree. GIT_CEILING_DIRECTORIES stops the discovery walk at the scratch
+ *  parent — a git-less tree must read as git-less even if some ancestor of
+ *  TMPDIR happens to be a repository itself. */
+function runFreshness(scratchDir, mode) {
+  const { bin, log } = installFakePnpm(scratchDir)
+  const harness = [
+    'PROG=start.sh',
+    `SCRIPT_DIR=${shQuote(scratchDir)}`,
+    // Stubs for the two helpers defined OUTSIDE the extracted block: die is
+    // the honest terminal state; AUTO_ACT records its invocation — a rebuild
+    // routed through it (the old prompting path) is a visible failure below.
+    'die() { echo "DIED: $*"; exit 1; }',
+    'AUTO_ACT() { echo "AUTO_ACT_INVOKED: $1"; return 0; }',
+    extractFreshnessBlock(),
+    `check_pull_freshness ${mode}`,
+    'echo "FRESHNESS_EXIT=$?"',
+  ].join('\n')
+  const result = spawnSync('sh', ['-c', harness], {
+    cwd: scratchDir,
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, GIT_CEILING_DIRECTORIES: path.dirname(scratchDir) },
+    encoding: 'utf8',
+    timeout: 60_000,
+  })
+  const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean) : []
+  return { code: result.status, out: `${result.stdout || ''}${result.stderr || ''}`, calls }
+}
+
+maybe('(n) commit-stamped build invalidation: match boots, mismatch rebuilds unprompted, missing stamps fall back', () => {
+  console.log('launcher: commit-stamped build invalidation')
+  const BUILT_AT = '2026-10-21T00:00:00.000Z'
+  const FOREIGN = '0123456789abcdef0123456789abcdef01234567'
+
+  // (n1) STAMP MATCH (prod): both stamps at HEAD + version -> boot fresh, one
+  // line naming the commit and built time, no pnpm invocation at all.
+  const fresh = makeStampTree({ git: true, distStamp: { commit: 'HEAD', version: '9.9.9', builtAt: BUILT_AT }, serverStamp: { commit: 'HEAD', version: '9.9.9', builtAt: BUILT_AT } })
+  const n1 = runFreshness(fresh.dir, 'false')
+  ok(n1.code === 0 && n1.calls.length === 0, `a matching stamp boots with no rebuild and no pnpm call (exit ${n1.code}, calls: ${n1.calls.join(' | ')})`)
+  ok(n1.out.includes(`build fresh (commit ${fresh.head.slice(0, 7)}`) && n1.out.includes(`built ${BUILT_AT}`), `the fresh line names the commit and built time for remote diagnosis\n${n1.out}`)
+  ok(!n1.out.includes('AUTO_ACT_INVOKED'), 'the fresh path never touches AUTO_ACT')
+
+  // (n2) COMMIT MISMATCH (prod): the pull landed — rebuild runs UNPROMPTED,
+  // the full `pnpm build`, with the reason naming both commits.
+  const mismatch = makeStampTree({ git: true, distStamp: { commit: FOREIGN, version: '9.9.9', builtAt: BUILT_AT }, serverStamp: { commit: FOREIGN, version: '9.9.9', builtAt: BUILT_AT } })
+  const n2 = runFreshness(mismatch.dir, 'false')
+  ok(n2.code === 0 && n2.calls.join(' | ') === 'build', `a commit mismatch runs the full pnpm build unprompted (calls: ${n2.calls.join(' | ')})`)
+  ok(n2.out.includes('rebuilding:') && n2.out.includes(FOREIGN.slice(0, 7)) && n2.out.includes(mismatch.head.slice(0, 7)), `the rebuild line states the decision and names both commits\n${n2.out}`)
+  ok(!n2.out.includes('AUTO_ACT_INVOKED') && !n2.out.includes('Run "'), 'the rebuild path asks NO question (the old default-declinable prompt is gone)')
+
+  // (n3) VERSION MISMATCH alone (commit identical): still a rebuild.
+  const versionDrift = makeStampTree({ git: true, version: '9.9.9', distStamp: { commit: 'HEAD', version: '0.0.1', builtAt: BUILT_AT }, serverStamp: { commit: 'HEAD', version: '0.0.1', builtAt: BUILT_AT } })
+  const n3 = runFreshness(versionDrift.dir, 'false')
+  ok(n3.code === 0 && n3.calls.join(' | ') === 'build', `a version-only mismatch still rebuilds (calls: ${n3.calls.join(' | ')})`)
+  ok(n3.out.includes('0.0.1') && n3.out.includes('9.9.9'), 'the reason names both versions')
+
+  // (n4) MODE-SCOPED STAMPS: dev consults dist-server ONLY (vite serves the
+  // UI from source) — a matching dist-server stamp boots dev fresh even with
+  // NO dist stamp; the same tree in prod mode rebuilds (dist stamp missing).
+  const devTree = makeStampTree({ git: true, serverStamp: { commit: 'HEAD', version: '9.9.9', builtAt: BUILT_AT } })
+  const n4dev = runFreshness(devTree.dir, 'true')
+  ok(n4dev.code === 0 && n4dev.calls.length === 0, 'dev mode boots fresh on a matching dist-server stamp alone')
+  const n4prod = runFreshness(devTree.dir, 'false')
+  ok(n4prod.code === 0 && n4prod.calls.join(' | ') === 'build', `prod mode on the same tree rebuilds — the missing dist stamp is a mismatch (calls: ${n4prod.calls.join(' | ')})`)
+  ok(n4prod.out.includes('rebuilding:'), 'the prod decision line states the rebuild')
+
+  // (n5) THE DIAGNOSED MISS, PINNED: no stamps yet (first boot after the
+  // stamping change) + a CSS file newer than every dist file. The old find
+  // matched *.ts/*.tsx/*.cjs and saw nothing; the widened fallback must
+  // rebuild. package.json (a marker) is NOT newer here — the CSS file alone
+  // carries the staleness.
+  const cssTree = makeStampTree({ git: true, cssNewer: true })
+  const n5 = runFreshness(cssTree.dir, 'false')
+  ok(n5.code === 0 && n5.calls.join(' | ') === 'build', `a CSS-only change newer than dist triggers the fallback rebuild (calls: ${n5.calls.join(' | ')})`)
+  ok(n5.out.includes('rebuilding:') && n5.out.toLowerCase().includes('mtime'), `the fallback rebuild names its reason\n${n5.out}`)
+
+  // (n6) NO STAMPS, NOTHING NEWER: the fallback honestly says fresh.
+  const quietTree = makeStampTree({ git: true })
+  const n6 = runFreshness(quietTree.dir, 'false')
+  ok(n6.code === 0 && n6.calls.length === 0, 'no stamps + no newer sources boots fresh (no pointless first-boot rebuild)')
+  ok(n6.out.includes('build fresh ('), 'the fallback fresh line still logs the decision')
+
+  // (n7) GIT-LESS: stamps may exist but mtimes govern (rev-parse failed).
+  const noGitStale = makeStampTree({ git: false, distStamp: { commit: FOREIGN, version: '9.9.9', builtAt: BUILT_AT }, serverStamp: { commit: FOREIGN, version: '9.9.9', builtAt: BUILT_AT }, cssNewer: true })
+  const n7a = runFreshness(noGitStale.dir, 'false')
+  ok(n7a.code === 0 && n7a.calls.join(' | ') === 'build', 'a git-less checkout falls back to mtimes even with stamps present (a newer CSS file rebuilds)')
+  const noGitQuiet = makeStampTree({ git: false, distStamp: { commit: FOREIGN, version: '9.9.9', builtAt: BUILT_AT }, serverStamp: { commit: FOREIGN, version: '9.9.9', builtAt: BUILT_AT } })
+  const n7b = runFreshness(noGitQuiet.dir, 'false')
+  ok(n7b.code === 0 && n7b.calls.length === 0, 'a git-less checkout with nothing newer boots fresh (the mtime fallback, not the foreign-stamp mismatch)')
+
+  // (n8) CORRUPT STAMP: unparseable JSON must read as stale (never as fresh).
+  const corrupt = makeStampTree({ git: true, distStamp: 'not json {', serverStamp: { commit: 'HEAD', version: '9.9.9', builtAt: BUILT_AT } })
+  const n8 = runFreshness(corrupt.dir, 'false')
+  ok(n8.code === 0 && n8.calls.join(' | ') === 'build', `an unreadable stamp rebuilds rather than trusting it (calls: ${n8.calls.join(' | ')})`)
 })

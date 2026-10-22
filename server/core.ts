@@ -3954,7 +3954,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
       const filePath = normalize(join(distRoot, requested))
       if (!(filePath === distRoot || filePath.startsWith(distRoot + sep)) || !existsSync(filePath)) {
         const fallback = join(distRoot, 'index.html')
-        response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff', 'content-security-policy': CONTENT_SECURITY_POLICY })
+        // 2026-10-21: the SPA fallback carries the same no-store as the /
+        // serve below — it previously had NO cache-control at all, so a
+        // reload on a deep route could pin a stale shell after a rebuild.
+        response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff', 'content-security-policy': CONTENT_SECURITY_POLICY })
         if (process.env.MONOKA_DBG) {
           // (A-DBG) same junction-logging channel as the primary index.html
           // serve below — SPA-route reloads get the hot start too.
@@ -3967,9 +3970,10 @@ function resolveDatasetFolder(raw: string, settings: AppSettings, defaultName: s
       const mime: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webmanifest': 'application/manifest+json' }
       const headers: Record<string, string> = {
         'content-type': mime[extname(filePath).toLowerCase()] ?? 'application/octet-stream',
-        // Content-hashed /assets/ files are immutable; index.html must always
-        // revalidate so a new deploy is picked up on the next reload.
-        'cache-control': requested === 'index.html' ? 'no-cache' : requested.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'public, max-age=86400',
+        // Content-hashed /assets/ files are immutable; index.html is never
+        // served from browser cache (2026-10-21: no-store, was no-cache —
+        // only the shell needs busting, a rebuild lands new hashed names).
+        'cache-control': requested === 'index.html' ? 'no-store' : requested.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'public, max-age=86400',
         'referrer-policy': 'no-referrer',
         'x-content-type-options': 'nosniff',
         'content-security-policy': CONTENT_SECURITY_POLICY,
